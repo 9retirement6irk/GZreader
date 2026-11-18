@@ -14,7 +14,7 @@ Panels:
 
 Which panel shows when is a setting for each situation (reading, elsewhere,
 typing); a touch on a panel that isn't the controls brings the controls up
-for a while. Settings → Interface → Colour screen. The device side (touch
+for a while. Settings → Display and light → Colour screen. The device side (touch
 events, backlight, showing the picture) is frontend/device/nook/lcd.lua.
 ]]
 

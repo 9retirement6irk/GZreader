@@ -20,6 +20,7 @@
 **Using it**
 
 - [Using GZreader](Using-GZreader)
+- [Settings](Settings)
 - [Setup page and connections](Setup-Page-and-Connections)
 - [Grimmory library](Grimmory-Library)
 - [Grimmory sync](Grimmory-Sync)

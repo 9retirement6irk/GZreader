@@ -4,7 +4,7 @@ folder, which in GZreader is always the GZreader folder: the Downloads tab.
 ZenOS's other tabs (History, Collections, Favorites…) and GZreader's own
 (Grimmory, Music…) name themselves there; the Downloads tab showed only the
 row's centre items (nothing, by default). The navbar's label for the tab
-(Settings → Interface → Navbar, `books_label`) wins when one is set, as it
+(Settings → Home and tabs → Tab bar, `books_label`) wins when one is set, as it
 does on the tab itself.
 ]]
 local M = {}

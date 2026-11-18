@@ -28,6 +28,6 @@ Each release has one package per kind of device, plus the update every device do
 | `gzreader-kindlehf-<version>.zip` | Any Kindle on firmware 5.16.3 or newer | [Touch Kindles, firmware 5.16.3+](Install-Kindle-HF) |
 | `gzreader-nook-1st-edition-<version>.zip` | Nook 1st Edition (test build) | [Nook 1st Edition](Install-Nook-1st-Edition) |
 | `gzreader-nook-<version>.zip` | Nook Simple Touch, with or without GlowLight (test build) | [Nook Simple Touch](Install-Nook-Simple-Touch) |
-| `gzreader-update.zip` | Every device: what Settings → General → Updates and the sync page install (Lua only, ~6 MB, the same for all) | [Updates](Updates-and-Test-Builds) |
+| `gzreader-update.zip` | Every device: what Settings → General → Software update and the sync page install (Lua only, ~6 MB, the same for all) | [Updates](Updates-and-Test-Builds) |
 
 The Lua code is the same in every package; what differs is KOReader's native programs for that device (built by KOReader for the Kindles, and by GZreader without floating point for the Nook 1st Edition) and the launchers.

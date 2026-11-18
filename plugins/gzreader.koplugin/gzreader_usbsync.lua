@@ -1123,7 +1123,7 @@ function Usb.takeTestBuilds(inbox)
     return true
 end
 
---- The music library chosen in Settings → Connections → Plex ({ key,
+--- The music library chosen in Settings → Accounts and services → Music ({ key,
 --- title }), or nil (the server's first).
 function Usb.musicLibrary(store)
     local m = type(store) == "table" and type(store.plex) == "table" and store.plex.music_section

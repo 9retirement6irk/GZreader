@@ -13,8 +13,7 @@ local function apply_reader_flash_cbz()
         return view._zen_is_cbz
     end
 
-    -- GZreader: KOReader's "Always flash on pages with images" (Settings →
-    -- General → Screen → E-ink settings → Full refresh rate; on unless
+    -- GZreader: KOReader's "Always flash on pages with images" (Settings → Display and light → Screen → E-ink settings → Full refresh rate; on unless
     -- unticked) decides, as it does for pictures in EPUBs: a comic is pictures.
     -- ZenOS's own "Flash on every CBZ page turn" (features.reader_flash_cbz) is
     -- no longer offered.

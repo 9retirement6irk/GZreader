@@ -48,8 +48,7 @@ you came from; without JavaScript they're one under the other):
   elsewhere, a picture always, or the same with Immich's pictures. An iPhone
   photo: choose it from Photos (the phone sends a JPEG).
 - **Access**: the key for a Cloudflare rule (below).
-- **Diagnostics** (while diagnostic logging is on, Settings → General →
-  Advanced → Diagnostic logging): download the diagnostic log.
+- **Diagnostics** (while diagnostic logging is on, Settings → Privacy and diagnostics → Advanced → Diagnostic logging): download the diagnostic log.
 
 Each change shows a short note on the Kindle, and the page shows what
 happened and stays open for the next thing. Press **Back** on the Kindle when
@@ -73,13 +72,13 @@ Immich and Home Assistant (which, on the home network, is still tried at
 
 Where to open it: the setup guide's first page (**Set up from your browser**),
 the quick panel → **Connect**, the Catalog, Notes and Calendar tabs'
-*Connect with QR code*, Settings → Connections → Grimmory / Memos / Calendar /
+*Connect with QR code*, Settings → Accounts and services → Books / Memos / Calendar /
 Immich.
 
 ## Immich
 
 Pictures from one of your [Immich](https://immich.app) albums for the sleep
-screen and the Home wallpaper: **Settings → Connections → Immich (Photos)**,
+screen and the Home wallpaper: **Settings → Accounts and services → Photos**,
 *Connect with QR code* (the setup page's Immich tab) or *Connect by typing*.
 You need the address and an API key (Immich → Account Settings → API Keys;
 at least `album.read`, `asset.read` and `asset.view`). What it does and its
@@ -88,12 +87,11 @@ settings: [Home and bookshelves](Home-and-Bookshelves#pictures-from-immich).
 ## Connect to Grimmory
 
 Open the **Catalog** tab. Grimmory's options (connection, sync, bookmarks,
-highlights, auto-download shelf) are in **Settings → Connections → Grimmory**
+highlights, auto-download shelf) are in **Settings → Accounts and services → Books**
 ; Memos (the Notes tab) is in **Settings →
-Connections → Memos (Notes)**. Read aloud is in Settings → General → Audio; Wi‑Fi only
-when needed in Settings → General, the diagnostic log in Settings → General →
-Advanced; updates in Settings
-→ General → Updates.
+Accounts and services → Notes**. Read aloud is in Settings → Audio; Wi‑Fi only
+when needed in Settings → Wi‑Fi, the diagnostic log in Settings → Privacy and
+diagnostics; updates in Settings → General → Software update.
 
 - **Connect with QR code**: opens the setup page (above) at its Grimmory
   section. The Kindle keeps only Grimmory's login tokens (never the
@@ -111,7 +109,7 @@ as an extra redirect URI on Grimmory's client at your identity provider
 (Authentik, Pocket ID, Authelia, Keycloak…), next to Grimmory's own
 `…/oauth2-callback`. If `ALLOWED_ORIGINS` is set in Grimmory, add
 `https://9retirement6irk.github.io` there too. The address is also shown on the
-setup page and under **Settings → Connections → Grimmory → Single sign-on (SSO)
+setup page and under **Settings → Accounts and services → Books → Single sign-on (SSO)
 → How to set it up**.
 
 How it works: the identity provider sends the phone back to that page
@@ -151,12 +149,12 @@ Set one GZreader up and copy its connections to the others over the Wi‑Fi,
 instead of scanning the QR code on each:
 
 1. On the one that has them: **Send connections to another GZreader**
-   (Settings → Connections → Copy to or from another GZreader, or its setup
+   (Settings → General → Transfer → Copy to or from another GZreader, or its setup
    guide's first page). It shows its name ("Kindle Paperwhite 3 · 3F2A"), a
    6-digit PIN and what it has.
 2. On the new one: **Copy from another GZreader** (the setup guide's first
-   page, Settings → Connections → Copy to or from another GZreader, the Notes
-   or Calendar tab while not connected, Settings → Connections → Grimmory). It
+   page, Settings → General → Transfer → Copy to or from another GZreader, the Notes
+   or Calendar tab while not connected, Settings → Accounts and services → Books). It
    lists the GZreader devices sending on the Wi‑Fi; pick it and enter the PIN.
 3. Tick what to copy (everything this one doesn't have yet; from the Notes tab
    only Notes, from the Calendar tab only calendars) and **Copy**.

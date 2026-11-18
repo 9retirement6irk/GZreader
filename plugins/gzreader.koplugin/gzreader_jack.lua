@@ -8,7 +8,7 @@ GZreader looks in the places Linux uses for it:
 - an input device with a headphone switch (EV_SW, SW_HEADPHONE_INSERT: the
   state comes from the EVIOCGSW ioctl, without taking its events);
 - a switch in sysfs (/sys/class/switch/*/state, as Android kernels have);
-- what "Find the headphone jack" (Settings → General → Audio) found on this Kindle:
+- what "Find the headphone jack" (Settings → Audio) found on this Kindle:
   it asks you to plug in and unplug headphones and keeps the one place that
   changed (a sysfs file, an input switch or an lipc property of
   com.lab126.audio). Until something is found, nothing is paused.
@@ -324,7 +324,7 @@ function Jack.test(on_done)
                         UIManager:show(InfoMessage:new{ text = T(_("Found it (%1). Music, audiobooks and read aloud now pause when headphones are unplugged."),
                             det.path or det.prop or (det.name and (Jack.EVENT_SOURCE .. " " .. det.name))) })
                     else
-                        UIManager:show(InfoMessage:new{ text = _("Nothing on this Kindle changed when the headphones were plugged in or out, so GZreader can't tell. Saving the diagnostic log (Settings → General) and sending it helps find another way.") })
+                        UIManager:show(InfoMessage:new{ text = _("Nothing on this Kindle changed when the headphones were plugged in or out, so GZreader can't tell. Saving the diagnostic log (Settings → Privacy and diagnostics) and sending it helps find another way.") })
                     end
                     if on_done then on_done(det) end
                 end,

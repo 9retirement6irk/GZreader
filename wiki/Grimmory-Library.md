@@ -49,11 +49,11 @@ page. It opens a list drawn like Settings (an icon on each row): who you're
 signed in as, Rebuild library, reconnecting, and About Grimmory. What's on
 the Kindle is in the Downloads tab.
 
-**An Audiobooks tab** (off until you turn it on: Settings → Interface →
-Navbar → Tabs → Audiobooks, or the setup guide's tab page; Kindles with a
+**An Audiobooks tab** (off until you turn it on: Settings → Home and tabs →
+Tab bar → Tabs → Audiobooks, or the setup guide's tab page; Kindles with a
 speaker or headphone jack) opens the Catalog's Audiobooks page on its own:
 its tab is underlined, and there's no strip and nothing to swipe to. The
-Music tab (Settings → Interface → Navbar → Tabs → Music) stays as it was.
+Music tab (Settings → Home and tabs → Tab bar → Tabs → Music) stays as it was.
 
 ## Browsing Grimmory
 
@@ -64,7 +64,7 @@ readable books (built in the background, refreshed daily), so authors or
 series with only audiobooks don't appear, and the lists open instantly.
 To build it again now (books removed from Grimmory still listed, new ones
 missing): **Refresh list from Grimmory** at the top of Authors or Series, or
-**Settings → Connections → Grimmory → Rebuild library**, which also forgets
+**Settings → Accounts and services → Books → Rebuild library**, which also forgets
 the saved lists below.
 If Grimmory's `/app/libraries` endpoint fails (HTTP 500, a server bug seen
 on some installs), the web app's library list is used instead.
@@ -112,7 +112,7 @@ a sub-list, a back arrow.
 ## Home folder and downloads
 
 The GZreader folder (`GZreader` at the top of the Kindle's drive, `/mnt/us/GZreader`) is the home folder; the
-**Downloads** tab shows it. It can't be changed: Settings → Home → Folders has no Home folder
+**Downloads** tab shows it. It can't be changed: Settings → Home and tabs → Downloads tab → Folders has no Home folder
 menu and KOReader's menus have no Home folder settings or "Set as HOME folder", since GZreader relies on it (it's set back to the GZreader folder at every start). Books sent from your browser (quick panel → Send
 books) go there too. Books download in a background process with a
 progress bar (percentage, MB received of the total; the Kindle stays awake
@@ -182,7 +182,7 @@ the books don't show as opened or read.
 ## Shelves and auto-download
 
 Catalog tab → Books → **Shelves** lists your shelves and smart (magic) shelves.
-Settings → Connections → Grimmory → **Auto-download shelf** picks one: books on it that
+Settings → Accounts and services → Books → **Auto-download shelf** picks one: books on it that
 aren't on the Kindle download in the background through the download queue
 when Wi-Fi connects (at most every 30 minutes) and with "Download new books
 from the shelf now". Books taken off the shelf stay on the Kindle. (Idea from

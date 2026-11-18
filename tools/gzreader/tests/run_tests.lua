@@ -942,7 +942,7 @@ print("House tab (Home Assistant): connecting, rooms, switching, Settings, the p
     tab:refresh(false)
     check(tab.err == nil and not texts():find("Couldn't reach", 1, true), "House tab: back again on the next refresh")
 
-    -- Settings → Connections → Home Assistant
+    -- Settings → Accounts and services → House
     local items = House.settingsItems(plugin)
     local labels = {}
     for _i, it in ipairs(items) do labels[#labels + 1] = it.text or it.text_func() end
@@ -2672,7 +2672,7 @@ do
     end
     check(#opened == 1 and opened[1].z == "ZEN" and opened[1].o == nil, "Settings tile -> Settings page")
     package.loaded["modules/settings/zen_settings_page"] = nil; package.loaded["apps/filemanager/filemanager"] = nil
-    -- Settings → Interface → Quick panel: tiles shown or hidden, by group
+    -- Settings → Home and tabs → Quick panel: tiles shown or hidden, by group
     Panel.showAll()
     Panel.setShown("controls", "rotate", false)
     Panel.setShown("home", "sort", false)
@@ -2847,7 +2847,7 @@ print("Quick panel: how it opens (KOReader's Activate menu), KOReader's tap and 
     Touch.on = saved_on
     check(#rows == 2 and rows[1].text == "Open with a tap at the top" and rows[2].text == "Open with a swipe down from the top"
             and rows[2].separator and item.sub_item_table[1].text == rows[1].text and item.sub_item_table[2].text == rows[2].text,
-        "a touch Kindle: Settings → Interface → Quick panel starts with Open with a tap / with a swipe")
+        "a touch Kindle: Settings → Home and tabs → Quick panel starts with Open with a tap / with a swipe")
     local had_fm = package.loaded["apps/filemanager/filemanager"]
     local fm = { instance = { menu = {} } }
     package.loaded["apps/filemanager/filemanager"] = fm
@@ -3036,8 +3036,11 @@ do
         and not g:match("Downloads") and not g:match("Browse library") and not g:match("updates")
         and not g:match("Diagnostic") and not g:match("Read aloud") and not g:match("Pre%-size")
         and not g:match("Wi%-Fi only"), "Grimmory section: connection and sync only " .. g)
-    check(g:match("|Sync highlights and notes|Keep connections open %(experimental%)|Rebuild library|Reconnect"),
-        "Grimmory section: Keep connections open after the sync switches, then Rebuild library " .. g)
+    check(g:match("|Sync highlights and notes|Rebuild library|Reconnect") and not g:match("Keep connections open")
+            and not g:match("Copy from another GZreader"),
+        "Books (Grimmory): the sync switches, then Rebuild library; Keep connections open in General → Performance, Copy in General → Transfer " .. g)
+    check(g:match("|Single sign%-on %(SSO%)|Storage on this Kindle|Disconnect|$"),
+        "Books (Grimmory): Storage on this Kindle (a link to General → Storage), then Disconnect last " .. g)
     do -- Rebuild library: the index from Grimmory again, the saved lists forgotten, Wi-Fi on first
         local NetR = require("gzreader_net")
         local IndexR, LCR = require("gzreader_index"), require("gzreader_listcache")
@@ -3057,11 +3060,14 @@ do
     local gen = plugin:sectionItems("general")
     check(gen.wifi and gen.wifi.text == "Wi-Fi" and #gen.wifi.sub_item_table == 3, "General: Wi-Fi (On, Off, Auto)")
     local d = texts(gen.diagnostics)
-    check(d:match("|Diagnostic logging|Send debug reports automatically|Send diagnostic log to the developer|Send diagnostic log to a browser %(QR code%)|Save diagnostic log %(USB%)|"),
-        "General: logging, automatic debug reports, send (to the developer or a browser) and save the log (no usage statistics) " .. d)
-    check(texts(plugin:sectionItems("reader")) == "|Read aloud|Test audiobook playback|Pause when headphones are unplugged|Find the headphone jack|Lay out new books while charging|",
-        "Reader: Read aloud, Test audiobook playback, the headphones, laying out new books while charging")
-    check(texts(plugin:sectionItems("interface")) == "|Pre-size covers|", "Interface: Pre-size covers (the Menu key always opens GZreader's menu)")
+    check(d:match("|Diagnostic logging|Send debug reports automatically|Report a problem|Send diagnostic log to a browser %(QR code%)|Save diagnostic log %(USB%)|"),
+        "Privacy and diagnostics: logging, automatic debug reports, Report a problem, send to a browser and save the log (no usage statistics) " .. d)
+    check(texts(plugin:sectionItems("reader")) == "|Read aloud|Test audiobook playback|Pause when headphones are unplugged|Find the headphone jack|",
+        "Audio: Read aloud, Test audiobook playback, the headphones (laying out new books is in Performance)")
+    check(texts(plugin:sectionItems("interface")) == "||", "a Kindle: nothing for Display and light (Pre-size covers is in Performance)")
+    local perf = texts(plugin:sectionItems("performance"))
+    check(perf:match("^|Pre%-size covers|") and perf:match("|Keep connections open %(experimental%)|$"),
+        "General → Performance: Pre-size covers, (laying out new books while charging,) Keep connections open " .. perf)
     local test = plugin:sectionItems("reader")[2]
     check(test.keep_menu_open == true, "Test audiobook playback stays over Settings")
 end
@@ -3084,7 +3090,7 @@ do
         return "|" .. table.concat(t, "|") .. "|"
     end
     check(texts(plugin:sectionItems("reader")) == "||", "Paperwhite: no Read aloud or audiobook test in Settings")
-    check(texts(plugin:sectionItems("interface")) == "|Pre-size covers|", "Paperwhite: no Menu key setting")
+    check(texts(plugin:sectionItems("interface")) == "||", "Paperwhite: no Menu key setting, nothing for Display and light")
     local Browser = require("gzreader_browser")
     local root = texts(Browser.rootItems({ api = plugin.api, plugin = plugin }))
     check(root:match("|Grimmory|$") and not root:match("Audiobooks") and table.concat(require("gzreader_catalog").sections(), ",") == "books",
@@ -3133,8 +3139,8 @@ do
     Device.model = "KindleTouch"
     Device.hasKeys = function() return true end -- (its Home button)
     check(Touch.on() and Touch.audio() and Touch.tts() and not Touch.dpad(), "Kindle Touch: touch, audiobooks, read aloud")
-    check(texts(plugin:sectionItems("reader")) == "|Read aloud|Test audiobook playback|Pause when headphones are unplugged|Find the headphone jack|Lay out new books while charging|",
-        "Kindle Touch: Read aloud, the audiobook test, the headphones, laying out new books")
+    check(texts(plugin:sectionItems("reader")) == "|Read aloud|Test audiobook playback|Pause when headphones are unplugged|Find the headphone jack|",
+        "Kindle Touch: Read aloud, the audiobook test, the headphones")
     check(texts(Browser.rootItems({})):match("|Audiobooks|$"), "Kindle Touch: Audiobooks in the Grimmory tab")
     -- the Kindle 4: the 5-way and Menu, no keyboard, no touch, no audio
     Device.model = "Kindle4"
@@ -3142,13 +3148,13 @@ do
     check(Touch.dpad() and not Touch.on() and not Touch.keys() and not Touch.audio() and Touch.letter("Q") == nil,
         "Kindle 4: 5-way, no letters, no audio")
     check(Touch.text("Press N", "Tap New note", "Menu → New note") == "Menu → New note", "Kindle 4: 5-way wording")
-    check(texts(plugin:sectionItems("interface")) == "|Pre-size covers|", "Kindle 4: no Menu key setting (always GZreader's menu)")
+    check(texts(plugin:sectionItems("interface")) == "||", "Kindle 4: no Menu key setting (always GZreader's menu)")
     Device.lcd = {} -- (the Nook 1st Edition's colour touchscreen)
-    check(texts(plugin:sectionItems("interface")) == "|Colour screen|Pre-size covers|", "Nook: Colour screen settings first")
+    check(texts(plugin:sectionItems("interface")) == "|Colour screen|", "Nook: Colour screen settings (Display and light)")
     Device.lcd = nil
     local model_was = Device.model
     Device.model = "NookTouch"
-    check(texts(plugin:sectionItems("interface")) == "|Touch orientation|Pre-size covers|", "Nook Simple Touch: Touch orientation")
+    check(texts(plugin:sectionItems("interface")) == "|Touch orientation|", "Nook Simple Touch: Touch orientation")
     Device.model = model_was
     Device.isNook = function() return true end
     local html = require("gzreader_pairpage").gone()
@@ -3975,12 +3981,12 @@ print("The request helper (opt-in): connections kept between background processe
 ;(function()
     local Api = require("gzreader_api")
     local Helper = require("gzreader_reqhelper")
-    -- Settings → Connections → Grimmory → Keep connections open: off by default
+    -- Settings → General → Performance → Keep connections open: off by default
     local was_force = Helper.force
     Helper.force = nil
     check(not Helper.enabled() and not Helper.setting(), "the helper is off by default")
     local item
-    for _i, it in ipairs(plugin:menuItems()) do if it.text == "Keep connections open (experimental)" then item = it end end
+    for _i, it in ipairs(plugin:sectionItems("performance")) do if it.text == "Keep connections open (experimental)" then item = it end end
     local started, was_start = 0, Helper.start
     Helper.start = function() started = started + 1 end
     item.callback()
@@ -4308,7 +4314,7 @@ print("Wi-Fi: on, off, auto")
     check(Net.nextMode("on") == "off" and Net.nextMode("off") == "auto" and Net.nextMode("auto") == "on",
         "the tile's order: on → off → auto → on")
 
-    -- choosing a mode (the tile, Settings → General → Wi-Fi)
+    -- choosing a mode (the tile, Settings → Wi-Fi)
     local switched, events = 0, {}
     local saved_switch, saved_bc = Net._switch, UIM.broadcastEvent
     Net._switch = function() switched = switched + 1; NET.connected = not NET.connected end
@@ -4437,7 +4443,7 @@ print("Wi-Fi: on, off, auto")
         for _i, g in ipairs(Panel.catalog()) do
             for _j, tl in ipairs(g.tiles) do if tl.id == "bluetooth" then cat_bt = tl end end
         end
-        check(cat_bt and cat_bt.available() == false, "…and Settings → Interface → Quick panel lists it as not on this Kindle")
+        check(cat_bt and cat_bt.available() == false, "…and Settings → Home and tabs → Quick panel lists it as not on this Kindle")
         fake.available = true
         check(cat_bt.available() == true, "a Kindle with Bluetooth: it's there")
         local c = ids(Panel.controls(nil))
@@ -4472,7 +4478,7 @@ print("Wi-Fi: on, off, auto")
         UIMp.close, UIMp.nextTick, UIMp.setDirty, UIMp.show = ui_saved.close, ui_saved.tick, ui_saved.dirty, ui_saved.show
     end)()
 
-    -- Settings → General → Wi-Fi
+    -- Settings → Wi-Fi
     local item = Net.menuItem()
     local names = {}
     for _i, it in ipairs(item.sub_item_table) do names[#names + 1] = it.text end
@@ -4903,7 +4909,7 @@ do
     check(b and #b == 1 and b[1].text == "Add to shelf", "not signed in: the book menu still has Add to shelf")
     captured.info = nil; S.menu = nil
     b[1].callback()
-    check(S.menu == nil and captured.info == "Sign in to Grimmory to continue: Settings → Connections → Grimmory.",
+    check(S.menu == nil and captured.info == "Sign in to Grimmory to continue: Settings → Accounts and services → Books.",
         "…which says to sign in to Grimmory to continue")
     rplugin.api = setmetatable({ offline = true, isPaired = function() return false end }, { __index = saved_api })
     buttons()[1].callback()
@@ -6155,12 +6161,12 @@ print("Read aloud on Kindles with Bluetooth: Amazon's Ivona voice (com.lab126.iv
     Touch._forgetIvona()
     os.remove(fake)
 
-    -- Settings → General → Audio on such a Kindle: Read aloud only; its dialog without Volume
+    -- Settings → Audio on such a Kindle: Read aloud only; its dialog without Volume
     local src = io.open(PLUGIN .. "/main.lua"):read("*a")
     check(src:find("if not Mod.Touch.player() and not Mod.Touch.tts() then return {} end", 1, true)
         and src:find("if not Mod.Touch.player() then return items end", 1, true)
         and src:find("if not Mod.Touch.audio() then return items end -- (Bluetooth Kindles: no headphone jack)", 1, true),
-        "Settings → General → Audio: without a speaker, Read aloud and (Bluetooth Kindles) the audiobook test; no headphone jack items")
+        "Settings → Audio: without a speaker, Read aloud and (Bluetooth Kindles) the audiobook test; no headphone jack items")
     check(src:find("Mod.TTS.volumeMax()", 1, true) and not src:find("if not bt then", 1, true) and src:find("Test the Kindle voice", 1, true),
         "its read aloud settings: Volume n / 8 (the Kindle's Bluetooth volume), \"Test the Kindle voice\"")
 
@@ -8627,9 +8633,21 @@ print("Notes (Memos v0.31)")
     check(Notes.pruneFiles(plugin) == 0, "no limit: nothing removed")
     Notes.prefs(plugin).files_mb = 25
     local items = NS.items(plugin)
-    check(#items == 6 and items[1].text_func():match("Will") and items[3].text_func():match("^Storage used: ")
-        and items[4].text_func() == "Layout: Two side by side, compact" and #items[4].sub_item_table == 7,
-        "Settings → Notes: connection, sync, storage, layout (4 + 2 choices, full screen), kept notes, attachment limit")
+    check(#items == 6 and items[1].text_func():match("Will") and items[6].text_func():match("^Storage used: ")
+        and items[3].text_func() == "Layout: Two side by side, compact" and #items[3].sub_item_table == 7
+        and items[2].separator == true and items[5].separator == true and type(items[6].callback) == "function" and not items[6].sub_item_table_func,
+        "Settings → Notes: connection, sync, layout (4 + 2 choices, full screen), kept notes, attachment limit, then storage (a link)")
+    ;(function()
+        local opened
+        local S = require("gzreader_storage")
+        local was = S.open
+        S.open = function(k) opened = k end
+        items[6].callback()
+        S.open = was
+        check(opened == "notes", "Notes' Storage used opens Settings → General → Storage → Notes")
+        local rows = NS.storageItems(plugin)
+        check(#rows == 5 and rows[4].text == "Free up space: remove downloaded attachments", "its Free up space rows are there (General → Storage → Notes)")
+    end)()
 
     -- a token that stopped working
     plugin.store.memos.token = "revoked"
@@ -10479,9 +10497,9 @@ print("Calendar tab: Calendar settings is ZenOS's Settings page")
     Cal.showSettingsMenu = function() old_menu = old_menu + 1 end
     local shown = Cal.showSettings(plugin)
     local cs_path = opened and opened.o.path or {}
-    check(shown == cs_page and opened.z == zen and #cs_path == 2 and cs_path[1].key == "text" and cs_path[1].value == "Connections"
-        and cs_path[2].value == "Calendar (CalDAV)" and old_menu == 0,
-        "Calendar settings: ZenOS's Settings page, opened at Connections → Calendar (CalDAV) (not KOReader's drop-down menu)")
+    check(shown == cs_page and opened.z == zen and #cs_path == 2 and cs_path[1].key == "text" and cs_path[1].value == "Accounts and services"
+        and cs_path[2].value == "Calendar" and old_menu == 0,
+        "Calendar settings: ZenOS's Settings page, opened at Accounts and services → Calendar (not KOReader's drop-down menu)")
     Cal.showSettings(plugin) -- (again: the page's close isn't wrapped twice)
     cs_page:onCloseWidget()
     check(closed_with == cs_page and redraws == 1, "Calendar settings closed: the calendar drawn again, once")
@@ -10546,7 +10564,15 @@ print("Calendar tab")
     check(Cal.periodLabel(plugin):match("\u{2013}"), "week label: " .. Cal.periodLabel(plugin))
     Cal.layout = "month"
     check(Cal.periodLabel(plugin):match("%d%d%d%d$"), "month label: " .. Cal.periodLabel(plugin))
-    check(#Cal.settingsItems(plugin) == 8, "Settings → Connections → Calendar: links, CalDAV account, calendars, holidays, layout, week start, range, storage")
+    ;(function()
+        local ci = Cal.settingsItems(plugin)
+        check(#ci == 8 and ci[1].text_func():match("^CalDAV account") and ci[2].text_func():match("^Calendar links")
+                and ci[4].text_func():match("^Holidays") and ci[8].text_func():match("^Storage used") and type(ci[8].callback) == "function" and not ci[8].sub_item_table_func
+                and ci[7].separator == true,
+            "Settings → Accounts and services → Calendar: the CalDAV account first, links, calendars, holidays, layout, week start, range, then storage (a link)")
+        local sr = Cal.storageItems(plugin)
+        check(#sr == 3 and sr[3].text == "Free up space: remove kept events", "Calendar's storage rows (General → Storage → Calendar): events kept, last synced, Free up space")
+    end)()
     do -- the bar next to an event is as tall as it's drawn, so a row centres it on the title
         -- (real geometry and HorizontalGroup here: the rest of this file has stand-ins)
         local REAL = { "ui/geometry", "ui/widget/eventlistener", "ui/widget/widget",
@@ -11145,7 +11171,7 @@ print("Music (Plex): the server, downloads, the player")
             and MusicTab.only(plex) == "1", "Plex: nothing chosen: the first music library (playlists and search kept to it, the server has two)")
         local ckey = tostring(plugin.store.server) .. "|" .. tostring(plugin.store.username) .. "|shop:mu_recent"
         Cache.put(ckey, { { type = "album", key = "201" } })
-        -- the choice, as Settings → Connections → Plex → Music library offers it
+        -- the choice, as Settings → Accounts and services → Music → Music library offers it
         local saved_net, saved_bd = require("gzreader_net").run, package.loaded["ui/widget/buttondialog"]
         local dlg, picked
         require("gzreader_net").run = function(fn) fn() end
@@ -11173,7 +11199,7 @@ print("Music (Plex): the server, downloads, the player")
             "Plex: a library chosen on another server, or one that's gone: the server's first")
         px.music_section, plugin.save = saved_ms, saved_save
     end
-    do -- audiobooks from a Plex library (Settings → Connections → Plex → Audiobooks)
+    do -- audiobooks from a Plex library (Settings → Accounts and services → Audiobooks)
         local MusicTab = require("gzreader_musictab")
         local PA = require("gzreader_plexaudio")
         local ABk = require("gzreader_audiobook")
@@ -11289,7 +11315,7 @@ print("Music (Plex): the server, downloads, the player")
             local function row(text)
                 for _i, it in ipairs(m.item_table) do if it.text == text then return it end end
             end
-            -- (ZenOS rows, as Settings → Connections → Plex: values on the right, a switch, Sign out)
+            -- (ZenOS rows, as Settings → Accounts and services → Music: values on the right, a switch, Sign out)
             local card = m.item_table
             local card_labels = {}
             for _i, it in ipairs(card) do card_labels[#card_labels + 1] = it.text end
@@ -11629,7 +11655,7 @@ print("Music (Plex): the server, downloads, the player")
     check(Music.find(plugin, "album", "202") == nil and #Music.downloaded(plugin) == 2, "Music: a download deleted")
     check(lfs.attributes(require("gzreader_musicfolder").entryDir(plugin) .. "/AAC Album.epub", "mode") == nil,
         "and its stand-in in Downloads → Music is gone")
-    -- Settings → Connections → Plex (Music)
+    -- Settings → Accounts and services → Music
     local function texts(list)
         local out = {}
         for _i, it in ipairs(list) do out[#out + 1] = it.text or (it.text_func and it.text_func()) or "" end
@@ -11637,9 +11663,11 @@ print("Music (Plex): the server, downloads, the player")
     end
     local si = Tab.settingsItems(plugin)
     local st = texts(si)
-    check(st:match("^Signed in as will | Plex server: Home Server | Music library: the server's first | Audiobooks: from Grimmory | Quality when converting: 192 kbps | Make bigger MP3 and AAC smaller | Downloaded music: 2 %(%d+ MB%) | Sign out of Plex"),
-        "Settings → Connections → Plex: account, server, music library, quality, downloads, sign out: " .. st)
-    local q = si[5].sub_item_table_func()
+    check(st:match("^Signed in as will | Plex server: Home Server | Music library: the server's first | Quality when converting: 192 kbps | Make bigger MP3 and AAC smaller | Music tab | Headphones and volume | Downloaded music: 2 %(%d+ MB%) | Sign out of Plex$"),
+        "Settings → Accounts and services → Music: account, server, music library, quality, the tab, downloads (a link), sign out last; no Audiobooks from: " .. st)
+    local mstore = Tab.storageItems(plugin)
+    check(#mstore == 1 and mstore[1].text == "Remove all downloaded music", "Remove all downloaded music: in General → Storage → Music")
+    local q = si[4].sub_item_table_func()
     q[3].callback()
     check(plugin.store.plex.bitrate == 320 and q[3].checked_func() and not q[2].checked_func() and texts(si):match("320 kbps"),
         "Settings → Plex: the conversion quality")
@@ -11656,10 +11684,10 @@ print("Music (Plex): the server, downloads, the player")
         "Settings → Plex, signed out: the sign-in rows keep their icons")
     plugin.store.plex = saved_plex
     ;(function()
-        -- the Music tab switch (both lists), as Settings → Interface → Navbar → Tabs
-        local last = si[#si - 1]
-        check(texts(si):match("| Sign out of Plex | Music tab | Headphones and volume$") and last.checked_func and last.icon_file:match("music%.svg$"),
-            "Settings → Plex, signed in: the Music tab switch, headphones behind a row of its own: " .. texts(si))
+        -- the Music tab switch (both lists), as Settings → Home and tabs → Tab bar → Tabs
+        local last = si[#si - 3]
+        check(texts(si):match("| Music tab | Headphones and volume | Downloaded music") and last.checked_func and last.icon_file:match("music%.svg$"),
+            "Settings → Music, signed in: the Music tab switch, headphones behind a row of its own: " .. texts(si))
         local saved = 0
         local zen = { config = { navbar = { show_tabs = { home = true, books = true }, tab_order = { "home", "books" }, custom_tabs = {} } },
             saveConfig = function() saved = saved + 1 end }
@@ -12914,7 +12942,7 @@ print("What's new after an update: GZreader's version and short points")
         "ZenOS's update screen shows GZreader's version and points, for GZreader's updates")
 end)()
 
-print("Flash on every page turn (Settings → General → Screen → E-ink settings)")
+print("Flash on every page turn (Settings → Display and light → Screen → E-ink settings)")
 ;(function()
     local Eink = require("gzreader_eink")
     local UIManager = require("ui/uimanager")
@@ -12953,7 +12981,7 @@ print("Flash on every page turn (Settings → General → Screen → E-ink setti
     local src = f and f:read("*a") or ""
     if f then f:close() end
     check(src:find('if Eink and Eink.flashPageTurns then\n        items[#items + 1] = IconItem.decorate({\n            text = _("Flash on every page turn"),', 1, true)
-        and src:find("Eink.pageTurnsTicked()", 1, true), "in Settings → General → Screen → E-ink settings, on every device")
+        and src:find("Eink.pageTurnsTicked()", 1, true), "in Settings → Display and light → Screen → E-ink settings, on every device")
     Eink.applies = real_applies
     UIManager.FULL_REFRESH_COUNT = keep_count
     for _i, k in ipairs(keys) do
@@ -12961,7 +12989,7 @@ print("Flash on every page turn (Settings → General → Screen → E-ink setti
     end
 end)()
 
-print("No Local reading stats widget on Home (Settings → Home → Widgets)")
+print("No Local reading stats widget on Home (Settings → Home and tabs → Home → Widgets)")
 ;(function()
     local saved_path = package.path
     package.path = PLUGIN .. "/../zenos.koplugin/?.lua;" .. package.path
@@ -13000,7 +13028,7 @@ print("No Local reading stats widget on Home (Settings → Home → Widgets)")
     if sf then sf:close() end
     local order = src:match("local DEFAULT_ORDER = (%b{})") or ""
     check(order:find('"grimmory_stats"', 1, true) and not order:find('"stats_triplet"', 1, true),
-        "Settings → Home → Widgets' default list has no Local reading stats")
+        "Settings → Home and tabs → Home → Widgets' default list has no Local reading stats")
     package.path = saved_path
 end)()
 
@@ -13819,8 +13847,8 @@ print("Sync through a computer (Kindles without Wi-Fi)")
     plugin:showDiagnostics()
     package.loaded["ui/widget/buttondialog"] = orig_bd
     check(gen.wifi == nil and #labels == 3 and not table.concat(labels, "|"):match("browser") and not table.concat(labels, "|"):match("Remote")
-        and not table.concat(labels, "|"):match("automatically") and table.concat(labels, "|"):match("to the developer %(at the next sync%)")
-        and nbtn == 3, "no Wi-Fi: Settings and Diagnostics don't offer sending the log to a phone or automatic debug reports; Send to the developer goes at the next sync (" .. table.concat(labels, ", ") .. ")")
+        and not table.concat(labels, "|"):match("automatically") and table.concat(labels, "|"):match("Report a problem %(sent at the next sync%)")
+        and nbtn == 3, "no Wi-Fi: Settings and Diagnostics don't offer sending the log to a phone or automatic debug reports; Report a problem goes at the next sync (" .. table.concat(labels, ", ") .. ")")
     -- Send to the developer without Wi-Fi: the report waits in .gzsync/reports/ for the sync page (gzreader_usbreport.lua)
     do
         local Rep = require("gzreader_usbreport")
@@ -14165,7 +14193,7 @@ print("Immich: an album's pictures for the sleep screen and the Home wallpaper")
     check(Immich.inUse() and SleepMode.type(G_reader_settings, "", true) == "cover" and SleepMode.type(G_reader_settings, "", false) == "random_image"
         and dirs[1] == SleepMode.IMMICH_DIR and dirs[2] == "/mnt/us/screensavers",
         "sleep screen: the cover while reading, an Immich picture elsewhere (the folders after it)")
-    -- Settings → Connections → Immich (Photos)
+    -- Settings → Accounts and services → Photos
     local IS = require("gzreader_immichsettings")
     local function labels(items)
         local t = {}
@@ -14175,7 +14203,7 @@ print("Immich: an album's pictures for the sleep screen and the Home wallpaper")
     local im_items = IS.items(plugin)
     local lb = labels(im_items)
     check(lb:find("^Connected to 127%.0%.0%.1:%d+ · Will|Album: Trip|Sleep screen|Home wallpaper|Pictures kept on the Kindle: 20|Get new pictures now %(last: [%d-]+ [%d:]+%)|Disconnect$"),
-        "Settings → Connections → Immich: the connection, the album, what it's for, how many, get new ones, disconnect " .. lb)
+        "Settings → Accounts and services → Photos: the connection, the album, what it's for, how many, get new ones, disconnect " .. lb)
     local sub = im_items[3].sub_item_table
     check(sub[1].checked_func() and not sub[3].checked_func(), "…its Sleep screen: the cover and Immich, as chosen")
     sub[3].callback()
@@ -14186,7 +14214,7 @@ print("Immich: an album's pictures for the sleep screen and the Home wallpaper")
     check(labels(IS.items(plugin)) == "Connect with QR code|Connect by typing|About Immich", "not connected: how to connect")
     plugin.store.immich = was_im
 
-    -- the Home wallpaper (ZenOS's Settings → Interface → Wallpaper)
+    -- the Home wallpaper (ZenOS's Settings → Sleep and wallpaper → Home background)
     local W = dofile(PLUGIN .. "/../zenos.koplugin/common/gz_immich_wallpaper.lua")
     package.loaded["common/gz_immich_wallpaper"] = W
     local saves = 0
@@ -14205,7 +14233,7 @@ print("Immich: an album's pictures for the sleep screen and the Home wallpaper")
     check(not W.isOn() and bg.gz_before == nil, "wallpaper: an image chosen by hand isn't Immich's any more")
     bg.enabled, bg.path = false, ""
     check(W.toggle({ store = { immich = {} } }) == "no_album" and not W.isOn(), "wallpaper: without an album, nothing changes")
-    check(W.toggle(plugin) == "on" and W.isOn(), "wallpaper: turned on from Settings → Connections → Immich")
+    check(W.toggle(plugin) == "on" and W.isOn(), "wallpaper: turned on from Settings → Accounts and services → Photos")
 
     -- the setup page (Wi-Fi Kindles): Immich, sleep screen pictures
     local Phone = require("gzreader_phone")
@@ -14218,7 +14246,7 @@ print("Immich: an album's pictures for the sleep screen and the Home wallpaper")
     PS.new = function(_self, o) scr = o; return o end
     local closed
     Phone.open(plugin, { section = "immich", on_close = function(ch) closed = ch end })
-    check(scr and scr.url:match("/phone/%x+#immich$"), "setup page: opened at Immich (Settings → Connections → Immich → Connect with QR code)")
+    check(scr and scr.url:match("/phone/%x+#immich$"), "setup page: opened at Immich (Settings → Accounts and services → Photos → Connect with QR code)")
     local P = "http://127.0.0.1:" .. UI.zmqs[1].port .. scr.url:match("(/phone/%x+)")
     local function post(path, fields, extra)
         local args = { "-L", #fields == 0 and "-d ''" or nil }

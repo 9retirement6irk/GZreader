@@ -675,7 +675,7 @@ function Player:tick()
     if stopped and Engine.played() < 3000 then
         Log.warn("music: the player stopped at once:", Engine.log():sub(1, 300):gsub("\n", " / "))
         self:stop()
-        UIManager:show(InfoMessage:new{ text = _("The track didn't play. Run Test audiobook playback (Settings → General → Audio); if it still fails, send the log (Settings → General).") })
+        UIManager:show(InfoMessage:new{ text = _("The track didn't play. Run Test audiobook playback (Settings → Audio); if it still fails, send the log (Settings → Privacy and diagnostics).") })
         return
     end
     if ended then

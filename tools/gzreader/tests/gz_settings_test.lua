@@ -1,6 +1,8 @@
--- Settings as GZreader trims it: General → Advanced (GZreader's diagnostic
--- log items, no Debug logging / Clear all gestures / Plugin management),
--- About (GZreader's version first, Report a bug → Send to the developer),
+-- Settings as GZreader arranges and trims it: the first page (Wi-Fi at the
+-- top, General, Display and light, …, Privacy and diagnostics, About:
+-- common/gz_settings_tree.lua), Privacy and diagnostics → Advanced (no Debug
+-- logging / Clear all gestures / Plugin management), About (GZreader's
+-- version first), Report a problem → Send to the developer,
 -- the KOReader section without the items that clash, no Manga / News /
 -- Calibre Search tabs. ZenOS's settings modules are real; the rest are stubs.
 --   luajit gz_settings_test.lua <plugins/zenos.koplugin>
@@ -24,6 +26,7 @@ local real = {
     ["modules/settings/zen_settings_utils"] = true,
     ["modules/settings/koreader_settings"] = true,
     ["common/gz_settings"] = true,
+    ["common/gz_settings_tree"] = true,
     ["common/gz_settings_icons"] = true,
     ["common/inline_icon_map"] = true,
     ["common/gz_wifi_icon"] = true,
@@ -35,6 +38,7 @@ if PLUGIN then package.path = PLUGIN .. "/?.lua;" .. package.path end
 -- GZreader's plugin as Settings sees it
 local sent = 0
 local storage_shown
+local no_diagnostics = false -- (GZreader's diagnostics rows missing: About's Report a bug is used)
 local gz = {
     sendLogToDeveloper = function() sent = sent + 1 end,
     immichSettingsItems = function() return { { text = "Connect with QR code" }, { text = "Connect by typing" } } end,
@@ -45,13 +49,13 @@ local gz = {
             wifi = { text = "Wi-Fi", mandatory_func = function() return "Auto" end, sub_item_table = {
                 { text = "On", radio = true }, { text = "Off", radio = true },
                 { text = "Auto (only when needed)", radio = true, separator = true } } },
-            diagnostics = {
+            diagnostics = not no_diagnostics and {
                 { text = "Diagnostic logging" },
                 { text = "Send debug reports automatically" },
-                { text = "Send diagnostic log to the developer" },
+                { text = "Report a problem" },
                 { text = "Send diagnostic log to a browser (QR code)" },
                 { text = "Save diagnostic log (USB)" },
-            },
+            } or nil,
         }
     end,
 }
@@ -81,7 +85,7 @@ local stubs = {
         return { { text = "Free on this Kindle" }, { text = "Books", sub_item_table = {} } }
     end },
     ["ui/language"] = { getLangMenuTable = function() return { text = "Language", sub_item_table = { { text = "English" } } } end },
-    -- KOReader's Screen menu, as Settings → KOReader copies it (Settings → General → Screen)
+    -- KOReader's Screen menu, as Settings → KOReader copies it (Settings → Display and light → Screen)
     ["modules/menu/app_launcher/native_menu"] = {
         settingsItems = function(_scope, id)
             if id ~= "screen" then return {} end
@@ -140,36 +144,59 @@ local okb, root = pcall(require("modules/settings/zen_settings").build, plugin)
 check(okb and type(root) == "table", "Settings build " .. tostring(not okb and root or ""))
 if okb then
     local items = root.sub_item_table
+    print("    Settings: " .. texts(items))
+    -- (Reader's section is a stub here, so no Reader: settings_reader_test.lua; no Audio: settings_audio_test.lua)
+    check(texts(items) == "|Wi-Fi|Bluetooth|General|Display and light|Sleep and wallpaper|Home and tabs|Accounts and services|Privacy and diagnostics|",
+        "Settings: Wi-Fi and Bluetooth (no Audio here to hold it), General, Display and light, Sleep and wallpaper, Home and tabs, Accounts and services, Privacy and diagnostics " .. texts(items))
+    check(#items <= 9, "the first page fits on one screen (nine rows)")
+    local lines = {}
+    for i, it in ipairs(items) do if it.separator then lines[#lines + 1] = i end end
+    check(table.concat(lines, ",") == "2,5,6,7", "lines after Bluetooth, Sleep and wallpaper, Home and tabs, Accounts and services " .. table.concat(lines, ","))
     local general = find(items, "General").sub_item_table
     local gen = texts(general)
-    local about_rows = find(items, "About").sub_item_table
-    local advanced = find(about_rows, "Advanced")
-    local adv = texts(advanced and advanced.sub_item_table)
     print("    General: " .. gen)
-    local conn = find(items, "Connections")
-    local cl = texts(conn and conn.sub_item_table)
-    local im = conn and find(conn.sub_item_table, "Immich (Photos)")
-    local okim, imitems = pcall(function() return im.sub_item_table_func() end)
-    check(cl:find("|Calendar (CalDAV)|Immich (Photos)|", 1, true) and okim and texts(imitems) == "|Connect with QR code|Connect by typing|",
-        "Connections: Immich (Photos) after Calendar, GZreader's items in it " .. cl)
+    check(gen == "|About|Software update|Storage|Battery|Time and date|Language|Transfer|Setup Guide|",
+        "General: About (as on iOS), Software update, Storage, Battery, Time and date, Language, then Transfer and Setup Guide " .. gen)
+    check(find(general, "Language").separator == true, "a line under Language")
+    local transfer = find(general, "Transfer")
+    check(texts(transfer and transfer.sub_item_table) == "|Copy to or from another GZreader|Sync through a computer|",
+        "General → Transfer: Copy to or from another GZreader, Sync through a computer " .. texts(transfer and transfer.sub_item_table))
+    local privacy = find(items, "Privacy and diagnostics").sub_item_table
+    local pr = texts(privacy)
+    print("    Privacy and diagnostics: " .. pr)
+    check(pr == "|Diagnostic logging|Send debug reports automatically|Report a problem|Send diagnostic log to a browser (QR code)|Save diagnostic log (USB)|Advanced|",
+        "Privacy and diagnostics: the diagnostic log's rows, Report a problem among them, then Advanced " .. pr)
+    check(privacy[5].separator == true, "a line above Advanced")
+    local advanced = find(privacy, "Advanced")
+    local adv = texts(advanced and advanced.sub_item_table)
     print("    Advanced: " .. adv)
-    check(find(general, "Advanced") == nil and not gen:find("Send debug reports automatically", 1, true),
-        "General: no Advanced, no Send debug reports automatically (both in About now) " .. gen)
-    check(texts(about_rows):find("|Report a bug|Send debug reports automatically|Advanced|$") ~= nil and not texts(about_rows):find("Usage statistics", 1, true),
-        "About ends with Send debug reports automatically, then Advanced (no Usage statistics) " .. texts(about_rows))
-    check(adv == "|Diagnostic logging|Send diagnostic log to the developer|Send diagnostic log to a browser (QR code)|Save diagnostic log (USB)|KOReader settings|Reset GZreader|",
-        "About → Advanced: the diagnostic log's items, then KOReader settings, then Reset GZreader " .. adv)
+    check(adv == "|KOReader settings|Reset GZreader|", "Privacy and diagnostics → Advanced: KOReader settings, then Reset GZreader " .. adv)
     -- Reset GZreader: last, under a line, asks GZreader's reset (gzreader_reset.lua)
-    local reset = advanced.sub_item_table[6]
+    local reset = advanced.sub_item_table[2]
     local asked_reset, menu_closed
     package.loaded["gzreader_reset"] = { confirm = function(g) asked_reset = g end }
     pcall(reset.callback, { closeMenu = function() menu_closed = true end })
     package.loaded["gzreader_reset"] = nil
-    check(advanced.sub_item_table[5].separator == true and reset.icon_glyph ~= nil and asked_reset == gz and menu_closed,
+    check(advanced.sub_item_table[1].separator == true and reset.icon_glyph ~= nil and asked_reset == gz and menu_closed,
         "Reset GZreader: last, under a line, with an icon; it closes Settings and asks first (gzreader_reset.confirm)")
-    check(advanced.sub_item_table[4].separator == true, "a line under them")
+    check(find(items, "About") == nil, "no About on the first page (General → About)")
+    local about_rows = find(general, "About").sub_item_table
+    check(not texts(about_rows):find("Advanced", 1, true) and not texts(about_rows):find("Report a bug", 1, true)
+            and not texts(about_rows):find("Setup Guide", 1, true) and not texts(about_rows):find("Send debug", 1, true),
+        "About: only what it says (no Advanced, Report a bug, Setup Guide or debug reports) " .. texts(about_rows))
+    local accounts = find(items, "Accounts and services")
+    local cl = texts(accounts and accounts.sub_item_table)
+    local im = accounts and find(accounts.sub_item_table, "Photos")
+    local okim, imitems = pcall(function() return im.sub_item_table_func() end)
+    -- (gzreader_usbsync is a stub here: a Kindle without Wi-Fi, so no House; zen_settings_test.lua has it)
+    check(cl == "|Books|Notes|Calendar|Photos|" and im.mandatory == "Immich" and okim
+            and texts(imitems) == "|Connect with QR code|Connect by typing|",
+        "Accounts and services: Books, Notes, Calendar, Photos (Immich, GZreader's rows in it) " .. cl)
+    check(find(accounts.sub_item_table, "Books").mandatory == "Grimmory" and find(accounts.sub_item_table, "Notes").mandatory == "Memos"
+            and find(accounts.sub_item_table, "Calendar").mandatory == "CalDAV",
+        "each row says the service it uses on the right")
     -- KOReader settings: KOReader's whole menu, nothing left out
-    local ko = advanced.sub_item_table[5]
+    local ko = advanced.sub_item_table[1]
     local asked
     package.loaded["modules/menu/app_launcher/native_menu"] = { settingsItems = function(scope, id, opts)
         asked = { scope = scope, id = id, unfiltered = type(opts) == "table" and opts.unfiltered }
@@ -180,14 +207,14 @@ if okb then
     check(ko and ko._zen_settings_root == "koreader" and texts(ko_rows) == "|Plugin management|Network|"
             and asked and asked.scope == "active" and asked.id == nil and asked.unfiltered == true,
         "KOReader settings: KOReader's own menu of what's open, unfiltered " .. texts(ko_rows))
-    for _i, gone in ipairs({ "Diagnostic logging", "Send diagnostic log to the developer", "Save diagnostic log (USB)" }) do
-        check(not gen:find("|" .. gone .. "|", 1, true), "not in General itself: " .. gone)
+    for _i, gone in ipairs({ "Diagnostic logging", "Report a problem", "Save diagnostic log (USB)", "Advanced", "Wi-Fi", "Sleep", "Screen" }) do
+        check(not gen:find("|" .. gone .. "|", 1, true), "not in General: " .. gone)
     end
     for _i, gone in ipairs({ "Debug logging", "Clear all gestures", "Plugin management", "Patch management" }) do
-        check(not adv:find("|" .. gone .. "|", 1, true), "not in General → Advanced: " .. gone)
+        check(not adv:find("|" .. gone .. "|", 1, true), "not in Advanced: " .. gone)
     end
     for _i, gone in ipairs({ "Show hidden files", "Extract metadata" }) do
-        check(not adv:find("|" .. gone .. "|", 1, true), "not in General → Advanced (hidden on GZreader): " .. gone)
+        check(not adv:find("|" .. gone .. "|", 1, true), "not in Advanced (hidden on GZreader): " .. gone)
     end
     check(not adv:find("|Allow dragging reader modals|", 1, true), "no Allow dragging reader modals (hidden on GZreader)")
     check(read("config/manager.lua"):find("cfg._meta.gz_modal_drag_off ~= true", 1, true)
@@ -197,13 +224,15 @@ if okb then
     check(mgr:find("cfg._meta.gz_show_hidden_off ~= true", 1, true) and mgr:find("cfg.developer.show_hidden_outside_home = nil", 1, true)
             and mgr:find('g:saveSetting("show_hidden", false)', 1, true),
         "a saved Show hidden files is turned off once (config/manager.lua)")
-    -- General → Screen: KOReader's Screen menu, GZreader's flash rows in its E-ink settings
+    -- Display and light → Screen: KOReader's Screen menu, GZreader's flash rows in its E-ink settings
     for _i, moved in ipairs({ "Partial pages refresh", "Flash when the screen changes" }) do
-        check(not adv:find("|" .. moved .. "|", 1, true), "not in General → Advanced any more: " .. moved)
+        check(not adv:find("|" .. moved .. "|", 1, true), "not in Advanced any more: " .. moved)
     end
-    check(gen:find("|Sleep|Screen|", 1, true) ~= nil and not gen:find("|Screen refresh|", 1, true),
-        "General: Screen, just after Sleep (no Screen refresh row) " .. gen)
-    local screen = find(general, "Screen")
+    local display = find(items, "Display and light").sub_item_table
+    print("    Display and light: " .. texts(display))
+    check(texts(display):find("^|Screen|Brightness and warmth|Dark mode|") ~= nil and display[3].separator == true,
+        "Display and light: Screen, Brightness and warmth, Dark mode, then a line " .. texts(display))
+    local screen = find(display, "Screen")
     local srows = screen and screen.sub_item_table_func and screen.sub_item_table_func()
     print("    Screen: " .. texts(srows))
     check(texts(srows) == "|Automatic dimmer|Screen DPI|E-ink settings|Screen timeout|Fullscreen|",
@@ -225,7 +254,7 @@ if okb then
     local fresh = again._zen_refresh()
     check(texts(fresh[1].sub_item_table) == "|Full refresh rate|A|Flash keyboard|", "after Screen's own refresh too " .. texts(fresh[1].sub_item_table))
     local GzS = require("common/gz_settings")
-    check(GzS.KOREADER_DUPLICATES.screen == true and not GzS.KOREADER_HIDDEN.screen, "Settings → KOReader: no Screen menu (General has it)")
+    check(GzS.KOREADER_DUPLICATES.screen == true and not GzS.KOREADER_HIDDEN.screen, "Settings → KOReader: no Screen menu (Display and light has it)")
     check(texts(GzS.screenItems({ settingsItems = function() error("no menu") end }, { { text = "A" } })) == "|A|",
         "no KOReader menu to copy: GZreader's rows alone")
     check(texts(GzS.withFlashRows({ { id = "screen_dpi", text = "Screen DPI" } }, { { text = "A" } })) == "|Screen DPI|A|",
@@ -234,7 +263,7 @@ if okb then
     check(not rsrc:find('_("Flash on every', 1, true), "Reader → Appearance: no flash settings left")
     local asrc = read("modules/settings/sections/advanced_settings.lua")
     check(not asrc:find('_("Partial pages refresh")', 1, true) and not asrc:find('_("Flash when the screen changes")', 1, true),
-        "About → Advanced: no flash settings left")
+        "Advanced: no flash settings left")
     -- what each Kindle sees (gzreader_eink: page turns on every Kindle, screen changes without REAGL)
     local function refreshTexts(eink)
         local keep = package.loaded["gzreader_eink"]
@@ -271,7 +300,7 @@ if okb then
             and not cbz_src:find("reader_flash_cbz == true", 1, true),
         "a CBZ page turn flashes when \"Always flash on pages with images\" is ticked (on unless unticked), not by ZenOS's own setting")
 
-    local about = find(items, "About").sub_item_table
+    local about = about_rows
     print("    About: " .. texts(about))
     check(text(about[1]) == "GZreader 1.26.10", "About: GZreader's version first (" .. text(about[1]) .. ")")
     check(text(about[2]) == "Built on ZenOS 4.3.0 and KOReader v2026.07.1", "then what it's built on (" .. text(about[2]) .. ")")
@@ -279,20 +308,19 @@ if okb then
     local device = find(about, "Device")
     check(device and not texts(device.sub_item_table):find("|KOReader: ", 1, true), "Device: no KOReader line (it's on the second line)")
     check(find(about, "Report a Bug") == nil, "no ZenOS bug reporter")
-    -- Wi-Fi: GZreader's On / Off / Auto menu in place of ZenOS's switch, its network list after them
-    local wifi = find(general, "Wi-Fi")
+    -- Wi-Fi: on the first page; GZreader's On / Off / Auto menu in place of ZenOS's switch, its network list after them
+    local wifi = find(items, "Wi-Fi")
     local wifi_rows = texts(wifi and wifi.sub_item_table)
-    check(gen:find("|Updates|Wi-Fi|Bluetooth|", 1, true) and select(2, gen:gsub("|Wi%-Fi", "")) == 1,
-        "General: one Wi-Fi row, where ZenOS's was (no separate \"Wi-Fi only when needed\") " .. gen)
+    check(select(2, texts(items):gsub("|Wi%-Fi", "")) == 1 and wifi._zen_settings_root == "wifi",
+        "one Wi-Fi row, on the first page (no separate \"Wi-Fi only when needed\") " .. texts(items))
     check(wifi_rows == "|On|Off|Auto (only when needed)|Networks|HTTP proxy |Network info|" and wifi.mandatory_func() == "Auto",
-        "General → Wi-Fi: On, Off, Auto, then Networks, HTTP proxy and Network info; the row shows the mode " .. wifi_rows)
+        "Wi-Fi: On, Off, Auto, then Networks, HTTP proxy and Network info; the row shows the mode " .. wifi_rows)
     local proxy = wifi and wifi.sub_item_table[5]
     check(proxy and proxy.hold_input and type(proxy.callback) == "function" and proxy.keep_menu_open,
         "HTTP proxy is KOReader's own row: a tap turns it on or off, a hold asks for the address")
     local nets = wifi and wifi.sub_item_table[4]
     check(nets and type(nets.callback) == "function" and nets._zen_settings_submenu,
         "Networks opens ZenOS's network list (what its Wi-Fi row opened)")
-    local GzS = require("common/gz_settings")
     check(GzS.wifiItem(nil, { text = "Wi-Fi" }).text == "Wi-Fi", "no GZreader item (a Kindle without Wi-Fi): ZenOS's Wi-Fi row stays")
     check(texts(GzS.wifiItem({ text = "Wi-Fi", sub_item_table = { { text = "On" } } }, nil, {}).sub_item_table) == "|On|",
         "no ZenOS row to take the network list from, no NetworkMgr rows: the modes alone")
@@ -300,8 +328,6 @@ if okb then
             { getInfoMenuTable = function() return { text = "Network info" } end,
               getProxyMenuTable = function() error("old KOReader") end }).sub_item_table) == "|On|Network info|",
         "a NetworkMgr row that fails is left out, the others stay")
-    check(gen:find("|Sleep|Screen|Time and date|Language|Storage|Battery|", 1, true) ~= nil,
-        "General: Time and date, Language and Storage after Sleep (and Screen) " .. gen)
     check(find(items, "Storage") == nil, "no Storage section at the top")
     local dev = texts(device and device.sub_item_table)
     check(not dev:find("|Storage|", 1, true) and not dev:find("|Language|", 1, true) and not dev:find("|Time and date|", 1, true),
@@ -320,15 +346,22 @@ if okb then
     local td = find(general, "Time and date")
     check(td and texts(td.sub_item_table) == "|Time zone: UTC−5|12-hour clock|Set time|",
         "General → Time and date: Time zone first " .. texts(td and td.sub_item_table))
-    check(find(items, "Downloads") == nil, "no Downloads section (its rows are in Home: zen_settings_test.lua)")
+    check(find(items, "Downloads") == nil and find(items, "Interface") == nil and find(items, "Connections") == nil,
+        "no Downloads, Interface or Connections section any more")
     local shared = require("ui/elements/common_settings_menu_table").time
     check(#shared.sub_item_table == 2, "KOReader's own Time and date menu left as it was")
-    local bug = find(about, "Report a bug")
-    check(bug and type(bug.callback) == "function", "Report a bug is there")
+    -- GZreader's diagnostics rows missing (its plugin not loaded): About's Report a bug is Report a problem
+    no_diagnostics = true
+    local okr, r2 = pcall(require("modules/settings/zen_settings").build, plugin)
+    no_diagnostics = false
+    local p2 = okr and find(r2.sub_item_table, "Privacy and diagnostics")
+    local bug = p2 and find(p2.sub_item_table, "Report a problem")
+    check(bug and type(bug.callback) == "function" and texts(p2.sub_item_table) == "|Report a problem|Advanced|",
+        "without GZreader's diagnostics rows: About's Report a bug, as Report a problem " .. texts(p2 and p2.sub_item_table))
     if bug then
         local closed = false
         bug.callback({ closeMenu = function() closed = true end })
-        check(sent == 1 and closed, "Report a bug → GZreader's Send to the developer (menu closed)")
+        check(sent == 1 and closed, "Report a problem → GZreader's Send to the developer (menu closed)")
     end
 end
 check(not read("modules/settings/sections/about_settings.lua"):find("require(\"modules/settings/zen_bugreporter\")", 1, true),
@@ -515,7 +548,7 @@ if PLUGIN then
             "choosing Book cover saves it and turns GZreader's own off")
         P.choose("auto")
         check(P.current() == "auto" and store.gzreader_sleep_auto == true, "choosing GZreader's own again")
-        -- an Immich album chosen (Settings → Connections → Immich): two more tiles
+        -- an Immich album chosen (Settings → Accounts and services → Photos): two more tiles
         store.gzreader_immich_album = "Kindle"
         ids = {}
         for _i, c in ipairs(P.choices()) do ids[#ids + 1] = c.id end

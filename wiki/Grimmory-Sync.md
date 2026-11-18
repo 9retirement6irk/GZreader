@@ -62,8 +62,7 @@ other devices), both ways, including deletions. EPUB bookmarks are converted
 between KOReader's XPointers and Grimmory's EPUB CFIs using the book's own
 XHTML (paragraph precision); PDF/comic bookmarks use the page number.
 Bookmarks made offline are sent later. Synced on open and with "Sync with
-Grimmory" (quick panel, in a book). Switch: Settings → Connections →
-Grimmory → Sync bookmarks.
+Grimmory" (quick panel, in a book). Switch: Settings → Accounts and services → Books → Sync bookmarks.
 
 A bookmark you delete from the bookmark list (rather than by tapping the
 page's corner) is deleted in Grimmory at the next sync too. Until the fix
@@ -135,5 +134,4 @@ from [Grimmory-KOReader-Client](https://github.com/ManorianOTP/Grimmory-KOReader
   here. Editing a note that already exists is noticed when the book closes
   (KOReader doesn't announce it) and sent then. Kindle 2 / DX: through the
   sync page, a sync later ([Sync with a Computer](Sync-with-a-Computer)).
-- Page bookmarks stay with bookmark sync. Switch: Settings → Connections →
-  Grimmory → Sync highlights and notes.
+- Page bookmarks stay with bookmark sync. Switch: Settings → Accounts and services → Books → Sync highlights and notes.

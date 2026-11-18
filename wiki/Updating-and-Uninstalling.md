@@ -1,16 +1,16 @@
 ## Updating
 
-GZreader checks for a new release once a day (while Wi‑Fi is on) and offers it; or open **Settings → General → Updates**, or the quick panel → **Updates**. Updating keeps your books, settings, connections and reading progress, and a **What's new** screen shows what changed. Installing a newer package over USB the same way as the first time also works.
+GZreader checks for a new release once a day (while Wi‑Fi is on) and offers it; or open **Settings → General → Software update**, or the quick panel → **Updates**. Updating keeps your books, settings, connections and reading progress, and a **What's new** screen shows what changed. Installing a newer package over USB the same way as the first time also works.
 
 - **Kindle 2 and DX** (no Wi‑Fi): the [sync page](Sync-with-a-Computer) brings new versions with the sync.
 - **Nooks:** over Wi‑Fi as on a Kindle; a new KOReader version needs the full package pushed again.
-- **Test builds:** Settings → General → Updates → **Test builds** gets changes before they're released.
+- **Test builds:** Settings → General → Software update → **Test builds** gets changes before they're released.
 
 More: [Updates and test builds](Updates-and-Test-Builds).
 
 ## Resetting GZreader
 
-**Settings → About → Advanced → Reset GZreader** (the last item) puts GZreader back to how it was when you installed it, without reinstalling. It asks first. Then:
+**Settings → Privacy and diagnostics → Advanced → Reset GZreader** (the last item) puts GZreader back to how it was when you installed it, without reinstalling. It asks first. Then:
 
 - every setting goes back to its default, and your reading statistics are removed;
 - everything GZreader downloaded is removed: the **GZreader** folder is emptied (books, audiobooks, music, and the sync page's saved keys and reports);

@@ -1,4 +1,4 @@
--- GZreader: "Scale cover to fill screen" (Settings → General → Sleep →
+-- GZreader: "Scale cover to fill screen" (Settings → Sleep and wallpaper → Sleep →
 -- Wallpaper options). The sleep screen's cover or picture is scaled up,
 -- keeping its proportions, until it covers the whole screen; ImageWidget
 -- then shows its middle and cuts off what sticks out (no bars, no

@@ -1,8 +1,8 @@
 How GZreader updates itself, and how to try changes before they're released. Updating by hand and uninstalling: [Updating and uninstalling](Updating-and-Uninstalling).
 
 GZreader checks the latest release of github.com/9retirement6irk/GZreader
-once a day (Settings → General → Updates, or the quick panel → Updates;
-the changelog is in Settings → General → Updates too). When a check has
+once a day (Settings → General → Software update, or the quick panel → Updates;
+the changelog is in Settings → General → Software update too). When a check has
 found a newer version, the quick panel's **Updates** tile reads **Update
 available** and is drawn white on black (also after a restart, until it's
 installed); tap it to see the update and install it.
@@ -26,7 +26,7 @@ v<version>" and a short point for each change (for a test build, what it
 brings; for a release after a skipped one, both). Press Get Started (or the
 5-way centre) to go on; the full text of each change stays in the changelog.
 
-**Test builds.** Settings → General → Updates → **Test builds** gets what's
+**Test builds.** Settings → General → Software update → **Test builds** gets what's
 waiting to be tried instead of releases, over Wi‑Fi like a release (the
 version then reads like `1.26.5-beta.d6819bd`). They come from the
 repository's `beta` branch: every push there builds an update package
@@ -43,7 +43,7 @@ you change it). Native parts (KOReader's programs, the Nook's icon app) still co
 only with a full package.
 
 The Nook 1st Edition updates the same way, from the same `gzreader-update.zip`
-(Settings → General → Updates, over the Nook's Wi‑Fi): the Lua is the same
+(Settings → General → Software update, over the Nook's Wi‑Fi): the Lua is the same
 on every device, and the Nook's own programs (built without floating point)
 stay as installed. Its start script (`/data/gzreader/gzreader.sh`) comes
 in the update too and takes effect the next time GZreader starts. A new

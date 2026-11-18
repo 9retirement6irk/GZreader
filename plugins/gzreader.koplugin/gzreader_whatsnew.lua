@@ -9,7 +9,7 @@ ZenOS's main.lua asks `WhatsNew.pending()`.
 
 A changelog line is either a string (the long text; the screen shows its
 first sentence) or `{ short = "…", text = "…" }`: `short` on the screen,
-`text` in Settings → Updates → Changelog and the release notes.
+`text` in Settings → General → Software update → Changelog and the release notes.
 ]]
 
 local WhatsNew = {}

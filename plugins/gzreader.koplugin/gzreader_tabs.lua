@@ -45,8 +45,8 @@ function Tabs.shown(id)
     return nb ~= nil and type(nb.show_tabs) == "table" and nb.show_tabs[id] == true
 end
 
---- Put tab `id` in the tab bar, or take it out (as Settings → Interface →
---- Navbar → Tabs does). `entry`: its definition, added to ZenOS's tab list
+--- Put tab `id` in the tab bar, or take it out (as Settings → Home and tabs →
+--- Tab bar → Tabs does). `entry`: its definition, added to ZenOS's tab list
 --- when it isn't there. False when it can't: no ZenOS, or 7 tabs already
 --- (then `full(message)` is called with what to do).
 function Tabs.setShown(id, on, entry, full)
@@ -65,7 +65,7 @@ function Tabs.setShown(id, on, entry, full)
         for _i, t in ipairs(nb.tab_order) do if nb.show_tabs[t] == true then count = count + 1 end end
         if count >= Tabs.MAX_SHOWN then
             local _ = require("gettext")
-            if full then full(_("The tab bar has 7 tabs already: turn one off first (Settings → Interface → Navbar → Tabs).")) end
+            if full then full(_("The tab bar has 7 tabs already: turn one off first (Settings → Home and tabs → Tab bar → Tabs).")) end
             return false
         end
     end

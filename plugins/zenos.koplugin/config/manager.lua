@@ -1039,8 +1039,8 @@ local function migrate_home_strip_config(store)
 end
 
 -- GZreader 1.16.0: Home's strip is a bookshelf (spines; the one picked shows
--- its cover) and the reading stats a notebook page, once; Settings → Home
--- turns either off (the strip's Bookshelf, the stats' Stat separators).
+-- its cover) and the reading stats a notebook page, once; Settings → Home and
+-- tabs → Home turns either off (the strip's Bookshelf, the stats' Stat separators).
 local function migrate_home_gz_shelf(store)
     local settings = type(store.settings) == "table" and store.settings or nil
     if not settings or settings.gz_shelf_migrated == true then return false end
@@ -1054,7 +1054,7 @@ local function migrate_home_gz_shelf(store)
 end
 
 -- GZreader 1.21.1: the book strip's controls off, once (their room goes to
--- the book you're reading); Settings → Home → Widgets → Book strip →
+-- the book you're reading); Settings → Home and tabs → Home → Widgets → Book strip →
 -- Controls turns them back on.
 local function migrate_home_gz_strip_controls(store)
     local settings = type(store.settings) == "table" and store.settings or nil
@@ -1067,7 +1067,7 @@ local function migrate_home_gz_strip_controls(store)
 end
 
 -- GZreader 1.20.0: Grimmory's reading stats on Home in place of the local
--- ones (the same look), once; Settings → Home → Widgets brings either back.
+-- ones (the same look), once; Settings → Home and tabs → Home → Widgets brings either back.
 local function migrate_home_gz_grimmory_stats(store)
     local settings = type(store.settings) == "table" and store.settings or nil
     if not settings or settings.gz_grimmory_stats_migrated == true then return false end
@@ -1310,7 +1310,7 @@ local function migrate_changed_defaults(cfg)
     end
 
     -- GZreader: the House tab (Home Assistant): listed in Settings → Navbar →
-    -- Tabs, off (Settings → Connections → Home Assistant turns it on too).
+    -- Tabs, off (Settings → Accounts and services → House turns it on too).
     if cfg._meta.gz_house_tab_migrated ~= true then
         local nb = type(cfg.navbar) == "table" and cfg.navbar or nil
         if nb then
@@ -1347,7 +1347,7 @@ local function migrate_changed_defaults(cfg)
         changed = true
     end
 
-    -- GZreader: Settings → About → Advanced has no Show hidden files any more
+    -- GZreader: Settings → Privacy and diagnostics → Advanced has no Show hidden files any more
     -- (advanced_settings.lua): turned off once, so the Downloads tab doesn't
     -- keep showing hidden and unsupported files with no switch to stop it.
     if cfg._meta.gz_show_hidden_off ~= true then
@@ -1570,7 +1570,7 @@ local function migrate_changed_defaults(cfg)
         changed = true
     end
 
-    -- GZreader: Zen mode is always on (no toggle in Settings → Interface,
+    -- GZreader: Zen mode is always on (no toggle in Settings → Display and light,
     -- and ZenOS's toggle action keeps it on): turned back on if it was off.
     if type(cfg.features) ~= "table" then cfg.features = {} end
     if cfg.features.zen_mode ~= true then
