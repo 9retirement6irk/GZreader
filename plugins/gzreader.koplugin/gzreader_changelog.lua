@@ -10,6 +10,7 @@ return {
         version = "next",
         changes = {
             { short = "Drawing: a long line no longer falls behind the pen", text = "The pen reports a few hundred points a second, and the screen was asked to refresh for every one of them. On a long stroke that took longer than the points came in, so the line fell further and further behind the pen. The ink is still painted at once, but it's now shown at most 60 times a second, and only 8 times a second while the drawing is more than 50 ms behind, until it has caught up. A stroke of 300 points or more writes how far behind it got to the diagnostic log (numbers only)." },
+            { short = "Notes: a bar of # and arrow keys on top of the keyboard, and a comma", text = "Writing a note (the editor, a quick note, a journal entry), a slim bar on top of the on-screen keyboard has # (for tags) and the arrow keys ← ↑ ↓ →, on every page of the keyboard, so a #tag no longer needs the symbols page. The letters page gets a comma before the full stop in place of ← →, and a wider space bar. Other boxes (search, names, passwords) are unchanged." },
         },
     },
     {
