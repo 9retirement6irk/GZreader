@@ -7,6 +7,13 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Calendar: holidays you can turn on", text = "Settings → Connections → Calendar → Holidays shows the holidays as a calendar of their own, for the United States, Canada or the United Kingdom: worked out on the Kindle, so no link, account or Wi-Fi is needed (the Kindle 2 and DX have them too). Also on the Calendar tab's first screen (Show holidays) and in the setup page's Holidays box." },
+            { short = "Setup page: a name and a link field for each calendar link", text = "Adding calendar links on the setup page no longer means typing \"Name | link\" lines: each link has a Name field and a Calendar link field, three to start with and Add another link for more." },
+        },
+    },
+    {
         version = "1.32.0",
         changes = {
             { short = "Kindle 2 and DX: notes sync with the web reader's Notes tab through the sync page", text = "Kindles without Wi-Fi (Kindle 2, DX): notes now sync with Grimmory's web reader through the sync page, as they do over Wi-Fi. A note typed on the Kindle shows in the web reader's Notes tab after the next sync, and a note written in the web reader comes to the Kindle with the next sync (on the highlight at that place, or as a highlight of its own). Before, a note made on the Kindle only reached Grimmory inside its highlight, which the web reader doesn't show, and the web reader's notes never came to the Kindle." },

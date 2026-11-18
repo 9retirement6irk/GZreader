@@ -9766,7 +9766,7 @@ print("Calendar tab")
     check(Cal.periodLabel(plugin):match("\u{2013}"), "week label: " .. Cal.periodLabel(plugin))
     Cal.layout = "month"
     check(Cal.periodLabel(plugin):match("%d%d%d%d$"), "month label: " .. Cal.periodLabel(plugin))
-    check(#Cal.settingsItems(plugin) == 7, "Settings → Connections → Calendar: links, CalDAV account, calendars, layout, week start, range, storage")
+    check(#Cal.settingsItems(plugin) == 8, "Settings → Connections → Calendar: links, CalDAV account, calendars, holidays, layout, week start, range, storage")
     do -- the bar next to an event is as tall as it's drawn, so a row centres it on the title
         -- (real geometry and HorizontalGroup here: the rest of this file has stand-ins)
         local REAL = { "ui/geometry", "ui/widget/eventlistener", "ui/widget/widget",
@@ -9873,6 +9873,56 @@ print("Calendar tab")
     for _i, ev in ipairs(Cal.events or {}) do if ev.cal ~= 1 then only_links = false end end
     check(done and only_links, "links alone: the Calendar tab works without a CalDAV account")
 
+    print("Holidays: a calendar of their own, worked out on the Kindle")
+    do
+        local Hol = require("gzreader_holidays")
+        local function on(id, y, m, d)
+            local list = Hol.year(id, y)[m .. "-" .. d] or {}
+            return table.concat(list, ", ")
+        end
+        check(select(1, Hol.easter(2026)) == 4 and select(2, Hol.easter(2026)) == 5 and select(2, Hol.easter(2025)) == 20
+            and select(1, Hol.easter(2027)) == 3 and select(2, Hol.easter(2027)) == 28 and select(2, Hol.easter(2038)) == 25,
+            "Easter: 5 Apr 2026, 20 Apr 2025, 28 Mar 2027, 25 Apr 2038")
+        check(on("US", 2026, 11, 26) == "Thanksgiving" and on("US", 2026, 1, 19) == "Martin Luther King Jr. Day"
+            and on("US", 2026, 5, 25) == "Memorial Day" and on("US", 2026, 9, 7) == "Labor Day" and on("US", 2026, 5, 10) == "Mother's Day"
+            and on("US", 2026, 7, 4) == "Independence Day" and on("US", 2026, 4, 5) == "Easter" and on("US", 2025, 11, 27) == "Thanksgiving"
+            and on("US", 2026, 11, 25) == "", "United States: fixed dates, nth and last weekdays, Easter (2025 and 2026)")
+        check(on("CA", 2026, 5, 18) == "Victoria Day" and on("CA", 2026, 10, 12) == "Thanksgiving" and on("CA", 2026, 4, 3) == "Good Friday"
+            and on("CA", 2026, 12, 26) == "Boxing Day", "Canada: Victoria Day (the Monday before May 25), Thanksgiving, Good Friday")
+        check(on("GB", 2026, 3, 15) == "Mothering Sunday" and on("GB", 2026, 8, 31) == "Summer bank holiday"
+            and on("GB", 2026, 5, 4) == "Early May bank holiday" and on("GB", 2026, 4, 6) == "Easter Monday",
+            "United Kingdom: Mothering Sunday, bank holidays, Easter Monday")
+        -- off until turned on; then a calendar of its own in the tab, with no Wi-Fi
+        local hp = { store = {}, save = function() end }
+        check(not Hol.enabled(hp) and Hol.conf(hp).country == "US" and #Hol.on(hp, os.time{ year = 2026, month = 11, day = 26, hour = 9 }) == 0,
+            "off until turned on (the United States chosen)")
+        hp.store.caldav = {}
+        Cal.plugin = hp
+        check(not Cal.hasSources(hp), "nothing at all: the tab's first screen")
+        local rows = Cal.connectItems(hp)
+        local hol_row
+        for _i, r in ipairs(rows) do if (r.text or ""):match("^Show holidays") then hol_row = r end end
+        check(hol_row and hol_row.text == "Show holidays (United States)", "the tab's first screen offers the holidays")
+        Hol.set(hp, { enabled = true })
+        check(Cal.hasSources(hp) and not Cal.hasNetSources(hp) and Cal.calendars(hp)[1].kind == "holidays"
+            and Cal.calendars(hp)[1].name == "Holidays (United States)", "holidays on: something to show, nothing to sync, a calendar of its own")
+        local day = Cal.dayStart(os.time{ year = 2026, month = 11, day = 26, hour = 15 })
+        Cal.events = {}
+        local evs = Cal.eventsOn(day)
+        check(#evs == 1 and evs[1].title == "Thanksgiving" and evs[1].all_day and evs[1].cal == 1 and evs[1].start == day
+            and evs[1].finish == Cal.dayStart(day + 30 * 3600), "the Calendar tab: Thanksgiving all day on 26 Nov 2026, in the holidays' calendar")
+        local fetched
+        Cal.refresh(hp, function(ok, err) fetched = { ok, err } end)
+        check(fetched and fetched[1] == false and fetched[2] == "not_connected" and not Cal.refreshing, "only holidays: no sync (and no Wi-Fi)")
+        Hol.set(hp, { country = "GB" })
+        check(Cal.eventsOn(Cal.dayStart(os.time{ year = 2026, month = 8, day = 31, hour = 12 }))[1].title == "Summer bank holiday"
+            and #Cal.eventsOn(day) == 0 and Cal.calendars(hp)[1].name == "Holidays (United Kingdom)", "another country: its holidays instead")
+        Hol.set(hp, { enabled = false })
+        check(#Cal.eventsOn(Cal.dayStart(os.time{ year = 2026, month = 8, day = 31, hour = 12 })) == 0 and #Cal.calendars(hp) == 0,
+            "turned off: gone from the tab")
+        Cal.plugin, Cal.events = nil, nil
+    end
+
     print("The phone page: Notes, Calendar (account, links, editing), books")
     for _i, f in ipairs(Cal.feeds(plugin)) do f.id = nil end
     while #Cal.feeds(plugin) > 0 do Cal.removeFeed(plugin, 1) end
@@ -9904,8 +9954,20 @@ print("Calendar tab")
     local href = plugin.store.caldav.calendars[1].href
     c, b = post("/calendar/show", { "href=" .. href })
     check(c == 200 and plugin.store.caldav.calendars[1].enabled == false and b:match("is hidden"), "Calendar: one of the account's calendars hidden from the phone")
-    c, b = post("/links", { "links=Family | " .. link .. "\nnonsense" })
-    check(c == 200 and b:match("✓ Family") and b:match("✗") and #Cal.feeds(plugin) == 1, "Calendar: links added from the phone, each checked")
+    c, b = phone("'" .. P .. "'")
+    check(b:find('name="name_1"', 1, true) and b:find('name="url_1"', 1, true) and b:find('name="url_3"', 1, true)
+        and not b:find('name="links"', 1, true) and b:find('id="more_links"', 1, true),
+        "Calendar: a name field and a link field for each link (three, and Add another link)")
+    check(b:find('action="' .. scr.url:match("(/phone/%x+)") .. '/calendar/holidays"', 1, true) and b:find('<option value="GB">United Kingdom</option>', 1, true),
+        "Calendar: a Holidays box (show them, which country)")
+    c, b = post("/calendar/holidays", { "shown=1", "country=CA" })
+    check(c == 200 and plugin.store.calendar_holidays.enabled == true and plugin.store.calendar_holidays.country == "CA"
+        and b:match("Holidays %(Canada%) are shown"), "Calendar: holidays turned on from the phone, for Canada")
+    c, b = post("/calendar/holidays", { "country=CA" })
+    check(c == 200 and plugin.store.calendar_holidays.enabled == false and b:match("Holidays are hidden"), "…and off again")
+    c, b = post("/links", { "name_1=Family", "url_1=" .. link, "name_2=", "url_2=nonsense", "name_3=Empty row", "url_3=" })
+    check(c == 200 and b:match("✓ Family") and b:match("✗") and #Cal.feeds(plugin) == 1 and Cal.feeds(plugin)[1].name == "Family",
+        "Calendar: links added from the phone (a name and a link each; a row without a link skipped), each checked")
     local fid = Cal.feeds(plugin)[1].id
     check(fid and b:find('name="id" value="' .. fid .. '"', 1, true), "each link has its own form on the page")
     c, b = post("/link", { "id=" .. fid, "name=Kids", "url=", "action=save" })

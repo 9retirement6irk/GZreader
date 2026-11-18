@@ -24,8 +24,9 @@ you came from; without JavaScript they're one under the other):
 - **Notes (Memos)**: the Memos address and an access token, or disconnect.
 - **Calendar**: your calendars, each with *Show its events*; calendar links
   can be renamed, given a new link (Proton's links change when you reshare)
-  or removed; add new links (several at once); connect or disconnect a CalDAV
-  account.
+  or removed; add new links (several at once, a name and a link field for
+  each); show the holidays and choose their country; connect or disconnect a
+  CalDAV account.
 - **House** (Kindles with Wi‑Fi): your Home Assistant address and a
   long-lived access token, or disconnect ([House](House)).
 - **Music** (Kindles with audio): *Sign in with Plex* (Plex's own sign-in
