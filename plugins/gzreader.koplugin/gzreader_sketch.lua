@@ -49,6 +49,7 @@ local Sketch = {
     --- than PAN_MIN screen pixels does nothing (two fingers resting).
     --- A pinch or a one-finger pan shows on the page as it goes, at most once in this many seconds.
     LIVE_INTERVAL = 0.3,
+    SHAPE_INTERVAL = 0.1, -- a shape being dragged out is shown this often (its outline only: quick to show)
     PINCH_MIN = 0.08,
     PAN_MIN = 24,
 }
@@ -1065,9 +1066,13 @@ local function endContact(self, slot, out)
         return
     end
     if c.kind == "draw" and c.shape then
+        local shown = self.shape_preview and self.shape_preview.box
+        self.shape_preview = nil
         local pts = c.moved > self.tap_slop and self:shapePoints(c.shape, c.x0, c.y0, c.x, c.y) or {}
         for _i, p in ipairs(pts) do c.stroke.points[#c.stroke.points + 1] = p end
-        out.redraw = #pts > 0
+        out.redraw = #pts > 0 or shown ~= nil
+        -- (only where the shape is, and where its outline was last shown, is drawn again)
+        out.area = self:strokesArea({ c.stroke }, shown)
     end
     if c.kind == "draw" and (#c.pieces > 0 or (c.stroke and #c.stroke.points > 0)) then
         if c.stroke and #c.stroke.points > 0 then
@@ -1158,7 +1163,18 @@ function Sketch:frame(slots, now)
                         c.at = now
                     end
                 elseif c.kind == "draw" then
-                    if not c.shape then addPoint(self, c, s.x, s.y, out) end -- (a shape: drawn when the pen lifts)
+                    if not c.shape then addPoint(self, c, s.x, s.y, out)
+                    elseif c.moved > self.tap_slop and now - (c.shape_at or 0) >= Sketch.SHAPE_INTERVAL then
+                        -- a shape: its outline follows the pen (`shape_preview`, shown on the screen only;
+                        -- `out.shape_preview`), and it's drawn where it is when the pen lifts
+                        local before = self.shape_preview
+                        self.shape_preview = { points = self:shapePoints(c.shape, c.x0, c.y0, s.x, s.y), width = c.stroke.width }
+                        -- (what to show again: where the outline is now and where it was)
+                        self.shape_preview.box = self:strokeBox(self.shape_preview)
+                        out.shape_preview = self:strokesArea({ self.shape_preview }, before and before.box and
+                            { x0 = before.box.x0, y0 = before.box.y0, x1 = before.box.x1, y1 = before.box.y1 } or nil)
+                        c.shape_at = now
+                    end
                 elseif c.kind == "lasso" then lassoMove(self, c, s, now, out)
                 elseif c.kind == "erase" then erase(self, c, s.x, s.y, out) end
             end

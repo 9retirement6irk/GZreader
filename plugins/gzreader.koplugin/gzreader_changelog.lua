@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Drawing: a shape shows while you drag it out", text = "With a shape in hand (square, circle, triangle, line, arrow) nothing was on the screen until the pen lifted, so you couldn't see how big it would be. Its outline now follows the pen as you drag, about ten times a second, in the pen's thickness. It's drawn on the page when you lift, as before, and only the part of the screen where the shape is gets refreshed." },
+        },
+    },
+    {
         version = "1.33.0",
         changes = {
             { short = "Drawing: the pencil and the highlighter draw much faster", text = "The pencil and the highlighter were several times slower than the pen: every pixel under the line was read and written through a slow route, several times over. They now write the page's pixels directly, the pencil's texture is looked up instead of worked out for each pixel, and its line is painted in fewer steps. In GZreader's emulator the highlighter's ink takes about a tenth of the time it did and the pencil's about a quarter, close to the pen's. A long stroke's line in the diagnostic log now also says how long each of its frames took to handle." },

@@ -776,6 +776,7 @@ function DrawScreen:paintTo(bb, x, y)
     bb:blitFrom(self.canvas_bb, x + c.x, y + c.y, 0, 0, c.w, c.h)
     self:paintSelection(bb, x + c.x, y + c.y)
     self:paintLasso(bb, x + c.x, y + c.y)
+    self:paintShapePreview(bb, x + c.x, y + c.y)
     self:paintBar(bb, x, y)
     self._shown = { undo = self.sketch:canUndo(), redo = self.sketch:canRedo() }
 end
@@ -1477,6 +1478,18 @@ function DrawScreen:apply(out)
         UIManager:setDirty(self, "ui")
     end
     if out.sel_preview then UIManager:setDirty(self, "ui") end
+    if out.shape_preview then
+        -- (a shape's outline following the pen: black on the page, so the quick refresh, and only where it is and was)
+        local a = out.shape_preview
+        local c = self.canvas
+        local x0, y0 = math.max(c.x, c.x + a.x0 - 1), math.max(c.y, c.y + a.y0 - 1)
+        local x1, y1 = math.min(c.x + c.w, c.x + a.x1 + 1), math.min(c.y + c.h, c.y + a.y1 + 1)
+        if x1 > x0 and y1 > y0 then
+            local region = Geom:new{ x = x0 + (self.ox or 0), y = y0 + (self.oy or 0), w = x1 - x0, h = y1 - y0 }
+            self.shape_refreshes = (self.shape_refreshes or 0) + 1
+            UIManager:setDirty(self, function() return "fast", region end)
+        end
+    end
     if out.sel_changed then
         -- (chosen, let go of, moved: the loop goes, the frame and its buttons are where they belong)
         self._loop_phase = nil
@@ -1611,6 +1624,31 @@ end
 
 --- What the lasso chose: a dashed frame with a handle at each corner (where
 --- it's being dragged to, while it is). On the screen only, never in the PNG.
+--- A shape being dragged out: its outline as it is now, in the pen's width (on the
+--- screen only; the shape itself is drawn on the page when the pen lifts).
+function DrawScreen:paintShapePreview(bb, x, y)
+    local sk = self.sketch
+    local p = sk and sk.shape_preview
+    if not p or #p.points < 2 then return end
+    local c = self.canvas
+    local r = Sketch.toolRadius(nil, sk:radius(p.width), nil)
+    local rows = self:disc(r)
+    for i = 2, #p.points do
+        local a, b = p.points[i - 1], p.points[i]
+        for _j, q in ipairs(Sketch.stamps(a[1], a[2], b[1], b[2], r)) do
+            for dy = -r, r do
+                local dx = rows[dy]
+                local px, py = q[1] - dx, q[2] + dy
+                -- (kept on the page: not over the bars)
+                if py >= 0 and py < c.h then
+                    local x0, x1 = math.max(0, px), math.min(c.w, px + 2 * dx + 1)
+                    if x1 > x0 then bb:paintRect(x + x0, y + py, x1 - x0, 1, Blitbuffer.COLOR_BLACK) end
+                end
+            end
+        end
+    end
+end
+
 function DrawScreen:paintLasso(bb, x, y)
     local sk = self.sketch
     local sel = sk and sk.selection

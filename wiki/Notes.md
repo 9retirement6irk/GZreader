@@ -299,7 +299,7 @@ API to `/api` are found too.
       writing, in five widths of its own.
     - **Shapes:** **Square**, **Circle**, **Triangle**, **Line** and
       **Arrow**. Put the pen down at one corner and lift it at the other;
-      the shape appears when you lift. It's drawn in the pen's thickness
+      the shape's outline follows the pen, and it's put on the page when you lift. It's drawn in the pen's thickness
       and colour, and is undone and rubbed out like a stroke (Memos gets
       it as a stroke along the outline).
     - **Text:** typed text boxes. Tap the page where one goes and type its

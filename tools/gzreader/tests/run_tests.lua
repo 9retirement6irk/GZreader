@@ -10198,6 +10198,10 @@ print("Notes (Memos v0.31)")
                 and dsrcs:find('if self:repaintArea(area) then self:refreshBar() else self:redrawAll() end', 1, true) ~= nil
                 and dsrcs:find('if not area or sk.zoomed then return false end', 1, true) ~= nil,
                 "drawing: a rubbed-out stroke, an Undo, a Redo draw and refresh only their part of the page (all of it when zoomed in)")
+            -- a shape's outline follows the pen (sketch_test.lua has the model's part; emulator/shape_preview.lua the screen's)
+            check(dsrcs:find("self:paintShapePreview(bb, x + c.x, y + c.y)", 1, true) ~= nil
+                and dsrcs:find('UIManager:setDirty(self, function() return "fast", region end)', 1, true) ~= nil,
+                "drawing: a shape being dragged out is painted over the page and its part of the screen refreshed the quick way")
             -- the lasso (sketch_test.lua checks choosing, moving, growing, copying; emulator/lasso.lua checks it on the screen)
             check(dsrcs:find('{ id = "lasso", icon = "lasso", label = _("Lasso") },', 1, true) ~= nil
                 and dsrcs:find('{ id = "sel-copy", icon = "copy", label = _("Copy") },', 1, true) ~= nil
