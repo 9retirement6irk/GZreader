@@ -8995,6 +8995,9 @@ print("Notes (Memos v0.31)")
                 and dsrc3:find('rows[#rows + 1] = { id = "archive-note", row = true, label = _("Archive note") }', 1, true) ~= nil
                 and dsrc3:find('rows[#rows + 1] = { id = "delete-note", row = true, label = _("Delete note…") }', 1, true) ~= nil,
                 "the editor's ⋮ and the drawing screen's ⋮ (a note that's there): Archive note (saved first), Delete note…")
+            check(dsrc3:find('icons[#icons + 1] = { id = "delete-note", icon = "trash", label = _("Delete note…") }', 1, true) ~= nil
+                and dsrc3:find('icons[#icons + 1] = { id = "archive-note", icon = "archive", label = _("Archive note") }', 1, true) ~= nil,
+                "the drawing screen's top bar (a note that's there): Archive and Delete beside ⋮, as an opened note has")
             -- an opened note under the editor goes when its note is archived or deleted
             local UIMq = require("ui/uimanager")
             local shown_was = UIMq._window_stack

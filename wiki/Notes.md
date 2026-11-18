@@ -86,7 +86,9 @@ API to `/api` are found too.
   **⋮** and **Restore** instead. (The note editor's **⋮** and, for a note
   that's already there, the drawing screen's **⋮** have **Archive note**
   and **Delete note…** too: Archive saves what you changed first; Delete
-  asks, and drops what wasn't saved.) Below it, the text
+  asks, and drops what wasn't saved. The drawing screen also has both in
+  its top bar, beside **⋮**: a note that is only a drawing opens straight on
+  that screen.) Below it, the text
   in the note editor's font (the sticky notes on the
   Notes tab stay handwritten, in Patrick Hand), checklist items with letter keys
   (press one to tick or untick it; the change goes to Memos), pictures from

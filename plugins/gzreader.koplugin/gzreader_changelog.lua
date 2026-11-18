@@ -9,6 +9,7 @@ return {
     {
         version = "next",
         changes = {
+            { short = "Drawing: Archive and Delete in the top bar of a note's drawing", text = "A note that is only a drawing opens straight on the drawing screen, which had Archive and Delete only inside its ⋮ menu. They're now in its top bar as well, beside ⋮, where an opened note has them: the box archives the note (the drawing is saved first) and the bin deletes it (it asks first). A new drawing that isn't a note yet doesn't show them." },
             { short = "Keyboard Kindles: a note's name at the top, and Archive and Delete while editing", text = "On Kindles without a touch screen an opened note said only \"Note\" at the top. It now has the bar the touch Kindles have: the note's name, with its date, space and whether it's pinned under it (the keys are still listed at the foot, and M or Menu still has Edit, Pin, Archive and Delete). On a keyboard Kindle the editor has the same bar: the note's name, and under it who can see it, its space and its tags. Alt+M there opens a menu the touch Kindles have under ⋮: who can see it, its space, Archive note, Delete note and Close." },
         },
     },
