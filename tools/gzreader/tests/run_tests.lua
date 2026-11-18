@@ -10066,7 +10066,7 @@ print("Notes (Memos v0.31)")
         check(nsrc3:find("open_drawing = ((memo ~= nil and Notes.drawings(memo)[1] ~= nil) or (memo == nil and opts and opts.draw)", 1, true)
             and esrc2:find("e.drawing_first = opts.open_drawing and e:canDraw() or nil", 1, true)
             and esrc2:find("if e.drawing_first then e:openDrawing() end", 1, true)
-            and esrc2:find("if not self.drawing_first then self:keyboardSoon() end", 1, true),
+            and esrc2:find("if not self.drawing_first and not offered then self:keyboardSoon() end", 1, true),
             "Edit on a note with drawings opens them; Draw opens a page at once (touch Kindles), the drawing screen up with the editor (no text page first, no keyboard over it)")
         check(nsrc3:find("space = space, drawings = #list > 0 and list or nil, order = order })", 1, true) ~= nil
             and esrc2:find("out.order[#out.order + 1] = f", 1, true) ~= nil,
@@ -10467,7 +10467,18 @@ print("Notes (Memos v0.31)")
         local esrc = io.open(PLUGIN .. "/gzreader_noteeditor.lua"):read("*a")
         check(esrc:find('if text == "" and not self:hasDrawing() then', 1, true) and esrc:find("return self.touch and self.can_draw == true", 1, true),
             "editor: Draw on touch Kindles; a note with only a drawing can be saved")
-        check(esrc:find("self:dropDrawing(); UIManager:close(self, \"full\")", 1, true) ~= nil, "editor: Discard throws the drawing away")
+        check(esrc:find("Saving.dropDraft(self.draft_key); self:dropDrawing(); UIManager:close(self, \"full\")", 1, true) ~= nil,
+            "editor: Discard throws the drawing (and the draft) away")
+        -- saving (saving_test.lua has the drafts; emulator/note_autosave.lua the screens)
+        local dsrc_s = io.open(PLUGIN .. "/gzreader_drawscreen.lua"):read("*a")
+        check(esrc:find("local box = Saving.show()\n    UIManager:close(self, \"full\")", 1, true) ~= nil
+            and esrc:find("Log.info(\"notes: left the editor with changes: saved\")\n        self:save()", 1, true) ~= nil
+            and esrc:find('rows[#rows + 1] = { { text = _("Discard changes"), align = "left", callback = run(function() self:discard() end) } }', 1, true) ~= nil
+            and esrc:find("self:keepDrafts()", 1, true) ~= nil,
+            "editor: Saving… at once; Back saves the full page; ⋮ → Discard changes; drafts kept while writing")
+        check(dsrc_s:find('elseif t.id == "cancel" and not t.row and self.changed then', 1, true) ~= nil
+            and dsrc_s:find('if p.modified then box = require("gzreader_saving").show(); break end', 1, true) ~= nil,
+            "drawing screen: ← with changes saves (⋮ → Close without saving doesn't); Saving… while pages are made into pictures")
     end)()
 
     -- disconnect

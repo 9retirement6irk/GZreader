@@ -196,7 +196,7 @@ API to `/api` are found too.
   **Delete note…** and Close. The top of the screen has the note's name, and
   under it who can see it, its space and its tags.
   Alt + the top row types 1–0 here. New notes are **private** unless you
-  change it. Back asks whether to save.
+  change it. Back saves (Alt+M → Discard changes leaves without saving).
 - **Pictures in a note** show at the size and place they were given in
   Memos' web editor (dragged smaller, or set left, center or right): the
   same share of the page as of Memos' column. One never sized there shows
@@ -543,3 +543,18 @@ API to `/api` are found too.
   without Wi‑Fi wait in a queue and are sent the next time the Notes tab can
   reach Memos ("not sent yet" on the note meanwhile). The Notes tab keeps
   Wi‑Fi up while it's open (Wi‑Fi on Auto).
+
+## Saving
+
+- **Saving…** shows in the middle of the screen while a note or a drawing
+  is saved, so the Kindle never looks stuck.
+- **Back saves.** Leaving the note editor (Back, ←) or the drawing screen
+  (←) with changes saves them. To leave without saving: the editor's
+  **⋮ → Discard changes** (Alt+M on a keyboard Kindle), or the drawing
+  screen's **⋮ → Close without saving**. The quick note's window still asks
+  (a tap outside it is often by chance).
+- **Drafts.** While you write, the note is kept on the Kindle every few
+  seconds. If the Kindle restarts, crashes or runs flat before you save,
+  opening that note again (or a new note, for a new one) offers **Put them
+  back**. Drafts never leave the Kindle, and go once the note is saved,
+  when you choose **Start from the saved note**, or after two weeks.
