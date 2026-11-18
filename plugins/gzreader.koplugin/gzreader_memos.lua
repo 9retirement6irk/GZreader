@@ -293,10 +293,16 @@ end
 
 --- New note (private unless said otherwise), in `space` ("spaces/…") when
 --- given. Returns the note or nil, err.
-function Memos:create(content, visibility, space)
+function Memos:create(content, visibility, space, attachments)
     local body = { content = content, visibility = visibility or "PRIVATE" }
     -- (only when there is one: Memos before v0.31 refuses a field it doesn't know)
     if space and space ~= "" then body.space = space end
+    -- attachments sent already (photos put in the text): the note is made with them
+    if type(attachments) == "table" and #attachments > 0 then
+        local list = {}
+        for i, n in ipairs(attachments) do list[i] = { name = n } end
+        body.attachments = JSON.list(list)
+    end
     local _, data, err = self:request("POST", "/memos", body)
     if err then return nil, err end
     return Memos.slim(data or {})
@@ -454,7 +460,7 @@ end
 --- is skipped: nothing left to send.)
 function Memos:uploadDrawings(q, name)
     for i, d in ipairs(Memos.queuedDrawings(q)) do
-        local att, err = self:uploadAttachment(d.path, d.filename, name)
+        local att, err = self:uploadAttachment(d.path, d.filename, name, d.type) -- (a photo: its own type)
         if not att and err ~= "missing_file" then return nil, err, i - 1 end
     end
     return true
@@ -507,7 +513,7 @@ end
 --- onto it. Returns the note, or nil, err and (the note made but not every
 --- upload) the note's name and how many drawings went.
 function Memos:createWithDrawing(q)
-    local memo, err = self:create(q.content or "", q.visibility, q.space)
+    local memo, err = self:create(q.content or "", q.visibility, q.space, q.attachments)
     if not memo then return nil, err end
     local ok, aerr, sent = self:uploadDrawings(q, memo.name)
     if not ok then return nil, aerr, memo.name, sent end
@@ -542,7 +548,7 @@ function Memos:flush(queue)
             if err == "missing_file" then ok = true end
         elseif q.op == "undraw" then -- a drawing rubbed out to nothing: gone from the note
             ok, err = self:deleteAttachment(q.attachment)
-        elseif q.op == "create" then ok, err = self:create(q.content, q.visibility, q.space)
+        elseif q.op == "create" then ok, err = self:create(q.content, q.visibility, q.space, q.attachments)
         elseif q.op == "update" then ok, err = self:update(q.name, q.content, q.visibility, q.space)
         elseif q.op == "pin" then ok, err = self:setPinned(q.name, q.pinned)
         elseif q.op == "archive" then ok, err = self:setArchived(q.name, q.archived)

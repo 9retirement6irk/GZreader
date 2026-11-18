@@ -187,6 +187,43 @@ API to `/api` are found too.
   taking a note out of its space turns Space members into Private, as Memos
   does. The note's page says which space it's in. With an older Memos (no
   spaces) none of this shows.
+- **Photos** (touch Kindles):
+  - **On a note's page**, photos attached to it (not in its text) show as a
+    **gallery of pictures** under the text, two or three across, as Memos'
+    web app shows them (a tap opens one full screen); PDFs and other files
+    stay as rows.
+  - **In the editor**, the note's photos show as small pictures in the row
+    under the title, after Draw; one shown in the text has a thick frame
+    (**+n** beyond three: a list of them all). Tap one for **Put it in the
+    text, at the cursor** (or **Take it out of the text**, keeping it
+    attached), **Remove it from the note…** (deleted in Memos when you
+    save; its picture leaves the text too) and **Show it**.
+  - **+ Photos** (in that row, when Immich is connected): photos from your
+    Immich. It opens your albums (**All photos** first); tap an album for a
+    grid of its photos, tap the ones you want (each gets a thick frame and
+    its number in the order picked; tap again to let one go), turn pages
+    with **‹ ›** or a swipe, then **Add**. You're asked each time where they
+    go: **In the text, at the cursor** (a picture line for each, as
+    **Insert image** puts one in Memos' web app; sent to Memos right away,
+    because Memos only accepts a picture in a note's text when it's one of
+    the note's attachments) or **With the note, as attachments** (as
+    **Insert image → From Immich** does in your fork; sent when you save).
+    Leaving the note without saving deletes photos already sent.
+  - **In a drawing**, **⋮ → Picture from Immich…** opens the same albums and
+    grid; the photos you pick are placed **in the middle of the page you
+    see**, at most 60 % of it (never enlarged), several fanned out a step
+    down and to the right, as the fork's drawing sheet places them. They're
+    part of the drawing, under your ink; **Undo** takes one off. Memos can
+    move or resize them there (on the Kindle they stay where placed).
+  - What's sent is Immich's **preview** of each photo (a JPEG up to 1440
+    pixels a side, quick over the Kindle's Wi‑Fi), named like the photo
+    (`IMG_1234.jpg`). Immich is reached through your **Memos fork's own
+    Immich connection** (Settings → Immich in its web app; the Immich key
+    stays on the Memos server), or else through **GZreader's Immich
+    connection** (the sleep screen's, [Pictures from Immich](Home-and-Bookshelves#pictures-from-immich)).
+    With both, the albums list has **Use GZreader's Immich connection** /
+    **Use Memos' Immich connection** at the top. (Not for a note still
+    waiting to go to Memos.)
 - **Quick note:** the quick panel's **Quick note** tile (at Home and in a
   book, while Memos is connected) opens the same editor in a window over
   whatever is on the screen (the page stays visible around it; on touch
@@ -207,7 +244,8 @@ API to `/api` are found too.
     lie over it and fold away.
   - **At the top:** **←** (leave; asks first when you drew something), the
     drawing's name, then **All pages**, **Paper**, **Tags** (a new drawing),
-    **⋮ Options** (**New page**, **Erase page**, **Close without saving**)
+    **⋮ Options** (**New page**, **Picture from Immich…** when Immich is
+    connected, **Erase page**, **Close without saving**)
     and **Done** (keeps the drawings with the note). The small tab under the
     bar **folds the bar away** so you can draw on the top of the page; the
     tab stays at the top edge to bring it back. **Pull down** from the bar

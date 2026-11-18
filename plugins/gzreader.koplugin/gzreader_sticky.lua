@@ -481,6 +481,15 @@ function Sticky.firstImage(content)
     end
 end
 
+--- A picture's line in a note, as Memos' editor writes it, for attachment
+--- `att` ({ name = "attachments/<uid>", filename }): ![name](/file/attachments/<uid>/<file>).
+function Sticky.pictureLine(att)
+    local uid = tostring(att.name):match("attachments/(.+)$") or ""
+    local fname = tostring(att.filename or "photo")
+    local alt = fname:gsub("%.[%w]+$", ""):gsub("[%[%]]", "")
+    return "![" .. alt .. "](/file/attachments/" .. uid .. "/" .. fname:gsub(" ", "%%20") .. ")"
+end
+
 --- Set the n-th picture's size and place ({ width, align }; nil width: as
 --- it comes; nil align: on the left), as the web editor writes them (a new
 --- width drops a height, as it does). Returns the new content.

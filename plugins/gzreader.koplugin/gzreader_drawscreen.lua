@@ -390,6 +390,7 @@ function DrawScreen:flyoutRows(which)
         end
     elseif which == "options" then
         rows[#rows + 1] = { id = "newpage2", row = true, label = _("New page") }
+        if DrawScreen.immich then rows[#rows + 1] = { id = "immich", row = true, label = _("Picture from Immich…") } end
         rows[#rows + 1] = { id = "clear", row = true, label = _("Erase page") }
         if self.sketch and self.sketch.zoomed then rows[#rows + 1] = { id = "whole", row = true, label = _("Whole page") } end
         rows[#rows + 1] = { id = "cancel", row = true, label = _("Close without saving") }
@@ -1807,7 +1808,8 @@ function DrawScreen:use(t)
         Log.info("drawing: the top bar", self.top_hidden and "folded away" or "shown")
     elseif t.id == "prev" then if self.index > 1 then self:showPage(self.index - 1) end
     elseif t.id == "next" then if self.index < #self.pages then self:showPage(self.index + 1) end
-    elseif t.id == "newpage" or t.id == "newpage2" then self.flyout = nil; self:newPage() end
+    elseif t.id == "newpage" or t.id == "newpage2" then self.flyout = nil; self:newPage()
+    elseif t.id == "immich" then self:setFlyout(nil); self:pickPictures() end
 end
 
 -- ------------------------------------------------------------------ pages
@@ -1884,6 +1886,49 @@ function DrawScreen:pageThumb(i, w, h)
     p.thumb, p.thumb_key, p.thumb_stale = small, key, nil
     if shown ~= i then self:showPage(shown, true) end
     return small
+end
+
+-- ------------------------------------------------------------ pictures
+
+--- Photos from Immich (gzreader_immichpick.lua), placed on the page as
+--- memos' drawing sheet places them: in the middle of what's shown.
+function DrawScreen:pickPictures()
+    require("gzreader_immichpick").show(DrawScreen.immich, { on_pick = function(files)
+        if self._closed then for _i, f in ipairs(files) do os.remove(f.path) end; return end
+        self:addPictures(files)
+    end })
+end
+
+--- Puts pictures (files { path, type, w, h }) on the page shown; undo takes each off.
+function DrawScreen:addPictures(files)
+    local sk = self.sketch
+    local c = self.canvas
+    -- what's shown, in scene units (the canvas is the page on the screen)
+    local x0, y0 = sk:toScene(0, 0)
+    local x1, y1 = sk:toScene(c.w, c.h)
+    local view = { cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, w = x1 - x0, h = y1 - y0 }
+    local sizes = {}
+    for i, f in ipairs(files) do sizes[i] = { w = f.w, h = f.h } end
+    local places = Sketch.placePictures(sizes, view)
+    local b64 = require("ffi/sha2").bin_to_base64
+    local added = 0
+    for i, f in ipairs(files) do
+        local fh = io.open(f.path, "rb")
+        local data = fh and fh:read("*a")
+        if fh then fh:close() end
+        os.remove(f.path) -- (its pixels are in the drawing now)
+        if data and #data > 0 then
+            local pl = places[i]
+            sk:addPicture("data:" .. (f.type or "image/jpeg") .. ";base64," .. b64(data), f.type or "image/jpeg", pl.w, pl.h, pl.cx, pl.cy)
+            added = added + 1
+        end
+    end
+    if added > 0 then
+        self:touched()
+        Log.info("drawing:", added, "picture(s) from Immich placed")
+        self:redrawAll()
+    end
+    return added
 end
 
 --- All pages: small pictures of the note's pages, to go to one, add, copy, move or delete.
@@ -2140,6 +2185,9 @@ function DrawScreen.show(opts)
             on_back = function() if opts.on_cancel then opts.on_cancel() end end,
         }
     end
+    -- (the plugin, when a way to Immich is set up: Picture from Immich in ⋮; one drawing screen at a time)
+    DrawScreen.immich = opts.immich
+
     local pages = {}
     for _i, p in ipairs(opts.pages or {}) do
         if not p.removed then

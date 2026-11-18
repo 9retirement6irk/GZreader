@@ -548,7 +548,7 @@ function Notes.queuedAttachments(q)
     for k, d in ipairs(Memos.queuedDrawings(q)) do
         if d.filename then
             out[#out + 1] = { name = "attachments/local-" .. tostring(q.id) .. (k > 1 and ("-" .. k) or ""),
-                filename = d.filename, type = "image/png" }
+                filename = d.filename, type = d.type or "image/png" }
         end
     end
     return out
@@ -659,6 +659,57 @@ function Notes.saveDrawing(plugin, memo, drawing)
     end
     -- (kept note images, if the board keeps them, show the old drawing: drawn again)
     if Notes.dropImages then pcall(Notes.dropImages, true) end
+    Notes.sendSoon(plugin)
+end
+
+--- Photos picked from Immich for note `memo` (already in Memos): queued to
+--- go with it as attachments, as the fork's Insert image → From Immich does,
+--- and shown here at once.
+function Notes.addPhotos(plugin, memo, photos)
+    local list = {}
+    for _i, f in ipairs(photos or {}) do list[#list + 1] = { path = f.path, filename = f.filename, type = f.type } end
+    if #list == 0 then return end
+    local q = Notes.enqueue(plugin, { op = "attach", name = memo.name, drawings = list })
+    Notes.showDrawingNow(q)
+    memo.attachments = memo.attachments or {}
+    for _i, a in ipairs(Notes.queuedAttachments(q)) do table.insert(memo.attachments, a) end
+    Log.info("notes:", #list, "photo(s) from Immich added to a note")
+    Notes.sendSoon(plugin)
+end
+
+--- An attachment the note's page shows as a picture in its gallery (as
+--- Memos' web app shows a note's attached pictures): a picture, not a
+--- drawing, not a link.
+function Notes.isGalleryPhoto(a)
+    return type(a) == "table" and tostring(a.type):match("^image/") ~= nil and not Notes.isDrawing(a) and not a.link
+end
+
+--- The gallery's columns on a page `inner` wide: 3 on a big screen, else 2.
+function Notes.galleryColumns(inner) return inner >= S(560) and 3 or 2 end
+
+--- Note `m`'s photos: its attachments that are pictures but not drawings
+--- (in its text or not; not ones still waiting to be sent).
+function Notes.photos(m)
+    local out = {}
+    for _i, a in ipairs(m and m.attachments or {}) do
+        if tostring(a.type):match("^image/") and not Notes.isDrawing(a) and not tostring(a.name):match("^attachments/local%-") then
+            out[#out + 1] = a
+        end
+    end
+    return out
+end
+
+--- Attachments (names) taken off note `memo` (nil: a new note, or none):
+--- queued to be deleted in Memos, and gone from the note here at once.
+function Notes.dropAttachments(plugin, memo, names)
+    if not names or #names == 0 then return end
+    for _i, name in ipairs(names) do
+        Notes.enqueue(plugin, { op = "undraw", name = memo and memo.name or nil, attachment = name })
+        for i, a in ipairs(memo and memo.attachments or {}) do
+            if a.name == name then table.remove(memo.attachments, i); break end
+        end
+    end
+    Log.info("notes:", #names, "photo(s) taken off a note")
     Notes.sendSoon(plugin)
 end
 
@@ -2113,8 +2164,42 @@ function NoteView:build()
         add(VerticalSpan:new{ width = S(4) })
         add(iconLine("place", m.place, Font:getFace("cfont", 17)))
     end
-    local listed = {}
-    for _i, a in ipairs(m.attachments or {}) do if not shown[a] then listed[#listed + 1] = a end end
+    local listed, gallery = {}, {}
+    for _i, a in ipairs(m.attachments or {}) do
+        if not shown[a] then
+            -- (photos: pictures, as Memos' web app shows a note's attached pictures; the rest: rows)
+            if Notes.isGalleryPhoto(a) then gallery[#gallery + 1] = a else listed[#listed + 1] = a end
+        end
+    end
+    if #gallery > 0 then
+        add(VerticalSpan:new{ width = S(12) })
+        local cols = Notes.galleryColumns(inner)
+        local gap = S(8)
+        local cell = math.floor((inner - gap * (cols - 1)) / cols)
+        local row
+        for k, a in ipairs(gallery) do
+            if (k - 1) % cols == 0 then
+                if row then add(row); add(VerticalSpan:new{ width = gap }) end
+                row = HorizontalGroup:new{ align = "center" }
+            else
+                row[#row + 1] = HorizontalSpan:new{ width = gap }
+            end
+            local uid = tostring(a.name):match("attachments/(.+)$") or ""
+            local pic = Notes.pictureFor(self.plugin, m, "/file/attachments/" .. uid .. "/" .. tostring(a.filename or "photo"),
+                cell - 2, cell - 2, function()
+                    if not self.closed then self:build(); UIManager:setDirty(self, "ui") end
+                end)
+            local inside = pic or TextWidget:new{ text = a.filename or "?", face = Font:getFace("cfont", 13),
+                fgcolor = Blitbuffer.COLOR_DARK_GRAY, max_width = cell - S(12) }
+            self.picks[#self.picks + 1] = { att = a }
+            local focused = self.focus == #self.picks
+            local box = FrameContainer:new{ width = cell, height = cell, padding = 0, margin = 0,
+                bordersize = focused and Size.border.thick or 0, background = Blitbuffer.COLOR_WHITE,
+                CenterContainer:new{ dimen = Geom:new{ w = cell - 2 * (focused and Size.border.thick or 0), h = cell - 2 * (focused and Size.border.thick or 0) }, inside } }
+            row[#row + 1] = self:tappable(#self.picks, box)
+        end
+        if row then add(row) end
+    end
     if #listed > 0 then
         add(VerticalSpan:new{ width = S(14) })
         add(TextWidget:new{ text = _("Attachments"), face = Font:getFace("smalltfont", 17), bold = true })
@@ -2634,8 +2719,14 @@ function Notes.edit(plugin, memo, opts)
         space = (memo == nil) and Notes.newNoteSpace() or nil, -- (an edit: the note's own)
         space_title = function(name) return Notes.spaceTitle(plugin, name) end,
         can_draw = Notes.canDraw(plugin),
+        -- the Photos chip: when a way to Immich is set up (the Memos fork's or GZreader's)
+        -- (not for a note still waiting to go to Memos: its photos need its name there)
+        immich = Touch.on() and not (memo and not memo.name) and #require("gzreader_immichpick").sources(plugin) > 0 and plugin or nil,
+        -- the note's photos (attached, not drawings): shown in the editor, to remove or put in the text
+        photo_atts = memo and memo.name and Notes.photos(memo) or nil,
         -- the formatted page shows the note's pictures (sized there with their pull tabs)
-        pictures = memo and function(on_ready) return Notes.editorPictures(plugin, memo, on_ready) end or nil,
+        -- (a new note too: a photo put in its text from Immich is on the Kindle already)
+        pictures = function(on_ready) return Notes.editorPictures(plugin, memo or { attachments = {} }, on_ready) end,
         -- an edit of a note with drawings: Edit opens them (Done goes back to the text);
         -- Draw (a new note): a page to draw on at once; Mark up (a PDF): its pages after the note's drawings
         drawing_atts = memo and Notes.drawings(memo) or nil,
@@ -2646,11 +2737,20 @@ function Notes.edit(plugin, memo, opts)
         new_drawing = memo == nil and opts and opts.draw or nil,
         -- a note that's only a drawing, tapped: its drawing screen, named and tagged there; Done saves and closes
         drawing_note = memo ~= nil and opts and opts.drawing_note or nil,
-        on_save = function(content, visibility, vis_changed, space, space_changed, drawings)
+        on_save = function(content, visibility, vis_changed, space, space_changed, drawings, photos, atts)
+            atts = atts or {}
             if memo then
                 memo.content = content
                 Notes.saveContent(plugin, memo, vis_changed and visibility or nil, space_changed and (space or "") or nil)
                 if drawings then Notes.saveDrawings(plugin, memo, drawings) end
+                if photos then Notes.addPhotos(plugin, memo, photos) end
+                -- photos put in the text here are the note's already (sent when picked); removed ones go
+                for _i, a in ipairs(atts.added or {}) do
+                    local have = false
+                    for _j, x in ipairs(memo.attachments or {}) do if x.name == a.name then have = true end end
+                    if not have then memo.attachments = memo.attachments or {}; table.insert(memo.attachments, 1, a) end
+                end
+                Notes.dropAttachments(plugin, memo, atts.drop)
             else
                 local list = {}
                 for _i, d in ipairs(drawings or {}) do
@@ -2661,17 +2761,29 @@ function Notes.edit(plugin, memo, opts)
                     order = {}
                     for i, d in ipairs(list) do order[i] = d.filename end
                 end
+                -- photos from Immich go after the drawings (attachments, not pages)
+                for _i, f in ipairs(photos or {}) do list[#list + 1] = { path = f.path, filename = f.filename, type = f.type } end
+                if photos then Log.info("notes: a new note with", #photos, "photo(s) from Immich") end
+                -- photos put in the text: sent when picked, the note is made with them (Memos wants a
+                -- picture in a note's text to be one of its attachments)
+                local link = {}
+                for _i, a in ipairs(atts.added or {}) do link[#link + 1] = a.name end
                 local q = Notes.enqueue(plugin, { op = "create", content = content, visibility = visibility or "PRIVATE",
                     space = space, drawings = #list > 0 and list or nil, order = order })
+                if #link > 0 then q.attachments = link; plugin:save() end -- (made with them)
                 if #list > 0 then
                     Notes.showDrawingNow(q)
                     Log.info("notes: a new note with", #list, "drawing(s) queued")
                 end
+                if #link > 0 then Log.info("notes: a new note with", #link, "photo(s) in its text") end
+                Notes.dropAttachments(plugin, nil, atts.drop)
                 -- (notes not loaded yet, e.g. a quick note from a book: the
                 -- board loads the kept ones later and shows the queued note then)
                 if Notes.notes then
+                    local shown = Notes.queuedAttachments(q)
+                    for _i, a in ipairs(atts.added or {}) do shown[#shown + 1] = a end
                     table.insert(Notes.notes, 1, { local_id = q.id, content = content, tags = Notes.tagsIn(content),
-                        created = os.date("!%Y-%m-%dT%H:%M:%SZ"), attachments = Notes.queuedAttachments(q), pinned = false,
+                        created = os.date("!%Y-%m-%dT%H:%M:%SZ"), attachments = shown, pinned = false,
                         pending = true, visibility = q.visibility, space = q.space })
                 end
                 Notes.sendSoon(plugin)
