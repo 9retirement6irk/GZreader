@@ -74,7 +74,13 @@ API to `/api` are found too.
     and Menu on a Kindle 4) hides the tab bar at the bottom of the Notes tab, for more
     notes on a page. The X where the icon was (or Layout) brings
     it back; Back or the quick panel's Home leave the tab.
-- **A note:** the text in the note editor's font (the sticky notes on the
+- **A note:** on touch Kindles, the drawing screen's top bar, as in the
+  note editor: **←** (back to the board), the note's name with when it was
+  written, its space and whether it's pinned under it, then the **pin**
+  (pin or unpin), **Archive** (the box), **Delete** (the bin; asks first),
+  **⋮** (the note's More) and **Edit**. An archived note has **Delete**,
+  **⋮** and **Restore** instead. Below it, the text
+  in the note editor's font (the sticky notes on the
   Notes tab stay handwritten, in Patrick Hand), checklist items with letter keys
   (press one to tick or untick it; the change goes to Memos), pictures from
   the note shown inline, its tags and place, and its attachments (PDFs and

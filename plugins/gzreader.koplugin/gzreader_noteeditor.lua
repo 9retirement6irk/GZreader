@@ -40,7 +40,6 @@ local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
 local InputContainer = require("ui/widget/container/inputcontainer")
 local LeftContainer = require("ui/widget/container/leftcontainer")
-local LineWidget = require("ui/widget/linewidget")
 local OverlapGroup = require("ui/widget/overlapgroup")
 local RightContainer = require("ui/widget/container/rightcontainer")
 local Size = require("ui/size")
@@ -638,35 +637,6 @@ end
 --- ← leaves (asks to save when something changed); ✎ draws (its sheets);
 --- # adds a tag; ⋮ has who can see it, its space, Draw and Close; Done saves.
 function Editor:notebookBar(sw)
-    local DrawScreen = require("gzreader_drawscreen")
-    local IconWidget = require("ui/widget/iconwidget")
-    local h = self.title_h
-    local line = Size.line.medium
-    local bh = h - S(8)
-    self.bar_buttons = {}
-    local function iconButton(id, icon, fn, guarded)
-        local isz = math.floor(bh * 0.56)
-        local w = FrameContainer:new{ width = bh, height = bh, padding = 0, margin = 0, bordersize = 0,
-            CenterContainer:new{ dimen = Geom:new{ w = bh, h = bh },
-                IconWidget:new{ file = DrawScreen.ICON_DIR .. icon .. ".svg", width = isz, height = isz, alpha = true } } }
-        local t = guarded and self:topTap(w, fn) or tapTarget(w, fn)
-        self.bar_buttons[id] = t
-        return t
-    end
-    local back = iconButton("back", "back", function() self:onCloseDialog() end)
-    local done = self:topTap(FrameContainer:new{ padding = S(6), padding_left = S(18), padding_right = S(18), margin = 0,
-        radius = S(6), bordersize = Size.border.thick, background = Blitbuffer.COLOR_WHITE,
-        TextWidget:new{ text = _("Done"), face = Font:getFace("cfont", 16), bold = true } }, function() self:save() end)
-    self.bar_buttons.done = done
-    local right = HorizontalGroup:new{ align = "center" }
-    if self:canDraw() then right[#right + 1] = iconButton("draw", "pen", function() self:openDrawing() end, true) end
-    right[#right + 1] = iconButton("tag", "tag", function() self:pickTag() end, true)
-    right[#right + 1] = iconButton("options", "more", function() self:barOptions() end, true)
-    right[#right + 1] = HorizontalSpan:new{ width = S(4) }
-    right[#right + 1] = done
-    right[#right + 1] = HorizontalSpan:new{ width = S(6) }
-    local left_w = S(4) + bh + S(6)
-    local title_w = math.max(S(60), sw - left_w - right:getSize().w - S(10))
     local hint = { NoteEditor.VIS_LABEL[self.visibility] or "" }
     if self.has_spaces then hint[#hint + 1] = self:spaceLabel() end
     local tags = {}
@@ -675,16 +645,20 @@ function Editor:notebookBar(sw)
     end
     if #tags > 0 then hint[#hint + 1] = table.concat(tags, " ") end
     self.bar_title = self:heading() or (self.memo and _("Edit note") or _("New note"))
-    local title = VerticalGroup:new{ align = "left",
-        TextWidget:new{ text = self.bar_title, face = Font:getFace("cfont", 17), bold = true, max_width = title_w },
-        TextWidget:new{ text = table.concat(hint, " \u{00B7} "), face = Font:getFace("cfont", 12),
-            fgcolor = Blitbuffer.COLOR_DARK_GRAY, max_width = title_w } }
-    return VerticalGroup:new{ align = "left",
-        OverlapGroup:new{ dimen = Geom:new{ w = sw, h = h - line },
-            LeftContainer:new{ dimen = Geom:new{ w = sw, h = h - line },
-                HorizontalGroup:new{ align = "center", HorizontalSpan:new{ width = S(4) }, back, HorizontalSpan:new{ width = S(6) }, title } },
-            RightContainer:new{ dimen = Geom:new{ w = sw, h = h - line }, right } },
-        LineWidget:new{ background = Blitbuffer.COLOR_BLACK, dimen = Geom:new{ w = sw, h = line } } }
+    local icons = {}
+    if self:canDraw() then icons[#icons + 1] = { "draw", "pen", function() self:openDrawing() end, true } end
+    icons[#icons + 1] = { "tag", "tag", function() self:pickTag() end, true }
+    icons[#icons + 1] = { "options", "more", function() self:barOptions() end, true }
+    local bar, buttons = require("gzreader_notebar").build{
+        width = sw, height = self.title_h, title = self.bar_title, hint = table.concat(hint, " \u{00B7} "),
+        back = function() self:onCloseDialog() end,
+        icons = icons,
+        action = { "done", _("Done"), function() self:save() end, true },
+        -- (← isn't guarded; the rest wait out a slow tap on the drawing screen's Done)
+        tap = function(w, fn, guarded) return guarded and self:topTap(w, fn) or tapTarget(w, fn) end,
+    }
+    self.bar_buttons = buttons
+    return bar
 end
 
 --- The top bar's ⋮: who can see the note, its space, Draw, Close.

@@ -1977,10 +1977,13 @@ function NoteView:build()
     self.picks = {}
     add(VerticalSpan:new{ width = S(14) })
     local space = Notes.spaceTitle(self.plugin, m.space)
-    add(iconLine("date", Sticky.when(m.created) .. (space and ("   \u{00B7}   " .. T(_("in %1"), space)) or "")
-        .. (m.pinned and ("   \u{00B7}   " .. _("pinned")) or "")
-        .. (m.pending and ("   \u{00B7}   " .. _("not sent yet")) or ""), Font:getFace("cfont", 15), false, Blitbuffer.COLOR_DARK_GRAY))
-    add(VerticalSpan:new{ width = S(10) })
+    if not Touch.on() then
+        -- (touch: the date and the rest are under the note's name in the top bar)
+        add(iconLine("date", Sticky.when(m.created) .. (space and ("   \u{00B7}   " .. T(_("in %1"), space)) or "")
+            .. (m.pinned and ("   \u{00B7}   " .. _("pinned")) or "")
+            .. (m.pending and ("   \u{00B7}   " .. _("not sent yet")) or ""), Font:getFace("cfont", 15), false, Blitbuffer.COLOR_DARK_GRAY))
+        add(VerticalSpan:new{ width = S(10) })
+    end
     local para = {}
     local function flush()
         local t = table.concat(para, "\n"):gsub("^%s+", ""):gsub("%s+$", "")
@@ -2091,15 +2094,10 @@ function NoteView:build()
         footer = CenterContainer:new{ dimen = Geom:new{ w = sw, h = footer_h },
             TextWidget:new{ text = hint, face = Font:getFace("cfont", 13), fgcolor = Blitbuffer.COLOR_DARK_GRAY, max_width = sw - S(20) } }
     else
-        -- touch: buttons; ticking an item or opening an attachment is a tap on it
-        local chips = Touch.chips(math.floor(sw * 0.94), {
-            { _("Edit"), function() self:onEdit() end },
-            { m.pinned and _("Unpin") or _("Pin"), function() self:onPin() end },
-            { _("More"), function() self:onOptions() end },
-            { _("Close"), function() self:onClose() end },
-        }, self)
-        footer_h = chips:getSize().h + S(24)
-        footer = CenterContainer:new{ dimen = Geom:new{ w = sw, h = footer_h }, chips }
+        -- touch: the drawing screen's top bar (NoteView:topBar) has Edit, Pin, ⋮ and ←;
+        -- ticking an item or opening an attachment is a tap on it
+        title_h, footer_h = require("gzreader_notebar").height(), S(8)
+        footer = VerticalSpan:new{ width = footer_h }
     end
     local ScrollableContainer = require("ui/widget/container/scrollablecontainer")
     local content_h = sh - title_h - footer_h
@@ -2111,12 +2109,54 @@ function NoteView:build()
     self[1] = FrameContainer:new{
         width = sw, height = sh, padding = 0, bordersize = 0, background = Blitbuffer.COLOR_WHITE,
         VerticalGroup:new{
-            CenterContainer:new{ dimen = Geom:new{ w = sw, h = title_h },
+            Touch.on() and self:topBar(sw, title_h, space) or CenterContainer:new{ dimen = Geom:new{ w = sw, h = title_h },
                 TextWidget:new{ text = _("Note"), face = Font:getFace("smalltfont", 22), bold = true } },
             self.scroller,
             footer,
         },
     }
+end
+
+--- Touch: the drawing screen's top bar (gzreader_notebar.lua), as the editor has:
+---   ←  The note's name                     📌  🗃  🗑  ⋮  [Edit]
+---      when · its space · pinned · not sent yet
+--- ← back to the board, the pin pins or unpins, 🗃 archives, 🗑 deletes (asks
+--- first), ⋮ is the note's More, Edit edits. An archived note: 🗑 ⋮ [Restore].
+function NoteView:topBar(sw, h, space)
+    local NoteBar = require("gzreader_notebar")
+    local m = self.memo
+    local hint = { Sticky.when(m.created) }
+    if space then hint[#hint + 1] = T(_("in %1"), space) end
+    if m.pinned then hint[#hint + 1] = _("pinned") end
+    if m.pending then hint[#hint + 1] = _("not sent yet") end
+    local heading = Notes.headingAndRest(m.content or "")
+    self.bar_title = heading and NoteBar.nameOf(heading) or NoteBar.nameOf(m.content) or _("Note")
+    if m.archived then hint[#hint + 1] = _("archived") end
+    self.bar_hint = table.concat(hint, " \u{00B7} ")
+    -- (an archived note: Delete, More, and Restore where Edit is)
+    local icons, action = {}, { "edit", _("Edit"), function() self:onEdit() end }
+    if m.archived then
+        action = { "restore", _("Restore"), function() self:onArchive(false) end }
+    else
+        icons[#icons + 1] = { "pin", m.pinned and "pinned" or "pin", function() self:onPin() end }
+        icons[#icons + 1] = { "archive", "archive", function() self:onArchive(true) end }
+    end
+    icons[#icons + 1] = { "delete", "trash", function() self:onDelete() end }
+    icons[#icons + 1] = { "options", "more", function() self:onOptions() end }
+    local bar, buttons = NoteBar.build{
+        width = sw, height = h, title = self.bar_title, hint = self.bar_hint,
+        back = function() self:onClose() end,
+        icons = icons,
+        action = action,
+        tap = function(w, fn)
+            local box = InputContainer:new{ dimen = Geom:new{ w = w:getSize().w, h = w:getSize().h }, w }
+            box.ges_events = { TapBar = { GestureRange:new{ ges = "tap", range = function() return box.dimen end } } }
+            function box:onTapBar() fn(); return true end
+            return box
+        end,
+    }
+    self.bar_buttons = buttons
+    return bar
 end
 
 --- A checklist item or attachment row that a tap picks (as its letter key does).
