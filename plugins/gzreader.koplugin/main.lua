@@ -541,7 +541,7 @@ local function closeTouchMenu(touchmenu)
     if touchmenu and touchmenu.closeMenu then touchmenu:closeMenu() end
 end
 
---- Settings → Connections → Grimmory → Rebuild library: the library index
+--- Settings → Accounts and services → Books → Rebuild library: the library index
 --- from Grimmory again (as Refresh list from Grimmory does) and the saved
 --- lists forgotten, so books removed there go here too.
 function Grimmory:rebuildLibrary()
@@ -613,18 +613,6 @@ function Grimmory:menuItems()
                 if self.annotations and not self.store.annotation_sync_disabled then self.annotations:run() end
             end,
         },
-        not Net.usb and {
-            text = _("Keep connections open (experimental)"),
-            help_text = _("While Wi-Fi is on, a small helper keeps the connections to your servers open between requests, so browsing Grimmory and syncing skip setting up a secure connection each time (seconds on a Kindle 3). It uses a few MB of memory while Wi-Fi is on. Off by default."),
-            checked_func = function() return require("gzreader_reqhelper").enabled() end,
-            callback = function()
-                local Helper = require("gzreader_reqhelper")
-                local on = not Helper.setting()
-                Helper.setSetting(on)
-                if on and Net.connected() then Helper.start(self.path)
-                elseif not Helper.enabled() and Helper.endpoint() then Helper.stop() end
-            end,
-        } or nil,
         {
             text = _("Rebuild library"),
             help_text = _("Loads the list of your books from Grimmory again (what Authors, Series and searching use) and forgets the saved lists, so books removed from Grimmory disappear here and new ones show. The same as Refresh list from Grimmory in Authors or Series; it's also done by itself once a day."),
@@ -643,15 +631,12 @@ function Grimmory:menuItems()
             callback = function() self:keyboardLogin() end,
         },
         {
-            text = _("Copy from another GZreader"),
-            help_text = _("The address and account from another GZreader on this Wi-Fi (it shows a PIN); then sign in here."),
-            callback = function() require("gzreader_copy").receive(self, { only = "grimmory" }) end,
-        },
-        {
             text = _("Single sign-on (SSO)"),
             sub_item_table_func = function() return self:ssoMenu() end,
             separator = true,
         },
+        -- (what's on the Kindle, and freeing it: Settings → General → Storage)
+        require("gzreader_storage").linkItem("books"),
         {
             text = _("Disconnect"),
             enabled_func = function() return self.api:isPaired() end,
@@ -671,9 +656,10 @@ end
 
 --- GZreader's settings that live in ZenOS's other Settings sections
 --- (zenos modules/settings/zen_settings.lua puts them there):
----   "general"   { wifi = item (Wi-Fi: On, Off, Auto), diagnostics = { items } }
----   "reader"    { items }
----   "interface" { items }
+---   "general"     { wifi = item (Wi-Fi: On, Off, Auto), diagnostics = { items } }
+---   "reader"      { items } (audio: Settings → Audio)
+---   "interface"   { items } (the Nooks' screens: Settings → Display and light)
+---   "performance" { items } (Settings → General → Performance)
 function Grimmory:sectionItems(section)
     local okI, IconItem = pcall(require, "common/ui/icon_menu_item")
     local okc, icons = pcall(require, "common/inline_icon_map")
@@ -699,8 +685,10 @@ function Grimmory:sectionItems(section)
                     local item = require("gzreader_remote").menuItem()
                     return item and icon("settings_bug", item)
                 end)(),
+                -- (About's Report a bug did the same: one row, here)
                 icon("send", {
-                    text = Net.usb and _("Send diagnostic log to the developer (at the next sync)") or _("Send diagnostic log to the developer"),
+                    text = Net.usb and _("Report a problem (sent at the next sync)") or _("Report a problem"),
+                    help_text = _("Asks what happened, then sends it with the diagnostic log to GZreader's developer. The log can name books and files; passwords and tokens are never in it."),
                     callback = function(touchmenu)
                         closeTouchMenu(touchmenu)
                         self:sendLogToDeveloper()
@@ -756,32 +744,9 @@ function Grimmory:sectionItems(section)
             keep_menu_open = true,
             callback = function() require("gzreader_jack").test() end,
         })
-        if require("gzreader_layout").possible() then
-            items[#items + 1] = icon("check", {
-                text = _("Lay out new books while charging"),
-                help_text = _("While the Kindle charges and Home is on screen, books you haven't opened yet are laid out in the background, so the first time you open one it opens as quickly as a book you've read before. Stops as soon as you unplug or open a book."),
-                checked_func = function() return require("gzreader_layout").enabled() end,
-                callback = function()
-                    local L = require("gzreader_layout")
-                    G_reader_settings:saveSetting(L.SETTING, not L.enabled())
-                end,
-            })
-        end
         return items
     elseif section == "interface" then
-        local items = {
-            icon("settings_covers", {
-                text = _("Pre-size covers"),
-                help_text = _("In the background, makes each downloaded book's cover at the exact sizes Home and the library show it, and keeps them, so covers appear without the Kindle scaling them every time."),
-                checked_func = function() return not G_reader_settings:isFalse("gzreader_presize_covers") end,
-                callback = function()
-                    G_reader_settings:flipNilOrTrue("gzreader_presize_covers")
-                    local Disk = require("common/cover_disk_cache")
-                    Disk.enabled = not G_reader_settings:isFalse("gzreader_presize_covers")
-                    if Disk.enabled then require("gzreader_coverwarm").schedule(self, 5) else Disk.clear() end
-                end,
-            }),
-        }
+        local items = {}
         if Device.model == "NookTouch" then
             -- (Nook Simple Touch: in case its touch is the wrong way round)
             local function flip(key, label)
@@ -809,17 +774,57 @@ function Grimmory:sectionItems(section)
             }))
         end
         return items
-    elseif section == "connections" then
-        -- the daily paper (gzreader_daily.lua): feeds fetched once a day, read on Home
-        -- (in Connections with the other things fetched from the web: the owner, 2026-11-18)
-        return {
-            icon("history", {
-                text = _("Daily paper"),
-                sub_item_table_func = function() return require("gzreader_dailyscreen").settingsItems(self) end,
+    elseif section == "performance" then
+        -- (work done ahead of time or kept ready: until 1.32.0 these were in
+        -- Interface, Reader and Connections → Grimmory)
+        local items = {
+            icon("settings_covers", {
+                text = _("Pre-size covers"),
+                help_text = _("In the background, makes each downloaded book's cover at the exact sizes Home and the library show it, and keeps them, so covers appear without the Kindle scaling them every time."),
+                checked_func = function() return not G_reader_settings:isFalse("gzreader_presize_covers") end,
+                callback = function()
+                    G_reader_settings:flipNilOrTrue("gzreader_presize_covers")
+                    local Disk = require("common/cover_disk_cache")
+                    Disk.enabled = not G_reader_settings:isFalse("gzreader_presize_covers")
+                    if Disk.enabled then require("gzreader_coverwarm").schedule(self, 5) else Disk.clear() end
+                end,
             }),
         }
+        if require("gzreader_layout").possible() then
+            items[#items + 1] = icon("check", {
+                text = _("Lay out new books while charging"),
+                help_text = _("While the Kindle charges and Home is on screen, books you haven't opened yet are laid out in the background, so the first time you open one it opens as quickly as a book you've read before. Stops as soon as you unplug or open a book."),
+                checked_func = function() return require("gzreader_layout").enabled() end,
+                callback = function()
+                    local L = require("gzreader_layout")
+                    G_reader_settings:saveSetting(L.SETTING, not L.enabled())
+                end,
+            })
+        end
+        if not Net.usb then -- (no Wi-Fi: no servers to keep connections to)
+            items[#items + 1] = icon("connect", {
+                text = _("Keep connections open (experimental)"),
+                help_text = _("While Wi-Fi is on, a small helper keeps the connections to your servers open between requests, so browsing Grimmory and syncing skip setting up a secure connection each time (seconds on a Kindle 3). It uses a few MB of memory while Wi-Fi is on. Off by default."),
+                checked_func = function() return require("gzreader_reqhelper").enabled() end,
+                callback = function()
+                    local Helper = require("gzreader_reqhelper")
+                    local on = not Helper.setting()
+                    Helper.setSetting(on)
+                    if on and Net.connected() then Helper.start(self.path)
+                    elseif not Helper.enabled() and Helper.endpoint() then Helper.stop() end
+                end,
+            })
+        end
+        return items
     end
+    -- (no rows of GZreader's in Home: the daily paper is in Accounts and services, with the
+    -- other things fetched from the web: Grimmory:dailySettingsItems; the owner, 2026-11-18)
     return {}
+end
+
+--- Settings → Accounts and services → Daily paper (gzreader_daily.lua: feeds fetched once a day, read on Home).
+function Grimmory:dailySettingsItems()
+    return require("gzreader_dailyscreen").settingsItems(self)
 end
 
 ---------------------------------------------------------------- errors
@@ -1194,12 +1199,12 @@ function Grimmory:onGzCopySend()
     return true
 end
 
---- Settings → Connections → Plex (Music), on the Kindles with audio.
+--- Settings → Accounts and services → Music, on the Kindles with audio.
 function Grimmory:plexSettingsItems()
     return require("gzreader_musictab").settingsItems(self)
 end
 
---- Settings → Connections → Copy to or from another GZreader.
+--- Settings → General → Transfer → Copy to or from another GZreader.
 function Grimmory:copyItems()
     return {
         {
@@ -1337,7 +1342,7 @@ function Grimmory:onGzLauncherMusicToggle()
     elseif p then require("gzreader_musictab").open(p) end
 end
 
---- The Music tab (ZenOS's tab bar: Settings → Interface → Navbar → Tabs → Music).
+--- The Music tab (ZenOS's tab bar: Settings → Home and tabs → Tab bar → Tabs → Music).
 function Grimmory:onShowGzMusic()
     if self.ui and self.ui.document then return end -- (file manager's instance)
     require("gzreader_musictab").show(self)
@@ -1357,7 +1362,7 @@ function Grimmory:onShowGzDailyPaper()
     return true
 end
 
---- Settings → Connections → Home Assistant (the House tab).
+--- Settings → Accounts and services → House (the House tab).
 function Grimmory:houseSettingsItems()
     return require("gzreader_house").settingsItems(self)
 end
@@ -1396,7 +1401,7 @@ function Grimmory:openPhonePage(section)
     Net.run(function() require("gzreader_phone").open(self, { section = section }) end, { reason = "the setup page" })
 end
 
---- Settings → Connections → Grimmory → Single sign-on (SSO): where the
+--- Settings → Accounts and services → Books → Single sign-on (SSO): where the
 --- identity provider sends the phone back (see gzreader_phone.ssoRedirect).
 function Grimmory:ssoMenu()
     local Phone = require("gzreader_phone")
@@ -1997,7 +2002,7 @@ function Grimmory:onShowGrimmoryLibrary(touchmenu, opts)
     return true
 end
 
---- Settings → Connections → Sync through a computer.
+--- Settings → General → Transfer → Sync through a computer.
 function Grimmory:usbSyncItems()
     local Usb = require("gzreader_usbsync")
     return {
@@ -2036,12 +2041,12 @@ function Grimmory:onShowGzCalendar(touchmenu)
     return true
 end
 
---- Settings → Connections → Calendar (CalDAV).
+--- Settings → Accounts and services → Calendar.
 function Grimmory:calendarSettingsItems()
     return require("gzreader_calendar").settingsItems(self)
 end
 
---- Settings → Connections → Immich (Photos): the album for the sleep screen and the wallpaper.
+--- Settings → Accounts and services → Photos: the album for the sleep screen and the wallpaper.
 function Grimmory:immichSettingsItems()
     return require("gzreader_immichsettings").items(self)
 end

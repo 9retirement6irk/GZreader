@@ -148,9 +148,9 @@ end, after = 1 })
 add({ shot = "keeps-menu" })
 add({ fn = function() closeTop() end, after = 3 })
 
--- 3. Settings: ZenOS's page with GZreader's Connections
+-- 3. Settings: ZenOS's page arranged by GZreader (Wi-Fi at the top, Accounts and services)
 add({ fn = function() require("gzreader_homemenu").settings() end, after = 6 })
-add({ fn = function() check(has("Connections", 1), "Settings page has Connections (Grimmory, Memos)") end, after = 1 })
+add({ fn = function() check(has("Accounts and services", 1) and has("General", 1), "Settings page has General and Accounts and services (Books, Notes, …)") end, after = 1 })
 add({ fn = function() closeTop() end, after = 3 })
 
 -- 5. the Nook's colour screen

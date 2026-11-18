@@ -95,7 +95,7 @@ function NookTouch:init()
         end
         return orig(this, ev)
     end
-    -- the touch's orientation, if it's off on a Nook (Settings → Interface)
+    -- the touch's orientation, if it's off on a Nook (Settings → Display and light)
     if G_reader_settings:isTrue("gzreader_nst_flip_x") then
         input:registerEventAdjustHook(input.adjustABS_MirrorX, self.screen:getWidth() - 1)
     end

@@ -1,5 +1,5 @@
 --[[--
-Settings → General → Sleep → Wallpaper: each sleep screen as a tile with a
+Settings → Sleep and wallpaper → Sleep → Wallpaper: each sleep screen as a tile with a
 small preview of what it shows, instead of a list of radio buttons.
 
   * GZreader's own (the default): the book's cover while reading, a picture
@@ -63,7 +63,7 @@ function P.choices()
         { id = "auto", label = _("Book cover while reading, a picture elsewhere"), enabled = true },
         { id = "cover", label = _("Book cover"), enabled = lastFile() ~= nil },
         { id = "random_image", label = _("A picture from the screensavers folder"), enabled = true },
-        -- (with an Immich album: Settings → Connections → Immich)
+        -- (with an Immich album: Settings → Accounts and services → Photos)
         immich and { id = "immich_auto", label = _("Book cover while reading, an Immich picture elsewhere"), enabled = true } or false,
         immich and { id = "immich", label = _("A picture from your Immich album"), enabled = true } or false,
         { id = "readingprogress", label = _("Reading progress"), enabled = u ~= nil and u.statistics ~= nil },

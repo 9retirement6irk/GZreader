@@ -1,6 +1,6 @@
 --[[--
-The Music tab (ZenOS tab bar, off until turned on in Settings → Interface →
-Navbar → Tabs, or Settings → Connections → Plex (Music) → Music tab), and "Now playing": music from Plex (gzreader_music.lua,
+The Music tab (ZenOS tab bar, off until turned on in Settings → Home and tabs →
+Tab bar → Tabs, or Settings → Accounts and services → Music → Music tab), and "Now playing": music from Plex (gzreader_music.lua,
 gzreader_plex.lua).
 
   Now playing: Title — Artist
@@ -831,7 +831,7 @@ function Tab:openAccount()
     self:push(_("Plex"), self:accountItems())
 end
 
---- Its lines, as ZenOS rows (gzreader_rows.lua, like Settings → Connections
+--- Its lines, as ZenOS rows (gzreader_rows.lua, like Settings → Accounts and services
 --- → Plex): who you're signed in as, then each setting with its value on the
 --- right (a choice opens a list), a switch for making big files smaller, and
 --- Sign out. A change shows them again in place (back still goes to the page
@@ -925,7 +925,7 @@ local function closeTouchMenu(touchmenu)
     if touchmenu and touchmenu.closeMenu then touchmenu:closeMenu() end
 end
 
---- Settings → Connections → Plex (Music): the account, the server, the
+--- Settings → Accounts and services → Music: the account, the server, the
 --- quality, downloaded music, signing in or out.
 function Tab.settingsItems(plugin)
     local function st() return plugin.store.plex or {} end
@@ -979,14 +979,6 @@ function Tab.settingsItems(plugin)
                   if touchmenu and touchmenu.updateItems then pcall(touchmenu.updateItems, touchmenu) end
               end)
           end },
-        { text_func = function() return Tab.audiobooksText(plugin) end,
-          help_text = _("Where the Catalog's audiobooks come from: Grimmory, or a library of this Plex server (Plex keeps audiobooks in a music library: an album per book, the author as its artist). Listening positions go to the same place. Audiobooks already on the Kindle stay and play as before."),
-          keep_menu_open = true,
-          callback = function(touchmenu)
-              Tab.chooseAudiobooks(plugin, function()
-                  if touchmenu and touchmenu.updateItems then pcall(touchmenu.updateItems, touchmenu) end
-              end)
-          end },
         { text_func = function() return T(_("Quality when converting: %1 kbps"), st().bitrate or 192) end,
           help_text = _("For music the Kindle can't play as it is (FLAC and others), Plex converts it to MP3 at this quality. MP3 and AAC download as they are, unless “Make bigger MP3 and AAC smaller” is on."),
           sub_item_table_func = function()
@@ -1001,25 +993,21 @@ function Tab.settingsItems(plugin)
         { text = _("Make bigger MP3 and AAC smaller"),
           help_text = _("MP3 and AAC tracks of a higher quality than the one above are converted to MP3 at that quality by Plex too, to save room on the Kindle. Music already downloaded stays as it is."),
           checked_func = function() return st().shrink == true end,
-          callback = function() st().shrink = not st().shrink or nil; plugin:save() end },
+          callback = function() st().shrink = not st().shrink or nil; plugin:save() end,
+          separator = true },
+        Tab.tabItem(),
+        require("gzreader_rows").about(_("Headphones and volume"), _("Headphones, the speaker and the volume: Settings → Audio.")),
+        -- (what's downloaded; a tap opens Settings → General → Storage → Music,
+        -- with Remove all downloaded music: Tab.storageItems)
         { text_func = function()
               local n = #Music().downloaded(plugin)
               local mb = Music().dirSize(Music().root(plugin)) / 1048576
               return T(_("Downloaded music: %1 (%2 MB)"), n, string.format("%.0f", mb))
           end,
-          sub_item_table_func = function()
-              return { { text = _("Remove all downloaded music"), callback = function(touchmenu)
-                  UIManager:show(require("ui/widget/confirmbox"):new{
-                      text = _("Remove all the music downloaded on this Kindle? It stays on your Plex server."),
-                      ok_text = _("Remove"),
-                      ok_callback = function()
-                          for _i, c in ipairs(Music().downloaded(plugin)) do Music().delete(plugin, c) end
-                          closeTouchMenu(touchmenu)
-                          UIManager:show(InfoMessage:new{ text = _("Downloaded music removed."), timeout = 3 })
-                      end,
-                  })
-              end } }
-          end },
+          help_text = _("What the music downloaded from Plex takes on this Kindle. Tap for Settings → General → Storage → Music, where you can remove it."),
+          keep_menu_open = true,
+          callback = function() require("gzreader_storage").open("music") end,
+          separator = true },
         { text = _("Sign out of Plex"), callback = function(touchmenu)
             UIManager:show(require("ui/widget/confirmbox"):new{
                 text = _("Sign out of Plex on this Kindle? Downloaded music stays."),
@@ -1031,19 +1019,34 @@ function Tab.settingsItems(plugin)
                 end,
             })
         end },
-        Tab.tabItem(),
-        require("gzreader_rows").about(_("Headphones and volume"), _("Headphones, the speaker and the volume: Settings → General → Audio.")),
     }
     return items
 end
 
---- Settings → Connections → Plex (Music): the Music tab on or off (a long
+--- Settings → General → Storage → Music: Remove all downloaded music (until
+--- 1.32.0 on the Plex settings page). Nothing when no music is downloaded.
+function Tab.storageItems(plugin)
+    if #Music().downloaded(plugin) == 0 then return {} end
+    return { { text = _("Remove all downloaded music"), callback = function(touchmenu)
+        UIManager:show(require("ui/widget/confirmbox"):new{
+            text = _("Remove all the music downloaded on this Kindle? It stays on your Plex server."),
+            ok_text = _("Remove"),
+            ok_callback = function()
+                for _i, c in ipairs(Music().downloaded(plugin)) do Music().delete(plugin, c) end
+                closeTouchMenu(touchmenu)
+                UIManager:show(InfoMessage:new{ text = _("Downloaded music removed."), timeout = 3 })
+            end,
+        })
+    end } }
+end
+
+--- Settings → Accounts and services → Music: the Music tab on or off (a long
 --- line saying where to turn it on was cut off at the screen's edge, and
 --- named the wrong place: Settings → Navbar instead of Interface → Navbar).
 function Tab.tabItem()
     return {
         text = _("Music tab"), icon_file = require("gzreader_rows").FILE.music,
-        help_text = _("Its own tab in the tab bar, with your albums, playlists and what's playing. It can also be turned on or moved in Settings → Interface → Navbar → Tabs."),
+        help_text = _("Its own tab in the tab bar, with your albums, playlists and what's playing. It can also be turned on or moved in Settings → Home and tabs → Tab bar → Tabs."),
         checked_func = function() return require("gzreader_tabs").shown(Tab.TAB_ID) end,
         callback = function()
             local Tabs = require("gzreader_tabs")

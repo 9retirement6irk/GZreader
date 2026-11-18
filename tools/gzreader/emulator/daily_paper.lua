@@ -1,6 +1,6 @@
 -- The daily paper (gzreader_daily.lua): turned on, an edition made from two
 -- feeds given here (no network), the newspaper on Home's bookshelf (empty,
--- then beside books: GZ_EMU_BOOK = an EPUB; with pictures: GZ_EMU_PICTURE), the optional headlines row, the paper's front page and second page, a story (it scrolls; the quick panel from the top), and Settings → Connections → Daily paper → Feeds. Any model.
+-- then beside books: GZ_EMU_BOOK = an EPUB; with pictures: GZ_EMU_PICTURE), the optional headlines row, the paper's front page and second page, a story (it scrolls; the quick panel from the top), and Settings → Accounts and services → Daily paper → Feeds. Any model.
 --   GZ_EMU_TREE=<tree>/koreader ./run.sh daily_paper.lua <out>
 -- Checks in <out>/daily-checks.txt.
 local s = { start = 14 }
@@ -216,7 +216,7 @@ add({ fn = function(E)
     check(E, Paper.instance == nil, "the paper closed")
     pcall(function() require("modules/settings/zen_settings_page").closeActive() end)
     require("modules/settings/zen_settings_page").show(require("apps/filemanager/filemanager").instance.zenos,
-        { path = { { key = "text", value = "Connections" }, { key = "text", value = "Daily paper" } } })
+        { path = { { key = "text", value = "Accounts and services" }, { key = "text", value = "Daily paper" } } })
 end, after = 10 })
 add({ shot = "daily-5-settings" })
 add({ fn = function(E)

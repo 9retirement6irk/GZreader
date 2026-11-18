@@ -517,7 +517,7 @@ check(Paper.articleText({ title = "T", text = "short", link = "https://x.example
 Daily.edition, Daily.loaded = nil, true
 check(Paper.statusText(plugin) == "comes when Wi-Fi is on", "… and Home says when it comes")
 
-print("== Settings → Connections → Daily paper")
+print("== Settings → Accounts and services → Daily paper")
 local home = { rows = { order = { "datetime", "featured" }, enabled = { datetime = true, featured = true } }, modules = {} }
 local units = { datetime = 1, featured = 4, daily_paper = 3 }
 local saved_home, redrawn = 0, 0
@@ -548,7 +548,7 @@ check(row("Daily paper").checked_func() == false and row("Feeds").enabled_func()
 check(row("Daily paper").help_text:find("internet address", 1, true), "the switch says what a feed's site learns")
 shown = {}
 Paper.show(plugin)
-check(shown[#shown] and shown[#shown].kind == "info" and shown[#shown].text:find("Settings → Connections → Daily paper", 1, true), "opening the paper while it's off says where to turn it on")
+check(shown[#shown] and shown[#shown].kind == "info" and shown[#shown].text:find("Settings → Accounts and services → Daily paper", 1, true), "opening the paper while it's off says where to turn it on")
 saves = 0
 check(Paper.onShelf(plugin) == false and Paper.shelfItem(plugin, {}, 300, 150) == nil, "off: no newspaper on the shelf")
 row("Daily paper").callback()
@@ -737,7 +737,7 @@ check(story_calls == 0 and not Daily.fullStories(plugin), "Whole stories off: no
 plugin.store.daily.full = nil
 rows = Paper.settingsItems(plugin)
 check(row("Whole stories").checked_func() == true and row("Whole stories").help_text:find("paywall", 1, true) and row("Whole stories").help_text:find("internet address", 1, true),
-    "Settings → Connections → Daily paper → Whole stories: on, and says what it does, what it can't, and who sees the Kindle")
+    "Settings → Accounts and services → Daily paper → Whole stories: on, and says what it does, what it can't, and who sees the Kindle")
 row("Whole stories").callback()
 check(plugin.store.daily.full == false and row("Whole stories").checked_func() == false, "unticked")
 row("Whole stories").callback()
@@ -776,7 +776,7 @@ plugin = { store = { daily = { enabled = true } }, save = function() saves = sav
 check(Paper.calendarOn(plugin) == true, "on unless unticked")
 rows = Paper.settingsItems(plugin)
 row("Today's calendar events").callback()
-check(Paper.calendarOn(plugin) == false and plugin.store.daily.calendar == false and row("Today's calendar events").checked_func() == false, "Settings → Connections → Daily paper → Today's calendar events: unticked")
+check(Paper.calendarOn(plugin) == false and plugin.store.daily.calendar == false and row("Today's calendar events").checked_func() == false, "Settings → Accounts and services → Daily paper → Today's calendar events: unticked")
 row("Today's calendar events").callback()
 check(Paper.calendarOn(plugin) == true and plugin.store.daily.calendar == nil, "… and ticked again")
 check(row("Today's calendar events").help_text:find("nothing about them leaves the Kindle", 1, true), "the setting says the events stay on the Kindle")
@@ -873,7 +873,7 @@ check(Daily.edition and Daily.edition.day ~= "" and Daily.edition.weather == nil
 rows = Paper.settingsItems(plugin)
 local wrows = Paper.weatherItems(plugin)
 check(row("Weather") and #wrows == 3 and wrows[1].checked_func() == true and wrows[3].text_func() == "Degrees: Fahrenheit" and wrows[2].text_func():find("Town", 1, true),
-    "Settings → Connections → Daily paper → Weather: the switch, the town, the degrees")
+    "Settings → Accounts and services → Daily paper → Weather: the switch, the town, the degrees")
 wrows[3].callback()
 check(W.store(plugin).unit == "C" and wrows[3].text_func() == "Degrees: Celsius", "degrees switched")
 wrows[1].callback()
@@ -965,15 +965,16 @@ plugin.store.daily.enabled = true
 local opened
 package.loaded["gzreader_phone"] = { open = function(_p, opts) opened = opts end }
 row("Set up from a browser").callback()
-check(opened and opened.section == "paper", "Settings → Connections → Daily paper → Set up from a browser opens the page at Daily paper")
+check(opened and opened.section == "paper", "Settings → Accounts and services → Daily paper → Set up from a browser opens the page at Daily paper")
 
 print("== wired in")
 local main = read(PLUGIN .. "/main.lua")
-check(main:find('section == "connections"', 1, true) and main:find('require("gzreader_dailyscreen").settingsItems(self)', 1, true), "the plugin gives Settings → Connections its Daily paper row")
+check(main:find("function Grimmory:dailySettingsItems()", 1, true) and main:find('return require("gzreader_dailyscreen").settingsItems(self)', 1, true), "the plugin gives Settings → Accounts and services its Daily paper page")
 check(main:find('require("gzreader_dailyscreen").install(self)', 1, true), "the plugin registers Home's widget at start")
 local zs = read(REPO .. "/plugins/zenos.koplugin/modules/settings/zen_settings.lua")
-check(zs:find('local gz_connections = gz_section("connections")', 1, true) and not zs:find('gz_section("home")', 1, true),
-    "ZenOS's Settings asks GZreader for Connections' rows (the daily paper is there, not in Home)")
+local tree = io.open(arg[1] .. "/plugins/zenos.koplugin/common/gz_settings_tree.lua"):read("*a")
+check(tree:find('row(_("Daily paper"), _("Feeds"), "dailySettingsItems", "history")', 1, true) ~= nil,
+    "Settings → Accounts and services has the daily paper (with the other things fetched from the web)")
 local sh = read(REPO .. "/plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/shelf.lua")
 check(sh:find('rawget(_G, "__GZ_SHELF_PAPER")', 1, true) and sh:find("opts.gz_home", 1, true) and sh:find("gz_paper = true", 1, true),
     "ZenOS's shelf asks for the newspaper, on Home's first shelf only")

@@ -13,7 +13,7 @@ end
 
 --- Navbar tabs whose apps aren't in GZreader's package: Manga (Rakuyomi),
 --- News (QuickRSS, RSS Reader), Calibre Search (the calibre plugin). Not
---- offered in Settings → Interface → Navbar and not shown in the bar even
+--- offered in Settings → Home and tabs → Tab bar and not shown in the bar even
 --- when an earlier version saved them as on.
 M.HIDDEN_TABS = { manga = true, news = true, calibre_search = true }
 
@@ -36,20 +36,20 @@ M.KOREADER_HIDDEN = {
     developer_options = true,
     -- Help → Disable external plugins: gzreader and zenos are "external" to KOReader
     plugins_disable_external = true,
-    -- Help → Report a bug points at KOReader's issues (About → Report a bug is GZreader's)
+    -- Help → Report a bug points at KOReader's issues (Privacy and diagnostics → Report a problem is GZreader's)
     report_bug = true,
     -- CoverBrowser's classic/mosaic/list fights ZenOS's library views and the Bookshelf view
     filemanager_display_mode = true,
-    -- GZreader starts at Home (Settings → Interface → Navbar → Default tab)
+    -- GZreader starts at Home (Settings → Home and tabs → Tab bar → Default tab)
     start_with = true,
-    -- Wi-Fi on Auto turns Wi-Fi on and off by itself (Settings → General → Wi-Fi)
+    -- Wi-Fi on Auto turns Wi-Fi on and off by itself (Settings → Wi-Fi)
     network_restore = true,
     network_before_wifi_action = true,
     network_after_wifi_action = true,
     -- "Disable Wi-Fi connection when inactive": turned Wi-Fi off after 5 quiet
     -- minutes even on On (gzreader_net.lua clears a saved tick)
     network_powersave = true,
-    -- the same menu as Settings → Connections → Grimmory
+    -- the same menu as Settings → Accounts and services → Books
     gzreader = true,
     -- the whole File browser menu: Sort by, Book status, Reverse, mixed are
     -- what ZenOS's own Sort and Filter in Downloads set (the same settings),
@@ -80,24 +80,24 @@ end
 --- GZreader takes one by its id (Reader → End of book's End of document
 --- action), so only the section drops them (native_menu.settingsItems).
 M.KOREADER_DUPLICATES = {
-    -- Settings → General: Language, Time and date, Sleep (and its Automatic
+    -- Settings → General: Language, Time and date; Sleep and wallpaper: Sleep (and its Automatic
     -- suspend), Wi-Fi (and, in Wi-Fi, HTTP proxy and Network info)
     language = true, time = true, screensaver = true, autosuspend = true, network_wifi = true,
     network_proxy = true, network_info = true,
     -- the History, Favorites and Collections tabs
     history = true, favorites = true, collections = true,
-    -- Settings → General → Screen: KOReader's whole Screen menu (M.screenItem)
+    -- Settings → Display and light → Screen: KOReader's whole Screen menu (M.screenItem)
     screen = true,
-    -- Settings → Reader → End of book
+    -- Settings → Reader → Closing a book → End of book
     document_end_action = true,
     -- the quick panel's Night mode, Rotate, Restart, Sleep and Exit tiles
     -- (exit_menu: Restart, Sleep, Exit)
     night_mode = true, screen_rotation = true, exit_menu = true,
-    -- Settings → About (GZreader's version), About → Setup Guide
+    -- Settings → General → About (GZreader's version), General → Setup Guide
     version = true, about = true, quickstart_guide = true,
     -- not used by GZreader
     cloud_storage = true,
-    -- Settings → Interface → Quick panel: Open with a tap / a swipe
+    -- Settings → Home and tabs → Quick panel: Open with a tap / a swipe
     -- (gzreader_panel.lua openRows; its Auto-show bottom menu does nothing here)
     menu_activate = true,
 }
@@ -132,7 +132,7 @@ function M.dropKOReaderDuplicates(list)
     return out
 end
 
---- Settings → General → Screen: KOReader's Screen menu (DPI, E-ink settings,
+--- Settings → Display and light → Screen: KOReader's Screen menu (DPI, E-ink settings,
 --- Fullscreen, …; out of Settings → KOReader, KOREADER_DUPLICATES.screen),
 --- without what GZreader has elsewhere (Sleep screen, Rotation), and with
 --- GZreader's flash rows (`gz_items`: Flash on every page turn, Flash when
@@ -147,7 +147,7 @@ function M.screenItem(native, gz_items)
     }
 end
 
---- The rows of Settings → General → Screen (see screenItem).
+--- The rows of Settings → Display and light → Screen (see screenItem).
 function M.screenItems(native, gz_items)
     gz_items = type(gz_items) == "table" and gz_items or {}
     local ok, got = pcall(function() return native.settingsItems("active", "screen") end)
@@ -327,7 +327,8 @@ function M.gzreaderVersion()
     return "0.0.0"
 end
 
---- Of GZreader's diagnostics items (Settings → General), the ones that move
+--- (Unused since 1.32.x: Settings → Privacy and diagnostics has them all.)
+--- Of GZreader's diagnostics items, the ones that moved
 --- into About → Advanced: everything but Send debug reports automatically,
 --- which stays in General where it's easy to find (as Usage statistics did
 --- up to 1.28.1; GZreader no longer sends them).
@@ -344,7 +345,7 @@ function M.splitDiagnostics(items)
     return stay, advanced
 end
 
---- Settings → General → Wi-Fi as GZreader has it: GZreader's item (On, Off,
+--- Settings → Wi-Fi as GZreader has it: GZreader's item (On, Off,
 --- Auto; gzreader_net.lua Net.menuItem) with ZenOS's network list after
 --- them, in place of ZenOS's Wi-Fi switch. `zen_item`: ZenOS's Wi-Fi row (its
 --- callback opens the network list), or nil.

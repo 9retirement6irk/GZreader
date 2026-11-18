@@ -28,25 +28,12 @@ local function gzreader()
     end
 end
 
--- GZreader: a list from `n` entries some of which may be nil (left out).
-local function compact(t, n)
-    local out = {}
-    for i = 1, n do if t[i] ~= nil then out[#out + 1] = t[i] end end
-    return out
-end
-
 -- GZreader: its settings for a section ("general", "reader", "interface", "home").
 local function gz_section(name)
     local g = gzreader()
     if not (g and type(g.sectionItems) == "function") then return {} end
     local ok, items = pcall(g.sectionItems, g, name)
     return ok and type(items) == "table" and items or {}
-end
-
-local function index_of(items, text)
-    for i, item in ipairs(items) do
-        if item.text == text then return i end
-    end
 end
 
 function M.build(plugin)
@@ -83,65 +70,6 @@ function M.build(plugin)
     local about_items     = about_section.build(ctx)
     local general_items   = general_section.build(ctx, extras_items)
 
-    -- GZreader: Wi-Fi is a menu (On, Off, Auto, then ZenOS's network list:
-    -- gz_settings.wifiItem) in place of ZenOS's switch; debug reports before
-    -- Advanced, and the diagnostic log's items (logging, sending, saving) at
-    -- the top of Advanced (gz_settings.splitDiagnostics);
-    -- read aloud and the audiobook test at the end of Reader.
-    local gz_general = gz_section("general")
-    if gz_general.wifi then
-        local at = index_of(general_items, _("Wi-Fi"))
-        local item = require("common/gz_settings").wifiItem(gz_general.wifi, at and general_items[at])
-        if at then general_items[at] = item else table.insert(general_items, 1, item) end
-    end
-    -- GZreader: Advanced goes to the end of About (with the diagnostic log's
-    -- items at its top, KOReader's whole menu at its end), and Send debug
-    -- reports automatically just above it (owner, 2026-11-11).
-    local about_tail = {}
-    local advanced_at = index_of(general_items, _("Advanced"))
-    local advanced_item = advanced_at and table.remove(general_items, advanced_at) or nil
-    if type(gz_general.diagnostics) == "table" and #gz_general.diagnostics > 0 then
-        local stay, advanced = require("common/gz_settings").splitDiagnostics(gz_general.diagnostics)
-        local adv = advanced_item and advanced_item.sub_item_table
-        if type(adv) ~= "table" then stay, advanced = gz_general.diagnostics, {} end
-        for _i, item in ipairs(stay) do about_tail[#about_tail + 1] = item end
-        if #advanced > 0 then
-            for i, item in ipairs(advanced) do table.insert(adv, i, item) end
-            advanced[#advanced].separator = true
-        end
-    end
-    if advanced_item then
-        if type(advanced_item.sub_item_table) == "table" then
-            table.insert(advanced_item.sub_item_table, require("common/gz_settings").koreaderMenuItem(plugin_root))
-            -- GZreader: and last, Reset GZreader (gzreader_reset.lua)
-            advanced_item.sub_item_table[#advanced_item.sub_item_table].separator = true
-            table.insert(advanced_item.sub_item_table, require("common/gz_settings").resetItem())
-        end
-        about_tail[#about_tail + 1] = advanced_item
-    end
-    if #about_tail > 0 then
-        if about_items[#about_items] then about_items[#about_items].separator = true end
-        for _i, item in ipairs(about_tail) do about_items[#about_items + 1] = item end
-    end
-    local gz_reader = gz_section("reader")
-    -- GZreader: read aloud, the audiobook test and the headphone jack are for
-    -- music and audiobooks too: General → Audio, before Time and date
-    -- (gz_settings.splitAudio); anything else of GZreader's stays in Reader.
-    local gz_audio, gz_rest = require("common/gz_settings").splitAudio(gz_reader)
-    if type(gz_audio) == "table" and type(gz_rest) == "table" then gz_reader = gz_rest else gz_audio = {} end
-    if #gz_audio > 0 then
-        local at = index_of(general_items, _("Time and date")) or index_of(general_items, _("Advanced"))
-        table.insert(general_items, at or (#general_items + 1), {
-            text = _("Audio"),
-            icon_file = require("common/utils").resolveLocalIcon(plugin_root .. "/icons/", "tab_music"),
-            sub_item_table = gz_audio,
-        })
-    end
-    if #gz_reader > 0 then
-        reader_items[#reader_items].separator = true
-        for _i, item in ipairs(gz_reader) do reader_items[#reader_items + 1] = item end
-    end
-
     extras_items = utils.order_items_by_text(extras_items, {
         _("Install ZenPM"),
         _("Open ZenPM"),
@@ -151,115 +79,46 @@ function M.build(plugin)
         _("Stats"),
         _("Rakuyomi"),
     })
-
-    home_item.text = _("Home")
     IconItem.decorate(home_item, icons.settings_home)
     local interface_item = interface_section.build(ctx, extras_items)
-    local gz_interface = gz_section("interface")
-    if #gz_interface > 0 and type(interface_item.sub_item_table) == "table" then
-        local list = interface_item.sub_item_table
-        list[#list].separator = true
-        for _i, item in ipairs(gz_interface) do list[#list + 1] = item end
-    end
 
-    -- GZreader: no Downloads section (ZenOS's Library section, which sets up
-    -- the Downloads tab): its rows (Appearance, Folders, Books, Context menu)
-    -- come after Home's own, in Home (owner, 2026-11-11).
-    if type(home_item.sub_item_table) == "table" and type(filebrowser_items) == "table" and #filebrowser_items > 0 then
-        local list = home_item.sub_item_table
-        if list[#list] then list[#list].separator = true end
-        for _i, item in ipairs(filebrowser_items) do list[#list + 1] = item end
-    end
-
-    local root_items = {
-        -- GZreader: General first (Wi-Fi, Screen, Sleep, …: what's changed most).
-        -- No Extras section: General takes its Schedules and Sleep and
-        -- Interface its Custom icons (above); the rest (Stats tab widgets,
-        -- ZenPM, Rakuyomi, Zen Search, Lockdown mode, Zen Keyboard) stays at
-        -- its saved value or default, with nothing to set.
-        IconItem.decorate({ text = _("General"), sub_item_table = general_items }, icons.settings),
-        home_item,
-        IconItem.decorate({ text = _("Reader"), sub_item_table = reader_items }, icons.settings_reader),
-        interface_item,
-        -- GZreader: Storage (what's on the Kindle) is in General → Storage
-        -- GZreader: Connections: the Grimmory plugin's settings (connection,
-        -- sync, audiobooks; KOReader → Tools → Grimmory is left out) and
-        -- Memos (the Notes tab: connection, synced tags, storage, limits).
-        IconItem.decorate({
-            text = _("Connections"),
-            _zen_settings_root = "gzreader",
-            sub_item_table = compact({
-                IconItem.decorate({
-                    text = _("Grimmory"),
-                    sub_item_table_func = function()
-                        local g = gzreader()
-                        if g and type(g.menuItems) == "function" then return g:menuItems() end
-                        return { { text = _("GZreader's Grimmory plugin isn't loaded."), enabled = false } }
-                    end,
-                }, icons.sync),
-                IconItem.decorate({
-                    text = _("Memos (Notes)"),
-                    sub_item_table_func = function()
-                        local g = gzreader()
-                        if g and type(g.notesSettingsItems) == "function" then return g:notesSettingsItems() end
-                        return { { text = _("GZreader's Grimmory plugin isn't loaded."), enabled = false } }
-                    end,
-                }, icons.edit),
-                IconItem.decorate({
-                    text = _("Calendar (CalDAV)"),
-                    sub_item_table_func = function()
-                        local g = gzreader()
-                        if g and type(g.calendarSettingsItems) == "function" then return g:calendarSettingsItems() end
-                        return { { text = _("GZreader's Grimmory plugin isn't loaded."), enabled = false } }
-                    end,
-                }, icons.calendar),
-                -- GZreader: Immich, pictures for the sleep screen and the wallpaper
-                IconItem.decorate({
-                    text = _("Immich (Photos)"),
-                    sub_item_table_func = function()
-                        local g = gzreader()
-                        if g and type(g.immichSettingsItems) == "function" then return g:immichSettingsItems() end
-                        return { { text = _("GZreader's Grimmory plugin isn't loaded."), enabled = false } }
-                    end,
-                }, icons.wallpaper),
-                -- GZreader: Plex (the Music tab), on the Kindles with a speaker or jack
-                (function()
-                    local okt, Touch = pcall(require, "gzreader_touch")
-                    if not (okt and Touch.audio and Touch.audio()) then return nil end
-                    return {
-                        text = _("Plex (Music)"),
-                        icon_file = require("common/utils").resolveLocalIcon(plugin_root .. "/icons/", "tab_music"),
-                        sub_item_table_func = function()
-                            local g = gzreader()
-                            if g and type(g.plexSettingsItems) == "function" then return g:plexSettingsItems() end
-                            return { { text = _("GZreader's Grimmory plugin isn't loaded."), enabled = false } }
-                        end,
-                    }
-                end)(),
-                -- GZreader: copy connections between two GZreader devices
-                IconItem.decorate({
-                    text = _("Copy to or from another GZreader"),
-                    sub_item_table_func = function()
-                        local g = gzreader()
-                        if g and type(g.copyItems) == "function" then return g:copyItems() end
-                        return { { text = _("GZreader's Grimmory plugin isn't loaded."), enabled = false } }
-                    end,
-                }, icons.connect),
-                -- GZreader: syncing through a computer (the Kindles without Wi-Fi; any Kindle can choose it)
-                IconItem.decorate({
-                    text = _("Sync through a computer"),
-                    sub_item_table_func = function()
-                        local g = gzreader()
-                        if g and type(g.usbSyncItems) == "function" then return g:usbSyncItems() end
-                        return { { text = _("GZreader's Grimmory plugin isn't loaded."), enabled = false } }
-                    end,
-                }, icons.sync),
-            }, 7),
-        }, icons.connect),
-        -- GZreader: no KOReader section: KOReader's whole menu is About →
-        -- Advanced → KOReader settings (gz_settings.koreaderMenuItem)
-        IconItem.decorate({ text = _("About"), sub_item_table = about_items }, icons.settings_about),
-    }
+    -- GZreader: the first page arranged as iOS and macOS arrange theirs
+    -- (common/gz_settings_tree.lua; owner, 2026-11-17): the Grimmory account,
+    -- Wi-Fi and Bluetooth, then General, Display and light, Sleep and
+    -- wallpaper, Audio, Home and tabs, Reader, Accounts and services, Privacy
+    -- and diagnostics, About. ZenOS's sections still build their rows; the
+    -- tree moves them. No Extras section: General takes its Schedules and
+    -- Sleep (general_settings.lua) and Interface its Custom icons; the rest
+    -- (Stats tab widgets, ZenPM, Rakuyomi, Zen Search, Lockdown mode, Zen
+    -- Keyboard) stays at its saved value or default, with nothing to set. No
+    -- KOReader section: KOReader's whole menu is Privacy and diagnostics →
+    -- Advanced → KOReader settings (gz_settings.koreaderMenuItem).
+    local okt, Touch = pcall(require, "gzreader_touch")
+    local okn, no_wifi = pcall(function() return require("gzreader_usbsync").noWifi() end)
+    local root_items = require("common/gz_settings_tree").build({
+        general = general_items,
+        interface = type(interface_item.sub_item_table) == "table" and interface_item.sub_item_table or {},
+        about = about_items,
+        reader = reader_items,
+        home = home_item,
+        library = filebrowser_items,
+        gz = {
+            general = gz_section("general"),
+            reader = gz_section("reader"),
+            interface = gz_section("interface"),
+            performance = gz_section("performance"),
+            home = gz_section("home"), -- (the daily paper: at the end of Home's own rows)
+        },
+        gzreader = gzreader,
+        updater = updater,
+        plugin_root = plugin_root,
+        koreader_item = require("common/gz_settings").koreaderMenuItem(plugin_root),
+        reset_item = require("common/gz_settings").resetItem(), -- (last in Advanced: gzreader_reset.lua)
+        -- (Music and Audiobooks: the Kindles with a speaker or jack; House:
+        -- not on the Kindles without Wi-Fi, 2 and DX)
+        audio = okt and type(Touch) == "table" and type(Touch.audio) == "function" and Touch.audio() and true or false,
+        wifi = not (okn and no_wifi),
+    })
 
     root_items._zen_header_action_func = function()
         return updater.build_update_available_action(plugin)
@@ -269,42 +128,6 @@ function M.build(plugin)
     root_items.needs_refresh = true
     root_items.refresh_func  = function()
         return M.build(plugin).sub_item_table
-    end
-
-    -- GZreader: the daily paper (feeds fetched once a day, read on Home) in
-    -- Connections, before Copy to or from another GZreader (and Home Assistant)
-    local gz_connections = gz_section("connections")
-    for _i, item in ipairs(root_items) do
-        local list = type(item) == "table" and item._zen_settings_root == "gzreader" and item.sub_item_table
-        if type(list) == "table" and #gz_connections > 0 then
-            local at = #list + 1
-            for j, it in ipairs(list) do
-                if type(it) == "table" and it.text == _("Copy to or from another GZreader") then at = j end
-            end
-            for k, it in ipairs(gz_connections) do table.insert(list, at + k - 1, it) end
-        end
-    end
-
-    -- GZreader: Home Assistant (the House tab) in Connections, before Copy to
-    -- or from another GZreader; not on the Kindles without Wi-Fi (2, DX)
-    local okn, no_wifi = pcall(function() return require("gzreader_usbsync").noWifi() end)
-    for _i, item in ipairs(root_items) do
-        local list = type(item) == "table" and item._zen_settings_root == "gzreader" and item.sub_item_table
-        if type(list) == "table" and not (okn and no_wifi) then
-            local at = #list + 1
-            for j, it in ipairs(list) do
-                if type(it) == "table" and it.text == _("Copy to or from another GZreader") then at = j end
-            end
-            table.insert(list, at, {
-                text = _("Home Assistant (House)"),
-                icon_file = require("common/utils").resolveLocalIcon(plugin_root .. "/icons/", "tab_house"),
-                sub_item_table_func = function()
-                    local g = gzreader()
-                    if g and type(g.houseSettingsItems) == "function" then return g:houseSettingsItems() end
-                    return { { text = _("GZreader's Grimmory plugin isn't loaded."), enabled = false } }
-                end,
-            })
-        end
     end
 
     return {

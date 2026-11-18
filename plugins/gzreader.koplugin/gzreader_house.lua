@@ -1,7 +1,6 @@
 --[[--
 The House tab: Home Assistant's rooms and what's in them, to switch from the
-Kindle (ZenOS's tab bar; off until turned on in Settings → Connections →
-Home Assistant → House tab, or Settings → Interface → Navbar → Tabs).
+Kindle (ZenOS's tab bar; off until turned on in Settings → Accounts and services → House → House tab, or Settings → Home and tabs → Tab bar → Tabs).
 
   Refresh                               updated 1 min ago
   Living room
@@ -76,8 +75,8 @@ end
 --- Whether the House tab is in the tab bar.
 function House.tabShown() return require("gzreader_tabs").shown(House.TAB_ID) end
 
---- Put the House tab in the tab bar, or take it out (as Settings → Interface
---- → Navbar → Tabs does). False when it can't (no ZenOS, or 7 tabs already).
+--- Put the House tab in the tab bar, or take it out (as Settings → Home and tabs
+--- → Tab bar → Tabs does). False when it can't (no ZenOS, or 7 tabs already).
 function House.setTabShown(on)
     return require("gzreader_tabs").setShown(House.TAB_ID, on, House.tabEntry(), info)
 end
@@ -134,7 +133,7 @@ function House:rootItems()
     local Rows = require("gzreader_rows")
     if House.noWifi() then
         return Rows.mark({ Rows.about(_("No Wi-Fi here"),
-            _("Home Assistant is reached over Wi-Fi, and this Kindle syncs through a computer (it has no Wi-Fi, or Sync through a computer is chosen in Settings → Connections).")) })
+            _("Home Assistant is reached over Wi-Fi, and this Kindle syncs through a computer (it has no Wi-Fi, or Sync through a computer is chosen in Settings → General → Transfer).")) })
     end
     if not House.client(plugin):isConnected() then
         return House.connectItems(plugin, function() self:reload() end)
@@ -513,7 +512,7 @@ end
 
 ---------------------------------------------------------------- Settings
 
---- Settings → Connections → Home Assistant.
+--- Settings → Accounts and services → House.
 function House.settingsItems(plugin)
     local Ha = HA()
     local function closeTouchMenu(tm) if tm and tm.closeMenu then pcall(tm.closeMenu, tm) end end
@@ -541,7 +540,7 @@ function House.settingsItems(plugin)
     local icons = Ha.ROOM_ICON:match("^(.*)/[^/]+$")
     items[#items + 1] = {
         text = _("House tab"), icon_file = Ha.ROOM_ICON,
-        help_text = _("Its own tab in the tab bar, with Home Assistant's rooms. It can also be turned on or moved in Settings → Interface → Navbar → Tabs."),
+        help_text = _("Its own tab in the tab bar, with Home Assistant's rooms. It can also be turned on or moved in Settings → Home and tabs → Tab bar → Tabs."),
         checked_func = House.tabShown,
         callback = function() House.setTabShown(not House.tabShown()) end,
     }
@@ -573,7 +572,7 @@ function House.settingsItems(plugin)
     return items
 end
 
---- Settings → Connections → Home Assistant → Rooms and devices: a room's
+--- Settings → Accounts and services → House → Rooms and devices: a room's
 --- devices to tick, and the room itself.
 function House.roomItems(plugin)
     local house = (House.instance and House.instance.house) or HA().loadCache()

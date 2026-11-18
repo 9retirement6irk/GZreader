@@ -5,7 +5,7 @@ The Notes tab (it took Favorites' place in the tab bar, V) shows your
 page in the usual layout: see Layouts below). Written against Memos v0.31 (`/api/v1`); newer servers that moved the
 API to `/api` are found too.
 
-- **Favorites** is still in Settings → Interface → Navbar → Tabs, turned
+- **Favorites** is still in Settings → Home and tabs → Tab bar → Tabs, turned
   off; turn it on there (or on the setup guide's Navbar Tabs page, which also
   offers Notes) to have both.
 - **Connect:** the first time, the tab offers *Connect with QR code* (the
@@ -42,7 +42,7 @@ API to `/api` are found too.
   notes in that order (`order_by`), and the Kindle sorts what it keeps the same
   way (notes written here and not sent yet, a sync through a computer).
 - **Layouts** (as in the Memos web app): **L** on the board (Layout on a touch
-  Kindle, Menu → Layout on a Kindle 4, or Settings → Connections → Memos
+  Kindle, Menu → Layout on a Kindle 4, or Settings → Accounts and services → Notes
   (Notes) → Layout) chooses how many notes side by side, and how long each is:
   - **List** (one note under another), **Two side by side** (the default),
     **Three side by side**, or **Auto**: as many side by side as fit the
@@ -262,8 +262,7 @@ API to `/api` are found too.
   moment later (Wi‑Fi on Auto turns on for it; on Off it waits), and only the
   note is sent: the board's list isn't fetched while you read, so the Notes
   tab syncs the next time you open it. On a Kindle syncing through a
-  computer it goes with the next sync. Hide the tile in **Settings →
-  Interface → Quick panel**.
+  computer it goes with the next sync. Hide the tile in **Settings → Home and tabs → Quick panel**.
 - **Drawings** (touch Kindles, Memos over Wi‑Fi): tap **Draw** on the Notes
   tab, or **✎ Draw** in a note's editor, for a page to draw on. A note can
   be just drawings.
@@ -519,7 +518,7 @@ API to `/api` are found too.
   Kindle (Memos v0.31 can't filter by them).
   **Space…** (when your Memos has spaces): **No space** or one of your
   spaces, with how many notes each has; the board's title says which.
-- **Settings → Connections → Memos (Notes):** the Memos connection (connect again, disconnect);
+- **Settings → Accounts and services → Notes:** the Memos connection (connect again, disconnect);
   **Sync** all notes or only notes with chosen tags (Memos has no notebooks,
   so tags are the way to pick, and Filter → Space… for spaces; the list comes from Memos' tag
   counts, `users/<id>:getStats`, and the filter is `tag in [...]`);

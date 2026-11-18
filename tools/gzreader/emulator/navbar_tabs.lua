@@ -1,4 +1,4 @@
--- Favorites stays in Settings → Interface → Navbar → Tabs (off by default,
+-- Favorites stays in Settings → Home and tabs → Tab bar → Tabs (off by default,
 -- Notes took its place in the bar), and the setup guide's Navbar Tabs page
 -- offers Notes and Favorites. With demo/demo_grimmory.py on 127.0.0.1:18080.
 -- Also checks the config migrations from 1.4.x and from 1.5.0.
@@ -34,7 +34,7 @@ for _i, step in ipairs(readme) do
 end
 add({ fn = function(E) tabs(E, "tabs after the setup guide:") end, after = 1 })
 shot("tabs-3-home-bar")
--- Settings → Interface → Navbar → Tabs (Interface: Quick panel Q, Navbar W)
+-- Settings → Home and tabs → Tab bar → Tabs (Interface: Quick panel Q, Navbar W)
 key("Menu", 4)
 key("U", 6)
 key("R", 4)

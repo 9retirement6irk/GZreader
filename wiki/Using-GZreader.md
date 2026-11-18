@@ -14,7 +14,7 @@ keep each tile under an inch wide (seven on a Scribe, eight turned sideways).
   and DX: **Sync**, [with a computer](Sync-with-a-Computer)), [Bluetooth](Bluetooth) (Kindles with Bluetooth: a tap turns it
   on or off, the panel staying open; a hold opens Bluetooth devices), Night mode, Rotate, Restart, Sleep, Home,
   Updates, Settings, Diagnostics (while diagnostic logging is on, Settings →
-  General) and Exit to Kindle (Exit to Nook).
+  Privacy and diagnostics) and Exit to Kindle (Exit to Nook).
 - **Home:** Manage book (the highlighted book), Continue, Send books, Search,
   History, View and Sort; **Quick note** while [Memos](Notes) is connected;
   **Music** and **Audiobook** while one plays or is
@@ -32,7 +32,7 @@ holding a book at Home or in Downloads opens Manage book.
 
 ### How it opens
 
-On a touch Kindle, **Settings → Interface → Quick panel** starts with **Open
+On a touch Kindle, **Settings → Home and tabs → Quick panel** starts with **Open
 with a tap at the top** and **Open with a swipe down from the top** (both by
 default; in a book too). Untick one to keep only the other: one always stays
 ticked. They're KOReader's "Activate menu", which no longer shows in Settings →
@@ -47,7 +47,7 @@ the edge. While the panel is open the keyboard steps aside.
 
 ### Choosing the tiles
 
-**Settings → Interface → Quick panel** lists the tiles of each group
+**Settings → Home and tabs → Quick panel** lists the tiles of each group
 (**Controls**, **Home**, **This book**): untick one to take it off the panel,
 tick it to put it back, or **Show every tile** to bring them all back.
 **Home**, **Settings** and **Exit to Kindle** are always there. Tiles that
@@ -63,7 +63,7 @@ hidden isn't shown.
 **Rotate** (in Controls) turns the screen a quarter turn. Home and books stay
 turned: going Home from a book read sideways keeps the screen sideways, and
 the next book opens the same way. (That's KOReader's **Keep current rotation
-across views**, ticked by GZreader; untick it in Settings → About → Advanced
+across views**, ticked by GZreader; untick it in Settings → Privacy and diagnostics → Advanced
 → KOReader settings → Screen → Rotation to give Home and each book their own
 rotation again.)
 
@@ -162,11 +162,11 @@ notes: [Notes](Notes)):
   quick panel and shows how to open and close it, Settings and the Home
   tiles (on the first book, if it didn't run at Home: This book's tiles). It
   closes the panel when it ends. On the first book, a tip then shows the
-  swipe up for the page browser. Both come again after Settings → About →
+  swipe up for the page browser. Both come again after Settings → General →
   Setup Guide.
 - **Audio:** the Kindle Touch plays audiobooks; the player has buttons for
   chapters, ±30 s, play / pause, sleep timer, volume, the description and
-  close (Settings → General → Audio → Test audiobook playback finds what works on
+  close (Settings → Audio → Test audiobook playback finds what works on
   its firmware). It also reads aloud with the Kindle's voice: in a book,
   swipe down from the top and tap **Listen** in the quick panel (again to
   stop); the first time, a short test finds the Kindle's voice. The

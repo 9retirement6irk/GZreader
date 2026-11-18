@@ -54,7 +54,7 @@ phone-sized browser talking to the emulated Kindle.</sub>
 
 ## Bookshelf theme and ornaments
 
-<sub>Settings → Home → Appearance → Bookshelf theme, or hold an ornament on a shelf. Every choice is a tile with a picture of it, and the preview at the top changes as you choose.</sub>
+<sub>Settings → Home and tabs → Downloads tab → Appearance → Bookshelf theme, or hold an ornament on a shelf. Every choice is a tile with a picture of it, and the preview at the top changes as you choose.</sub>
 
 <table>
 <tr><td align="center" valign="top" width="33%"><img src="pw-bookshelf-theme.png" alt="Bookshelf theme: the plank, the ornaments, where and how many" width="240"><br><sub>Bookshelf theme: the plank, the ornaments, where and how many</sub></td><td align="center" valign="top" width="33%"><img src="pw-which-ornaments.png" alt="Which ornaments: tap to put one on the shelves, hold to see it" width="240"><br><sub>Which ornaments: tap to put one on the shelves, hold to see it</sub></td><td align="center" valign="top" width="33%"><img src="downloads-shelf.png" alt="A pumpkin in season, where the shelf has room" width="240"><br><sub>A pumpkin in season, where the shelf has room</sub></td></tr>

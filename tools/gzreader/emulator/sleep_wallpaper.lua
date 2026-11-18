@@ -1,4 +1,4 @@
--- Settings → General → Sleep → Wallpaper: the sleep screens as tiles with
+-- Settings → Sleep and wallpaper → Sleep → Wallpaper: the sleep screens as tiles with
 -- previews (gzreader_sleeppreview.lua). A book read first (for its cover),
 -- a picture in the screensavers folder. Shots: sleep-menu, wallpaper-tiles,
 -- wallpaper-chosen (after picking "Book cover"). Prints "[emu] wallpaper: …".
@@ -26,7 +26,7 @@ return {
         local R = require("apps/reader/readerui").instance
         if R then R:onHome() end
     end, after = 12 },
-    { fn = settings({ "General", "Sleep" }), after = 6 },
+    { fn = settings({ "Sleep and wallpaper", "Sleep" }), after = 6 },
     { shot = "sleep-menu" },
     { fn = function(_E)
         local P = require("gzreader_sleeppreview")

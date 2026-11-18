@@ -473,7 +473,7 @@ function M.get(id)
     return builtin_by_id[id] or external_by_id[id]
 end
 
--- GZreader: widgets Home doesn't offer (Settings → Home → Widgets, Home
+-- GZreader: widgets Home doesn't offer (Settings → Home and tabs → Home → Widgets, Home
 -- itself), also when an older build's settings or a preset name them. They
 -- stay registered: the end-of-book page still uses stats_triplet.
 M.GZ_NOT_ON_HOME = { stats_triplet = true } -- the local reading stats

@@ -1,4 +1,4 @@
--- Settings → Interface → Quick panel: which tiles the quick panel shows
+-- Settings → Home and tabs → Quick panel: which tiles the quick panel shows
 -- (Controls, Home, This book), with Interface's other items (no Controls,
 -- Launcher or Zen mode any more), then the panel with tiles hidden.
 -- Keyboard models: letter keys; touch models (kt, pw3): taps. Writes
@@ -45,12 +45,15 @@ add({ fn = function()
     end
     require("gzreader_panel").showAll()
 end, after = 10 })
--- Settings (as the quick panel's Settings tile opens it), then Interface (R)
+-- Settings (as the quick panel's Settings tile opens it), then Home and tabs
 add({ fn = function() require("gzreader_homemenu").settings() end, after = 6 })
-add(pick("R", "Interface"))
 add({ fn = function()
-    check(has("Quick panel") and has("Navbar") and has("Status bar") and has("Blur menu background"),
-        "Interface: Quick panel, Navbar, Status bar, Blur menu background")
+    require("modules/settings/zen_settings_page").show(rawget(_G, "__ZEN_UI_PLUGIN")
+        or require("apps/filemanager/filemanager").instance.zenos, { path = { { key = "_zen_settings_root", value = "home" } } })
+end, after = 4 })
+add({ fn = function()
+    check(has("Quick panel") and has("Tab bar") and has("Status bar"),
+        "Home and tabs: Quick panel, Tab bar, Status bar")
     check(not has("Launcher") and not has("Zen mode"), "…no Launcher, no Zen mode")
 end, after = 1 })
 add({ shot = "panel-1-interface" })

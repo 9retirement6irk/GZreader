@@ -1,8 +1,7 @@
 --[[--
 Plex (https://plex.tv) client for the Music tab: sign-in, finding your Plex
 Media Server, its music libraries, and the tracks' audio. Also audiobooks
-from one of its music libraries, when chosen instead of Grimmory's (Settings
-→ Connections → Plex → Audiobooks): an album is a book, its tracks the
+from one of its music libraries, when chosen instead of Grimmory's (Settings → Accounts and services → Audiobooks): an album is a book, its tracks the
 book's files, played by gzreader_audiobook.lua.
 
 Sign-in, two ways (both "PINs" in Plex's API, POST plex.tv/api/v2/pins):
@@ -270,8 +269,7 @@ function Plex:musicSections()
     return out
 end
 
---- The music library to browse: the one chosen in Settings → Connections →
---- Plex → Music library (store.music_section = { server, key, title }) while
+--- The music library to browse: the one chosen in Settings → Accounts and services → Music → Music library (store.music_section = { server, key, title }) while
 --- this server still has it, else the server's first. Returns it ({ key,
 --- title }) and every music library, or nil, err ("no_music": none).
 function Plex:musicSection()
@@ -297,8 +295,7 @@ function Plex.pickSection(sections, want, server, skip)
     return sections[1]
 end
 
---- The library audiobooks come from, when it's a Plex one (Settings →
---- Connections → Plex → Audiobooks): store.audiobook_section = { server,
+--- The library audiobooks come from, when it's a Plex one (Settings → Accounts and services → Audiobooks): store.audiobook_section = { server,
 --- key, title }, signed in and on that server; else nil (Grimmory's
 --- audiobooks). Pure.
 function Plex.audiobookSection(store)

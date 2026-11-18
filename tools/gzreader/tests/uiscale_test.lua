@@ -105,7 +105,7 @@ S.apply(sdev)
 check(sdev.screen:scaleBySize(100) == 202, "Smaller: 202 (" .. sdev.screen:scaleBySize(100) .. ")")
 store.gzreader_ui_size = nil
 
--- the setting (Settings → Interface)
+-- the setting (Settings → Display and light)
 check(S.menuItem(device(600, 800, 167)) == nil, "no setting on a Kindle 3")
 check(S.menuItem(device(1072, 1448, 300)) == nil, "…nor on a Paperwhite 3")
 local item = S.menuItem(device(1860, 2480, 300))
@@ -130,7 +130,7 @@ local at_ui = reader:find('require("ui/uimanager")', 1, true)
 check(at_device and at_scale and at_ui and at_device < at_scale and at_scale < at_ui,
     "reader.lua: applied right after the device is set up, before any widget is loaded")
 check(read("plugins/zenos.koplugin/modules/settings/sections/interface_settings.lua"):find('GzUiScale.menuItem()', 1, true) ~= nil,
-    "Settings → Interface offers it")
+    "Settings → Display and light offers it")
 
 print(string.format("%d passed, %d failed", passed, failed))
 os.exit(failed == 0 and 0 or 1)
