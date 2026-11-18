@@ -1159,6 +1159,13 @@ function Sketch:frame(slots, now)
                     if w then c.weight = 0.5 * c.weight + 0.5 * w end
                 end
                 c.x, c.y = s.x, s.y
+                -- (a stroke's last moments, to tell a hold at its end: gzreader_shapesnap.lua)
+                if c.kind == "draw" and self.snap_shapes and not c.shape then
+                    local tr = c.trail or {}
+                    tr[#tr + 1] = { now, s.x, s.y }
+                    if #tr > 60 then table.remove(tr, 1) end
+                    c.trail = tr
+                end
                 if c.kind == "pinch" and self.pinch then
                     local p = self.pinch
                     if s.slot == p.a then p.a1 = { s.x, s.y } elseif s.slot == p.b then p.b1 = { s.x, s.y } end
@@ -1175,13 +1182,6 @@ function Sketch:frame(slots, now)
                     end
                 elseif c.kind == "draw" then
                     if not c.shape then addPoint(self, c, s.x, s.y, out) end -- (a shape: drawn when the pen lifts)
-                    -- (the stroke's last moments, to tell a hold at its end: gzreader_shapesnap.lua)
-                    if self.snap_shapes and not c.shape then
-                        local tr = c.trail or {}
-                        tr[#tr + 1] = { now, s.x, s.y }
-                        if #tr > 60 then table.remove(tr, 1) end
-                        c.trail = tr
-                    end
                 elseif c.kind == "lasso" then lassoMove(self, c, s, now, out)
                 elseif c.kind == "erase" then erase(self, c, s.x, s.y, out) end
             end
