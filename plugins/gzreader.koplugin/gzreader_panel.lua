@@ -213,7 +213,7 @@ function Panel.catalog()
             { id = "fitpictures", label = _("Fit pictures"), note = _("EPUBs") },
             { id = "readaloud", label = _("Read aloud"), available = Touch.tts },
             { id = "note", label = _("Quick note"), note = _("while Memos is connected") },
-            { id = "split", label = _("Notes beside the book"), note = _("big screens, while Memos is connected"),
+            { id = "split", label = _("Notes"), note = _("beside the book, on big screens, while Memos is connected"),
                 available = function() return require("gzreader_splitview").available() end },
             { id = "music", label = _("Music"), note = _("while it plays"), available = Touch.player },
             { id = "audiobook", label = _("Audiobook"), note = _("while one plays"), available = Touch.player },

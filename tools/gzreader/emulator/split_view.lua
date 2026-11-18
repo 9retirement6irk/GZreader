@@ -1,5 +1,5 @@
 -- Split view (gzreader_splitview.lua): on a big screen, the quick panel's
--- "Notes beside the book" puts the book in one half and a page for notes in
+-- "Notes" (the book's quick panel) puts the book in one half and a page for notes in
 -- the other. Upright (the Scribe): the book on top, the notes under it. The
 -- pen draws in the notes; a swipe on the book turns its page, and the notes
 -- stay; Done saves the note and the book has the whole screen again.
@@ -60,7 +60,7 @@ add({ fn = function(E)
     E.pages0 = rui().document:getPageCount()
     local tiles = {}
     for _i, t in ipairs(require("gzreader_panel").readerTiles and require("gzreader_panel").readerTiles(plugin(), rui()) or {}) do tiles[#tiles + 1] = t.id end
-    check(Split.available() and Split.tile(plugin()) ~= nil, "a big touch screen, Memos connected: Notes beside the book is offered (" .. table.concat(tiles, ",") .. ")")
+    check(Split.available() and Split.tile(plugin()) ~= nil and Split.tile(plugin()).label == "Notes", "a big touch screen, Memos connected: Notes is offered, by that name (" .. tostring(Split.tile(plugin()) and Split.tile(plugin()).label) .. "; " .. table.concat(tiles, ",") .. ")")
     local ok, why = Split.open(plugin())
     E.opened = ok
     check(ok == true, "it opens (" .. tostring(why) .. ")")
@@ -93,7 +93,14 @@ add({ fn = function(E)
     check(#d.sketch:live() == 1 and mid and math.abs(mid[2] - p.h * 0.55) < p.h * 0.08,
         "the pen in the notes: a stroke, where the pen was (" .. tostring(mid and math.floor(mid[2])) .. " of " .. p.h .. " down the pane)")
     E.page1 = rui().document:getCurrentPage()
-    -- a swipe on the book turns its page
+    -- a swipe on the book turns its page (the screen's refreshes on the way recorded)
+    local UIMr = UIM()
+    E.split_refreshes = {}
+    E.split_real_refresh = UIMr._refresh
+    UIMr._refresh = function(self, mode, region, dither)
+        E.split_refreshes[#E.split_refreshes + 1] = { mode = mode, region = region and { x = region.x, y = region.y, w = region.w, h = region.h } }
+        return E.split_real_refresh(self, mode, region, dither)
+    end
     local ax, ay = raw(E.book.w * 0.8, E.book.h * 0.4)
     local bx, by = raw(E.book.w * 0.2, E.book.h * 0.4)
     E.swipe(ax, ay, bx, by, 0.2)
@@ -103,6 +110,15 @@ add({ fn = function(E)
     local d = screen()
     local page = rui().document:getCurrentPage()
     check(page > E.page1 and d ~= nil and #d.sketch:live() == 1, "a swipe on the book: its next page (" .. E.page1 .. " to " .. page .. "), the notes still there")
+    UIM()._refresh = E.split_real_refresh
+    local over, seen = {}, {}
+    local b = E.book
+    for _i, r in ipairs(E.split_refreshes) do
+        local g = r.region
+        seen[#seen + 1] = tostring(r.mode) .. (g and ("@" .. g.x .. "," .. g.y .. " " .. g.w .. "x" .. g.h) or "@all")
+        if not g or g.x + g.w > b.x + b.w + 1 or g.y + g.h > b.y + b.h + 1 then over[#over + 1] = seen[#seen] end
+    end
+    check(#E.split_refreshes > 0 and #over == 0, "…the page turn refreshed only the book's part, not the notes (" .. table.concat(seen, " ") .. ")")
     -- a tap on the book's right side too
     E.tap(P(E.book.w * 0.9, E.book.h * 0.5))
 end, after = 4 })
