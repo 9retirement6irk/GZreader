@@ -81,6 +81,24 @@ add({ fn = function(E)
     local same = true
     for i = 1, #before do if d.canvas_bb:getPixel(x0 - 31 + i, y):getColor8().a ~= before[i] then same = false end end
     check(same, "the page drawn again from its strokes: the same grain, pixel for pixel")
+    -- saved: the pencil's strokes are see-through strokes in the drawing (Memos' editor can
+    -- move and erase them), no picture of them; the picture of the page has the grain
+    local res = d:save()
+    local Drawing = require("gzreader_drawing")
+    local scene = res and Drawing.readFile(res.path)
+    local layer, pencil_shown, pen_shown = nil, 0, 0
+    for _i, e in ipairs(scene and scene.elements or {}) do
+        if e.type == "image" and type(e.customData) == "table" and e.customData.gzLayer then layer = e end
+        if e.type == "freedraw" and e.opacity == 70 and e.customData and e.customData.gzTool == "pencil" then pencil_shown = pencil_shown + 1 end
+        if e.type == "freedraw" and e.opacity == 100 then pen_shown = pen_shown + 1 end
+    end
+    check(scene and not layer and pencil_shown == 3 and pen_shown == 1,
+        "saved: the pencil's 3 strokes are strokes in the drawing (shown, see-through: editable in Memos), the pen's as ever, no picture of them")
+    -- opened again: three pencil strokes and one pen
+    local Sketch = require("gzreader_sketch")
+    local back = scene and Sketch.fromScene(scene, { canvas = d.canvas, per_unit = d.sketch.per_unit, tap_slop = 8 })
+    check(back and #back:live() == 4 and back:live()[1].kind == "pencil" and #back.locked == 0, "opened again: the same four strokes, no extra picture")
+    if res then os.remove(res.path) end
     local f = io.open(E.out .. "/pencil-texture-checks.txt", "w")
     if f then f:write(table.concat(lines, "\n") .. "\n"); f:close() end
     for _i, l2 in ipairs(lines) do E.say("check", l2) end

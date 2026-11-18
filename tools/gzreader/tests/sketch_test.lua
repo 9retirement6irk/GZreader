@@ -953,6 +953,55 @@ end)()
     check(f1.view and math.abs((hf.oy - fy0) + 40) < 0.5 and #hf:live() == 1, "…a finger Kindle: a finger moves the page with the hand, and draws again with the pen")
 end)()
 
+-- the pencil's ink as a picture for Memos
+;(function()
+    local function sketch()
+        return Sketch.new{ canvas = { x = 0, y = 0, w = 600, h = 800 }, per_unit = 2, tap_slop = 8 }
+    end
+    local function line(sk, y, t)
+        sk:frame({ { slot = 0, id = 1, x = 100, y = y } }, t)
+        sk:frame({ { slot = 0, id = 1, x = 300, y = y } }, t + 0.01)
+        sk:frame({ { slot = 0, id = 1, x = 500, y = y } }, t + 0.02)
+        sk:frame({ { slot = 0, id = -1 } }, t + 0.03)
+    end
+    local sk = sketch()
+    sk.width = 7
+    line(sk, 100, 1)
+    sk.writing = "pencil"
+    line(sk, 200, 2)
+    line(sk, 300, 3)
+    -- saved: the pencil's strokes are ordinary see-through strokes, shown, with their tool
+    -- (Memos' editor can move and erase them; the owner, 2026-11-17), and no picture of them
+    local scene = sk:scene()
+    local shown, pictures = 0, 0
+    for _i, e in ipairs(scene.elements) do
+        if e.type == "freedraw" and e.customData and e.customData.gzTool == "pencil" and e.opacity == 70 then shown = shown + 1 end
+        if e.type == "image" then pictures = pictures + 1 end
+    end
+    check(shown == 2 and pictures == 0 and Sketch.pencilLayer == nil and Sketch.hidePencil == nil,
+        "saved for Memos: the pencil's strokes shown (see-through, their tool kept), editable there; no picture of them")
+    -- a drawing saved by the betas that hid the strokes under a picture of them: opened, the
+    -- strokes are the pencil's, the picture and its file dropped; saved again, they show
+    for _i, e in ipairs(scene.elements) do
+        if e.type == "freedraw" and e.customData and e.customData.gzTool == "pencil" then e.opacity = 0 end
+    end
+    table.insert(scene.elements, 1, { id = "layer", type = "image", locked = true, fileId = "f1", x = 0, y = 0, width = 10, height = 10,
+        customData = { gzLayer = "pencil" } })
+    scene.files = { f1 = { dataURL = "x" }, other = { dataURL = "y" } }
+    local back = Sketch.fromScene(scene, { canvas = { x = 0, y = 0, w = 600, h = 800 }, per_unit = 2, tap_slop = 8 })
+    local kinds = {}
+    for _i, st in ipairs(back:live()) do kinds[#kinds + 1] = st.kind or "pen" end
+    local again = back:scene()
+    local has_layer, reshown = false, 0
+    for _i, e in ipairs(again.elements) do
+        if e.id == "layer" then has_layer = true end
+        if e.type == "freedraw" and e.customData and e.customData.gzTool == "pencil" and e.opacity == 70 then reshown = reshown + 1 end
+    end
+    check(table.concat(kinds, ",") == "pen,pencil,pencil" and #back.locked == 0 and not has_layer and again.files.f1 == nil and again.files.other ~= nil
+        and reshown == 2,
+        "a drawing with the pencil as a picture (an earlier beta's): pen, pencil, pencil; the picture and its file dropped, the strokes shown again when saved")
+end)()
+
 -- the pencil's grain
 ;(function()
     local lo, hi, sum, same = 1, 0, 0, true

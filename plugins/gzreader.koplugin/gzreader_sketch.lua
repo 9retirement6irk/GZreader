@@ -67,6 +67,7 @@ function Sketch.new(opts)
     self.zoomed = false -- (pinched bigger than the page's fit: `fit` keeps the fitted view)
     -- the scene point at the canvas's top left (an opened drawing is moved and scaled to fit)
     self.ox, self.oy = 0, 0
+    self.layer_files = {} -- (the files of the pencil's layer in an opened drawing: dropped, made again)
     self.locked = {} -- an opened drawing's shapes and pictures: kept as they are, shown, not changed here
     self.texts = {} -- text boxes (memos' text elements, gzreader_drawtext.lua): moved, resized, typed in here
     self.text_gone = {} -- [box] = true: taken off (deleted, undone, cleared)
@@ -208,6 +209,16 @@ function Sketch.grainHit(x, y, density, d2, r)
     local edge = r > 0 and (1 - 0.45 * math.min(1, d2 / (r * r))) or 1
     return Sketch.grain(x, y) < density * edge
 end
+
+-- ------------------------------------------------- the pencil, for Memos
+
+--- (The pencil's ink is ordinary see-through strokes in a saved drawing, as
+--- the highlighter's: Memos' editor can move and erase them. For a few beta
+--- builds it was carried as one picture with the strokes hidden under it
+--- (customData.gzLayer); `fromScene` still leaves such a picture out and the
+--- strokes come back shown at the next save. The owner, 2026-11-17: Memos'
+--- note view shows the saved picture, texture and all; only its editor
+--- draws from the strokes, and there they must stay editable.)
 
 -- ------------------------------------------------------------ writing tools
 
@@ -527,9 +538,17 @@ function Sketch.fromScene(scene, opts)
                 pts[#pts + 1] = { cx, cy, el.simulatePressure == false and tonumber(p[3]) or nil }
             end
             local kind = Sketch.toolOf(el)
+            if Sketch.toolStyle(kind).grain and tonumber(el.opacity) == 0 then
+                -- (hidden under a picture of the pencil's ink by a few beta builds: shown again)
+                el.opacity = Sketch.toolStyle(kind).opacity
+            end
             -- (Memos is given the tool's own width: the thickness chosen is that over its scale)
             local width = snapWidth((tonumber(el.strokeWidth) or 2) / Sketch.toolStyle(kind).scale)
             self.strokes[#self.strokes + 1] = { points = pts, width = width, color = Sketch.inkColor(el.strokeColor), el = el, kind = kind }
+        elseif el.type == "image" and type(el.customData) == "table" and el.customData.gzLayer then
+            -- (the picture of the pencil's ink made for Memos at the last save: made again
+            -- from the strokes at the next, so neither shown nor kept; no longer made, see above)
+            self.layer_files[el.fileId or ""] = true
         elseif el.type == "text" and type(el.text) == "string" then
             -- (a text box, here or from memos: moved, resized and typed in like a new one)
             self.texts[#self.texts + 1] = el
@@ -1185,6 +1204,11 @@ function Sketch:scene(paper)
         scene.elements = Drawing.list()
         for _i, el in ipairs(self.base.elements or {}) do
             if keep[el] or locked[el] then scene.elements[#scene.elements + 1] = el end
+        end
+        -- (without the last save's pencil layer: its picture isn't carried along)
+        if next(self.layer_files) and type(self.base.files) == "table" then
+            scene.files = {}
+            for id, f in pairs(self.base.files) do if not self.layer_files[id] then scene.files[id] = f end end
         end
     else
         scene = Drawing.newScene(paper)

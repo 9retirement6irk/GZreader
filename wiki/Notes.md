@@ -240,8 +240,13 @@ API to `/api` are found too.
       button does; each tap takes the next tool).
     - The **round button** above the tools folds them into one dark button
       showing the tool in hand; tap it to bring them back.
-    The pencil and the highlighter show as black points while you draw (so
-    they keep up with the pen) and turn grey when you lift.
+    The pencil's specks go on as you draw and stay as they are; the
+    highlighter shows as a light pattern while you draw and turns grey when
+    you lift. In Memos the note shows the page as the Kindle drew it, the
+    pencil's texture included. In Memos' own drawing editor the pencil's
+    strokes are plain see-through lines you can move and erase; a drawing
+    saved from there shows them that way until it's opened and saved on the
+    Kindle again.
     **Zoom:** pinch to zoom in (up to 4×) and the page follows your fingers;
     two fingers move a zoomed page, and on a Kindle with a pen one finger
     does too. Pinch in for the whole page.

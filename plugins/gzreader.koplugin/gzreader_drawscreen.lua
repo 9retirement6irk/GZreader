@@ -1271,7 +1271,10 @@ function DrawScreen:apply(out)
         local grey = false
         for _i, seg in ipairs(out.segments) do
             self:ink(seg, screen_bb)
-            if seg[7] then grey = true end
+            -- (a grey tool without a grain, the highlighter: its real grey needs a refresh when the
+            -- stroke ends. The pencil's specks are on the screen already as it draws, as dark as
+            -- they'll be: no refresh after, which flashed the page at every stroke; the owner, 2026-11-17)
+            if seg[7] and not seg[8] then grey = true end
             local r = seg[5]
             x0 = math.min(x0 or math.huge, seg[1] - r, seg[3] - r)
             y0 = math.min(y0 or math.huge, seg[2] - r, seg[4] - r)
@@ -1974,7 +1977,8 @@ function DrawScreen:save()
     local Png = require("ffi/png")
     local ok, err = Png.encodeToFile(tmp, mem, crop.w, crop.h, 3)
     if ok == false then os.remove(tmp); return nil, err or "png" end
-    local wrote, why = Drawing.writeFile(tmp, sk:scene(), path)
+    local scene = sk:scene()
+    local wrote, why = Drawing.writeFile(tmp, scene, path)
     os.remove(tmp)
     if not wrote then return nil, why end
     Log.info("drawing: saved,", #sk:live(), "strokes, paper", sk:paper(), crop.w .. "x" .. crop.h, lfs.attributes(path, "size") or 0, "bytes")
