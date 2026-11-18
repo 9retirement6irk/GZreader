@@ -560,8 +560,8 @@ row("On Home's bookshelf").callback()
 check(Paper.onShelf(plugin) and plugin.store.daily.shelf == nil, "ticked again")
 local pw, ph = Paper.shelfSize(300, 150)
 check(ph == 240 and pw == 168, "on the shelf: a little lower than the books, a front page's shape … " .. pw .. "x" .. ph)
-check(Paper.spineWidth(300) == 30 and Paper.spineWidth(100) == 16 and Paper.spineWidth(300) * 5 < ph,
-    "on its side it's a folded paper's thickness, far narrower than its front page")
+check(Paper.spineWidth(300) == 60 and Paper.spineWidth(100) == 24 and Paper.spineWidth(300) * 2 < pw and Paper.spineHeight(300) == 279 and Paper.spineHeight(300) > ph,
+    "on its side: a fat folded paper (a fifth as thick as the books are tall), taller than its front page, nearly as tall as the books' room")
 pw, ph = Paper.shelfSize(300, 400)
 check(pw == 192, "never much wider than it is tall … " .. pw)
 row("Headlines as a row on Home").callback()
