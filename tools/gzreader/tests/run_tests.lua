@@ -8958,6 +8958,13 @@ print("Notes (Memos v0.31)")
                 and NoteBar.nameOf(string.rep("word ", 20)):sub(-3) == "…",
                 "the bar's name: a note's first line of words (marks off, not a picture or a line of tags, 48 characters at most)")
             local vsrc = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
+            -- an opened note's words formatted (gzreader_inline.lua; inline_test.lua has its reading and wrapping)
+            check(vsrc:find("for _i, w in ipairs(Inline.widgets(para, inner, Notes.PAGE_TEXT)) do add(w) end", 1, true) ~= nil
+                and vsrc:find("for _i, w in ipairs(Inline.widgets(sub_words, width - S(28), Notes.PAGE_TEXT)) do sub[#sub + 1] = w end", 1, true) ~= nil
+                and vsrc:find("Inline.text{ text = l.text, width = width - S(90), size = Notes.PAGE_TEXT,", 1, true) ~= nil
+                and vsrc:find("put(Inline.text{ text = l.text, width = width, size = Notes.PAGE_HEADING[l.level] or Notes.PAGE_TEXT, bold = true })", 1, true) ~= nil
+                and not vsrc:find("say(Sticky.plain(l.text))", 1, true),
+                "an opened note: its paragraphs, a folded section's, checklist items and headings drawn formatted (bold, italic, struck, code, links; quotes, lists, rules, tables)")
             -- keyboard Kindles: the same bar without buttons on an opened note and in the editor; Alt+M the editor's menu
             check(vsrc:find("            self:topBar(sw, title_h, space),", 1, true) ~= nil
                 and vsrc:find('note = Touch.keys() and _("M more") or _("Menu: more") }', 1, true) ~= nil
@@ -8967,6 +8974,23 @@ print("Notes (Memos v0.31)")
                 and nesrc:find('hint = table.concat(hint, " \\u{00B7} "), note = _("Alt+M more") })', 1, true) ~= nil
                 and nesrc:find('if k == "M" and self.keys_bar then self:barOptions(); return true end', 1, true) ~= nil,
                 "the editor on a keyboard Kindle: the bar with the note's name, who can see it, its space and tags; Alt+M: its menu (Archive, Delete)")
+            -- keyboard Kindles: the formatted page, typed on with the keys (emulator/notes_keyboard_rich.lua types on it)
+            local resrc2 = io.open(PLUGIN .. "/gzreader_richedit.lua"):read("*a")
+            check(nesrc:find("local keys_page = not self.touch and not self.dpad and not self.floating", 1, true) ~= nil
+                and nesrc:find("if (self.touch or keys_page) and NoteEditor.RICH and not self.floating then", 1, true) ~= nil
+                and nesrc:find("keys = self.keys_bar,", 1, true) ~= nil
+                and nesrc:find("function Editor:tools() return (self.rich and self.touch) and {} or NoteEditor.TOOLS end", 1, true) ~= nil
+                and nesrc:find("self.input:useTool(NoteEditor.RICH_ID[t.id] or t.id)", 1, true) ~= nil
+                and nesrc:find('if k == "X" and self.rich and self.keys_bar then return self.input:tickHere() end', 1, true) ~= nil,
+                "the editor on a keyboard Kindle: the formatted page (not the Kindle 4, not a quick note); its toolbar's tools and Alt+X act on the page")
+            check(resrc2:find("function RichEdit:onKeyPress(key)", 1, true) ~= nil
+                and resrc2:find("if not self.keys or not self.focused then return false end", 1, true) ~= nil
+                and resrc2:find('return require("ui/widget/inputtext").onKeyPress(self, key)', 1, true) ~= nil
+                and resrc2:find("if self.keys then\n        self.height = math.max(S(80), self.max_height or Screen:getHeight())", 1, true) ~= nil,
+                "the formatted page with `keys`: no on-screen keyboard, the page's whole height; the Kindle's keys type (touch Kindles: keys left alone)")
+            local NEk = require("gzreader_noteeditor")
+            check(NEk.RICH_ID.list == "bullet" and NEk.RICH_ID.check == "task" and NEk.RICH_ID.numbered == "ordered" and NEk.RICH_ID.heading == "heading"
+                and NEk.RICH_ID.bold == "bold" and NEk.RICH_ID.italic == "italic", "the toolbar's tools as the formatted page names them")
             ;(function()
                 -- the bar built without a back button and with a note at the right (stand-in widgets)
                 local nbsrc = io.open(PLUGIN .. "/gzreader_notebar.lua"):read("*a")
@@ -9087,8 +9111,10 @@ print("Notes (Memos v0.31)")
             check(#ed:sheets() == 2 and ed:sheets()[1].page == 1 and ed:sheets()[2].path == "/tmp/new.canvas.png" and ed:drawingCount() == 2,
                 "…a page taken off isn't among them; a new one shows its waiting picture")
             check(ed:heading() == "Trip plan", "the drawing screen is titled with the note's first line (no Markdown marks): " .. tostring(ed:heading()))
-            check(#ed:tools() == 0 and #E.tools(setmetatable({ rich = false }, { __index = function(_t, k) return rawget(E, k) end })) == #NE.TOOLS,
-                "the formatted page has no toolbar row (its bar comes up at the selection); Markdown editing keeps its toolbar")
+            ed.touch = true
+            check(#ed:tools() == 0 and #E.tools(setmetatable({ rich = false }, { __index = function(_t, k) return rawget(E, k) end })) == #NE.TOOLS
+                and #E.tools(setmetatable({ rich = true, touch = false }, { __index = function(_t, k) return rawget(E, k) end })) == #NE.TOOLS,
+                "the formatted page on touch has no toolbar row (its bar comes up at the selection); Markdown editing and a keyboard Kindle's formatted page keep the toolbar")
             -- Kindles without a touch screen never draw
             ed.touch, ed.can_draw = false, true
             local no_touch = ed:canDraw()
@@ -9838,9 +9864,10 @@ print("Notes (Memos v0.31)")
             local b = nsrc6:find("\nfunction ", a + 10, true)
             local page = nsrc6:sub(a, b)
             local cards = nsrc6:sub(nsrc6:find("function StickyItem:draw()", 1, true), nsrc6:find("local NoteView = InputContainer", 1, true))
-            check(not page:find("Sticky.hand(", 1, true) and select(2, page:gsub("Notes%.pageFace%(", "")) == 6
+            check(not page:find("Sticky.hand(", 1, true) and select(2, page:gsub("Notes%.pageFace%(", "")) == 2
+                and select(2, page:gsub("Inline%.", "")) >= 4
                 and select(2, cards:gsub("Sticky%.hand%(", "")) >= 5,
-                "a note's page: the editor's font throughout; the Notes tab's sticky notes: still the handwriting font")
+                "a note's page: the editor's font throughout (its words by gzreader_inline.lua, in the same faces); the Notes tab's sticky notes: still the handwriting font")
             check(resrc:find("RichEdit.TEXT_SIZE = " .. Notes.PAGE_TEXT, 1, true) ~= nil
                 and resrc:find("RichEdit.HEADING_SIZE = { " .. table.concat(Notes.PAGE_HEADING, ", ") .. " }", 1, true) ~= nil
                 and nsrc6:find('Font:getFace(bold and "NotoSans-Bold.ttf" or "cfont", size)', 1, true) ~= nil,

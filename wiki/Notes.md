@@ -90,7 +90,10 @@ API to `/api` are found too.
   its top bar, beside **⋮**: a note that is only a drawing opens straight on
   that screen.) Below it, the text
   in the note editor's font (the sticky notes on the
-  Notes tab stay handwritten, in Patrick Hand), checklist items with letter keys
+  Notes tab stay handwritten, in Patrick Hand) and formatted as Memos shows
+  it: bold, italic, struck words, `code` and links (underlined), quotes
+  with a bar at their left, bulleted and numbered lists, rules, and tables
+  with their lines (the head in bold; long cells wrap); checklist items with letter keys
   (press one to tick or untick it; the change goes to Memos), pictures from
   the note shown inline, its tags and place, and its attachments (PDFs and
   other documents open in the reader, pictures in the image viewer; each is
@@ -185,18 +188,31 @@ API to `/api` are found too.
   (for tags) and the arrow keys **← ↑ ↓ →** (hold ← → for the start or end
   of the line, ↑ ↓ to scroll), on every page of the keyboard. The letters
   page then has a **comma** before the full stop, and a wider space bar.
-- **Editor (keyboard Kindles):** a full page with a toolbar at the bottom: List, Check, Num,
-  Head, *I*, **B**, # Tag and Save. **Menu** jumps to the toolbar from
+- **Editor (keyboard Kindles):** the note formatted, as on the touch
+  Kindles: headings big, bold and italic words shown so, links underlined,
+  list items with their bullets and numbers, checklist items with their
+  boxes, pictures shown, a folded section as one row. You type with the
+  Kindle's keys. A toolbar at the bottom has List, Check, Num, Head, *I*,
+  **B**, # Tag and Save; a tool acts on the line or the word the cursor is
+  on (or what's selected). **Menu** jumps to the toolbar from
   anywhere in the text (on the tool used last) and the cursor stays where it
-  is, so the tool applies there; Menu again (or ▲) goes back to the text. ▼
+  is; Menu again (or ▲) goes back to the text. ▼
   from the last line also reaches the toolbar; ◀ ▶ choose, Press applies. Shortcuts:
   Alt+L list, Alt+C checklist, Alt+N numbered, Alt+H heading, Alt+K italic,
-  Alt+B bold, Alt+G tag, Alt+S save, Alt+V who can see it, Alt+A its space.
+  Alt+B bold, Alt+G tag, Alt+S save, Alt+V who can see it, Alt+A its space,
+  **Alt+X** ticks or unticks the checklist item the cursor is on.
+  **Shift + the 5-way** selects (for bold or italic over several words).
+  **Press** is a new line; on a folded section's row it opens the section
+  (and folds it again).
   **Alt+M** opens a menu with who can see it, its space, **Archive note**,
   **Delete note…** and Close. The top of the screen has the note's name, and
   under it who can see it, its space and its tags.
+  Tables, code and quotes are shown in grey as they're written, and saved
+  exactly as they were.
   Alt + the top row types 1–0 here. New notes are **private** unless you
   change it. Back saves (Alt+M → Discard changes leaves without saving).
+  (The Kindle 4 and the quick note's window have a box of Markdown
+  instead, with the same toolbar.)
 - **Pictures in a note** show at the size and place they were given in
   Memos' web editor (dragged smaller, or set left, center or right): the
   same share of the page as of Memos' column. One never sized there shows
