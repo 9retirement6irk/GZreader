@@ -371,6 +371,11 @@ check(body == nil and ferr == "unreachable", "a site that doesn't answer: unreac
 
 ---------------------------------------------------------------- once a day
 print("== once a day")
+-- (the feed's stories dated a few hours ago: with its fixed dates, "Second"
+-- turned older than FRESH a day and a half after they were written)
+local RECENT = RSS:gsub("2026%-11%-16T23:00:00Z", os.date("!%Y-%m-%dT%H:%M:%SZ", os.time() - 3 * 3600))
+    :gsub("Tue, 17 Nov 2026 07:05:00 %-0500", os.date("!%a, %d %b %Y %H:%M:%S GMT", os.time() - 2 * 3600))
+http.answers["https://ok.example.com/rss?key=SECRET"] = { body = RECENT }
 plugin = { store = { daily = { enabled = true, off = {}, feeds = { { url = "https://ok.example.com/rss?key=SECRET", name = "Mine" } } } }, save = function() saves = saves + 1 end }
 for _i, f in ipairs(Daily.DEFAULT_FEEDS) do Daily.setDefaultOn(plugin, f, false) end
 os.remove(Daily.cachePath())
@@ -430,7 +435,7 @@ check(true, "every way it can fail has its words")
 ---------------------------------------------------------------- the screen
 print("== what the screen shows")
 local Paper = require("gzreader_dailyscreen")
-http.answers["https://ok.example.com/rss?key=SECRET"] = { body = RSS }
+http.answers["https://ok.example.com/rss?key=SECRET"] = { body = RECENT }
 plugin.store.daily.feeds = { { url = "https://ok.example.com/rss?key=SECRET", name = "Mine" } }
 Daily.tried_at = nil
 Daily.edition.day = ""
@@ -503,7 +508,7 @@ package.loaded["ui/widget/textviewer"] = { new = function(_s, o) o.kind = "viewe
 items[3].callback()
 local viewer = shown[#shown]
 check(viewer and viewer.kind == "viewer" and viewer.title == "First story & more" and viewer.text:find("Para one is here.", 1, true)
-    and viewer.text:find("^Mine · Tuesday, November 17"), "a story opens as text, its source and day first")
+    and viewer.text:find("^Mine · " .. os.date("%A, %B ", os.time() - 2 * 3600)), "a story opens as text, its source and day first")
 check(viewer.buttons_table[1][1].text == "QR code" and viewer.buttons_table[1][2].text == "Close", "with its link as a QR code, and Close")
 package.loaded["ui/widget/qrmessage"] = { new = function(_s, o) o.kind = "qr"; return o end }
 viewer.buttons_table[1][1].callback()
