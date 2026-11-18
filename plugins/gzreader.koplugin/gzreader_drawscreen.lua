@@ -284,6 +284,7 @@ function DrawScreen:showPage(i, first)
     sk.canvas = self.canvas
     sk.pen_only = self.pen_only
     sk.holes = self.holes
+    sk.pull_zone, sk.pull_distance = self.pull_zone, S(Sketch.PULL_DISTANCE)
     -- (the pen and its width stay as they were from page to page)
     self:syncTool()
     self:repaintCanvas()
@@ -482,8 +483,12 @@ function DrawScreen:layoutBar()
         self.flyout = nil
     end
     for _k, r in pairs(self.frames) do self.holes[#self.holes + 1] = r end
-    if self.sketch then self.sketch.holes = self.holes end
+    -- a pull down from the top bar (or, folded away, the top edge) opens the quick panel
+    self.pull_zone = top > 0 and top or DrawScreen.EDGE()
+    if self.sketch then self.sketch.holes, self.sketch.pull_zone = self.holes, self.pull_zone end
 end
+--- The strip along the top edge a pull down starts in while the top bar is folded away.
+DrawScreen.EDGE = function() return S(24) end
 --- (a panel opens at the button of the same name; these at another's)
 DrawScreen.FLYOUT_ANCHOR = { tags = "tag" }
 
@@ -1141,6 +1146,18 @@ function DrawScreen:apply(out)
         if shown.undo ~= self.sketch:canUndo() or shown.redo ~= self.sketch:canRedo() then self:refreshBar() end
     end
     for _i, tap in ipairs(out.taps) do self:tapAt(tap.x, tap.y) end
+    if out.pull then self:pullPanel() end
+end
+
+--- The quick panel over the drawing (a pull down from the top), as at Home
+--- and in a book. The drawing stays as it is under it; while the panel is
+--- on top it gets the touches (`hook` hands them back to KOReader).
+function DrawScreen:pullPanel()
+    if not self.plugin then return false end
+    if self.flyout then self:setFlyout(nil) end
+    Log.info("drawing: the quick panel pulled down")
+    require("gzreader_panel").show(self.plugin)
+    return true
 end
 
 --- How fresh ink is put on the e-ink screen. A2 (the quickest) only goes
@@ -1733,6 +1750,7 @@ function DrawScreen.show(opts)
     local on_done = opts.on_done
     local w
     w = DrawScreen:new{ pages = pages, start = opts.start, on_cancel = opts.on_cancel, title = opts.title, meta = opts.meta,
+        plugin = opts.plugin, -- (the quick panel, pulled down)
         on_done = on_done and function(res)
             for _i, p in ipairs(gone) do res[#res + 1] = p end
             -- (a new drawing: the name and tags given in the top bar)

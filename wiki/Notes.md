@@ -177,7 +177,9 @@ API to `/api` are found too.
     **⋮ Options** (**New page**, **Erase page**, **Close without saving**)
     and **Done** (keeps the drawings with the note). The small tab under the
     bar **folds the bar away** so you can draw on the top of the page; the
-    tab stays at the top edge to bring it back.
+    tab stays at the top edge to bring it back. **Pull down** from the bar
+    (folded away: from the very top edge) for the [quick
+    panel](Using-GZreader#how-it-opens); the drawing stays as it is.
   - **A new drawing** (**Draw** on the Notes tab) is named and tagged from
     the top bar: tap its name (**Untitled drawing** ✎) to type a title,
     which becomes the note's heading; tap **Tags** for your most used tags

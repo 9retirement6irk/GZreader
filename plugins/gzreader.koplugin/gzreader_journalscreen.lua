@@ -67,6 +67,12 @@ function JournalScreen:init()
     }
     self.state.prompt = Journal.PROMPTS[self.state.prompt_i]
     self.key_events.Close = { { Device.input and Device.input.group and Device.input.group.Back or "Back" } }
+    -- touch: a swipe down from the top opens the quick panel, as at Home and in a book
+    if Touch.on() and self.plugin then
+        self.ges_events = self.ges_events or {}
+        self.ges_events.PullPanel = { require("ui/gesturerange"):new{ ges = "swipe",
+            range = function() return Geom:new{ x = 0, y = 0, w = Screen:getWidth(), h = S(64) } end } }
+    end
     if Touch.keys() then
         self.key_events.GzMood = { { JournalScreen.MOOD_KEYS }, { "Alt", JournalScreen.MOOD_KEYS }, { "Alt", JournalScreen.MOOD_ROW } }
         self.key_events.GzKey = { { { "T", "F", "I", "A", "G", "P", "W", "S" } } }
@@ -235,6 +241,13 @@ function JournalScreen:onClose()
 end
 
 -- ------------------------------------------------------------ keys
+
+--- A swipe down from the top: the quick panel over the entry (kept as it is under it).
+function JournalScreen:onPullPanel(_arg, ges)
+    if not (ges and ges.direction == "south") then return false end
+    require("gzreader_panel").show(self.plugin)
+    return true
+end
 
 function JournalScreen:onGzMood(_args, key)
     local k = type(key) == "table" and key.key or key
@@ -446,9 +459,9 @@ require("gzreader_rotation").follow(JournalScreen, function(w)
     w:rebuild()
 end)
 
---- opts: settings (Journal.settings(…)), on_save(content)
+--- opts: settings (Journal.settings(…)), on_save(content), plugin (the quick panel)
 function JournalScreen.show(opts)
-    local w = JournalScreen:new{ settings = opts.settings, on_save = opts.on_save, prompt_i = opts.prompt_i }
+    local w = JournalScreen:new{ settings = opts.settings, on_save = opts.on_save, prompt_i = opts.prompt_i, plugin = opts.plugin }
     UIManager:show(w, "full")
     return w
 end
