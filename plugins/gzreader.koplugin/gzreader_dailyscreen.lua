@@ -1083,8 +1083,9 @@ function Paper.articleText(item)
     if by ~= "" then parts[#parts + 1] = by end
     if item.text and item.text ~= "" then parts[#parts + 1] = item.text end
     if item.link then
-        parts[#parts + 1] = (not item.text or #item.text < 600)
-            and _("This feed carries only a summary. The whole story is at its link: QR code shows it for your phone.")
+        parts[#parts + 1] = item.full and _("From the story's own page. QR code shows its link for your phone.")
+            or (not item.text or #item.text < 600)
+            and _("This feed carries only a summary, and the story's page gave no more. The whole story is at its link: QR code shows it for your phone.")
             or _("The story's own page: QR code shows its link for your phone.")
     end
     return table.concat(parts, "\n\n")
@@ -1373,6 +1374,18 @@ function Paper.settingsItems(plugin)
                     info(why == "full" and _("Home has no room for it. Turn another widget off in Settings → Home → Widgets first.")
                         or _("Home's widgets can't be changed from here just now. Use Settings → Home → Widgets."))
                 end
+            end,
+        },
+        {
+            text = _("Whole stories"),
+            help_text = _("Many feeds carry only a sentence or two of each story. With this on, such a story's own web page is fetched with the paper and the article taken out of it, as a browser's reader view does, so the paper reads whole with Wi-Fi off. It makes the day's fetch longer (a page a story, up to five minutes in all on a slow Kindle, in the background). Stories behind a paywall, or on pages built by scripts, keep the feed's summary. A story's page can be on another site than its feed (Hacker News links anywhere); that site then also sees this Kindle's internet address."),
+            enabled_func = on,
+            checked_func = function() return on() and D.fullStories(plugin) end,
+            callback = function()
+                local st = D.store(plugin)
+                if st.full == false then st.full = nil else st.full = false end
+                plugin:save()
+                D.feedsChanged()
             end,
         },
         {

@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Daily paper: whole stories, not just the feed's summary", text = "The daily paper now carries whole stories. Many feeds give only a sentence or two of each story; for those, the story's own web page is now fetched with the day's paper and the article taken out of it (as a browser's reader view does), so the paper reads whole with Wi-Fi off. Feeds that already carry whole stories are no longer cut short either (up to about 2,500 words a story). The day's fetch takes longer for it: a page a story, in the background, five minutes at most. Stories behind a paywall or on pages built by scripts keep the feed's summary, and say so. A story's page can be on another site than its feed's, which then also sees this Kindle's internet address; story addresses are not written to the log. Settings → Home → Daily paper → Whole stories (or the setup page's Daily paper tab) turns it off." },
+        },
+    },
+    {
         version = "1.33.0",
         changes = {
             { short = "Drawing: the pencil and the highlighter draw much faster", text = "The pencil and the highlighter were several times slower than the pen: every pixel under the line was read and written through a slow route, several times over. They now write the page's pixels directly, the pencil's texture is looked up instead of worked out for each pixel, and its line is painted in fewer steps. In GZreader's emulator the highlighter's ink takes about a tenth of the time it did and the pencil's about a quarter, close to the pen's. A long stroke's line in the diagnostic log now also says how long each of its frames took to handle." },
