@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Notes: turning a page is quicker: the next page's notes are drawn ahead", text = "Turning a page on the Notes tab had to paint every sticky note of the new page, and that was the slowest thing left on the tab. Now, once the board has been still for half a second, GZreader draws the notes of the next page and of the page before as well (with Scroll up and down on: the rows below and above), one note at a time and only while nothing else is asked of the Kindle, so a page turn only has to show them. On an emulated Paperwhite 3 a page turn takes about a third of the time it did. If you turn pages faster than that, a page is painted as before. Not on the Kindle 2 and DX, which have too little memory to keep two more pages of notes ready." },
+        },
+    },
+    {
         version = "1.32.0",
         changes = {
             { short = "Kindle 2 and DX: notes sync with the web reader's Notes tab through the sync page", text = "Kindles without Wi-Fi (Kindle 2, DX): notes now sync with Grimmory's web reader through the sync page, as they do over Wi-Fi. A note typed on the Kindle shows in the web reader's Notes tab after the next sync, and a note written in the web reader comes to the Kindle with the next sync (on the highlight at that place, or as a highlight of its own). Before, a note made on the Kindle only reached Grimmory inside its highlight, which the web reader doesn't show, and the web reader's notes never came to the Kindle." },

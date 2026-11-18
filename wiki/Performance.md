@@ -74,6 +74,19 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
 - **5-way focus on Home** refreshes only the old and the new focus boxes
   (quick mode), and the Home key from Settings or the audiobook player makes
   one refresh.
+- **The Notes tab's next page is drawn ahead** (`gzreader_notes.lua`): a
+  page turn on the Notes tab had to paint and tilt every note of the new
+  page. Once the board has been still for half a second, the notes of the
+  next page and of the page before (with Scroll up and down: the rows below
+  and above) are now drawn too, one note at a time between whatever else the
+  Kindle is asked to do, so the turn only shows them. Nothing is drawn ahead
+  while a window is over the board or you keep turning, and not at all on
+  the Kindle 2 and DX (it keeps two more pages of note pictures in memory:
+  about 1 MB on a Kindle Keyboard, 9 MB on a Scribe). In the emulator, CPU
+  time for a page turn: Paperwhite 3, Compact 0.28–0.36 s → 0.08–0.11 s,
+  Full 0.14–0.16 s → 0.08–0.13 s, scrolling a screen 0.12–0.18 s →
+  0.06–0.13 s; Kindle Keyboard, Compact 0.25–0.47 s → 0.10–0.14 s; Scribe,
+  Compact 0.34–0.35 s → 0.11–0.23 s.
 - **The Notes tab opens quickly** (`gzreader_notes.lua`, `gzreader_sticky.lua`):
   each sticky note is painted and tilted by a degree or two, pixel by pixel in
   Lua, and that was most of the time the tab took to open (about 3 s on a
