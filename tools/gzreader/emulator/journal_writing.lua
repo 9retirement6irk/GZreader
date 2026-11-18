@@ -1,9 +1,9 @@
 -- A journal entry on a touch Kindle: the words typed right under the prompt
 -- in a plain text box on lined paper (no "Write about it" button), the
 -- keyboard making room for them (Done puts it away); ✎ in the box's corner
--- turns the box into a drawing, drawn right there under the prompt (lined),
--- moved around by a finger on a pen Kindle or the hand tool; Aa goes back to
--- typing; Save sends words and drawing.
+-- opens the drawing screen right under the prompt (lined): the same tools,
+-- writing tools, pinch and pan as a note's drawing; ← back to the entry, Aa
+-- back to typing, and its Save saves the entry, words and drawing.
 --   python3 -I demo/mock_memos.py 18090 --sample --journal &
 --   GZ_EMU_MODEL=pw3 GZ_EMU_TREE=<tree>/koreader run.sh journal_writing.lua <out>
 -- (GZ_EMU_MODEL=scribe too: the pen draws, a finger moves the page.)
@@ -22,15 +22,22 @@ local function journal() return find("gz_journal") end
 local function screen() return find("gz_drawscreen") end
 local function centre(d) return { d.x + math.floor(d.w / 2), d.y + math.floor(d.h / 2) } end
 local function tapAt(E, p) if PEN then E.penTap(p) else E.tap(p) end end
-local function button(id)
+local function buttonWhere(pred)
     local d = screen()
     for _i, b in ipairs(d and d.buttons or {}) do
-        if b.tool.id == id then return { b.rect.x + math.floor(b.rect.w / 2), b.rect.y + math.floor(b.rect.h / 2) } end
+        if pred(b.tool) then return { b.rect.x + d.ox + math.floor(b.rect.w / 2), b.rect.y + d.oy + math.floor(b.rect.h / 2) } end
     end
+end
+local function button(id) return buttonWhere(function(t) return t.id == id end) end
+-- (the page's part of the pane, on the screen: under its top bar, clear of the tools down the side)
+local function area()
+    local d = screen()
+    local p = d.pane
+    return { x = p.x + math.floor(p.w * 0.2), y = p.y + d.top_h + 40, w = math.floor(p.w * 0.6), h = p.h - d.top_h - 80 }
 end
 local function stroke(E, win, fy)
     local pts = {}
-    for i = 0, 10 do pts[#pts + 1] = { win.x + math.floor(win.w * (0.15 + 0.06 * i)), win.y + math.floor(win.h * fy + 15 * math.sin(i)) } end
+    for i = 0, 10 do pts[#pts + 1] = { win.x + math.floor(win.w * (0.1 + 0.08 * i)), win.y + math.floor(win.h * fy + 15 * math.sin(i)) } end
     if PEN then E.pen(pts, 0.4) else E.finger(pts, 0.4) end
 end
 local function drag(E, w)
@@ -78,46 +85,79 @@ end, after = 5 })
 add({ shot = "3-drawing", after = 0.5 })
 add({ fn = function(E)
     local d = screen()
-    local win = d and d.window
-    check(d and win and not d.covers_fullscreen and d.sketch:paper() == "ruled-medium", "✎: a drawing in the box, on lined paper (not a screen of its own)")
-    check(win and win.y > 40 and win.y < require("device").screen:getHeight() / 3, "…right under the prompt (at y " .. tostring(win and win.y) .. ")")
-    check(button("pen") and button("eraser") and button("hand") and button("undo") and button("typing"), "…its tools: pen, eraser, hand, undo, redo, Aa")
+    local p = d and d.pane
+    local sh = require("device").screen:getHeight()
+    check(d and p and d.journal and not d.covers_fullscreen and d.sketch:paper() == "ruled-medium",
+        "✎: the drawing screen, under the entry's prompt, on lined paper")
+    check(p and p.y > 40 and p.y < sh / 3 and p.y + p.h == sh and p.x == 0, "…the prompt above it, the drawing the rest of the screen (from y " .. tostring(p and p.y) .. ")")
+    local all = true
+    for _i, id in ipairs({ "pen", "highlighter", "shape", "text", "eraser", "hand", "undo", "redo", "more", "paper", "pages", "options", "typing", "cancel" }) do
+        if not button(id) then all = false end
+    end
+    check(all, "…the drawing screen's tools: pen, highlighter, shapes, text, eraser, hand, undo, redo, more; paper, pages, options; Aa; ←")
+    local save
+    for _i, b in ipairs(d.buttons) do if b.tool.id == "done" then save = b.tool.label end end
+    check(save == "Save", "…its Save saves the entry (" .. tostring(save) .. ")")
     strokes_before = d and #d.sketch:live() or 0
-    if win then stroke(E, win, 0.5) end
+    tapAt(E, button("pen")) -- (the pen in hand: a tap opens its panel)
 end, after = 3 })
 add({ fn = function(E)
     local d = screen()
-    check(d and #d.sketch:live() == strokes_before + 1, "drawn in the box")
-    pan_before = d and d.pan_y or 0
-    if PEN then drag(E, d.window) else tapAt(E, button("hand")) end -- (a pen Kindle: a finger moves the page)
+    local kinds = {}
+    for _i, b in ipairs(d and d.buttons or {}) do if b.tool.writing then kinds[#kinds + 1] = b.tool.writing end end
+    check(d and d.flyout == "pen" and table.concat(kinds, ",") == "pen,fountain,marker,pencil",
+        "the pen's panel: Pen, Fountain pen, Marker, Pencil (" .. table.concat(kinds, ",") .. ")")
+    tapAt(E, buttonWhere(function(t) return t.writing == "pencil" end))
 end, after = 3 })
 add({ fn = function(E)
     local d = screen()
+    if d.flyout then tapAt(E, button("pen")) end -- (the panel away)
+end, after = 2 })
+add({ fn = function(E)
+    stroke(E, area(), 0.3)
+    if PEN then E.penAway(0.6) end -- (the pen out of range: fingers aren't a resting hand then)
+end, after = 3 })
+add({ fn = function(E)
+    local d = screen()
+    local live = d and d.sketch:live() or {}
+    check(#live == strokes_before + 1 and live[#live].kind == "pencil", "drawn with the pencil")
+    local a = area()
+    local cx, cy = a.x + math.floor(a.w / 2), a.y + math.floor(a.h / 2)
+    E.zoom_was = d.sketch:zoom()
+    E.pinch({ cx - 40, cy }, { cx + 40, cy }, { cx - 160, cy }, { cx + 160, cy }, 0.4)
+end, after = 3 })
+add({ shot = "4-zoomed", after = 0.5 })
+add({ fn = function(E)
+    local d = screen()
+    check(d and d.sketch.zoomed and d.sketch:zoom() > E.zoom_was * 1.5 and #d.sketch:live() == strokes_before + 1,
+        "two fingers spread: the page bigger (" .. string.format("%.2f", d.sketch:zoom()) .. "x), nothing drawn by them")
+    pan_before = d.sketch.oy
+    if PEN then drag(E, area()) else tapAt(E, button("hand")) end -- (a pen Kindle: a finger moves a zoomed page)
+end, after = 3 })
+add({ fn = function(E)
     if not PEN then
+        local d = screen()
         check(d and d.tool == "hand", "the hand tool: in hand")
-        drag(E, d.window)
+        drag(E, area())
     end
 end, after = 3 })
-add({ shot = "4-moved", after = 0.5 })
 add({ fn = function(E)
     local d = screen()
-    check(d and d.pan_y > pan_before and #d.sketch:live() == strokes_before + 1,
-        (PEN and "a finger" or "the hand") .. " dragged up: the page moved under the box (" .. tostring(d and d.pan_y) .. " px), nothing drawn")
+    check(d and d.sketch.oy > pan_before and #d.sketch:live() == strokes_before + 1,
+        (PEN and "a finger" or "the hand") .. " dragged up: the page moved, nothing drawn")
     if not PEN then tapAt(E, button("pen")) end
 end, after = 2 })
-add({ fn = function(E) stroke(E, screen().window, 0.4) end, after = 3 })
+add({ fn = function(E) stroke(E, area(), 0.5) end, after = 3 })
 add({ fn = function(E)
     local d = screen()
     check(d and #d.sketch:live() == strokes_before + 2, "…drawn further down the page")
-    -- a tap outside the box: the journal's (the title row's Done)
-    local j = journal()
-    E.tap(centre(j.buttons["done-writing"].dimen))
+    tapAt(E, button("cancel"))
 end, after = 4 })
 add({ shot = "5-back", after = 0.5 })
 add({ fn = function(E)
     local j = journal()
     check(j and screen() == nil and not j.drawing and j:sheetCount() == 1 and #j:drawings() == 1 and j.input and j.state.body == "Walked to the lake.",
-        "a tap outside the box (Done) goes to the journal: the drawing kept, back to the words, ✎ shows one sheet")
+        "←: back to the whole entry, the drawing kept, the words kept, ✎ shows one sheet")
     E.tap(centre(j.draw_chip.dimen))
 end, after = 5 })
 add({ fn = function(E)
@@ -127,21 +167,28 @@ add({ fn = function(E)
 end, after = 4 })
 add({ fn = function(E)
     local j = journal()
-    check(j and screen() == nil and not j.drawing and j:sheetCount() == 1, "Aa: back to typing")
-    E.tap(centre(j.buttons.save.dimen))
-end, after = 4 })
+    check(j and screen() == nil and not j.drawing and j:sheetCount() == 1 and j.writing and j.input:isKeyboardVisible(),
+        "Aa: back to typing, the keyboard up")
+    j.input:addChars(" Then home.")
+    E.tap(centre(j.draw_chip.dimen))
+end, after = 5 })
+add({ fn = function(E)
+    local d = screen()
+    check(d and #d.sketch:live() == strokes_before + 2, "✎ from the keyboard: the drawing again")
+    tapAt(E, button("done"))
+end, after = 5 })
 add({ fn = function(E)
     local q = plugin().store.memos.queue or {}
     local last = q[#q]
-    local queued = last and last.op == "create" and last.content:find("Walked to the lake.", 1, true) and last.drawings and #last.drawings == 1
+    local queued = last and last.op == "create" and last.content:find("Walked to the lake. Then home.", 1, true) and last.drawings and #last.drawings == 1
     local h = io.popen("curl -s http://127.0.0.1:18090/__state")
     local st = require("json").decode(h:read("*a") or "{}") or {}
     h:close()
     local sent = false
     for _i, m in ipairs(st.memos or {}) do
-        if tostring(m.content):find("Walked to the lake.", 1, true) and #(m.attachments or {}) == 1 then sent = true end
+        if tostring(m.content):find("Walked to the lake. Then home.", 1, true) and #(m.attachments or {}) == 1 then sent = true end
     end
-    check(journal() == nil and (queued or sent), "Save: the entry's words and its drawing together (" .. (sent and "in Memos" or "queued") .. ")")
+    check(journal() == nil and (queued or sent), "the drawing screen's Save: the entry saved, its words and its drawing together (" .. (sent and "in Memos" or "queued") .. ")")
     local f = io.open(E.out .. "/journal-writing-checks.txt", "w")
     f:write(table.concat(lines, "\n") .. "\n")
     f:close()

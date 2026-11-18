@@ -11,15 +11,15 @@ journaling mode on a Kindle (words and writing: gzreader_journal.lua).
   A prompt, Another prompt
   ┌───────────────────────────── [✎] ┐   touch Kindles: the entry's words,
   │ typed here, plain text, on lined │   typed right under the prompt; ✎ in
-  │ paper ─────────────────────────  │   the corner turns the box into a
-  └──────────────────────────────────┘   drawing (lined), drawn right there
+  │ paper ─────────────────────────  │   the corner opens the drawing screen
+  └──────────────────────────────────┘   under the prompt
   Save
 
 Touch Kindles: a tap in the box brings the keyboard and makes room for it
-(only the prompt and the words above it, Done puts it away). ✎ draws in the
-same box (gzreader_drawscreen.lua's inline mode: a window onto a page as big
-as the screen, moved by a finger on a pen Kindle or the hand tool; Aa goes
-back to typing). The drawings go with the entry as the note's drawings. Kindles with keys: W writes in a
+(only the prompt and the words above it, Done puts it away). ✎ opens the
+drawing screen under the prompt (gzreader_drawscreen.lua in a pane: every
+tool, pinch and move, pages and paper, as a note's drawing); its ← goes back
+to the entry, Aa to typing, Save saves the entry. The drawings go with the entry as the note's drawings. Kindles with keys: W writes in a
 box of its own, as before.
 
 The entry is saved as an ordinary note (its mood and activities as tags), so
@@ -300,17 +300,21 @@ function JournalScreen:stopWriting(quiet)
     if not quiet then self:rebuild("write") end
 end
 
---- ✎ in the box's corner: the box turns into the entry's drawing, on lined
---- paper, drawn right there under the prompt (its pages, once drawn).
+--- ✎ in the box's corner: the entry's drawing, on lined paper, in the whole
+--- drawing screen (every tool, pinch and move) under the prompt; its Save
+--- saves the entry (its pages, once drawn).
 function JournalScreen:startDrawing()
     if self.drawing then return end
     self:stopWriting(true)
     self.drawing = true
-    Log.info("journal: drawing inline,", self.pages and #self.pages or 0, "page(s) so far")
+    Log.info("journal: drawing,", self.pages and #self.pages or 0, "page(s) so far")
     self:rebuild("draw")
 end
 
---- The inline drawing over the box at `rect` (screen pixels).
+--- The drawing screen in `rect` (screen pixels: under the prompt), as the
+--- note's drawing screen is, but for this entry: ← goes back to the entry, Aa
+--- to typing, Save saves the entry. (It was a small box with a few tools;
+--- the owner, 2026-11-17: the same tools, pinch and pan as the regular one.)
 function JournalScreen:openDrawing(rect)
     if self.drawing_open then return self.drawing_open end
     local pages = self.pages
@@ -329,17 +333,31 @@ function JournalScreen:openDrawing(rect)
         plugin = self.plugin,
         pages = pages,
         title = _("Journal"),
-        inline = { rect = rect },
+        pane = { x = rect.x, y = rect.y, w = rect.w, h = rect.h },
+        journal = { under = self },
         on_done = function(res)
-            res.reordered, res.title, res.tags = nil, nil, nil
+            local after = res.after
+            res.reordered, res.title, res.tags, res.after = nil, nil, nil, nil
             local kept = {}
             for _i, p in ipairs(res) do if not p.removed then kept[#kept + 1] = p end end
             if #kept > 0 then self.pages = kept end
             self.drawing_open = nil
             if self.drawing then
-                -- (Aa: back to typing)
                 self.drawing = false
-                if not self.finishing then self:rebuild("draw") end
+                if self.finishing then return end
+                if after == "save" then
+                    -- (the drawing's Save: the entry saved, drawing and all)
+                    Log.info("journal: saved from the drawing screen")
+                    self:save()
+                    return
+                end
+                self:rebuild("draw")
+                if after == "typing" then
+                    -- (Aa: the keyboard up for the words)
+                    UIManager:nextTick(function()
+                        if self.input and self:isShown() then self.input:onShowKeyboard() end
+                    end)
+                end
             end
         end,
         on_cancel = function()
@@ -392,19 +410,9 @@ function JournalScreen.paintRules(input, bb, x, y)
 end
 
 --- The words' box: plain text (KOReader's InputText), lined, `h` high, with
---- ✎ in its top right corner (and how many sheets, once drawn). Drawing:
---- the same place, empty, for the inline drawing laid over it (`at`: where
---- the box's top left corner is on the screen).
-function JournalScreen:writingBox(width, h, at)
+--- ✎ in its top right corner (and how many sheets, once drawn).
+function JournalScreen:writingBox(width, h)
     local screen = self
-    if self.drawing then
-        local rect = Geom:new{ x = at.x, y = at.y, w = width + 2 * S(4) + 2 * Size.border.thin, h = h + 2 * S(4) + 2 * Size.border.thin }
-        self.drawing_box = rect
-        UIManager:nextTick(function()
-            if screen.drawing and not screen.drawing_open and screen:isShown() then screen:openDrawing(rect) end
-        end)
-        return VerticalSpan:new{ width = rect.h }
-    end
     if self.input then
         if self.input.onCloseKeyboard then pcall(self.input.onCloseKeyboard, self.input) end
         self.input = nil
@@ -804,10 +812,11 @@ function JournalScreen:build()
     -- title: ✕ Journal · the date … Save
     local date = Journal.heading(os.time()):gsub(", %d%d%d%d$", "")
     -- (writing: Done in place of ✕, the keyboard away and the whole entry back)
-    local busy = self.writing or self.drawing
+    if self.inline and self.drawing then return self:buildDrawing(sw, sh, margin, inner) end
+    local busy = self.writing
     local close_w = busy and S(84) or S(44)
     local close = busy and self:button("done-writing", _("Done"), close_w, function()
-            if self.drawing then self:stopDrawing() else self:stopWriting() end
+            self:stopWriting()
         end, false, 17)
         or self:button("close", "\u{2715}", close_w, function() self:onClose() end, false, 18)
     local save = self:button("save", _("Save"), S(84), function() self:save() end, true, 18)
@@ -818,16 +827,16 @@ function JournalScreen:build()
         HorizontalSpan:new{ width = S(10) }, save }
     self.layout[#self.layout + 1] = { close, save }
     gap(10)
-    if self.inline and (self.writing or self.drawing) then
-        -- writing: the prompt, and the words over the keyboard; drawing: the prompt, and the drawing under it
+    if self.inline and self.writing then
+        -- writing: the prompt, and the words over the keyboard
         if set.showPrompt then
             col[#col + 1] = TextBoxWidget:new{ text = st.prompt, face = Font:getFace("cfont", 17), width = inner, bold = true }
             gap(6)
         end
         local kb = self.input and self.input.keyboard
-        local kb_h = self.drawing and 0 or (kb and kb.dimen and kb.dimen.h or math.floor(sh * 0.4))
+        local kb_h = kb and kb.dimen and kb.dimen.h or math.floor(sh * 0.4)
         local used = col:getSize().h + S(10)
-        col[#col + 1] = self:writingBox(inner - 2 * S(4), sh - used - kb_h - S(18), { x = margin, y = used })
+        col[#col + 1] = self:writingBox(inner - 2 * S(4), sh - used - kb_h - S(18))
         return self:finish(col, sw, sh, margin)
     end
     if self.inline then return self:buildWeb(col, inner, sw, sh, margin, gap, label) end
@@ -921,7 +930,7 @@ function JournalScreen:build()
         -- the words, right under the prompt: the rest of the page, lined
         gap(6)
         local used = col:getSize().h + S(10)
-        col[#col + 1] = self:writingBox(inner - 2 * S(4), math.max(S(JournalScreen.MIN_BOX), sh - used - S(24)), { x = margin, y = used })
+        col[#col + 1] = self:writingBox(inner - 2 * S(4), math.max(S(JournalScreen.MIN_BOX), sh - used - S(24)))
         return self:finish(col, sw, sh, margin)
     end
     if written ~= "" then
@@ -938,6 +947,25 @@ function JournalScreen:build()
         gap(8)
         label(_("The 5-way moves, Press picks. Back closes."), true)
     end
+    return self:finish(col, sw, sh, margin)
+end
+
+--- Drawing: the prompt at the top, and under it the drawing screen (its own
+--- top bar, tools and pages), opened once this is shown.
+function JournalScreen:buildDrawing(sw, sh, margin, inner)
+    local col = VerticalGroup:new{ align = "left" }
+    self.layout, self.buttons = {}, {}
+    local st, set = self.state, self.settings
+    if set.showPrompt and st.prompt and st.prompt ~= "" then
+        col[#col + 1] = TextBoxWidget:new{ text = st.prompt, face = Font:getFace("cfont", 17), width = inner, bold = true }
+    end
+    local used = col:getSize().h > 0 and (S(10) + col:getSize().h + S(10)) or 0
+    local rect = Geom:new{ x = 0, y = used, w = sw, h = sh - used }
+    self.drawing_box = rect
+    local screen = self
+    UIManager:nextTick(function()
+        if screen.drawing and not screen.drawing_open and screen:isShown() then screen:openDrawing(rect) end
+    end)
     return self:finish(col, sw, sh, margin)
 end
 
@@ -1001,7 +1029,7 @@ function JournalScreen:buildWeb(col, inner, sw, sh, margin, gap, label)
     end
     gap(6)
     local used = col:getSize().h + S(10)
-    col[#col + 1] = self:writingBox(inner - 2 * S(4), math.max(S(JournalScreen.MIN_BOX), sh - used - S(24)), { x = margin, y = used })
+    col[#col + 1] = self:writingBox(inner - 2 * S(4), math.max(S(JournalScreen.MIN_BOX), sh - used - S(24)))
     return self:finish(col, sw, sh, margin)
 end
 
