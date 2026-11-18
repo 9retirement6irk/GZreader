@@ -64,7 +64,17 @@ seldom: its newest story is shown rather than nothing.
 ## Choosing feeds
 
 A feed is a site's list of its newest stories (RSS or Atom); most news sites
-and blogs have one. **Settings → Home → Daily paper → Feeds**:
+and blogs have one.
+
+**From your phone or computer** (the easy way to paste addresses):
+**Settings → Home → Daily paper → Set up from a browser (QR code)** opens the
+[setup page](Setup-Page-and-Connections) at its **Daily paper** tab. Scan the
+code, or open the address shown on a computer on the same Wi‑Fi. There you
+can turn the paper on or off, take it off the bookshelf, tick the feeds
+GZreader comes with, paste your own (one per line, as in `feeds.txt` below),
+and remove them. **Save**, then press Back on the Kindle.
+
+**On the Kindle**: **Settings → Home → Daily paper → Feeds**:
 
 - GZreader comes with a few to tick, by section: BBC News (World, Technology,
   Science), NPR, Ars Technica, NASA, Literary Hub, Atlas Obscura, NPR Strange

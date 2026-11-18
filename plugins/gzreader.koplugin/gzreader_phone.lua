@@ -183,6 +183,9 @@ local function state(S, flash)
         st.house = { connected = hs.server ~= nil and hs.token ~= nil, name = hs.name, host = host(hs.server),
             form = sec == "house" and flash.form or { server = hs.server }, error = sec == "house" and flash.error or nil }
     end
+    -- the daily paper (gzreader_daily.lua): not on the Kindles without Wi-Fi
+    st.paper = require("gzreader_daily").pageState(plugin)
+    if st.paper and sec == "paper" then st.paper.error = flash.error end
     st.start = S.opts.section or "grimmory"
     -- diagnostics: the log, while diagnostic logging is on
     if store.logging_disabled ~= true then st.diagnostics = { level = store.log_level } end
@@ -565,6 +568,32 @@ function Phone.open(plugin, opts)
         toast(_("House: disconnected from Home Assistant."))
         return back({ ok = true, text = _("Disconnected from Home Assistant."), section = "house" })
     end
+    -- the daily paper: its switches and feeds (addresses are never logged)
+    routes["/paper"] = function(form)
+        require("gzreader_daily").pageSave(plugin, form)
+        plugin:save()
+        S.changes.paper = true
+        return back({ ok = true, text = _("Saved. The paper is made again the next time Home is shown."), section = "paper" })
+    end
+    routes["/paper/add"] = function(form)
+        local added, skipped = require("gzreader_daily").pageAdd(plugin, form.feeds)
+        if added == 0 then
+            return back({ section = "paper", error = _("No feed was added: each line needs a feed's address (https://…), one that isn't in the paper already.") })
+        end
+        plugin:save()
+        S.changes.paper = true
+        Log.info("daily paper:", added, "feeds added from the setup page")
+        return back({ ok = true, section = "paper", text = skipped > 0
+            and T(_("%1 feeds added; %2 lines weren't feeds, or were there already."), added, skipped) or T(_("%1 feeds added."), added) })
+    end
+    routes["/paper/remove"] = function(form)
+        if not require("gzreader_daily").pageRemove(plugin, form.n, form.count) then
+            return back({ section = "paper", error = _("The list changed meanwhile: look again and remove the one you meant.") })
+        end
+        plugin:save()
+        S.changes.paper = true
+        return back({ ok = true, text = _("Removed."), section = "paper" })
+    end
     routes["/memos"] = function(form)
         local ok, err = Notes().connect(plugin, form.server, form.token)
         if not ok then
@@ -916,6 +945,10 @@ function Phone.afterClose(S)
     if ch.music then
         local ps = plugin.store.plex or {}
         lines[#lines + 1] = ps.token and T(_("Music: signed in to Plex as %1."), ps.username or "?") or _("Music: signed out of Plex.")
+    end
+    if ch.paper then
+        lines[#lines + 1] = require("gzreader_daily").enabled(plugin) and _("Daily paper: on, its feeds as you set them.") or _("Daily paper: off.")
+        pcall(function() require("common/gz_view").redrawHome() end)
     end
     if ch.house then
         local hs = plugin.store.homeassistant or {}
