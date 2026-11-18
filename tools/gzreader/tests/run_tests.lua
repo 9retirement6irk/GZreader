@@ -9603,6 +9603,17 @@ print("Notes (Memos v0.31)")
                 and dsrcs:find('if self.pane and not self.journal then pcall(function() require("gzreader_splitview").closed(self) end) end', 1, true) ~= nil
                 and dsrcs:find('x, y = ges.pos.x - self.ox, ges.pos.y - self.oy', 1, true) ~= nil,
                 "split view: the drawing screen passes the book's touches on, works from its pane's corner, and gives the book its screen back when it closes")
+            -- the Scribe's pen mode and the partial repaint (penmode_test.lua and emulator/pen_mode.lua, partial_repaint.lua check them working)
+            check(dsrcs:find('self.pen_fast = self.pen_only and require("gzreader_penmode").supported(Device)', 1, true) ~= nil
+                and dsrcs:find('fast = PenMode.ink(Screen, rects)', 1, true) ~= nil
+                and dsrcs:find('if self.pen_fast and require("gzreader_penmode").on then', 1, true) ~= nil
+                and dsrcs:find('UIManager:scheduleIn(DrawScreen.SETTLE, self._settle_timer)', 1, true) ~= nil
+                and dsrcs:find('local st = PenMode.unhook()', 1, true) ~= nil,
+                "drawing: on the Scribe a stroke's ink goes out in the display's pen mode; what a stroke leaves to do waits for a pause; pen mode off when the screen closes")
+            check(dsrcs:find('if out.view or not self:repaintArea(out.area) then self:redrawAll() end', 1, true) ~= nil
+                and dsrcs:find('if self:repaintArea(area) then self:refreshBar() else self:redrawAll() end', 1, true) ~= nil
+                and dsrcs:find('if not area or sk.zoomed then return false end', 1, true) ~= nil,
+                "drawing: a rubbed-out stroke, an Undo, a Redo draw and refresh only their part of the page (all of it when zoomed in)")
             -- a journal entry's drawing: the same drawing screen, in a pane under the prompt
             local jsrc = io.open(PLUGIN .. "/gzreader_journalscreen.lua"):read("*a")
             check(jsrc:find('pane = { x = rect.x, y = rect.y, w = rect.w, h = rect.h },', 1, true) ~= nil

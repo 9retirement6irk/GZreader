@@ -154,8 +154,8 @@ add({ fn = function(E)
 end, after = 3 })
 add({ shot = "7-more-panel", after = 0.5 })
 add({ fn = function(E)
-    check(screen().flyout == "more" and ids("flyout"):find("^side") ~= nil and (not PEN or ids("flyout") == "side,shortcut"),
-        "More: Move to right side" .. (PEN and ", Stylus shortcut" or "") .. " (" .. ids("flyout") .. ")")
+    check(screen().flyout == "more" and ids("flyout"):find("^side") ~= nil and (not PEN or ids("flyout") == "side,shortcut,penmode"),
+        "More: Move to right side" .. (PEN and ", Stylus shortcut, Fast ink (the Scribe's pen mode)" or "") .. " (" .. ids("flyout") .. ")")
     tap(E, (button("side")))
 end, after = 3 })
 add({ fn = function(E)

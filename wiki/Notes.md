@@ -218,12 +218,19 @@ API to `/api` are found too.
       page and moves it; nothing is drawn. For a page you've zoomed in on.
     - **Undo**, **Redo**, and **⋮**: **Move to right side** (for the other
       hand; kept) and, with a pen, **Stylus shortcut** (what the pen's side
-      button does; each tap takes the next tool).
+      button does; each tap takes the next tool) and, on the Kindle Scribe,
+      **Fast ink (Kindle pen mode)**: on, the line is put on the screen
+      through the display's own pen mode, as the Kindle's notebook does, so
+      it keeps up with the pen. While you write nothing else on the screen
+      is touched; what a stroke leaves to do (a highlighter's grey, Undo
+      waking up) happens when you pause for half a second. Turn it off if
+      the ink ever looks wrong.
     - The **round button** above the tools folds them into one dark button
       showing the tool in hand; tap it to bring them back.
     The pencil's specks go on as you draw and stay as they are; the
     highlighter shows as a light pattern while you draw and turns grey when
-    you lift. In Memos the note shows the page as the Kindle drew it, the
+    you lift (with Fast ink: when you pause). Rubbing out a stroke, Undo
+    and Redo redraw and refresh only that stroke's part of the page. In Memos the note shows the page as the Kindle drew it, the
     pencil's texture included. In Memos' own drawing editor the pencil's
     strokes are plain see-through lines you can move and erase; a drawing
     saved from there shows them that way until it's opened and saved on the
