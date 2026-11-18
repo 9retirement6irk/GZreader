@@ -176,6 +176,76 @@ function Daily.feeds(plugin)
     return out
 end
 
+---------------------------------------------------------------- the setup page (gzreader_phone.lua)
+
+--- What the setup page's Daily paper section shows: nil on a Kindle
+--- without Wi-Fi. Your own feeds by name and site, never their addresses
+--- (some carry a key).
+function Daily.pageState(plugin)
+    if Daily.noWifi() then return nil end
+    local st = Daily.store(plugin)
+    local defaults, own = {}, {}
+    for _i, f in ipairs(Daily.DEFAULT_FEEDS) do
+        defaults[#defaults + 1] = { id = f.id, topic = Daily.topicLabel(f.topic), name = f.name, site = Daily.site(f.url),
+            on = Daily.defaultOn(plugin, f) }
+    end
+    for i, f in ipairs(st.feeds) do
+        own[#own + 1] = { n = i, name = f.name, site = Daily.site(f.url), topic = f.topic, on = f.enabled ~= false }
+    end
+    local edition = Daily.load()
+    return { enabled = st.enabled == true, shelf = st.shelf ~= false, defaults = defaults, own = own, max = Daily.MAX_FEEDS,
+        stories = edition and Daily.count(edition) or nil, day = edition and edition.day or nil }
+end
+
+--- The section's Save: the switches and which feeds are ticked (a box that
+--- isn't ticked isn't sent: `form.d_<id>`, `form.f_<n>` = "1" when ticked;
+--- `form.count` = how many of your feeds the page showed, so a page that's
+--- out of date doesn't untick the wrong ones).
+function Daily.pageSave(plugin, form)
+    local st = Daily.store(plugin)
+    st.enabled = form.enabled == "1" or nil
+    if form.shelf == "1" then st.shelf = nil else st.shelf = false end
+    for _i, f in ipairs(Daily.DEFAULT_FEEDS) do Daily.setDefaultOn(plugin, f, form["d_" .. f.id] == "1") end
+    if tonumber(form.count) == #st.feeds then
+        for i, f in ipairs(st.feeds) do
+            if form["f_" .. i] == "1" then f.enabled = nil else f.enabled = false end
+        end
+    end
+    Daily.feedsChanged()
+    return true
+end
+
+--- Feeds pasted into the section (feeds.txt's lines). Returns how many
+--- were added and how many lines weren't (not an address, there already,
+--- or past the most the paper takes).
+function Daily.pageAdd(plugin, text)
+    local added, wanted = 0, 0
+    for line in tostring(text or ""):gsub("\r", ""):gmatch("[^\n]+") do
+        if line:match("%S") and not line:match("^%s*#") then wanted = wanted + 1 end
+    end
+    for _i, e in ipairs(Daily.parseFeedLines(text)) do
+        if Daily.addFeed(plugin, e.url, e.name, e.topic) then added = added + 1 end
+    end
+    if added > 0 then Daily.feedsChanged() end
+    return added, wanted - added
+end
+
+--- Remove your feed number `n` (of `count`, as the page showed them).
+function Daily.pageRemove(plugin, n, count)
+    local st = Daily.store(plugin)
+    n = tonumber(n)
+    if not n or tonumber(count) ~= #st.feeds or not st.feeds[n] then return false end
+    table.remove(st.feeds, n)
+    Daily.feedsChanged()
+    return true
+end
+
+--- The feeds or the switches changed: today's paper is made again at the next look.
+function Daily.feedsChanged()
+    Daily.tried_at = nil
+    if Daily.edition then Daily.edition.day = "" end
+end
+
 ---------------------------------------------------------------- an edition
 
 --- The paper's day: a new one starts at EDITION_HOUR (reading past midnight

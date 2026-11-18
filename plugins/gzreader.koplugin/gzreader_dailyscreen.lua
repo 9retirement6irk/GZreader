@@ -900,9 +900,7 @@ end
 local function changedFeeds(plugin)
     plugin:save()
     -- (today's paper is made again from the new list at the next look)
-    local D = Daily()
-    D.tried_at = nil
-    if D.edition then D.edition.day = "" end
+    Daily().feedsChanged()
 end
 
 function Paper.typeAddFeed(plugin, after)
@@ -979,6 +977,7 @@ function Paper.feedItems(plugin)
     items[#items + 1] = { text = _("Add a feed"), keep_menu_open = true, callback = function(touchmenu)
         Paper.typeAddFeed(plugin, function() if touchmenu and touchmenu.updateItems then touchmenu:updateItems() end end)
     end }
+    items[#items + 1] = { text = _("Add from a browser (QR code)"), keep_menu_open = true, callback = function() Paper.browserSetup(plugin) end }
     items[#items + 1] = { text = _("Add from feeds.txt"), keep_menu_open = true, callback = function(touchmenu)
         local added, where = Paper.importFile(plugin)
         if not added then return info(where) end
@@ -990,6 +989,13 @@ function Paper.feedItems(plugin)
         info(_("A feed is a site's list of its newest stories (RSS or Atom); most news sites and blogs have one. Tick the ones GZreader comes with, or add your own: type its address, or put a feeds.txt in the GZreader folder with one address per line (\"Name | address\", or \"Topic | Name | address\"). Hold one of your own feeds to remove it.\n\nThe paper shows what a feed carries: some carry whole stories, many only a summary."))
     end }
     return items
+end
+
+--- The setup page (gzreader_phone.lua) at its Daily paper section.
+function Paper.browserSetup(plugin)
+    require("gzreader_net").run(function()
+        require("gzreader_phone").open(plugin, { section = "paper" })
+    end, { reason = "setting up the daily paper" })
 end
 
 --- Settings → Home → Daily paper.
@@ -1041,7 +1047,13 @@ function Paper.settingsItems(plugin)
                 end
             end,
         },
-        { text = _("Feeds"), enabled_func = on, sub_item_table_func = function() return Paper.feedItems(plugin) end, separator = true },
+        { text = _("Feeds"), enabled_func = on, sub_item_table_func = function() return Paper.feedItems(plugin) end },
+        {
+            text = _("Set up from a browser (QR code)"),
+            help_text = _("Opens the setup page at Daily paper: scan the code with your phone (or open the address on a computer on the same Wi-Fi) to tick feeds and paste your own, instead of typing them here."),
+            keep_menu_open = true, separator = true,
+            callback = function() Paper.browserSetup(plugin) end,
+        },
         { text = _("Read the paper"), enabled_func = on, keep_menu_open = true, callback = function() Paper.show(plugin) end },
         { text_func = function() return T(_("Fetch now (%1)"), Paper.statusText(plugin)) end, enabled_func = on, keep_menu_open = true,
           callback = function() Paper.refresh(plugin) end },

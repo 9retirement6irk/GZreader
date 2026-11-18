@@ -535,8 +535,8 @@ row("Daily paper").callback()
 check(not Daily.enabled(plugin) and home.rows.enabled.daily_paper == false and not Paper.onShelf(plugin), "the paper turned off: its row and the shelf's newspaper go too")
 row("Daily paper").callback()
 local feed_rows = Paper.feedItems(plugin)
-local n_rows = #Daily.DEFAULT_FEEDS + #plugin.store.daily.feeds + 3
-check(#feed_rows == n_rows and feed_rows[1].text == "World: " .. Daily.DEFAULT_FEEDS[1].name, "Feeds: GZreader's by topic, yours, Add a feed, Add from feeds.txt, About feeds")
+local n_rows = #Daily.DEFAULT_FEEDS + #plugin.store.daily.feeds + 4
+check(#feed_rows == n_rows and feed_rows[1].text == "World: " .. Daily.DEFAULT_FEEDS[1].name, "Feeds: GZreader's by topic, yours, Add a feed, Add from a browser, Add from feeds.txt, About feeds")
 local was = feed_rows[1].checked_func()
 feed_rows[1].callback()
 check(feed_rows[1].checked_func() == (not was) and Daily.tried_at == nil, "a tick changes the feed; the paper is made again at the next look")
@@ -560,6 +560,51 @@ net.usb = true
 rows = Paper.settingsItems(plugin)
 check(#rows == 1 and rows[1].enabled == false and rows[1].text:find("Wi-Fi", 1, true), "a Kindle without Wi-Fi: Settings says the paper needs it")
 net.usb = false
+
+print("== the setup page (a browser on your Wi-Fi)")
+plugin = { store = { daily = { enabled = true, feeds = { { url = "https://ok.example.com/rss?key=SECRET", name = "Mine" }, { url = "https://two.example.com/feed" } } } }, save = function() end }
+Daily.edition, Daily.loaded, Daily.tried_at = { day = "x", sections = { { topic = "World", items = { {}, {} } } } }, true, 5
+local ps = Daily.pageState(plugin)
+check(ps.enabled and ps.shelf and #ps.defaults == #Daily.DEFAULT_FEEDS and #ps.own == 2 and ps.own[1].name == "Mine" and ps.own[1].site == "ok.example.com"
+    and ps.stories == 2, "the page's state: the switches, GZreader's feeds, yours by name and site")
+check(not dkjson.encode(ps):find("SECRET", 1, true) and not dkjson.encode(ps):find("key=", 1, true) and not dkjson.encode(ps):find("https:", 1, true), "… never a feed's address")
+local PairPage = dofile(PLUGIN .. "/gzreader_pairpage.lua")
+local html = PairPage.hub({ base = "/t", paper = ps, start = "paper" })
+check(html:find('<section id="paper"', 1, true) and html:find('data-tab="paper"', 1, true) and html:find('name="d_' .. Daily.DEFAULT_FEEDS[1].id .. '" value="1" checked', 1, true)
+    and html:find('name="f_1" value="1" checked', 1, true) and html:find('name="feeds"', 1, true) and html:find("Remove Mine (ok.example.com)", 1, true),
+    "the page has a Daily paper tab: switches, every feed with its tick, a box to paste feeds, Remove")
+check(not html:find("SECRET", 1, true), "the page shows no feed address")
+check(not PairPage.hub({ base = "/t" }):find('id="paper"', 1, true), "a Kindle without Wi-Fi: no such tab")
+local form = { enabled = "1", count = "2", f_2 = "1" }
+form["d_" .. Daily.DEFAULT_FEEDS[2].id] = "1"
+Daily.pageSave(plugin, form)
+local st2 = plugin.store.daily
+check(st2.enabled == true and st2.shelf == false and st2.feeds[1].enabled == false and st2.feeds[2].enabled == nil, "Save: the switches and your feeds' ticks as sent (an unticked box isn't sent)")
+check(Daily.defaultOn(plugin, Daily.DEFAULT_FEEDS[2]) and not Daily.defaultOn(plugin, Daily.DEFAULT_FEEDS[1]) and Daily.tried_at == nil and Daily.edition.day == "",
+    "… GZreader's feeds too; the paper is made again at the next look")
+Daily.pageSave(plugin, { enabled = "1", shelf = "1", count = "1", f_1 = "1" })
+check(st2.feeds[1].enabled == false and st2.shelf == nil, "a page that's out of date (another count of feeds) doesn't change your feeds' ticks")
+Daily.pageSave(plugin, { shelf = "1", count = "2" })
+check(st2.enabled == nil and not Daily.enabled(plugin), "Save with Daily paper unticked: off")
+local added_n, skipped_n = Daily.pageAdd(plugin, "Tea | tea.example.com/feed\r\n# note\n\nnot a feed\nhttps://two.example.com/feed\nCrafts | Knit | https://knit.example.com/atom.xml\n")
+check(added_n == 2 and skipped_n == 2 and #st2.feeds == 4 and st2.feeds[3].name == "Tea" and st2.feeds[4].topic == "Crafts",
+    "feeds pasted: 2 added, 2 lines not (not an address, there already); comments and empty lines don't count")
+check(Daily.pageRemove(plugin, "3", "4") == true and #st2.feeds == 3 and st2.feeds[3].name == "Knit", "Remove: the one you chose")
+check(Daily.pageRemove(plugin, "3", "4") == false and Daily.pageRemove(plugin, "9", "3") == false and Daily.pageRemove(plugin, "x", "3") == false and #st2.feeds == 3,
+    "Remove from a page that's out of date, or of a feed that isn't there: nothing")
+net.usb = true
+check(Daily.pageState(plugin) == nil, "a Kindle without Wi-Fi: nothing for the page")
+net.usb = false
+local phone = read(PLUGIN .. "/gzreader_phone.lua")
+check(phone:find('routes["/paper"]', 1, true) and phone:find('routes["/paper/add"]', 1, true) and phone:find('routes["/paper/remove"]', 1, true)
+    and phone:find('require("gzreader_daily").pageState(plugin)', 1, true), "the setup page's server has the section's state and its three forms")
+check(not phone:match('routes%["/paper/add"%].-Log%.[a-z]+%([^\n]*form%.feeds'), "… and logs no pasted address")
+rows = Paper.settingsItems(plugin)
+plugin.store.daily.enabled = true
+local opened
+package.loaded["gzreader_phone"] = { open = function(_p, opts) opened = opts end }
+row("Set up from a browser").callback()
+check(opened and opened.section == "paper", "Settings → Home → Daily paper → Set up from a browser opens the page at Daily paper")
 
 print("== wired in")
 local main = read(PLUGIN .. "/main.lua")

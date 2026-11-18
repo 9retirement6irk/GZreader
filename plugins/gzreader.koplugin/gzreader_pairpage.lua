@@ -246,6 +246,59 @@ local function houseSection(st, base)
     return table.concat(parts)
 end
 
+-- The daily paper (gzreader_daily.lua): on/off, on the shelf, which feeds.
+local function paperSection(st, base)
+    local p = st.paper
+    if not p then return "" end
+    local function tick(name, on, label)
+        return '<label class="check"><input type="checkbox" name="' .. esc(name) .. '" value="1"' .. (on and " checked" or "") .. "> " .. label .. "</label>"
+    end
+    local parts = { '<section id="paper" class="tab"><h2>Daily paper</h2>',
+        '<p class="what">A newspaper on Home\'s bookshelf, put together once a day from the news feeds you tick (a feed is a site\'s list of its newest stories: RSS or Atom). The Kindle fetches them itself over Wi‑Fi, from 5 in the morning, and keeps the paper to read with Wi‑Fi off.</p>' }
+    parts[#parts + 1] = status(p.enabled, p.enabled and (p.stories and ("On · the last paper has " .. esc(p.stories) .. " stories") or "On · no paper fetched yet") or "Off")
+    if p.error then parts[#parts + 1] = '<p class="err">' .. esc(p.error) .. "</p>" end
+    local rows = { tick("enabled", p.enabled, "<b>Daily paper</b>"), tick("shelf", p.shelf, "Show it on Home's bookshelf") }
+    local topic
+    for _i, f in ipairs(p.defaults or {}) do
+        if f.topic ~= topic then
+            topic = f.topic
+            rows[#rows + 1] = '<p style="font-size:14px;margin:12px 0 4px"><b>' .. esc(topic) .. "</b></p>"
+        end
+        rows[#rows + 1] = tick("d_" .. f.id, f.on, esc(f.name) .. ' <span style="font-size:13px;color:var(--muted)">' .. esc(f.site) .. "</span>")
+    end
+    if #(p.own or {}) > 0 then
+        rows[#rows + 1] = '<p style="font-size:14px;margin:12px 0 4px"><b>Your feeds</b></p>'
+        for _i, f in ipairs(p.own) do
+            rows[#rows + 1] = tick("f_" .. f.n, f.on, esc(f.name or f.site) .. ' <span style="font-size:13px;color:var(--muted)">' .. esc(f.site)
+                .. (f.topic and (" · " .. esc(f.topic)) or "") .. "</span>")
+        end
+    end
+    rows[#rows + 1] = '<input type="hidden" name="count" value="' .. #(p.own or {}) .. '">'
+    rows[#rows + 1] = '<button type="submit" style="margin-top:12px">Save</button>'
+    parts[#parts + 1] = form(base .. "/paper", table.concat(rows), "Saving…")
+    parts[#parts + 1] = '<details class="box"' .. (#(p.own or {}) == 0 and " open" or "") .. "><summary>Add feeds</summary>"
+        .. form(base .. "/paper/add",
+            '<label for="p_feeds">One feed per line: its address, or <code>Name | address</code>, or <code>Section | Name | address</code></label>'
+            .. '<textarea id="p_feeds" name="feeds" rows="4" autocapitalize="off" autocorrect="off" spellcheck="false" required placeholder="https://blog.example.com/feed&#10;Knitting weekly | https://knitting.example.com/rss"></textarea>'
+            .. '<button type="submit">Add</button>'
+            .. '<p class="note">Most news sites and blogs have a feed; look for “RSS” at the foot of the site, or try its address with <code>/feed</code> or <code>/rss</code> after it. Up to ' .. esc(p.max or "") .. " feeds of your own. Addresses are kept on the Kindle and never written to its log.</p>",
+            "Adding…")
+        .. "</details>"
+    if #(p.own or {}) > 0 then
+        local list = { '<details class="box"><summary>Remove a feed</summary>' }
+        for _i, f in ipairs(p.own) do
+            list[#list + 1] = form(base .. "/paper/remove",
+                '<input type="hidden" name="n" value="' .. f.n .. '"><input type="hidden" name="count" value="' .. #p.own .. '">'
+                .. '<button class="danger" type="submit"' .. confirmJs("Remove this feed from the paper?") .. ">Remove " .. esc(f.name or f.site)
+                .. (f.name and (" (" .. esc(f.site) .. ")") or "") .. "</button>", "Removing…")
+        end
+        list[#list + 1] = "</details>"
+        parts[#parts + 1] = table.concat(list)
+    end
+    parts[#parts + 1] = '<p class="note">Fetching a feed tells its site this Kindle\'s internet address, as opening the site in a browser would; nothing else is sent.</p></section>'
+    return table.concat(parts)
+end
+
 local function calendarSection(st, base)
     local c = st.caldav or {}
     local links = st.links or {}
@@ -536,6 +589,7 @@ function PairPage.hub(st)
     local tabs = { { "grimmory", "Grimmory", (st.grimmory or {}).connected }, { "notes", "Notes", (st.memos or {}).connected },
         { "calendar", "Calendar", (st.caldav or {}).connected or #((st.links or {}).list or {}) > 0 } }
     if st.house then tabs[#tabs + 1] = { "house", "House", st.house.connected } end
+    if st.paper then tabs[#tabs + 1] = { "paper", "Daily paper", st.paper.enabled } end
     if st.plex then tabs[#tabs + 1] = { "music", "Music", st.plex.connected } end
     tabs[#tabs + 1] = { "immich", "Immich", (st.immich or {}).connected }
     tabs[#tabs + 1] = { "books", "Send books" }
@@ -558,6 +612,7 @@ function PairPage.hub(st)
         immichSection(st, base), booksSection(st, base), sleepSection(st, base), accessSection(st, base), diagnosticsSection(st, base),
         '<p class="note">This page works while setup is open on the Kindle\'s screen; press Back (or Done) there when you\'re done.</p>',
         houseSection(st, base), -- (after the note: one tab at a time with JavaScript; below the rest without)
+        paperSection(st, base),
         "</div></div>",
         '<script>(function(){var A=', alias, ';function show(id){id=A[id]||id;var s=document.getElementById(id);if(!s||!/\\btab\\b/.test(s.className))id="', st.start or "grimmory", '";',
         '[].forEach.call(document.querySelectorAll("section.tab"),function(e){e.className=e.id==id?"tab on":"tab"});',
