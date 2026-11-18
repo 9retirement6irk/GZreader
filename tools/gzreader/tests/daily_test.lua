@@ -35,7 +35,8 @@ end
 package.preload["gzreader_json"] = function()
     return { encode = dkjson.encode, decode = function(s) return (dkjson.decode(s)) end, list = function(t) return t end }
 end
-package.preload["datastorage"] = function() return { getSettingsDir = function() return WORK end } end
+package.preload["datastorage"] = function() return { getSettingsDir = function() return WORK end, getDataDir = function() return WORK end } end
+os.execute("mkdir -p '" .. WORK .. "/cache/gzreader-daily' && rm -f '" .. WORK .. "'/cache/gzreader-daily/*")
 package.preload["ffi/util"] = function()
     return { template = function(s, ...)
         local args = { ... }
@@ -165,6 +166,19 @@ check(Feeds.date("Mon, 16 Nov 2026 23:00:00 GMT") == 1794870000 and Feeds.date("
 check(Feeds.date("yesterday") == nil and Feeds.date("") == nil and Feeds.date("2026-13-40T00:00:00Z") == nil, "not a date: nil")
 check(Feeds.timegm(1970, 1, 1) == 0 and Feeds.timegm(2000, 3, 1) == 951868800 and Feeds.timegm(2024, 2, 29, 12) == 1709208000, "days counted right (leap years)")
 
+print("== a story's picture")
+local function pic(inner) local f = Feeds.parse("<rss><channel><item><title>T</title>" .. inner .. "</item></channel></rss>"); return f.items[1].image end
+check(pic('<media:content url="https://img.example.com/a.jpg?w=1&amp;h=2" medium="image"/>') == "https://img.example.com/a.jpg?w=1&h=2", "media:content (the & read)")
+check(pic('<media:content url="https://v.example.com/a.mp4" type="video/mp4"/><media:thumbnail url="https://img.example.com/t.jpg"/>') == "https://img.example.com/t.jpg",
+    "a video's media:content is passed over; media:thumbnail")
+check(pic('<enclosure url="https://img.example.com/e.png" type="image/png" length="1"/>') == "https://img.example.com/e.png"
+    and pic('<enclosure url="https://a.example.com/e.mp3" type="audio/mpeg"/>') == nil, "an image enclosure, not a podcast's")
+check(pic('<description>&lt;p&gt;x&lt;/p&gt;&lt;img width="1" height="1" src="https://t.example.com/pixel.gif"&gt;&lt;img class="c" src="//img.example.com/d.jpg" alt=""&gt;</description>') == "https://img.example.com/d.jpg",
+    "else the first picture in the text (not a 1 x 1 counter; //… gets https:)")
+check(pic('<description><![CDATA[<img src="data:image/png;base64,AAAA"><img src=\'javascript:x\'>]]></description>') == nil and pic("<description>none</description>") == nil,
+    "no picture, or one that isn't at an http(s) address: none")
+check(Feeds.parse(ATOM).items[1].image == nil, "an Atom entry without one: none")
+
 ---------------------------------------------------------------- the edition
 print("== an edition from the feeds")
 local NOW = 1794920400 -- 2026-11-17 13:00 UTC
@@ -232,6 +246,34 @@ check(#front == 4 and front[1].title == "A1" and front[2].title == "S last week"
     "the front page: each section's first story, then their seconds")
 check(#Daily.front(nil, 3) == 0 and #Daily.front(ed, 0) == 0 and #Daily.front(ed, 99) == Daily.count(ed), "the front page of nothing; never more than there is")
 check(Daily.count(ed) == 10, "stories counted … " .. Daily.count(ed))
+
+print("== the edition's pictures")
+local PNG, JPG = "\137PNG\r\n\26\n" .. string.rep("x", 40), "\255\216\255\224" .. string.rep("y", 40)
+check(Daily.pictureKind(PNG) == "png" and Daily.pictureKind(JPG) == "jpg" and Daily.pictureKind("GIF89a" .. string.rep("z", 20)) == "gif"
+    and Daily.pictureKind("RIFF\1\2\3\4WEBPVP8 " .. string.rep("z", 20)) == "webp", "a picture is told by how it starts: PNG, JPEG, GIF, WebP")
+check(Daily.pictureKind("<html>Not found</html>") == nil and Daily.pictureKind("<svg xmlns='x'></svg>") == nil and Daily.pictureKind(nil) == nil and Daily.pictureKind("\255\216\255") == nil,
+    "an error page, an SVG, nothing: not a picture")
+local ped = { day = "2026-11-17", sections = {
+    { topic = "World", items = { { title = "W1", image = "https://img.example.com/w1.jpg?sig=SECRET" }, { title = "W2", image = "https://img.example.com/w2.jpg" }, { title = "W3" } } },
+    { topic = "Science", items = { { title = "S1", image = "https://img.example.com/s1.png" }, { title = "S2", image = "https://img.example.com/page.html" } } } } }
+local wanted = Daily.pictureWanted(ped)
+check(#wanted == 4 and wanted[1].title == "W1" and wanted[2].title == "S1" and wanted[3].title == "W2", "pictures wanted in the front page's order, stories with one only")
+local written, asked = {}, {}
+local got = Daily.addPictures(ped, "/dir", function(url)
+    asked[#asked + 1] = url
+    if url:find("page.html", 1, true) then return "<html>no</html>" end
+    if url:find("w2", 1, true) then return nil end
+    return url:find("png", 1, true) and PNG or JPG
+end, function(path, data) written[path] = data; return true end)
+check(got == 2 and ped.sections[1].items[1].img == "2026-11-17-1.jpg" and ped.sections[2].items[1].img == "2026-11-17-2.png"
+    and written["/dir/2026-11-17-1.jpg"] == JPG and written["/dir/2026-11-17-2.png"] == PNG, "each picture fetched is kept under the day and its place, by its kind")
+check(ped.sections[1].items[2].img == nil and ped.sections[2].items[2].img == nil, "one that didn't come, or wasn't a picture: the story goes without")
+check(not dkjson.encode(ped):find("SECRET", 1, true) and not dkjson.encode(ped):find("https:", 1, true), "the edition keeps no picture address")
+local many_p = { day = "d", sections = { { topic = "World", items = {} } } }
+for i = 1, 20 do many_p.sections[1].items[i] = { title = "T" .. i, image = "https://img.example.com/" .. i .. ".jpg" } end
+check(Daily.addPictures(many_p, "/dir", function() return JPG end, function() return true end) == Daily.MAX_PICTURES, Daily.MAX_PICTURES .. " pictures an edition at most")
+check(Daily.picturePath({ img = "../../etc/passwd" }) == nil and Daily.picturePath({ img = "none.jpg" }) == nil and Daily.picturePath({}) == nil,
+    "a picture's file: only a plain name in the pictures' folder, only when it's there")
 
 print("== the paper's day")
 local function at(h, m) return os.time{ year = 2026, month = 11, day = 17, hour = h, min = m or 0 } end
@@ -341,6 +383,7 @@ check(started == true and net.last_opts.quiet == true, "asked for quietly (Wi-Fi
 check(net.async and net.async.name == "daily paper" and net.async.opts.timeout >= 120, "fetched in the background, with a time limit")
 check(Daily.edition and Daily.count(Daily.edition) == 4 and Daily.edition.sections[1].topic == Daily.OWN_TOPIC, "today's edition is there … " .. tostring(Daily.edition and Daily.count(Daily.edition)))
 check(Daily.due(plugin) == false and Daily.maybeRefresh(plugin) == false, "today's is there: not due, not fetched again")
+check(Daily.edition.pictures == 0 and Daily.edition.sections[1].items[1].img == nil, "no story had a picture: none fetched")
 check(changes >= 2, "what shows the paper was told (a try began, an edition came)")
 local kept = dkjson.decode(read(Daily.cachePath()))
 check(kept and kept.day == Daily.edition.day and kept.sections[1].items[1].title == "First story & more", "kept on the Kindle (settings/gzreader-daily.json)")
@@ -561,6 +604,37 @@ rows = Paper.settingsItems(plugin)
 check(#rows == 1 and rows[1].enabled == false and rows[1].text:find("Wi-Fi", 1, true), "a Kindle without Wi-Fi: Settings says the paper needs it")
 net.usb = false
 
+print("== pictures fetched with the paper")
+plugin = { store = { daily = { enabled = true, off = {}, feeds = { { url = "https://pics.example.com/rss", name = "Pics" } } } }, save = function() end }
+for _i, f in ipairs(Daily.DEFAULT_FEEDS) do Daily.setDefaultOn(plugin, f, false) end
+http.answers["https://pics.example.com/rss"] = { body = '<rss><channel><item><title>Lead</title><description>d</description><enclosure url="https://img.example.com/lead.png?k=SECRET" type="image/png"/></item>'
+    .. '<item><title>Big</title><media:thumbnail url="https://img.example.com/big.jpg"/></item><item><title>Gone</title><media:thumbnail url="https://img.example.com/gone.jpg"/></item></channel></rss>' }
+http.answers["https://img.example.com/lead.png?k=SECRET"] = { body = PNG }
+http.answers["https://img.example.com/big.jpg"] = { body = JPG .. string.rep("b", Daily.MAX_PICTURE_BYTES) }
+http.answers["https://img.example.com/gone.jpg"] = { code = 404 }
+Daily.edition, Daily.loaded, Daily.tried_at = nil, true, nil
+os.remove(Daily.cachePath())
+logged = {}
+Daily.refresh(plugin)
+local lead_item = Daily.edition and Daily.edition.sections[1].items[1]
+check(lead_item and lead_item.img and Daily.edition.pictures == 1 and read(Daily.pictureDir() .. "/" .. lead_item.img) == PNG and Daily.picturePath(lead_item),
+    "the lead story's picture is fetched with the paper and kept in cache/gzreader-daily")
+check(Daily.edition.sections[1].items[2].img == nil and Daily.edition.sections[1].items[3].img == nil, "a picture over " .. math.floor(Daily.MAX_PICTURE_BYTES / 1024) .. " KB, or one that's gone: the story goes without")
+local pcall_ = http.calls[#http.calls]
+check(pcall_.opts.log_url:find("img.example.com", 1, true) and pcall_.opts.log_url:find("(picture)", 1, true) and not pcall_.opts.log_url:find("jpg", 1, true),
+    "the log gets a picture's site, never its address")
+leaked = false
+for _i, line in ipairs(logged) do if line:find("SECRET", 1, true) or line:find("lead.png", 1, true) then leaked = true end end
+check(not leaked and logged[#logged]:find("1 pictures", 1, true), "… and the day's line counts them … " .. show(logged[#logged]))
+check(not read(Daily.cachePath()):find("SECRET", 1, true), "no picture address is kept with the edition")
+plugin.store.daily.pictures = false
+local n_calls = #http.calls
+Daily.refresh(plugin)
+local pic_calls = 0
+for i = n_calls + 1, #http.calls do if http.calls[i].url:find("img.example.com", 1, true) then pic_calls = pic_calls + 1 end end
+check(pic_calls == 0 and Daily.edition.sections[1].items[1].img == nil and not Daily.pictures(plugin), "Pictures off: none is asked for")
+plugin.store.daily.pictures = nil
+
 print("== the setup page (a browser on your Wi-Fi)")
 plugin = { store = { daily = { enabled = true, feeds = { { url = "https://ok.example.com/rss?key=SECRET", name = "Mine" }, { url = "https://two.example.com/feed" } } } }, save = function() end }
 Daily.edition, Daily.loaded, Daily.tried_at = { day = "x", sections = { { topic = "World", items = { {}, {} } } } }, true, 5
@@ -579,11 +653,12 @@ local form = { enabled = "1", count = "2", f_2 = "1" }
 form["d_" .. Daily.DEFAULT_FEEDS[2].id] = "1"
 Daily.pageSave(plugin, form)
 local st2 = plugin.store.daily
+check(st2.pictures == false and ps.pictures == true and html:find('name="pictures" value="1" checked', 1, true), "With pictures: ticked on the page; unticked when Save comes without it")
 check(st2.enabled == true and st2.shelf == false and st2.feeds[1].enabled == false and st2.feeds[2].enabled == nil, "Save: the switches and your feeds' ticks as sent (an unticked box isn't sent)")
 check(Daily.defaultOn(plugin, Daily.DEFAULT_FEEDS[2]) and not Daily.defaultOn(plugin, Daily.DEFAULT_FEEDS[1]) and Daily.tried_at == nil and Daily.edition.day == "",
     "… GZreader's feeds too; the paper is made again at the next look")
-Daily.pageSave(plugin, { enabled = "1", shelf = "1", count = "1", f_1 = "1" })
-check(st2.feeds[1].enabled == false and st2.shelf == nil, "a page that's out of date (another count of feeds) doesn't change your feeds' ticks")
+Daily.pageSave(plugin, { enabled = "1", shelf = "1", pictures = "1", count = "1", f_1 = "1" })
+check(st2.feeds[1].enabled == false and st2.shelf == nil and st2.pictures == nil, "a page that's out of date (another count of feeds) doesn't change your feeds' ticks")
 Daily.pageSave(plugin, { shelf = "1", count = "2" })
 check(st2.enabled == nil and not Daily.enabled(plugin), "Save with Daily paper unticked: off")
 local added_n, skipped_n = Daily.pageAdd(plugin, "Tea | tea.example.com/feed\r\n# note\n\nnot a feed\nhttps://two.example.com/feed\nCrafts | Knit | https://knit.example.com/atom.xml\n")

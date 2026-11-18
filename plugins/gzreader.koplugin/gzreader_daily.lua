@@ -24,7 +24,10 @@ gzreader_dailyscreen.lua); a tap opens the whole paper.
 
 The edition (settings/gzreader-daily.json):
   { day = "2026-11-17", at = seconds, sections = { { topic = "World",
-    items = { { title, text, link, at, source } } } }, failed = { names } }
+    items = { { title, text, link, at, source, img } } } }, failed = { names } }
+`img`: a story's picture, a file in cache/gzreader-daily/ (the lead's and a
+few more: MAX_PICTURES, each MAX_PICTURE_BYTES at most; Settings can turn
+pictures off). Pictures often come from another site than the feed's.
 ]]
 
 local Feeds = require("gzreader_feeds")
@@ -40,6 +43,8 @@ local Daily = {
     MAX_FEEDS = 24,
     FRESH = 36 * 3600,   -- stories older than this stay out (when the feed dates them)
     RETRY = 30 * 60,
+    MAX_PICTURES = 8,    -- stories that get their picture (the lead, then each section's first, …)
+    MAX_PICTURE_BYTES = 700 * 1024,
     EDITION_HOUR = 5,    -- a day's paper is made from this hour on (the Kindle's clock)
     TOPICS = { "World", "Technology", "Science", "Books", "Curiosities" },
     OWN_TOPIC = "Your feeds",
@@ -193,7 +198,8 @@ function Daily.pageState(plugin)
         own[#own + 1] = { n = i, name = f.name, site = Daily.site(f.url), topic = f.topic, on = f.enabled ~= false }
     end
     local edition = Daily.load()
-    return { enabled = st.enabled == true, shelf = st.shelf ~= false, defaults = defaults, own = own, max = Daily.MAX_FEEDS,
+    return { enabled = st.enabled == true, shelf = st.shelf ~= false, pictures = st.pictures ~= false,
+        defaults = defaults, own = own, max = Daily.MAX_FEEDS,
         stories = edition and Daily.count(edition) or nil, day = edition and edition.day or nil }
 end
 
@@ -205,6 +211,7 @@ function Daily.pageSave(plugin, form)
     local st = Daily.store(plugin)
     st.enabled = form.enabled == "1" or nil
     if form.shelf == "1" then st.shelf = nil else st.shelf = false end
+    if form.pictures == "1" then st.pictures = nil else st.pictures = false end
     for _i, f in ipairs(Daily.DEFAULT_FEEDS) do Daily.setDefaultOn(plugin, f, form["d_" .. f.id] == "1") end
     if tonumber(form.count) == #st.feeds then
         for i, f in ipairs(st.feeds) do
@@ -386,6 +393,115 @@ function Daily.fetch(url)
     return raw
 end
 
+---------------------------------------------------------------- pictures
+
+--- Pictures wanted? (On unless turned off; never on a Kindle with 128 MB.)
+function Daily.pictures(plugin)
+    return Daily.store(plugin).pictures ~= false
+end
+
+function Daily.pictureDir() return require("datastorage"):getDataDir() .. "/cache/gzreader-daily" end
+
+--- What kind of picture `data` is, by how it starts: "jpg", "png", "gif",
+--- "webp", or nil (an error page, an SVG, something else).
+function Daily.pictureKind(data)
+    if type(data) ~= "string" or #data < 16 then return nil end
+    if data:sub(1, 3) == "\255\216\255" then return "jpg" end
+    if data:sub(1, 8) == "\137PNG\r\n\26\n" then return "png" end
+    if data:sub(1, 4) == "GIF8" then return "gif" end
+    if data:sub(1, 4) == "RIFF" and data:sub(9, 12) == "WEBP" then return "webp" end
+    return nil
+end
+
+--- A picture's bytes, or nil and why. No address in the log (its site only).
+function Daily.fetchPicture(url)
+    local Api = require("gzreader_api")
+    local chunks, size, too_big = {}, 0, false
+    local function sink(chunk)
+        if chunk then
+            size = size + #chunk
+            if size > Daily.MAX_PICTURE_BYTES then too_big = true; return nil, "too big" end
+            chunks[#chunks + 1] = chunk
+        end
+        return 1
+    end
+    local answer = { Api.rawRequest("GET", url, {
+        headers = { ["Accept"] = "image/jpeg, image/png, image/webp, image/gif", ["Accept-Encoding"] = "identity",
+            ["User-Agent"] = "GZreader (daily paper; +https://github.com/9retirement6irk/GZreader)" },
+        sink = sink, timeouts = { 10, 30 }, log_url = "https://" .. Daily.site(url) .. "/\u{2026} (picture)",
+    }) }
+    if too_big then return nil, "too big" end
+    if type(answer[1]) ~= "number" then return nil, "unreachable" end
+    if answer[1] >= 400 then return nil, "http_" .. answer[1] end
+    return table.concat(chunks)
+end
+
+--- The stories of an edition that get their picture, most wanted first: the
+--- front page's order (each section's first, then their seconds…), those
+--- with a picture only, MAX_PICTURES at most.
+function Daily.pictureWanted(edition)
+    local out = {}
+    for _i, f in ipairs(Daily.front(edition, Daily.count(edition))) do
+        if f.item.image and #out < Daily.MAX_PICTURES then out[#out + 1] = f.item end
+    end
+    return out
+end
+
+--- Fetch the edition's pictures into `dir` (emptied first): a story that got
+--- one has `img`, its file's name. Every story's `image` address is dropped
+--- from the edition (not kept, not logged). `fetch(url)` → bytes or nil.
+--- `write(path, data)` → true (for tests; a plain file otherwise).
+function Daily.addPictures(edition, dir, fetch, write)
+    write = write or function(path, data)
+        local f = io.open(path, "wb")
+        if not f then return false end
+        f:write(data)
+        f:close()
+        return true
+    end
+    local got = 0
+    for n, item in ipairs(Daily.pictureWanted(edition)) do
+        local data = fetch(item.image)
+        local kind = Daily.pictureKind(data)
+        if kind then
+            local name = string.format("%s-%d.%s", edition.day, n, kind)
+            if write(dir .. "/" .. name, data) then
+                item.img = name
+                got = got + 1
+            end
+        end
+    end
+    for _i, s in ipairs(edition.sections) do
+        for _j, item in ipairs(s.items) do item.image = nil end
+    end
+    return got
+end
+
+--- Empty the pictures' folder (but `keep`, a set of names), making it if needed.
+function Daily.clearPictures(keep)
+    local dir = Daily.pictureDir()
+    local ok, lfs = pcall(require, "libs/libkoreader-lfs")
+    if not ok then return end
+    if lfs.attributes(dir, "mode") ~= "directory" then
+        lfs.mkdir(require("datastorage"):getDataDir() .. "/cache")
+        lfs.mkdir(dir)
+        return
+    end
+    for name in lfs.dir(dir) do
+        if name ~= "." and name ~= ".." and not (keep and keep[name]) then os.remove(dir .. "/" .. name) end
+    end
+end
+
+--- A story's picture file, when it has one that's there.
+function Daily.picturePath(item)
+    if type(item) ~= "table" or type(item.img) ~= "string" or item.img:find("[/\\]") then return nil end
+    local path = Daily.pictureDir() .. "/" .. item.img
+    local f = io.open(path, "rb")
+    if not f then return nil end
+    f:close()
+    return path
+end
+
 ---------------------------------------------------------------- kept on the Kindle
 
 function Daily.cachePath() return require("datastorage"):getSettingsDir() .. "/gzreader-daily.json" end
@@ -420,6 +536,7 @@ end
 function Daily.forget()
     Daily.edition, Daily.loaded = nil, true
     os.remove(Daily.cachePath())
+    pcall(Daily.clearPictures)
 end
 
 ---------------------------------------------------------------- once a day
@@ -443,8 +560,19 @@ function Daily.refresh(plugin, on_done)
     local now = os.time()
     Daily.tried_at = math.max(Daily.tried_at or 0, now)
     Daily.changed()
+    local pictures = Daily.pictures(plugin)
     require("gzreader_async").run({}, function()
-        return Daily.build(feeds, now, Daily.fetch)
+        local edition, err = Daily.build(feeds, now, Daily.fetch)
+        if not edition then return nil, err end
+        -- (pictures: after the stories, into the cache folder; a new edition's replace the old one's)
+        if pictures then
+            Daily.clearPictures()
+            edition.pictures = Daily.addPictures(edition, Daily.pictureDir(), Daily.fetchPicture)
+        else
+            Daily.addPictures(edition, Daily.pictureDir(), function() return nil end)
+            Daily.clearPictures()
+        end
+        return edition
     end, function(edition, err)
         Daily.refreshing = false
         if type(edition) ~= "table" then
@@ -455,7 +583,8 @@ function Daily.refresh(plugin, on_done)
         end
         Daily.last_error = nil
         Daily.keep(edition)
-        Log.info("daily paper:", Daily.count(edition), "stories in", #edition.sections, "sections;", #(edition.failed or {}), "feeds failed")
+        Log.info("daily paper:", Daily.count(edition), "stories in", #edition.sections, "sections;", #(edition.failed or {}), "feeds failed;",
+            tonumber(edition.pictures) or 0, "pictures")
         Daily.changed()
         on_done(true)
     end, "daily paper", { timeout = 300 })

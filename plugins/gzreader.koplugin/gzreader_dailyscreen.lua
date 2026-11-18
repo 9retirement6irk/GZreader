@@ -85,6 +85,38 @@ local function drawn(w, h, paint)
     }
 end
 
+--- A story's picture `w` wide: scaled to that width, and cut to `max_h`
+--- when it's taller (a little off the top, more off the bottom). nil when
+--- the file can't be drawn.
+function Paper.pictureWidget(path, w, max_h)
+    local ok, bb = pcall(function()
+        local RenderImage = require("ui/renderimage")
+        local src = RenderImage:renderImageFile(path, false)
+        if not src then return nil end
+        local sw, sh = src:getWidth(), src:getHeight()
+        if sw < 8 or sh < 8 then src:free(); return nil end
+        local tw, th = Paper.pictureSize(sw, sh, w)
+        return RenderImage:scaleBlitBuffer(src, tw, th, true)
+    end)
+    if not ok or not bb then return nil end
+    local h = math.min(bb:getHeight(), max_h)
+    local off = math.floor((bb:getHeight() - h) / 3)
+    local pic = drawn(w, h, function(out, x, y)
+        if not bb then return end
+        out:blitFrom(bb, x, y, 0, off, w, h)
+        out:paintBorder(x, y, w, h, 1, Blitbuffer.COLOR_GRAY)
+    end)
+    pic.free = function()
+        if bb then bb:free(); bb = nil end
+    end
+    return pic
+end
+
+--- A `sw` × `sh` picture scaled to `w` wide.
+function Paper.pictureSize(sw, sh, w)
+    return w, math.max(1, math.floor(sh * w / math.max(1, sw) + 0.5))
+end
+
 ---------------------------------------------------------------- Home's widget
 
 --- Where things go on Home's folded newspaper, w × h: the sheet (with room
@@ -267,6 +299,7 @@ function Paper.shelfItem(plugin, ctx, area_h, cover_w)
             height = lh * max_lines, height_adjust = true, height_overflow_show_ellipsis = true }
     end
 
+    local shelf_pic -- (made at the first paint; false: none)
     local widget = drawn(w, h, function(bb, x, y)
         -- the pages behind, then the front page
         bb:paintRect(x + pages, y + pages, sheet_w, sheet_h, Blitbuffer.COLOR_GRAY)
@@ -293,8 +326,18 @@ function Paper.shelfItem(plugin, ctx, area_h, cover_w)
         if bottom - cy >= step * 3 then
             bb:paintRect(ix + col_w + math.floor(gutter / 2), cy, 1, bottom - cy, Blitbuffer.COLOR_GRAY)
             local pic_h = math.min(math.floor(col_w * 0.7), math.floor((bottom - cy) / 2))
-            bb:paintRect(ix, cy, col_w, pic_h, Blitbuffer.COLOR_LIGHT_GRAY)
-            bb:paintBorder(ix, cy, col_w, pic_h, 1, Blitbuffer.COLOR_GRAY)
+            -- (the lead story's own picture, when it has one)
+            if shelf_pic == nil then
+                local path = front and D.pictures(plugin) and D.picturePath(front.item)
+                shelf_pic = path and Paper.pictureWidget(path, col_w, pic_h) or false
+            end
+            if shelf_pic then
+                pic_h = shelf_pic:getSize().h
+                shelf_pic:paintTo(bb, ix, cy)
+            else
+                bb:paintRect(ix, cy, col_w, pic_h, Blitbuffer.COLOR_LIGHT_GRAY)
+                bb:paintBorder(ix, cy, col_w, pic_h, 1, Blitbuffer.COLOR_GRAY)
+            end
             local n = 0
             for ly = cy, bottom - 1, step do
                 n = n + 1
@@ -305,6 +348,7 @@ function Paper.shelfItem(plugin, ctx, area_h, cover_w)
     end)
     widget.free = function()
         mast:free(); date:free(); lead:free()
+        if shelf_pic then shelf_pic:free(); shelf_pic = nil end
     end
     -- on its side, folded
     local spine_w = Paper.spineWidth(area_h)
@@ -569,10 +613,13 @@ local function pageClass()
         if story.item.source and story.item.source ~= "" then
             add(TextWidget:new{ text = story.item.source, face = serifItalic(8), max_width = w, fgcolor = Blitbuffer.COLOR_DARK_GRAY }, S(2))
         end
+        local pic_path = D.pictures(self.plugin) and D.picturePath(story.item)
+        local pic = pic_path and Paper.pictureWidget(pic_path, w, math.floor(w * (lead and 0.3 or 0.5)))
+        if pic then add(pic, S(4)) end
         local text = Paper.excerpt(story.item.text, lead and 700 or 420)
         if text ~= "" and text ~= story.item.title then
             local body = TextBoxWidget:new{ text = text, face = serif(10), width = w, alignment = "left", justified = true }
-            local lines = lead and 4 or 5
+            local lines = (lead and 4 or 5) - (pic and 2 or 0)
             if body:getSize().h > body:getLineHeight() * lines then
                 local lh = body:getLineHeight()
                 body:free()
@@ -1045,6 +1092,18 @@ function Paper.settingsItems(plugin)
                     info(why == "full" and _("Home has no room for it. Turn another widget off in Settings → Home → Widgets first.")
                         or _("Home's widgets can't be changed from here just now. Use Settings → Home → Widgets."))
                 end
+            end,
+        },
+        {
+            text = _("Pictures"),
+            help_text = _("The lead story's picture and a few more (eight at most), fetched with the paper and shown in grey. Pictures often come from another site than the feed's (a picture server), which then also sees this Kindle's internet address. Without them the paper is fetched faster and takes less room."),
+            enabled_func = on,
+            checked_func = function() return on() and D.pictures(plugin) end,
+            callback = function()
+                local st = D.store(plugin)
+                if st.pictures == false then st.pictures = nil else st.pictures = false end
+                plugin:save()
+                D.feedsChanged()
             end,
         },
         { text = _("Feeds"), enabled_func = on, sub_item_table_func = function() return Paper.feedItems(plugin) end },

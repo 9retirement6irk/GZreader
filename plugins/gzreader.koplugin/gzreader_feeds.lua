@@ -8,10 +8,10 @@ quite XML (HTML entities, a stray "&", a byte-order mark), a whole tree of a
 are wanted from each item.
 
     local feed = Feeds.parse(body, { max_items = 5, max_text = 4000 })
-    feed.title, feed.items[1] = { title, link, text, at }
+    feed.title, feed.items[1] = { title, link, text, at, image }
 
 `text` is plain text (paragraphs separated by an empty line), `at` the
-item's time (UTC seconds) or nil. Nothing here touches the network or the
+item's time (UTC seconds) or nil, `image` its picture's address or nil. Nothing here touches the network or the
 screen.
 ]]
 
@@ -323,6 +323,58 @@ local function body(block, max_text)
     return Feeds.cut(best, max_text)
 end
 
+--- A story's picture: what the feed names for it (media:content,
+--- media:thumbnail, an image enclosure), else the first picture in its
+--- text. Only http(s) addresses; nil when there's none.
+local function picture(block)
+    local function ok(u)
+        if type(u) ~= "string" then return nil end
+        u = u:gsub("^%s+", ""):gsub("%s+$", "")
+        if u:match("^//") then u = "https:" .. u end
+        return u:match("^https?://[^%s\"'<>]+$") and u or nil
+    end
+    local from = 1
+    while true do
+        local content, attrs, nxt = element(block, "media:content", from)
+        if not content then break end
+        local kind = (attr(attrs, "type") or attr(attrs, "medium") or "image"):lower()
+        local u = ok(attr(attrs, "url"))
+        if u and kind:find("image", 1, true) then return u end
+        from = nxt
+    end
+    local thumb = { element(block, "media:thumbnail") }
+    if thumb[2] and ok(attr(thumb[2], "url")) then return ok(attr(thumb[2], "url")) end
+    from = 1
+    while true do
+        local content, attrs, nxt = element(block, "enclosure", from)
+        if not content then break end
+        if (attr(attrs, "type") or ""):lower():find("^image/") and ok(attr(attrs, "url")) then return ok(attr(attrs, "url")) end
+        from = nxt
+    end
+    from = 1
+    while true do
+        local content, attrs, nxt = element(block, "link", from)
+        if not content then break end
+        if (attr(attrs, "rel") or ""):lower() == "enclosure" and (attr(attrs, "type") or ""):lower():find("^image/") and ok(attr(attrs, "href")) then
+            return ok(attr(attrs, "href"))
+        end
+        from = nxt
+    end
+    for _i, name in ipairs({ "content:encoded", "content", "description", "summary" }) do
+        local raw = element(block, name)
+        if raw and raw ~= "" then
+            local html = unxml(raw)
+            for tag in html:gmatch("<[iI][mM][gG]%s[^>]*>") do
+                local u = ok(Feeds.entities(tag:match("[%s\"']src%s*=%s*\"([^\"]*)\"") or tag:match("[%s\"']src%s*=%s*'([^']*)'") or ""))
+                -- (not the 1 x 1 counters feeds end with)
+                local tiny = tag:match("width%s*=%s*[\"']?1[\"'%s>/]") or tag:match("height%s*=%s*[\"']?1[\"'%s>/]")
+                if u and not tiny then return u end
+            end
+        end
+    end
+    return nil
+end
+
 --- A feed's text → { title = the feed's own name or nil, items = { { title,
 --- link, text, at } … } } (the feed's order, at most opts.max_items, each
 --- text at most opts.max_text bytes), or nil, "not a feed".
@@ -364,6 +416,7 @@ function Feeds.parse(xml, opts)
         local t = element(block, "title")
         item.title = t and Feeds.cut(oneLine(unxml(t)), 300) or ""
         item.link = link(block)
+        item.image = picture(block)
         item.text = body(block, max_text)
         for _i, dn in ipairs(atom and { "published", "updated" } or { "pubDate", "dc:date", "date", "published", "updated" }) do
             local raw = element(block, dn)
