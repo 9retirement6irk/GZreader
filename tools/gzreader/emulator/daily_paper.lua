@@ -1,6 +1,6 @@
 -- The daily paper (gzreader_daily.lua): turned on, an edition made from two
 -- feeds given here (no network), the newspaper on Home's bookshelf (empty,
--- then beside books: GZ_EMU_BOOK = an EPUB), the optional headlines row, the paper's front page and second page, a story, and Settings → Home → Daily paper → Feeds. Any model.
+-- then beside books: GZ_EMU_BOOK = an EPUB; with pictures: GZ_EMU_PICTURE), the optional headlines row, the paper's front page and second page, a story, and Settings → Home → Daily paper → Feeds. Any model.
 --   GZ_EMU_TREE=<tree>/koreader ./run.sh daily_paper.lua <out>
 -- Checks in <out>/daily-checks.txt.
 local s = { start = 14 }
@@ -20,7 +20,8 @@ local function check(E, ok, msg)
     E.say(checks[#checks])
 end
 local function item(title, text, hours)
-    return "<item><title>" .. title .. "</title><link>https://news.example.com/" .. title:gsub("%W", "-") .. "</link><description><![CDATA["
+    return "<item><title>" .. title .. "</title><link>https://news.example.com/" .. title:gsub("%W", "-") .. "</link>"
+        .. '<enclosure url="https://img.example.com/' .. title:gsub("%W", "-") .. '.png" type="image/png"/>' .. "<description><![CDATA["
         .. text .. "]]></description><pubDate>" .. os.date("!%a, %d %b %Y %H:%M:%S GMT", os.time() - hours * 3600) .. "</pubDate></item>"
 end
 local long = "<p>" .. string.rep("The lighthouse keeper counted the ships again, and again there were seven. ", 12) .. "</p><p>"
@@ -55,6 +56,15 @@ add({ fn = function(E)
         { url = "odd", name = "Example Oddities", topic = "Curiosities" },
     }, os.time(), function(url) return BODIES[url] end)
     check(E, edition ~= nil and Daily.count(edition) == 16, "an edition from five feeds: 16 stories … " .. tostring(edition and Daily.count(edition)))
+    -- pictures (GZ_EMU_PICTURE = a PNG or JPEG): the lead's and a few more
+    local pf = io.open(os.getenv("GZ_EMU_PICTURE") or "", "rb")
+    if pf then
+        local bytes = pf:read("*a")
+        pf:close()
+        Daily.clearPictures()
+        local n = Daily.addPictures(edition, Daily.pictureDir(), function(url) return url:find("Seven", 1, true) and bytes or (url:find("comet", 1, true) or url:find("radio", 1, true)) and bytes or nil end)
+        check(E, n == 3 and Daily.picturePath(edition.sections[1].items[1]) ~= nil, "3 stories got their picture … " .. tostring(n))
+    end
     Daily.keep(edition)
     Daily.tried_at = os.time() -- (no network here)
     check(E, Paper.onShelf(p) and not Paper.onHome(), "on: the newspaper goes on Home's bookshelf, not in a row of its own")

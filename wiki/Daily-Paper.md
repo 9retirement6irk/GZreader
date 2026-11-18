@@ -42,7 +42,13 @@ and how it begins.
 
 The paper shows what a feed carries. Some feeds carry whole stories; many
 carry only a sentence or two, and the paper says so under such a story.
-There are no pictures.
+
+**Pictures**: the lead story's picture runs across the front page, a few more
+stories have theirs in the columns (eight an edition at most), and the lead's
+is on the newspaper's front page on the shelf. They are fetched with the
+paper, kept until the next edition and shown in grey. A story opened as text
+has no picture. **Settings → Home → Daily paper → Pictures** turns them off
+(the paper is fetched faster without them).
 
 ## When it's fetched
 
@@ -101,6 +107,8 @@ After a change, the paper is made again the next time Home is shown.
 Fetching a feed is a plain request to that feed's site, as opening the site
 in a browser would be: the site sees the Kindle's internet address and that
 GZreader asked. Nothing else is sent: no account, no cookies, nothing about
-you or what you read. Nothing goes through anyone else's server. Feed
+you or what you read. Nothing goes through anyone else's server. With
+**Pictures** on, a story's picture is fetched the same way from wherever the
+feed says it is, often a picture server on another site than the feed's. Feed
 addresses are never written to the [diagnostic log](Privacy-and-Diagnostics#diagnostic-log)
 (only the site's name), as some carry a personal key.
