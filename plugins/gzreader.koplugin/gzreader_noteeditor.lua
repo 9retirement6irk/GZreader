@@ -390,6 +390,8 @@ function Editor:init()
             self.hint_slot,
             self.floating and VerticalSpan:new{ width = S(6) } or nil,
         }
+        -- (the formatted page has no frame of its own: a little room under the bar's line)
+        if self.keys_bar and self.rich then table.insert(column, 2, VerticalSpan:new{ width = S(8) }) end
         if self.keys_bar then
             -- (the text box is a whole number of lines tall: if the page is taller than the
             -- screen with its bar, toolbar and the keys at the foot, the box gives way)

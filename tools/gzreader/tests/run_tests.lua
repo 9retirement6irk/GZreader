@@ -8974,6 +8974,23 @@ print("Notes (Memos v0.31)")
                 and nesrc:find('hint = table.concat(hint, " \\u{00B7} "), note = _("Alt+M more") })', 1, true) ~= nil
                 and nesrc:find('if k == "M" and self.keys_bar then self:barOptions(); return true end', 1, true) ~= nil,
                 "the editor on a keyboard Kindle: the bar with the note's name, who can see it, its space and tags; Alt+M: its menu (Archive, Delete)")
+            -- keyboard Kindles: the formatted page, typed on with the keys (emulator/notes_keyboard_rich.lua types on it)
+            local resrc2 = io.open(PLUGIN .. "/gzreader_richedit.lua"):read("*a")
+            check(nesrc:find("local keys_page = not self.touch and not self.dpad and not self.floating", 1, true) ~= nil
+                and nesrc:find("if (self.touch or keys_page) and NoteEditor.RICH and not self.floating then", 1, true) ~= nil
+                and nesrc:find("keys = self.keys_bar,", 1, true) ~= nil
+                and nesrc:find("function Editor:tools() return (self.rich and self.touch) and {} or NoteEditor.TOOLS end", 1, true) ~= nil
+                and nesrc:find("self.input:useTool(NoteEditor.RICH_ID[t.id] or t.id)", 1, true) ~= nil
+                and nesrc:find('if k == "X" and self.rich and self.keys_bar then return self.input:tickHere() end', 1, true) ~= nil,
+                "the editor on a keyboard Kindle: the formatted page (not the Kindle 4, not a quick note); its toolbar's tools and Alt+X act on the page")
+            check(resrc2:find("function RichEdit:onKeyPress(key)", 1, true) ~= nil
+                and resrc2:find("if not self.keys or not self.focused then return false end", 1, true) ~= nil
+                and resrc2:find('return require("ui/widget/inputtext").onKeyPress(self, key)', 1, true) ~= nil
+                and resrc2:find("if self.keys then\n        self.height = math.max(S(80), self.max_height or Screen:getHeight())", 1, true) ~= nil,
+                "the formatted page with `keys`: no on-screen keyboard, the page's whole height; the Kindle's keys type (touch Kindles: keys left alone)")
+            local NEk = require("gzreader_noteeditor")
+            check(NEk.RICH_ID.list == "bullet" and NEk.RICH_ID.check == "task" and NEk.RICH_ID.numbered == "ordered" and NEk.RICH_ID.heading == "heading"
+                and NEk.RICH_ID.bold == "bold" and NEk.RICH_ID.italic == "italic", "the toolbar's tools as the formatted page names them")
             ;(function()
                 -- the bar built without a back button and with a note at the right (stand-in widgets)
                 local nbsrc = io.open(PLUGIN .. "/gzreader_notebar.lua"):read("*a")
@@ -9094,8 +9111,10 @@ print("Notes (Memos v0.31)")
             check(#ed:sheets() == 2 and ed:sheets()[1].page == 1 and ed:sheets()[2].path == "/tmp/new.canvas.png" and ed:drawingCount() == 2,
                 "…a page taken off isn't among them; a new one shows its waiting picture")
             check(ed:heading() == "Trip plan", "the drawing screen is titled with the note's first line (no Markdown marks): " .. tostring(ed:heading()))
-            check(#ed:tools() == 0 and #E.tools(setmetatable({ rich = false }, { __index = function(_t, k) return rawget(E, k) end })) == #NE.TOOLS,
-                "the formatted page has no toolbar row (its bar comes up at the selection); Markdown editing keeps its toolbar")
+            ed.touch = true
+            check(#ed:tools() == 0 and #E.tools(setmetatable({ rich = false }, { __index = function(_t, k) return rawget(E, k) end })) == #NE.TOOLS
+                and #E.tools(setmetatable({ rich = true, touch = false }, { __index = function(_t, k) return rawget(E, k) end })) == #NE.TOOLS,
+                "the formatted page on touch has no toolbar row (its bar comes up at the selection); Markdown editing and a keyboard Kindle's formatted page keep the toolbar")
             -- Kindles without a touch screen never draw
             ed.touch, ed.can_draw = false, true
             local no_touch = ed:canDraw()
