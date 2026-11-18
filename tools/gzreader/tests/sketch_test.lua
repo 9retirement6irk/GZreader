@@ -844,9 +844,24 @@ print("== pen pressure and tilt (a Kindle with a pen)")
     local half = Sketch.weight(R, 2048)
     check(math.abs(half - 0.5) < 0.01 and Sketch.weight(R, 4095) == 1 and Sketch.weight(R, 100) == 0.05,
         "pressure alone: half pressure is the chosen thickness, full is the heaviest, the lightest touch still leaves a line")
-    check(Sketch.weight(R, 2048, 60, 0) > 0.94 and Sketch.weight(R, 2048, 30, 0) > half and Sketch.weight(R, 2048, 0, -60) > 0.94
-        and Sketch.weight(R, 4095, 60, 60) == 1,
-        "tilt: the pen laid over makes the line heavier, whichever way it leans (as shading with the side of a pencil)")
+    check(Sketch.weight(R, 2048, 60, 0) == half, "the weight is the pressure alone (tilt is its own number)")
+    -- tilt: how far the pen is laid over, and what each tool does with it
+    check(Sketch.tilt(R, nil, nil) == nil and Sketch.tilt(R, 0, 0) == 0 and Sketch.tilt(R, 35, 0) == 0 and Sketch.tilt(R, 0, -40) == 0,
+        "tilt: none told, none; a pen held to write (up to 40 degrees over) counts as upright")
+    check(math.abs(Sketch.tilt(R, 50, 0) - 0.5) < 0.01 and Sketch.tilt(R, 0, -60) == 1 and Sketch.tilt(R, 63, 20) == 1
+        and math.abs(Sketch.tilt(R, 36, 36) - 0.546) < 0.01,
+        "…from there to 60 degrees: 0 to 1, whichever way it leans (both axes together)")
+    check(Sketch.toolRadius("pencil", 10, 0.5, 0) == Sketch.toolRadius("pencil", 10, 0.5) and math.abs(Sketch.toolRadius("pencil", 10, 0.5, 1) - 4 * Sketch.toolRadius("pencil", 10, 0.5)) <= 2
+        and Sketch.toolRadius("pencil", 10, 0.5, 0.5) > 2 * Sketch.toolRadius("pencil", 10, 0.5),
+        "the pencil laid over: up to four times as wide (the side of the lead)")
+    check(Sketch.grainDensity("pencil", 0.5, 1) < 0.6 * Sketch.grainDensity("pencil", 0.5) and Sketch.grainDensity("pencil", 0.5, 0) == Sketch.grainDensity("pencil", 0.5)
+        and Sketch.grainDensity("pencil", 1, 1) > Sketch.grainDensity("pencil", 0.2, 1),
+        "…and lighter (shading), darker again the harder it's pressed")
+    check(Sketch.toolRadius("marker", 10, nil, 1) == 2 * Sketch.toolRadius("marker", 10, nil) and Sketch.toolRadius("marker", 10, nil, 0) == Sketch.toolRadius("marker", 10, nil),
+        "the marker laid over: twice as wide (its chisel tip)")
+    check(Sketch.toolRadius(nil, 10, 0.5, 1) == Sketch.toolRadius(nil, 10, 0.5) and Sketch.toolRadius("fountain", 10, 0.5, 1) == Sketch.toolRadius("fountain", 10, 0.5)
+        and Sketch.toolRadius("highlighter", 10, nil, 1) == Sketch.toolRadius("highlighter", 10, nil),
+        "the pen, the fountain pen and the highlighter: the same at any angle")
     check(Sketch.weightRadius(10, nil) == 10 and Sketch.weightRadius(10, 0.5) == 10 and Sketch.weightRadius(10, 1) == 16
         and Sketch.weightRadius(10, 0.05) == 5 and Sketch.weightRadius(1, 0.05) == 1,
         "the line's width: the chosen thickness at half weight, 0.4 to 1.6 of it across the range")
@@ -859,7 +874,7 @@ print("== pen pressure and tilt (a Kindle with a pen)")
     Sketch.noteRange(R, 1023, 0, 0)
     check(early == 4095 and Sketch.pressureTop(R) == 1023 and R.t_seen == 8, "a pen that never comes near it (1024 levels): after 300 samples, its own top")
     Sketch.noteRange(R, 500, -4200, 100)
-    check(Sketch.tiltTop(R) == 6000 and math.abs(Sketch.weight(R, 512, 3000, 0) - 0.5 * 1.45) < 0.02,
+    check(Sketch.tiltTop(R) == 6000 and math.abs(Sketch.tilt(R, 5000, 0) - 0.5) < 0.01 and Sketch.tilt(R, 3000, 0) == 0 and Sketch.tilt(R, 6300, 0) == 1,
         "a pen that reports tilt in hundredths of a degree is read that way")
     -- strokes
     Sketch.range = { p_seen = 0, t_seen = 0, n = 0 }
@@ -895,11 +910,34 @@ print("== pen pressure and tilt (a Kindle with a pen)")
     draw({ { pen(100, 500, 2048, 0) }, { pen(200, 500, 2048, 0) }, { pen(300, 500, 2048, 55) }, { pen(400, 500, 2048, 55) },
         { pen(500, 500, 2048, 55) }, { pen(600, 500, 2048, 55) }, { up() } })
     local tilted = sk:live()[2]
-    check(tilted.points[#tilted.points][3] > tilted.points[1][3] + 0.25, "laying the pen over part way through a stroke widens it from there")
+    check(tilted.points[#tilted.points][3] == tilted.points[1][3] and tilted.points[1][4] == nil,
+        "the pen: laying it over part way through a stroke changes nothing (and no tilt is kept on its points)")
+    -- …with the pencil: wider from there, kept in the drawing, and read back
+    sk.writing = "pencil"
+    draw({ { pen(100, 600, 2048, 0) }, { pen(200, 600, 2048, 0) }, { pen(300, 600, 2048, 60) }, { pen(400, 600, 2048, 60) },
+        { pen(500, 600, 2048, 60) }, { pen(600, 600, 2048, 60) }, { up() } })
+    sk.writing = "pen"
+    local shade = sk:live()[3]
+    local first_r, last_r = segs[1][5], segs[#segs][5]
+    check(shade.kind == "pencil" and shade.points[1][4] == 0 and shade.points[#shade.points][4] > 0.7 and last_r > 2.5 * first_r,
+        "the pencil: laying it over part way through a stroke widens it from there, gradually (" .. first_r .. " to " .. last_r .. " pixels)")
+    local scene2 = Drawing.decode(Drawing.encode(sk:scene()))
+    local el2
+    for _i, e in ipairs(scene2.elements) do if e.type == "freedraw" and e.customData and e.customData.gzTool == "pencil" then el2 = e end end
+    check(el2 and type(el2.customData.gzTilt) == "table" and #el2.customData.gzTilt == #el2.points and el2.customData.gzTilt[1] == 0
+        and el2.customData.gzTilt[#el2.points] > 0.7, "…kept in the drawing beside its points (customData.gzTilt, one each)")
+    local el1
+    for _i, e in ipairs(scene2.elements) do if e.type == "freedraw" and not e.customData then el1 = e end end
+    check(el1 ~= nil, "…a stroke that was never laid over has none")
+    local back = Sketch.fromScene(scene2, { canvas = CANVAS, per_unit = 2 })
+    local sb
+    for _i, x in ipairs(back:live()) do if x.kind == "pencil" then sb = x end end
+    check(sb and sb.points[1][4] == 0 and math.abs(sb.points[#sb.points][4] - shade.points[#shade.points][4]) < 0.01,
+        "…and read back: an opened drawing shows the shading as wide as it was")
     -- turned off: uniform, as a pen without pressure
     sk.pressure_on = false
     draw({ { pen(100, 700, 600) }, { pen(300, 700, 4095) }, { pen(500, 700, 4095) }, { up() } })
-    local flat = sk:live()[3]
+    local flat = sk:live()[4]
     local off_scene = sk:scene()
     local off_el = off_scene.elements[#off_scene.elements]
     check(flat.points[1][3] == nil and segs[1][5] == base and segs[#segs][5] == base and off_el.simulatePressure == true,

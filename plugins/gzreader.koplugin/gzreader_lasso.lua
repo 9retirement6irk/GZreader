@@ -78,7 +78,7 @@ function Lasso.snapshot(strokes)
     local snap = {}
     for _i, st in ipairs(strokes) do
         local pts = {}
-        for j, p in ipairs(st.points) do pts[j] = { p[1], p[2], p[3] } end
+        for j, p in ipairs(st.points) do pts[j] = { p[1], p[2], p[3], p[4] } end
         snap[st] = pts
     end
     return snap
@@ -90,7 +90,7 @@ function Lasso.restore(strokes, snap)
         local pts = snap[st]
         if pts then
             local own = {}
-            for j, p in ipairs(pts) do own[j] = { p[1], p[2], p[3] } end
+            for j, p in ipairs(pts) do own[j] = { p[1], p[2], p[3], p[4] } end
             st.points = own
         end
     end
@@ -124,7 +124,7 @@ end
 function Lasso.move(strokes, snap, dx, dy)
     for _i, st in ipairs(strokes) do
         local pts = {}
-        for j, p in ipairs(snap[st] or st.points) do pts[j] = { p[1] + dx, p[2] + dy, p[3] } end
+        for j, p in ipairs(snap[st] or st.points) do pts[j] = { p[1] + dx, p[2] + dy, p[3], p[4] } end
         st.points = pts
     end
 end
@@ -133,7 +133,7 @@ end
 function Lasso.scale(strokes, snap, f, ax, ay)
     for _i, st in ipairs(strokes) do
         local pts = {}
-        for j, p in ipairs(snap[st] or st.points) do pts[j] = { ax + (p[1] - ax) * f, ay + (p[2] - ay) * f, p[3] } end
+        for j, p in ipairs(snap[st] or st.points) do pts[j] = { ax + (p[1] - ax) * f, ay + (p[2] - ay) * f, p[3], p[4] } end
         st.points = pts
     end
 end
@@ -148,7 +148,7 @@ function Lasso.copy(strokes, to_scene)
         local pts = {}
         for j, p in ipairs(st.points) do
             local sx, sy = to_scene(p[1], p[2])
-            pts[j] = { sx, sy, p[3] }
+            pts[j] = { sx, sy, p[3], p[4] }
             x0, y0, x1, y1 = math.min(x0, sx), math.min(y0, sy), math.max(x1, sx), math.max(y1, sy)
         end
         list[#list + 1] = { points = pts, width = st.width, color = st.color, kind = st.kind }
@@ -169,7 +169,7 @@ function Lasso.fromClip(clip, sx, sy, to_canvas)
         local pts = {}
         for j, p in ipairs(st.points) do
             local cx, cy = to_canvas(ox + p[1], oy + p[2])
-            pts[j] = { cx, cy, p[3] }
+            pts[j] = { cx, cy, p[3], p[4] }
         end
         out[#out + 1] = { points = pts, width = st.width, color = st.color, kind = st.kind }
     end

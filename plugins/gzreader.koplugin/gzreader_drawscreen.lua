@@ -155,6 +155,11 @@ function DrawScreen.savePenRange(before)
     G_reader_settings:saveSetting("gzreader_pen_range", { p_seen = r.p_seen, t_seen = r.t_seen, n = math.min(r.n, 100000) })
     -- (numbers only: what the pen's range is, for a report)
     Log.info("drawing: pen pressure up to", r.p_seen, "of", Sketch.pressureTop(r), "tilt up to", r.t_seen, "of", Sketch.tiltTop(r), "samples", r.n)
+    -- (how the pen is held: its usual lean while drawing, in degrees, to tell where "laid over" should start)
+    if (r.lean_n or 0) > 0 then
+        Log.info("drawing: pen lean while drawing: average", math.floor(r.lean_sum / r.lean_n + 0.5), "degrees, most", math.floor(r.lean_max + 0.5),
+            "; counts as laid over from", Sketch.TILT_FROM, "to", Sketch.TILT_DEGREES)
+    end
 end
 
 --- The writing tool new drawings start with (the last one chosen: Sketch.TOOL_IDS).
@@ -925,9 +930,10 @@ local function strokeSegments(sk, st)
     for i = 1, #pts do
         local a, b = pts[math.max(1, i - 1)], pts[i]
         -- (a stroke with a pen's pressure: as wide as it was pressed, as its tool draws it)
-        local pr = Sketch.toolRadius(st.kind, r, b[3] and (a[3] and (a[3] + b[3]) / 2 or b[3]) or nil)
-        out[#out + 1] = { a[1] + c.x, a[2] + c.y, b[1] + c.x, b[2] + c.y, pr, st.color, gray,
-            Sketch.grainDensity(st.kind, b[3] and (a[3] and (a[3] + b[3]) / 2 or b[3]) or nil) }
+        local w = b[3] and (a[3] and (a[3] + b[3]) / 2 or b[3]) or nil
+        local t = b[4] and (a[4] and (a[4] + b[4]) / 2 or b[4]) or nil -- (…and as far as it was laid over)
+        local pr = Sketch.toolRadius(st.kind, r, w, t)
+        out[#out + 1] = { a[1] + c.x, a[2] + c.y, b[1] + c.x, b[2] + c.y, pr, st.color, gray, Sketch.grainDensity(st.kind, w, t) }
     end
     return out
 end

@@ -10198,6 +10198,11 @@ print("Notes (Memos v0.31)")
                 and dsrcs:find('if self:repaintArea(area) then self:refreshBar() else self:redrawAll() end', 1, true) ~= nil
                 and dsrcs:find('if not area or sk.zoomed then return false end', 1, true) ~= nil,
                 "drawing: a rubbed-out stroke, an Undo, a Redo draw and refresh only their part of the page (all of it when zoomed in)")
+            -- tilt per tool (sketch_test.lua has the numbers): the redraw uses each point's tilt as the live ink does
+            check(dsrcs:find("local t = b[4] and (a[4] and (a[4] + b[4]) / 2 or b[4]) or nil", 1, true) ~= nil
+                and dsrcs:find("local pr = Sketch.toolRadius(st.kind, r, w, t)", 1, true) ~= nil
+                and dsrcs:find("Sketch.grainDensity(st.kind, w, t) }", 1, true) ~= nil,
+                "drawing: a page drawn again gives each stroke the width and shade of its tilt, as when it was drawn")
             -- a shape's outline follows the pen (sketch_test.lua has the model's part; emulator/shape_preview.lua the screen's)
             check(dsrcs:find("self:paintShapePreview(bb, x + c.x, y + c.y)", 1, true) ~= nil
                 and dsrcs:find('UIManager:setDirty(self, function() return "fast", region end)', 1, true) ~= nil,

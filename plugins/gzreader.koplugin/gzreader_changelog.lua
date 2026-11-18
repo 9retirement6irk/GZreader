@@ -9,6 +9,7 @@ return {
     {
         version = "next",
         changes = {
+            { short = "Kindle Scribe: tilting the pen shades with the pencil and broadens the marker", text = "The pen's tilt was read, but all it did was make every tool's line a little heavier, and a pen held to write already leans far enough that laying it over further changed almost nothing. Each tool now does its own thing with tilt, as the real ones do. Pencil: lay the pen over and the line widens to as much as four times and gets lighter, like shading with the side of the lead; press harder for darker shading. Marker: laid over, its line is up to twice as wide, like the broad side of a chisel tip. Pen, fountain pen and highlighter: the same at any angle (the pen and the fountain pen still follow pressure). A pen held as you write, up to about 40 degrees from upright, counts as upright; the effect grows from there to 60 degrees. The shading is kept with the drawing, so it looks the same when the note is opened again. The Pressure and tilt switch in the pen's panel turns both off, as before." },
             { short = "Drawing: a shape shows while you drag it out", text = "With a shape in hand (square, circle, triangle, line, arrow) nothing was on the screen until the pen lifted, so you couldn't see how big it would be. Its outline now follows the pen as you drag, about ten times a second, in the pen's thickness. It's drawn on the page when you lift, as before, and only the part of the screen where the shape is gets refreshed." },
         },
     },
