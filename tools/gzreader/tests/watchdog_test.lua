@@ -85,14 +85,21 @@ print("== sending: GZreader's user agent; a message the feed keeps failing doesn
     os.execute("rm -rf '" .. fdir .. "' && mkdir -p '" .. fdir .. "/spool'")
     local log = fdir .. "/requests.txt"
     local server = [[
-import http.server, sys
+import http.server, json, sys
 log = sys.argv[2]
 class H(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
-        body = self.rfile.read(int(self.headers.get("Content-Length", "0"))).decode()
-        code = 500 if "POISON" in body else 200
+        raw = self.rfile.read(int(self.headers.get("Content-Length", "0")))
+        body = raw.decode("utf-8", "replace")
+        # (as Tianji: PostgreSQL text can't hold a NUL, nor invalid UTF-8)
+        try:
+            raw.decode("utf-8"); d = json.loads(body); bad = any("\x00" in str(v) for v in d.values())
+        except Exception:
+            bad = True
+        what = "POISON" if "POISON" in body else ("NUL" if "nul test" in body else "ok")
+        code = 500 if ("POISON" in body or bad) else 200
         with open(log, "a") as f:
-            f.write("%s|%s|%s\n" % (self.headers.get("User-Agent"), "POISON" if "POISON" in body else "ok", code))
+            f.write("%s|%s|%s\n" % (self.headers.get("User-Agent"), what, code))
         self.send_response(code); self.send_header("Content-Length", "0"); self.end_headers()
     def log_message(self, *a): pass
 s = http.server.HTTPServer(("127.0.0.1", 0), H)
@@ -109,6 +116,8 @@ s.serve_forever()
     write(fdir .. "/heartbeat", os.time() .. " run on Home")
     write(fdir .. "/spool/10000001-send.json", '{"eventName":"POISON one"}')
     write(fdir .. "/spool/10000002-send.json", '{"eventName":"after it"}')
+    -- written by GZreader before 1.34: the end of a crash.log with NUL bytes, a letter cut in two
+    write(fdir .. "/spool/10000003-send.json", '{"eventName":"nul test","eventContent":"end of crash.log\\u0000\\u0000 caf\195"}')
     local wpid = tonumber(sh(string.format(
         "cd '%s' && GZ_WD_TICK=1 GZ_WD_STALL=100 GZ_WD_MAX_5XX=3 GZ_WD_MAX_WAIT=2 luajit '%s/gzreader_watchdog.lua' '%s' %d >/dev/null 2>&1 & echo $!",
         fdir, PLUGIN, fdir, ffi.C.getpid())))
@@ -126,20 +135,22 @@ s.serve_forever()
     check(early >= 1 and early <= 2, "a server error: tried again later, not every few seconds (" .. early .. " tries in 3 s)")
     for _i = 1, 20 do
         local done = false
-        for _j, r in ipairs(requests()) do if r:find("|ok|", 1, true) then done = true end end
+        for _j, r in ipairs(requests()) do if r:find("|NUL|", 1, true) then done = true end end
         if done then break end
         wait(1)
     end
-    local poison, after, ua = 0, 0, {}
+    local poison, after, ua, nul = 0, 0, {}, {}
     for _i, r in ipairs(requests()) do
         local a, what = r:match("^(.-)|(%a+)|")
         ua[a or "?"] = true
-        if what == "POISON" then poison = poison + 1 elseif what == "ok" then after = after + 1 end
+        if what == "POISON" then poison = poison + 1 elseif what == "ok" then after = after + 1
+        elseif what == "NUL" then nul[#nul + 1] = r:match("|(%d+)$") end
     end
     local agents = {}
     for a in pairs(ua) do agents[#agents + 1] = a end
     check(#agents == 1 and agents[1] == "GZreader/9.8.7-beta.abc", "every request says GZreader/<version>: " .. table.concat(agents, ", "))
     check(poison == 3 and after == 1, "after 3 server errors it's set aside, and the next message is sent (" .. poison .. " tries, " .. after .. " sent)")
+    check(#nul == 1 and nul[1] == "200", "a report with NUL bytes and a cut letter: cleaned, and the feed takes it at once (" .. table.concat(nul, ",") .. ")")
     local files = sh("ls '" .. fdir .. "/spool'")
     check(files:find("10000001%-send%.json%.failed") ~= nil and not files:find("%.json\n") and not files:find("%.json$"),
         "…kept as .failed; nothing left to send: " .. files:gsub("\n", " "))

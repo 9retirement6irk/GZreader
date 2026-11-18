@@ -9,6 +9,7 @@ return {
     {
         version = "next",
         changes = {
+            { short = "Debug reports with a crash.log cut short arrive again", text = "A report that carried the end of a log cut short (a crash, a battery running out) could hold NUL bytes or a letter cut in two. The report feed keeps reports in a database that can't store those, so it answered with a server error (500) every time and the report never arrived. Report text is now cleaned before it's sent, reports already waiting included." },
             { short = "Debug reports say GZreader/<version>, and a failing one no longer holds up the rest", text = "Debug reports are sent by GZreader's watchdog, a separate small process, and its requests still said LuaSocket (LuaSocket's own name) rather than GZreader/<version> as GZreader's other requests do. Now they say GZreader/<version> too. And when the report feed answered one report with a server error (500), the watchdog tried it again every 5 seconds for as long as it kept failing, and every report after it waited. Now it tries again later and later (10 seconds, 20, 40… up to 10 minutes apart), and after 6 server errors it sets that report aside so the ones after it are sent." },
         },
     },

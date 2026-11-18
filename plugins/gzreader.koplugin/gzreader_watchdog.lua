@@ -104,8 +104,11 @@ local function sh(cmd, max_chars)
     return s
 end
 
+-- valid UTF-8 without NUL bytes (gzreader_textclean.lua): the feed refused the rest with 500
+local clean_ok, cleanText = pcall(dofile, ((arg[0] or ""):match("^(.*)/") or ".") .. "/gzreader_textclean.lua")
+if not clean_ok then cleanText = function(s) return (s:gsub("%z", "")) end end
 local function jstr(s)
-    s = tostring(s or "")
+    s = cleanText(tostring(s or ""))
     s = s:gsub('[%c"\\]', function(c)
         if c == '"' then return '\\"' elseif c == "\\" then return "\\\\"
         elseif c == "\n" then return "\\n" elseif c == "\t" then return "\\t" elseif c == "\r" then return "" end
@@ -186,6 +189,8 @@ local function flush()
         if payload and ENDPOINT[kind] then
             local f = failing[name]
             if f and now() < f.next_at then return end -- (the feed failed it: not yet; the rest wait, in order)
+            -- (written before 1.34 it can hold a NUL, "\u0000": the feed answered 500 every time)
+            payload = cleanText(payload):gsub("\\u0000", "")
             local reached, code = post(base .. ENDPOINT[kind], payload)
             if not reached then return end -- offline: try again later
             if code and code >= 500 then
