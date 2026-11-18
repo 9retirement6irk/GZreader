@@ -142,6 +142,13 @@ local function state(S, flash)
             own_name = f.own_name, host = host(f.url), shown = f.enabled ~= false }
     end
     st.links = { list = links, error = sec == "links" and flash.error or nil, results = flash.links_html }
+    do
+        local Holidays = require("gzreader_holidays")
+        local hc = Holidays.conf(plugin)
+        local countries = {}
+        for _i, c in ipairs(Holidays.COUNTRIES) do countries[#countries + 1] = { id = c.id, name = c.name } end
+        st.holidays = { enabled = hc.enabled, country = hc.country, countries = countries }
+    end
     -- music (Plex): Kindles with audio
     if require("gzreader_touch").player() then
         local ps = store.plex or {}
@@ -725,8 +732,23 @@ function Phone.open(plugin, opts)
         end
         return back({ section = "links", error = _("That calendar isn't on the Kindle any more.") }, "calendar")
     end
+    routes["/calendar/holidays"] = function(form)
+        local c = require("gzreader_holidays").set(plugin, { enabled = form.shown == "1", country = form.country })
+        Log.info("calendar: holidays", c.enabled and ("on, " .. c.country) or "off", "(phone page)")
+        S.changes.calendar = true
+        local name = require("gzreader_holidays").country(c.country).name
+        return back({ ok = true, section = "calendar",
+            text = c.enabled and T(_("Holidays (%1) are shown."), name) or _("Holidays are hidden.") })
+    end
     routes["/links"] = function(form)
-        local entries = Calendar().parseLinkLines(form.links)
+        -- a name and a link per row (name_1/url_1, …); an older page's "Name | link" lines too
+        local entries = {}
+        for i = 1, 20 do
+            local url = (form["url_" .. i] or ""):gsub("^%s+", ""):gsub("%s+$", "")
+            local name = (form["name_" .. i] or ""):gsub("^%s+", ""):gsub("%s+$", "")
+            if url ~= "" then entries[#entries + 1] = { url = url, name = name ~= "" and name or nil } end
+        end
+        for _i, e in ipairs(Calendar().parseLinkLines(form.links)) do entries[#entries + 1] = e end
         if #entries == 0 then return back({ section = "links", error = _("Paste at least one calendar link.") }, "calendar") end
         local results = Calendar().addFeeds(plugin, entries)
         local added = 0

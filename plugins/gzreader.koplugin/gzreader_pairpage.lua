@@ -105,6 +105,8 @@ form{background:none;border:0;padding:0;margin:0}
 .check{display:flex;align-items:center;gap:8px;font-size:14px;margin:0 0 12px;font-weight:400}
 .check input{width:auto;margin:0}
 .two{display:flex;gap:8px}.two button{flex:1}
+.pair{border-left:3px solid var(--line);padding-left:10px;margin:0 0 12px}
+.js-only{display:none}.js .js-only{display:block}
 button.danger{background:transparent;color:var(--bad);border:1px solid var(--line)}
 button.small{width:auto;padding:8px 14px;font-size:14px}
 textarea{width:100%;font:inherit;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:transparent;color:inherit;margin:0 0 14px}
@@ -330,15 +332,44 @@ local function calendarSection(st, base)
     if #cals > 0 then
         parts[#parts + 1] = "<h3 style=\"font-size:15px;margin:4px 0 10px\">Your calendars</h3>" .. table.concat(cals)
     end
-    -- calendar links
+    -- holidays (gzreader_holidays.lua): worked out on the Kindle
+    local h = st.holidays
+    if h then
+        local opts = {}
+        for _i, k in ipairs(h.countries or {}) do
+            opts[#opts + 1] = '<option value="' .. esc(k.id) .. '"' .. (k.id == h.country and " selected" or "") .. ">" .. esc(k.name) .. "</option>"
+        end
+        parts[#parts + 1] = '<details class="box"' .. (h.enabled and " open" or "") .. '><summary>Holidays</summary><div style="margin-top:10px">'
+            .. form(base .. "/calendar/holidays",
+                '<label class="check"><input type="checkbox" name="shown" value="1"' .. (h.enabled and " checked" or "") .. "> Show holidays</label>"
+                .. '<label for="h_country">Country</label><select id="h_country" name="country" class="sel">' .. table.concat(opts) .. "</select>"
+                .. '<button class="alt small" type="submit">Save</button>'
+                .. '<p class="note">A calendar of their own, worked out on the Kindle: no link, account or Wi-Fi needed.</p>', "Saving…")
+            .. "</div></details>"
+    end
+    -- calendar links: a name and a link for each (more with "Add another link")
+    local rows = {}
+    for i = 1, 3 do
+        rows[#rows + 1] = '<div class="pair">'
+            .. input("ln_" .. i, "name_" .. i, "Name (optional)", "", 'placeholder="' .. (i == 1 and "Family" or i == 2 and "Work" or "School") .. '" ' .. NAME_ATTRS)
+            .. input("lu_" .. i, "url_" .. i, "Calendar link", "", 'placeholder="webcal://calendar.example.com/…" ' .. URL_ATTRS .. (i == 1 and " required" or ""))
+            .. "</div>"
+    end
     parts[#parts + 1] = '<details class="box"' .. ((#cals == 0 or links.error) and " open" or "") .. '><summary>Add calendar links</summary><div style="margin-top:10px">'
     parts[#parts + 1] = form(base .. "/links",
-        '<textarea name="links" rows="4" autocapitalize="off" autocorrect="off" spellcheck="false" required placeholder="webcal://calendar.example.com/…&#10;Work | https://…/calendar.ics"></textarea>'
+        '<div id="pairs">' .. table.concat(rows) .. "</div>"
+        .. '<p class="js-only"><button class="alt small" type="button" id="more_links">Add another link</button></p>'
         .. '<button type="submit">Add links</button>'
-        .. '<p class="note">One per line. To name one, write the name first: <code>Work | webcal://…</code>. Links are secret: the Kindle keeps them to sync and never writes them to its log.</p>'
+        .. '<p class="note">A name and a link for each calendar (webcal:// or https://….ics); empty rows are skipped. Links are secret: the Kindle keeps them to sync and never writes them to its log.</p>'
         .. '<details><summary>Proton Calendar</summary><p class="note">Proton Calendar on the web: Settings → Calendars → a calendar → Share → Share with anyone → Create link (Full view shows event details). Do this for each calendar.</p></details>'
         .. '<details><summary>Google, Outlook, iCloud</summary><p class="note">Google: Settings → your calendar → Secret address in iCal format. Outlook: Settings → Calendar → Shared calendars → Publish → ICS. iCloud: share a calendar as a Public Calendar.</p></details>',
         "Checking…")
+    -- (another name + link row, up to 20; without JavaScript there are three)
+    parts[#parts + 1] = '<script>(function(){var b=document.getElementById("more_links"),p=document.getElementById("pairs");if(!b||!p)return;'
+        .. 'b.onclick=function(){var n=p.children.length+1;if(n>20)return;var r=p.children[0].cloneNode(true);'
+        .. 'r.querySelectorAll("label,input").forEach(function(e){var i=e.getAttribute("id"),f=e.getAttribute("for"),m=e.getAttribute("name");'
+        .. 'if(i)e.id=i.replace(/_\\d+$/,"_"+n);if(f)e.setAttribute("for",f.replace(/_\\d+$/,"_"+n));if(m)e.name=m.replace(/_\\d+$/,"_"+n);'
+        .. 'if(e.tagName=="INPUT"){e.value="";e.required=false;e.placeholder=/^name/.test(e.name)?"":e.placeholder}});p.appendChild(r);r.querySelector("input").focus()}})()</script>'
     parts[#parts + 1] = "</div></details>"
     -- CalDAV account
     parts[#parts + 1] = '<details class="box"' .. ((not c.connected and #cals == 0 or c.error) and " open" or "") .. '><summary>CalDAV account</summary><div style="margin-top:10px">'
@@ -588,7 +619,7 @@ function PairPage.hub(st)
     end
     -- one tab at a time (all of them, one under the other, without JavaScript)
     local tabs = { { "grimmory", "Grimmory", (st.grimmory or {}).connected }, { "notes", "Notes", (st.memos or {}).connected },
-        { "calendar", "Calendar", (st.caldav or {}).connected or #((st.links or {}).list or {}) > 0 } }
+        { "calendar", "Calendar", (st.caldav or {}).connected or #((st.links or {}).list or {}) > 0 or (st.holidays or {}).enabled } }
     if st.house then tabs[#tabs + 1] = { "house", "House", st.house.connected } end
     if st.paper then tabs[#tabs + 1] = { "paper", "Daily paper", st.paper.enabled } end
     if st.plex then tabs[#tabs + 1] = { "music", "Music", st.plex.connected } end
