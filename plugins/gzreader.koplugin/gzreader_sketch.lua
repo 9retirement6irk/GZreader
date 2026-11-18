@@ -247,10 +247,10 @@ Sketch.TOOL_STYLE = {
 --- What the pen's shortcut (side) button switches to while it's held:
 --- "eraser" (as on the Scribe out of the box) or a writing tool (Settings →
 --- Notes → Pen's shortcut button; `sketch.shortcut`).
-Sketch.SHORTCUTS = { "eraser", "pen", "pencil", "fountain", "marker", "highlighter" }
+Sketch.SHORTCUTS = { "eraser", "hand", "pen", "pencil", "fountain", "marker", "highlighter" }
 function Sketch.shortcutTool(sk)
     local v = sk and sk.shortcut
-    if v == "eraser" or Sketch.TOOL_STYLE[v] then return v end
+    if v == "eraser" or v == "hand" or Sketch.TOOL_STYLE[v] then return v end
     return "eraser"
 end
 
@@ -836,8 +836,9 @@ local function startContact(self, s, now, out)
         c.kind, c.pull = "tap", true
     elseif not inside then
         c.kind = "tap"
-    elseif self.tool == "hand" then
+    elseif self.tool == "hand" or (pen and self.side_button and Sketch.shortcutTool(self) == "hand") then
         -- the hand: the pen (or a finger) takes hold of the page and moves it
+        -- (or the pen with its shortcut button held, when that's the hand: Settings → Notes)
         c.kind, c.slot = "pan", s.slot
         c.px, c.py, c.at = s.x, s.y, now
     elseif self.tool == "text" then

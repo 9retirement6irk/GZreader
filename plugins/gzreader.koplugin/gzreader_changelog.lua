@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Drawing: pen ↔ hand in one tap", text = "The drawing screen's top bar has a hand: tap it and the pen moves the page instead of drawing (for a page you've zoomed in on); the button then shows the tool you had, and a tap on it takes you straight back to that tool, as it was. The hand in the toolbar at the side now works the same way when tapped again. On the Kindle Scribe the pen's shortcut button can also be the hand (Settings → Notes → Pen's shortcut button → Hand): hold the button and the pen moves the page; let go and it draws." },
+        },
+    },
+    {
         version = "1.33.0",
         changes = {
             { short = "Drawing: the pencil and the highlighter draw much faster", text = "The pencil and the highlighter were several times slower than the pen: every pixel under the line was read and written through a slow route, several times over. They now write the page's pixels directly, the pencil's texture is looked up instead of worked out for each pixel, and its line is painted in fewer steps. In GZreader's emulator the highlighter's ink takes about a tenth of the time it did and the pencil's about a quarter, close to the pen's. A long stroke's line in the diagnostic log now also says how long each of its frames took to handle." },

@@ -8585,11 +8585,11 @@ print("Notes (Memos v0.31)")
         local names = {}
         for _i, sub in ipairs(it and it.sub_item_table or {}) do names[#names + 1] = sub.text end
         local before = it and it.text_func()
-        it.sub_item_table[4].callback()
-        check(none == nil and before == "Pen's shortcut button: Eraser" and table.concat(names, ",") == "Eraser,Pen,Pencil,Fountain pen,Highlighter"
-            and G_reader_settings:readSetting("gzreader_drawing_shortcut") == "fountain" and it.sub_item_table[4].checked_func()
+        it.sub_item_table[5].callback()
+        check(none == nil and before == "Pen's shortcut button: Eraser" and table.concat(names, ",") == "Eraser,Hand (move the page),Pen,Pencil,Fountain pen,Marker,Highlighter"
+            and G_reader_settings:readSetting("gzreader_drawing_shortcut") == "fountain" and it.sub_item_table[5].checked_func()
             and it.text_func() == "Pen's shortcut button: Fountain pen",
-            "Settings → Notes → Pen's shortcut button (a pen Kindle only): Eraser by default, or a writing tool")
+            "Settings → Notes → Pen's shortcut button (a pen Kindle only): Eraser by default, the hand, or a writing tool (the marker named too)")
         if saved == nil then G_reader_settings:delSetting("gzreader_drawing_shortcut") else G_reader_settings:saveSetting("gzreader_drawing_shortcut", saved) end
     end
     plugin.store.memos.sync_tags = nil
@@ -10198,6 +10198,11 @@ print("Notes (Memos v0.31)")
                 and dsrcs:find('if self:repaintArea(area) then self:refreshBar() else self:redrawAll() end', 1, true) ~= nil
                 and dsrcs:find('if not area or sk.zoomed then return false end', 1, true) ~= nil,
                 "drawing: a rubbed-out stroke, an Undo, a Redo draw and refresh only their part of the page (all of it when zoomed in)")
+            -- pen ↔ hand (emulator/pen_hand.lua taps it)
+            check(dsrcs:find('icons[#icons + 1] = { id = "penhand", icon = holding and back_icon or "hand",', 1, true) ~= nil
+                and dsrcs:find('elseif t.id == "penhand" or (t.id == "hand" and self.tool == "hand") then', 1, true) ~= nil
+                and dsrcs:find("function DrawScreen:toggleHand()", 1, true) ~= nil,
+                "drawing: pen ↔ hand in one tap (the top bar's button, or the hand's own tapped again)")
             -- the lasso (sketch_test.lua checks choosing, moving, growing, copying; emulator/lasso.lua checks it on the screen)
             check(dsrcs:find('{ id = "lasso", icon = "lasso", label = _("Lasso") },', 1, true) ~= nil
                 and dsrcs:find('{ id = "sel-copy", icon = "copy", label = _("Copy") },', 1, true) ~= nil

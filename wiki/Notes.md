@@ -324,6 +324,9 @@ API to `/api` are found too.
       Memos stay where they are.
     - **Hand:** the pen (or a finger, where fingers draw) takes hold of the
       page and moves it; nothing is drawn. For a page you've zoomed in on.
+      **Pen ↔ hand in one tap:** the top bar's hand takes it; that button
+      then shows the tool you had, and a tap goes straight back to it. The
+      hand in the toolbar, tapped again, does the same.
     - **Undo**, **Redo**, and **⋮**: **Move to right side** (for the other
       hand; kept) and, with a pen, **Stylus shortcut** (what the pen's side
       button does; each tap takes the next tool) and, on the Kindle Scribe,
@@ -448,9 +451,10 @@ API to `/api` are found too.
   - **The pen's side button** (Kindle Scribe, Premium Pen): hold it and the
     tip rubs out, like the pen's other end; let go and it draws again, with
     the Pen tool still chosen. **Settings → Notes → Pen's shortcut button**
-    chooses what holding it does: **Eraser** (the default), or a writing
-    tool: **Pen**, **Pencil**, **Fountain pen** or **Highlighter** (draw
-    with it while the button is held, then you're back to the tool in hand).
+    chooses what holding it does: **Eraser** (the default), **Hand** (the
+    pen moves the page while it's held), or a writing tool: **Pen**,
+    **Pencil**, **Fountain pen**, **Marker** or **Highlighter** (draw with
+    it while the button is held, then you're back to the tool in hand).
   - Not on Kindles syncing through a computer (the sync page doesn't send
     drawings).
 

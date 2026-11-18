@@ -961,7 +961,8 @@ print("== pen pressure and tilt (a Kindle with a pen)")
     check(viaButton.kind == "highlighter" and viaFountain.kind == "fountain" and after.kind == nil and sk.writing == "pen",
         "the shortcut button held: its tool (highlighter, fountain pen); let go: the tool in hand again")
     check(Sketch.shortcutTool({}) == "eraser" and Sketch.shortcutTool({ shortcut = "nonsense" }) == "eraser"
-        and Sketch.shortcutTool({ shortcut = "pencil" }) == "pencil", "the shortcut button's tool: the eraser unless chosen")
+        and Sketch.shortcutTool({ shortcut = "pencil" }) == "pencil" and Sketch.shortcutTool({ shortcut = "hand" }) == "hand",
+        "the shortcut button's tool: the eraser unless chosen (the hand can be)")
     -- a finger (no pressure reported) and a pen that reports none: as before
     local fsk = Sketch.new{ canvas = CANVAS, per_unit = 2 }
     run(fsk, { { finger(0, 100, 200) }, { finger(0, 200, 260) }, { lift(0) } })

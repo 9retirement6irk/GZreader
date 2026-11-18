@@ -452,10 +452,16 @@ function DrawScreen:layoutBar()
         local x = sw - done_w - S(6)
         add({ id = "done", label = self.journal and _("Save") or _("Done") }, x, S(6), done_w, self.top_h - S(12), "top")
         local icons = { { id = "options", icon = "more", label = _("Options") } }
+        -- pen ↔ hand at one tap (the hand in hand: the pen's icon, back to what was in hand)
+        local holding = self.tool == "hand"
         if self.meta then icons[#icons + 1] = { id = "tag", icon = "tag", label = _("Tags") } end
         icons[#icons + 1] = { id = "paper", icon = "paper", label = _("Paper") }
         icons[#icons + 1] = { id = "pages", icon = "pages", label = _("All pages") }
         if self.journal then icons[#icons + 1] = { id = "typing", label = _("Aa") } end -- (back to typing the entry)
+        local back = self.before_hand
+        local back_icon = (back == nil or back == "pen") and (self.writing or "pen") or back == "shape" and "shapes" or back
+        icons[#icons + 1] = { id = "penhand", icon = holding and back_icon or "hand",
+            label = holding and _("Back to writing") or _("Move the page") }
         for _i, t in ipairs(icons) do
             x = x - bh - S(2)
             anchors[t.id] = add(t, x, S(4), bh, bh, "top")
@@ -1863,6 +1869,20 @@ function DrawScreen:setTool(tool, width)
     self:syncTool()
 end
 
+--- Pen ↔ hand: the hand (the tool in hand kept), or back to that tool.
+function DrawScreen:toggleHand()
+    if self.tool == "hand" then
+        local back = self.before_hand
+        if not back or back == "hand" then back = "pen" end
+        self:setTool(back)
+        Log.info("drawing: hand → " .. back)
+    else
+        self.before_hand = self.tool
+        self:setTool("hand")
+        Log.info("drawing: " .. tostring(self.before_hand) .. " → hand")
+    end
+end
+
 --- The writing tool (Sketch.TOOL_IDS), kept for next time; the pen in hand
 --- (the highlighter: its own button).
 function DrawScreen:setWriting(id)
@@ -2023,8 +2043,15 @@ function DrawScreen:use(t)
         end
         self:layoutBar()
         UIManager:setDirty(self, "ui")
+    elseif t.id == "penhand" or (t.id == "hand" and self.tool == "hand") then
+        -- pen ↔ hand: the hand, or (the hand in hand) back to the tool before it
+        self:setFlyout(nil)
+        self:toggleHand()
+        self:layoutBar()
+        UIManager:setDirty(self, "ui")
     elseif t.id == "hand" then
         -- the hand: the pen (or a finger) moves the page about, and nothing is drawn
+        self.before_hand = self.tool
         self:setTool("hand"); self:setFlyout(nil)
         Log.info("drawing: the hand tool")
     elseif t.id == "text" then
