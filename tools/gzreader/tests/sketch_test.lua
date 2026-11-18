@@ -744,8 +744,12 @@ print("== pen pressure and tilt (a Kindle with a pen)")
     check(fo.light < pn.light and fo.hard > pn.hard,
         "fountain pen: thinner than the pen when light, wider when pressed (" .. fo.light .. "–" .. fo.hard .. " px; pen "
             .. pn.light .. "–" .. pn.hard .. ")")
-    check(pc.gray and pc.gray > 0 and pc.gray < 0xC0 and pc.hard < pn.hard and pc.hard - pc.light < pn.hard - pn.light,
-        "pencil: grey, thinner, and pressure changes it less")
+    -- (wider than the pen's line: a pencil line two or three pixels across was too thin for its
+    -- grain to show, a hairline in Memos on the web; the owner, 2026-11-17)
+    check(pc.gray and pc.gray > 0 and pc.gray < 0xC0 and pc.light > pn.light and pc.hard >= pn.hard and pc.hard <= pn.hard * 1.5
+        and pc.hard - pc.light <= pn.hard - pn.light,
+        "pencil: grey, a little wider than the pen, and pressure changes it no more (" .. pc.light .. "–" .. pc.hard .. " px; pen "
+            .. pn.light .. "–" .. pn.hard .. ")")
     check(hl.gray and hl.gray > pc.gray and hl.light == hl.hard and hl.hard > 3 * pn.light and sth.points[1][3] == nil,
         "highlighter: light grey, broad, even (no pressure)")
     local tsc = Drawing.decode(Drawing.encode(sk:scene()))
@@ -1022,7 +1026,7 @@ end)()
         return n / 10000
     end
     local light, mid, hard = Sketch.grainDensity("pencil", 0.1), Sketch.grainDensity("pencil"), Sketch.grainDensity("pencil", 1)
-    check(light < mid and mid < hard and hard <= 0.8 and Sketch.grainDensity("pen", 0.5) == nil and Sketch.grainDensity("highlighter") == nil
+    check(light < mid and mid < hard and light >= 0.4 and hard <= 0.85 and Sketch.grainDensity("pen", 0.5) == nil and Sketch.grainDensity("highlighter") == nil
         and Sketch.grainDensity("fountain", 1) == nil,
         "only the pencil has a grain; it covers more of the paper the harder it's pressed")
     local cl, cm, ch, edge = covered(light, 0, 6), covered(mid, 0, 6), covered(hard, 0, 6), covered(mid, 36, 6)
