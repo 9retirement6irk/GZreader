@@ -9,6 +9,13 @@ with 2000 dates. Every HTTPS answer carries the server's time (the Date
 header): when the clock is before 2024 and a server says otherwise, the
 clock is set from it (once per start), as the sync page does over USB for
 the Kindles without Wi-Fi (gzreader_usbsync.lua).
+
+And as soon as Wi-Fi connects (gzreader_net.lua), not only when a server of
+yours answers: a Kindle Touch whose clock went back to 2013 after a reboot
+had nothing to set it until Grimmory answered. Clock.online asks a time
+server (NTP, pool.ntp.org) and, if that's blocked, the Date of an answer
+from GitHub (where updates come from). Only while the clock is plainly
+wrong: a right clock costs one comparison, no request.
 ]]
 
 local Log = require("gzreader_log")
@@ -16,6 +23,12 @@ local Log = require("gzreader_log")
 local Clock = {
     WRONG_BEFORE = 1704067200, -- 2024-01-01 UTC: a clock before this is wrong
     done = false,
+    NTP_HOST = "pool.ntp.org",
+    HTTP_URL = "https://github.com/",
+    TIMEOUT = 3,
+    -- (tests) stand-ins: udp() -> a LuaSocket UDP object; head(url) -> headers
+    udp = nil,
+    head = nil,
 }
 
 local MONTHS = { Jan = 1, Feb = 2, Mar = 3, Apr = 4, May = 5, Jun = 6, Jul = 7, Aug = 8, Sep = 9, Oct = 10, Nov = 11, Dec = 12 }
@@ -63,6 +76,68 @@ function Clock.fromServer(headers, now)
     if not t or t < Clock.WRONG_BEFORE then return false end
     Clock.done = true
     Log.info("clock: said", os.date("!%Y-%m-%d %H:%M", now), "UTC; set from the server's", os.date("!%Y-%m-%d %H:%M", t))
+    return Clock.set(t) == true
+end
+
+--- An NTP answer (48 bytes) -> seconds since 1970 (UTC), or nil: its
+--- transmit time (bytes 41-44, seconds since 1900).
+function Clock.parseNtp(packet)
+    if type(packet) ~= "string" or #packet < 48 then return nil end
+    local b1, b2, b3, b4 = packet:byte(41, 44)
+    local secs = ((b1 * 256 + b2) * 256 + b3) * 256 + b4
+    if secs == 0 then return nil end
+    return secs - 2208988800
+end
+
+local function ntp()
+    local udp = Clock.udp and Clock.udp() or require("socket").udp()
+    if not udp then return nil, "no UDP" end
+    udp:settimeout(Clock.TIMEOUT)
+    -- client request: leap 0, version 3, mode 3 (0x1B), the rest zero
+    local ok, err = udp:sendto(string.char(0x1B) .. string.rep("\0", 47), Clock.NTP_HOST, 123)
+    local answer
+    if ok then answer, err = udp:receive() end
+    udp:close()
+    if not answer then return nil, tostring(err) end
+    return Clock.parseNtp(answer), "a time server"
+end
+
+local function http()
+    local headers
+    if Clock.head then
+        headers = Clock.head(Clock.HTTP_URL)
+    else
+        local https = require("ssl.https")
+        local socketutil = require("socketutil")
+        socketutil:set_timeout(Clock.TIMEOUT, Clock.TIMEOUT * 2)
+        local ok, _, _, h = pcall(https.request, { url = Clock.HTTP_URL, method = "HEAD" })
+        socketutil:reset_timeout()
+        headers = ok and h or nil
+    end
+    if type(headers) ~= "table" then return nil, "no answer" end
+    return Clock.parseHttpDate(headers.date or headers.Date), "GitHub's Date"
+end
+
+--- Wi-Fi just connected: a plainly wrong clock set from a time server (NTP),
+--- or from GitHub's Date if NTP is blocked. Returns true when it was set.
+function Clock.online(now)
+    if Clock.done then return false end
+    now = now or os.time()
+    if now >= Clock.WRONG_BEFORE then
+        Clock.done = true
+        return false
+    end
+    local t, from = nil, nil
+    for _i, ask in ipairs({ ntp, http }) do
+        local ok, v, how = pcall(ask)
+        if ok and v and v >= Clock.WRONG_BEFORE then t, from = v, how break end
+    end
+    if not t then
+        Log.info("clock: says", os.date("!%Y-%m-%d", now), "UTC; no time server answered (set from the next server answer)")
+        return false
+    end
+    Clock.done = true
+    Log.info("clock: said", os.date("!%Y-%m-%d %H:%M", now), "UTC; set from " .. from, os.date("!%Y-%m-%d %H:%M", t))
     return Clock.set(t) == true
 end
 
