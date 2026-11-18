@@ -26,8 +26,8 @@ The edition (settings/gzreader-daily.json):
   { day = "2026-11-17", at = seconds, sections = { { topic = "World",
     items = { { title, text, link, at, source, img } } } }, failed = { names } }
 `full`: the story's text is its own page's (Daily.addFullText), not the
-feed's. `img`: a story's picture, a file in cache/gzreader-daily/ (the lead's and a
-few more: MAX_PICTURES, each MAX_PICTURE_BYTES at most; Settings can turn
+feed's. `img`: a story's picture, a file in cache/gzreader-daily/ (MAX_PICTURES of
+them for the opened stories, the first PAGE_PICTURES also on the pages, each MAX_PICTURE_BYTES at most; Settings can turn
 pictures off). Pictures often come from another site than the feed's.
 ]]
 
@@ -48,7 +48,9 @@ local Daily = {
     MAX_FEEDS = 24,
     FRESH = 36 * 3600,   -- stories older than this stay out (when the feed dates them)
     RETRY = 30 * 60,
-    MAX_PICTURES = 8,    -- stories that get their picture (the lead, then each section's first, …)
+    MAX_PICTURES = 24,   -- stories that get their picture (the lead, then each section's first, …), for the opened story
+    PAGE_PICTURES = 8,   -- … of which the first few also show on the paper's pages
+    PICTURE_SECONDS = 180, -- how long fetching the pictures may take altogether
     MAX_PICTURE_BYTES = 700 * 1024,
     EDITION_HOUR = 5,    -- a day's paper is made from this hour on (the Kindle's clock)
     TOPICS = { "World", "Technology", "Science", "Books", "Curiosities" },
@@ -467,6 +469,8 @@ function Daily.addFullText(edition, fetch, seconds, clock)
         if item.link and #(item.text or "") < Daily.FULL_ENOUGH then
             asked = asked + 1
             local ok, html, kind = pcall(fetch, item.link)
+            -- (a story whose feed names no picture: the one its page names as its own)
+            if ok and html and not item.image then item.image = Article.leadImage(html) end
             local text = ok and html and Article.extract(html, kind) or nil
             if text and #text >= Article.MIN_BYTES and #text > #(item.text or "") * 1.3 then
                 item.text = Feeds.cut(text, Daily.MAX_TEXT)
@@ -536,7 +540,9 @@ end
 --- one has `img`, its file's name. Every story's `image` address is dropped
 --- from the edition (not kept, not logged). `fetch(url)` → bytes or nil.
 --- `write(path, data)` → true (for tests; a plain file otherwise).
-function Daily.addPictures(edition, dir, fetch, write)
+function Daily.addPictures(edition, dir, fetch, write, seconds, clock)
+    clock = clock or os.time
+    local started = clock()
     write = write or function(path, data)
         local f = io.open(path, "wb")
         if not f then return false end
@@ -546,6 +552,7 @@ function Daily.addPictures(edition, dir, fetch, write)
     end
     local got = 0
     for n, item in ipairs(Daily.pictureWanted(edition)) do
+        if clock() - started >= (seconds or Daily.PICTURE_SECONDS) then break end
         local data = fetch(item.image)
         local kind = Daily.pictureKind(data)
         if kind then
@@ -575,6 +582,13 @@ function Daily.clearPictures(keep)
     for name in lfs.dir(dir) do
         if name ~= "." and name ~= ".." and not (keep and keep[name]) then os.remove(dir .. "/" .. name) end
     end
+end
+
+--- Does a story's picture also show on the paper's pages? (The first
+--- PAGE_PICTURES fetched: its file is named <day>-<n>.<kind>.)
+function Daily.pagePicture(item)
+    local n = type(item) == "table" and type(item.img) == "string" and tonumber(item.img:match("%-(%d+)%.%a+$"))
+    return n ~= nil and n ~= false and n <= Daily.PAGE_PICTURES
 end
 
 --- A story's picture file, when it has one that's there.

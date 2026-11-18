@@ -271,10 +271,37 @@ check(got == 2 and ped.sections[1].items[1].img == "2026-11-17-1.jpg" and ped.se
 check(ped.sections[1].items[2].img == nil and ped.sections[2].items[2].img == nil, "one that didn't come, or wasn't a picture: the story goes without")
 check(not dkjson.encode(ped):find("SECRET", 1, true) and not dkjson.encode(ped):find("https:", 1, true), "the edition keeps no picture address")
 local many_p = { day = "d", sections = { { topic = "World", items = {} } } }
-for i = 1, 20 do many_p.sections[1].items[i] = { title = "T" .. i, image = "https://img.example.com/" .. i .. ".jpg" } end
+for i = 1, 40 do many_p.sections[1].items[i] = { title = "T" .. i, image = "https://img.example.com/" .. i .. ".jpg" } end
 check(Daily.addPictures(many_p, "/dir", function() return JPG end, function() return true end) == Daily.MAX_PICTURES, Daily.MAX_PICTURES .. " pictures an edition at most")
 check(Daily.picturePath({ img = "../../etc/passwd" }) == nil and Daily.picturePath({ img = "none.jpg" }) == nil and Daily.picturePath({}) == nil,
     "a picture's file: only a plain name in the pictures' folder, only when it's there")
+
+print("== pictures in an opened story")
+check(Daily.MAX_PICTURES >= 20 and Daily.PAGE_PICTURES < Daily.MAX_PICTURES, "more stories get their picture than show one on the pages (" .. Daily.MAX_PICTURES .. " / " .. Daily.PAGE_PICTURES .. ")")
+check(Daily.pagePicture({ img = "2026-11-18-1.jpg" }) and Daily.pagePicture({ img = "2026-11-18-" .. Daily.PAGE_PICTURES .. ".png" })
+    and not Daily.pagePicture({ img = "2026-11-18-" .. (Daily.PAGE_PICTURES + 1) .. ".jpg" }) and not Daily.pagePicture({}) and not Daily.pagePicture({ img = "odd.jpg" }),
+    "the first " .. Daily.PAGE_PICTURES .. " also show on the paper's pages; the rest in their opened story only")
+local slow_p = { day = "d", sections = { { topic = "World", items = {} } } }
+for i = 1, 10 do slow_p.sections[1].items[i] = { title = "T" .. i, image = "https://img.example.com/" .. i .. ".jpg" } end
+local pic_tick = 0
+check(Daily.addPictures(slow_p, "/dir", function() pic_tick = pic_tick + 70; return JPG end, function() return true end, 180, function() return pic_tick end) == 3
+    and slow_p.sections[1].items[4].img == nil and slow_p.sections[1].items[4].image == nil, "fetching pictures stops when its time is up (180 s); the rest go without, and no address stays")
+local Art = require("gzreader_article")
+check(Art.leadImage('<html><head><meta charset="utf-8"><meta property="og:image" content="https://img.example.com/lead.jpg?w=1200&amp;h=630"></head><body></body></html>')
+    == "https://img.example.com/lead.jpg?w=1200&h=630", "a page's own picture: og:image")
+check(Art.leadImage("<head><META NAME='twitter:image' CONTENT='//img.example.com/t.png'></head>") == "https://img.example.com/t.png"
+    and Art.leadImage('<head><meta content="https://img.example.com/first.jpg" property="og:image"/></head>') == "https://img.example.com/first.jpg",
+    "… twitter:image, single quotes, either order, //… gets https:")
+check(Art.leadImage('<head><meta property="og:image:width" content="1200"><meta property="og:title" content="https://x.example.com/a.jpg"></head>') == nil
+    and Art.leadImage('<head><meta property="og:image" content="data:image/png;base64,AAAA"></head>') == nil and Art.leadImage("<html></html>") == nil and Art.leadImage(nil) == nil,
+    "no picture named, or not at an http(s) address: none")
+local og = { day = "d", sections = { { topic = "World", items = {
+    { title = "No picture in the feed", text = "s", link = "https://w.example.com/a" },
+    { title = "The feed's own", text = "s", link = "https://w.example.com/b", image = "https://img.example.com/feed.jpg" },
+    { title = "Whole already", text = string.rep("long ", 800), link = "https://w.example.com/c" } } } } }
+Daily.addFullText(og, function() return '<html><head><meta property="og:image" content="https://img.example.com/page.jpg"></head><body><p>x</p></body></html>', "text/html" end)
+check(og.sections[1].items[1].image == "https://img.example.com/page.jpg" and og.sections[1].items[2].image == "https://img.example.com/feed.jpg" and og.sections[1].items[3].image == nil,
+    "a story whose feed names no picture takes its page's; the feed's own is kept; a page that isn't fetched gives none")
 
 print("== the paper's day")
 local function at(h, m) return os.time{ year = 2026, month = 11, day = 17, hour = h, min = m or 0 } end
@@ -744,6 +771,18 @@ row("Whole stories").callback()
 check(plugin.store.daily.full == nil, "ticked again")
 check(Paper.articleText({ title = "T", text = "x", link = "https://x.example.com/1", full = true }):find("From the story's own page", 1, true), "a whole story says where its text is from")
 check(Daily.MAX_TEXT >= 12000, "a feed that carries whole stories is no longer cut at 4,000 bytes")
+
+print("== a story's picture, whole")
+local fw, fh = Paper.fitSize(1200, 800, 600, 500)
+check(fw == 600 and fh == 400, "a big picture: as wide as the column, its shape kept")
+fw, fh = Paper.fitSize(800, 1600, 600, 500)
+check(fw == 250 and fh == 500, "a tall one: never taller than its room")
+fw, fh = Paper.fitSize(100, 50, 600, 500)
+check(fw == 200 and fh == 100, "a small one: at most twice its size (not blown up to the column)")
+local dsp = read(PLUGIN .. "/gzreader_dailyscreen.lua")
+check(dsp:find("Paper.pictureWhole(pic_path, inner", 1, true) and dsp:find("Daily().pictures(self.plugin) and Daily().picturePath(it)", 1, true),
+    "an opened story shows its picture under the headline (when Pictures is on and it has one)")
+check(dsp:find("D.pagePicture(story.item) and D.picturePath(story.item)", 1, true), "the pages show only the first few")
 
 print("== a story's type")
 plugin = { store = { daily = { enabled = true } }, save = function() saves = saves + 1 end }

@@ -139,6 +139,26 @@ function Article.decode(html, content_type)
     return Feeds.utf8(html)
 end
 
+--- The picture a page names as its own (og:image, twitter:image): an
+--- http(s) address, or nil. Looked for in the page's head only.
+function Article.leadImage(html)
+    if type(html) ~= "string" then return nil end
+    local head = html:sub(1, 60000)
+    for tag in head:gmatch("<[mM][eE][tT][aA]%s[^>]*>") do
+        local low = tag:lower()
+        if low:find("og:image", 1, true) or low:find("twitter:image", 1, true) then
+            local name = low:match("property%s*=%s*[\"']([^\"']+)") or low:match("name%s*=%s*[\"']([^\"']+)")
+            if name == "og:image" or name == "og:image:url" or name == "og:image:secure_url" or name == "twitter:image" or name == "twitter:image:src" then
+                local u = tag:match("[cC][oO][nN][tT][eE][nN][tT]%s*=%s*\"([^\"]*)\"") or tag:match("[cC][oO][nN][tT][eE][nN][tT]%s*=%s*'([^']*)'")
+                u = u and Feeds.entities(u):gsub("^%s+", ""):gsub("%s+$", "") or nil
+                if u and u:match("^//") then u = "https:" .. u end
+                if u and u:match("^https?://[^%s\"'<>]+$") then return u end
+            end
+        end
+    end
+    return nil
+end
+
 --- The story's text from its page: paragraphs separated by an empty line,
 --- or nil (and why: "not html", "too big", "no article").
 function Article.extract(html, content_type)

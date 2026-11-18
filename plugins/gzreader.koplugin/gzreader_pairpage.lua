@@ -261,7 +261,7 @@ local function paperSection(st, base)
     if p.error then parts[#parts + 1] = '<p class="err">' .. esc(p.error) .. "</p>" end
     local rows = { tick("enabled", p.enabled, "<b>Daily paper</b>"), tick("shelf", p.shelf, "Show it on Home's bookshelf"),
         tick("full", p.full, "Whole stories (each short story's own page is fetched too)"),
-        tick("pictures", p.pictures, "With pictures (the lead story's and a few more)"),
+        tick("pictures", p.pictures, "With pictures (in opened stories, and a few on the pages)"),
         tick("calendar", p.calendar, "Today's calendar events on the front page") }
     local wx = p.weather or {}
     rows[#rows + 1] = tick("weather", wx.on, "Weather on the front page")
