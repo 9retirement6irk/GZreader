@@ -83,6 +83,7 @@ package.preload["gzreader_api"] = function()
         local answer = http.answers and http.answers[url]
         if not answer then return nil, nil, nil, "connection refused" end
         if answer.code and answer.code >= 400 then return answer.code, nil, {} end
+        if not opts.sink then return answer.code or 200, answer.data, answer.headers or {} end
         local body = answer.body or ""
         for i = 1, #body, 1000 do
             if not opts.sink(body:sub(i, i + 999)) then return nil, nil, nil, "sink" end
@@ -651,6 +652,107 @@ check(row("Today's calendar events").help_text:find("nothing about them leaves t
 local ds = read(PLUGIN .. "/gzreader_dailyscreen.lua")
 check(ds:find("if first and Paper.calendarOn(self.plugin) then", 1, true) and ds:find('return "diary"', 1, true), "the front page draws the box when it's on, and a tap on it is the Calendar tab's")
 
+print("== the weather")
+local W = require("gzreader_weather")
+check(W.kindOfCode(0) == "clear" and W.kindOfCode(2) == "partly" and W.kindOfCode(3) == "cloudy" and W.kindOfCode(48) == "fog" and W.kindOfCode(61) == "rain"
+    and W.kindOfCode(82) == "rain" and W.kindOfCode(75) == "snow" and W.kindOfCode(86) == "snow" and W.kindOfCode(96) == "storm" and W.kindOfCode(nil) == nil,
+    "Open-Meteo's weather codes as kinds of sky")
+check(W.kindOfCondition("sunny") == "clear" and W.kindOfCondition("partlycloudy") == "partly" and W.kindOfCondition("pouring") == "rain"
+    and W.kindOfCondition("snowy-rainy") == "snow" and W.kindOfCondition("lightning-rainy") == "storm" and W.kindOfCondition("windy") == "cloudy"
+    and W.kindOfCondition("unavailable") == nil, "Home Assistant's conditions as kinds of sky")
+check(W.degrees(53.6) == "54\u{00B0}" and W.degrees(-0.2) == "0\u{00B0}" and W.degrees(-3.5) == "-3\u{00B0}" and W.degrees(nil) == "\u{2013}", "degrees rounded; no -0")
+local asked_url
+local function geo(results) return function(url) asked_url = url; return { results = results } end end
+local found = W.geocode("  Saint-Rémy de Provence ", geo({ { name = "Example Town", latitude = 51.47812, longitude = -0.00149, admin1 = "Example Shire", country_code = "GB" } }))
+check(found and found.lat == 51.48 and found.lon == 0 and found.place == "Example Town, Example Shire" and found.unit == "C",
+    "a town found: where it is, rounded to two decimals; Celsius outside the Fahrenheit countries")
+check(asked_url:find("name=Saint%-R%%C3%%A9my%%20de%%20Provence") and asked_url:find("^https://geocoding%-api%.open%-meteo%.com/"), "the town's name goes to Open-Meteo's geocoder, encoded")
+check(W.geocode("x", geo({ { name = "Springfield", latitude = 39.8, longitude = -89.64, country_code = "US", admin1 = "Illinois" } })).unit == "F", "a town in the United States: Fahrenheit to start with")
+local nf, nf_err = W.geocode("Nowhere", geo(nil))
+check(nf == nil and nf_err == "not found" and select(2, W.geocode("", geo({}))) == "not found", "no such town: said so")
+check(select(2, W.geocode("x", function() return nil, "unreachable" end)) == "unreachable", "the geocoder not reached: said so")
+local furl = W.forecastUrl(51.48, -0.1234567, "F")
+check(furl:find("latitude=51.48&longitude=-0.12&", 1, true) and furl:find("temperature_unit=fahrenheit", 1, true) and furl:find("forecast_days=3", 1, true)
+    and W.forecastUrl(1, 2, "C"):find("temperature_unit=celsius", 1, true), "the day's request: coordinates to two decimals, the unit, three days")
+local wnow = os.time{ year = 2026, month = 11, day = 17, hour = 12 }
+local meteo = { current = { temperature_2m = 51.6, weather_code = 61 }, daily = { time = { "2026-11-17", "2026-11-18", "2026-11-19" }, weather_code = { 63, 2, 71 },
+    temperature_2m_max = { 54.2, 49.1, 30 }, temperature_2m_min = { 41, 36.4, 22 }, precipitation_probability_max = { 80, 20, 60 } } }
+local wx = W.fromMeteo(meteo, "F", wnow)
+check(wx and wx.unit == "F" and wx.now.kind == "rain" and wx.now.temp == 51.6 and #wx.days == 3 and wx.days[2].kind == "partly" and wx.days[3].kind == "snow" and wx.days[1].wet == 80,
+    "Open-Meteo's answer: now and three days")
+check(W.fromMeteo({}, "C") == nil and W.fromMeteo(nil) == nil, "an answer with nothing in it: no weather")
+check(not dkjson.encode(wx):find("51.48", 1, true) and not dkjson.encode(wx):find("lat", 1, true), "the weather kept with the paper has no place in it")
+local cells = W.cells(wx, wnow)
+local ct = {}
+for _i, c in ipairs(cells) do ct[#ct + 1] = c.head .. "=" .. c.line .. "(" .. c.kind .. ")" end
+check(table.concat(ct, " ") == "Now=52\u{00B0} Rain(rain) Today=54\u{00B0} / 41\u{00B0}  80%(rain) Wed=49\u{00B0} / 36\u{00B0}(partly) Thu=30\u{00B0} / 22\u{00B0}  60%(snow)",
+    "the box: Now, Today, then the days by name; the chance of rain on a wet day; four cells at most … " .. table.concat(ct, " "))
+check(W.cells(wx, wnow + 86400)[2].head == "Today" and W.cells(wx, wnow + 86400)[2].line:find("49", 1, true) and #W.cells(wx, wnow + 3 * 86400) == 1,
+    "read the next day (yesterday's paper): the days gone by are left out")
+check(#W.cells(nil) == 0, "no weather: no box")
+local ha_state = { entity_id = "weather.home", state = "partlycloudy", attributes = { temperature = 12.4, temperature_unit = "\u{00B0}C" } }
+local hw = W.fromHA(ha_state, { { datetime = "2026-11-17T12:00:00+00:00", condition = "rainy", temperature = 14, templow = 8, precipitation_probability = 70 },
+    { datetime = "2026-11-18T12:00:00+00:00", condition = "sunny", temperature = 15, templow = 6 } }, wnow)
+check(hw and hw.unit == "C" and hw.now.kind == "partly" and hw.now.temp == 12.4 and #hw.days == 2 and hw.days[1].kind == "rain" and hw.days[1].lo == 8 and hw.days[2].kind == "clear",
+    "Home Assistant's weather entity and its daily forecast")
+check(W.fromHA(ha_state, nil, wnow).now.temp == 12.4 and #W.fromHA(ha_state, nil, wnow).days == 0, "… without a forecast: now alone")
+check(W.fromHA({ state = "unknown", attributes = {} }) == nil, "an entity that says nothing: no weather")
+check(W.pickEntity({ { entity_id = "light.a", state = "on" }, { entity_id = "weather.broken", state = "unavailable" }, ha_state }) == ha_state, "the first weather entity that's alive")
+plugin = { store = { daily = { enabled = true } }, save = function() saves = saves + 1 end }
+check(W.source(plugin) == nil and not W.on(plugin) and W.plan(plugin) == nil, "no town and no Home Assistant: no weather is asked for")
+W.store(plugin).lat, W.store(plugin).lon, W.store(plugin).unit = 51.48, 0, "F"
+check(W.source(plugin) == "meteo" and W.on(plugin) and W.plan(plugin).source == "meteo" and W.plan(plugin).ha == nil, "a town set: Open-Meteo")
+plugin.store.homeassistant = { server = "http://ha.example.com:8123", token = "TOKEN" }
+check(W.source(plugin) == "ha" and W.plan(plugin).ha.server == "http://ha.example.com:8123", "Home Assistant connected: it comes first")
+plugin.store.homeassistant = nil
+W.store(plugin).off = true
+check(not W.on(plugin) and W.plan(plugin) == nil, "the weather turned off: none asked for")
+W.store(plugin).off = nil
+for _i, kind in ipairs({ "clear", "partly", "cloudy", "fog", "rain", "snow", "storm", "?" }) do
+    local painted, outside = 0, false
+    local function mark(x, y, w2, h2)
+        painted = painted + 1
+        if x < 100 - 2 or y < 200 - 2 or x + (w2 or 0) > 100 + 44 + 4 or y + (h2 or 0) > 200 + 44 + 4 then outside = true end
+    end
+    local bbs = { paintRect = function(_s, x, y, w2, h2) mark(x, y, w2, h2) end,
+        paintCircle = function(_s, cx, cy, r) mark(cx - r, cy - r, r * 2, r * 2) end }
+    W.icon(bbs, kind, 100, 200, 44)
+    if painted < 4 or outside then check(false, "the sky's drawing for " .. kind .. " (" .. painted .. " strokes, outside: " .. tostring(outside) .. ")") end
+end
+check(true, "every kind of sky has its drawing, inside its square")
+-- fetched with the paper
+plugin.store.daily.feeds = { { url = "https://ok.example.com/rss?key=SECRET", name = "Mine" } }
+for _i, f in ipairs(Daily.DEFAULT_FEEDS) do Daily.setDefaultOn(plugin, f, false) end
+http.answers["https://ok.example.com/rss?key=SECRET"] = { body = RSS }
+http.answers[W.forecastUrl(51.48, 0, "F")] = { data = meteo }
+Daily.edition, Daily.loaded, Daily.tried_at = nil, true, nil
+logged = {}
+Daily.refresh(plugin)
+check(Daily.edition and Daily.edition.weather and Daily.edition.weather.now.kind == "rain" and #Daily.edition.weather.days == 3, "the weather comes with the day's paper")
+local wcall
+for _i, c in ipairs(http.calls) do if c.url:find("api.open-meteo.com", 1, true) then wcall = c end end
+check(wcall and wcall.opts.log_url and not wcall.opts.log_url:find("51", 1, true) and not wcall.opts.log_url:find("latitude", 1, true), "the log gets no coordinates … " .. tostring(wcall and wcall.opts.log_url))
+leaked = false
+for _i, line in ipairs(logged) do if line:find("51.48", 1, true) or line:find("latitude", 1, true) then leaked = true end end
+check(not leaked, "… in no line")
+http.answers[W.forecastUrl(51.48, 0, "F")] = nil
+Daily.edition.day = ""
+Daily.refresh(plugin)
+check(Daily.edition and Daily.edition.day ~= "" and Daily.edition.weather == nil, "Open-Meteo not reached: the paper comes without the box")
+rows = Paper.settingsItems(plugin)
+local wrows = Paper.weatherItems(plugin)
+check(row("Weather") and #wrows == 3 and wrows[1].checked_func() == true and wrows[3].text_func() == "Degrees: Fahrenheit" and wrows[2].text_func():find("Town", 1, true),
+    "Settings → Home → Daily paper → Weather: the switch, the town, the degrees")
+wrows[3].callback()
+check(W.store(plugin).unit == "C" and wrows[3].text_func() == "Degrees: Celsius", "degrees switched")
+wrows[1].callback()
+check(W.store(plugin).off == true and not W.on(plugin), "weather switched off")
+wrows[1].callback()
+check(wrows[1].help_text:find("rounded to about a kilometre", 1, true) and wrows[1].help_text:find("Home Assistant", 1, true), "the switch says where the weather comes from and what is sent")
+plugin.store.homeassistant = { server = "http://ha.example.com:8123", token = "TOKEN" }
+check(wrows[2].text_func() == "From your Home Assistant" and wrows[2].enabled_func() == false, "with Home Assistant connected there's no town to set")
+plugin.store.homeassistant = nil
+
 print("== pictures fetched with the paper")
 plugin = { store = { daily = { enabled = true, off = {}, feeds = { { url = "https://pics.example.com/rss", name = "Pics" } } } }, save = function() end }
 for _i, f in ipairs(Daily.DEFAULT_FEEDS) do Daily.setDefaultOn(plugin, f, false) end
@@ -700,12 +802,15 @@ local form = { enabled = "1", count = "2", f_2 = "1" }
 form["d_" .. Daily.DEFAULT_FEEDS[2].id] = "1"
 Daily.pageSave(plugin, form)
 local st2 = plugin.store.daily
+check(ps.weather and ps.weather.on == true and ps.weather.source == nil and html:find('name="weather" value="1" checked', 1, true) and html:find('name="town"', 1, true)
+    and html:find('name="unit"', 1, true) and W.store(plugin).off == true, "Weather: its tick, the town and the degrees on the page; unticked when Save comes without it")
 check(st2.calendar == false and ps.calendar == true and html:find('name="calendar" value="1" checked', 1, true), "Today's calendar events: ticked on the page; unticked when Save comes without it")
 check(st2.pictures == false and ps.pictures == true and html:find('name="pictures" value="1" checked', 1, true), "With pictures: ticked on the page; unticked when Save comes without it")
 check(st2.enabled == true and st2.shelf == false and st2.feeds[1].enabled == false and st2.feeds[2].enabled == nil, "Save: the switches and your feeds' ticks as sent (an unticked box isn't sent)")
 check(Daily.defaultOn(plugin, Daily.DEFAULT_FEEDS[2]) and not Daily.defaultOn(plugin, Daily.DEFAULT_FEEDS[1]) and Daily.tried_at == nil and Daily.edition.day == "",
     "… GZreader's feeds too; the paper is made again at the next look")
-Daily.pageSave(plugin, { enabled = "1", shelf = "1", pictures = "1", count = "1", f_1 = "1" })
+Daily.pageSave(plugin, { enabled = "1", shelf = "1", pictures = "1", weather = "1", unit = "F", count = "1", f_1 = "1" })
+check(W.store(plugin).off == nil and W.store(plugin).unit == "F", "Weather ticked and Fahrenheit chosen on the page")
 check(st2.feeds[1].enabled == false and st2.shelf == nil and st2.pictures == nil, "a page that's out of date (another count of feeds) doesn't change your feeds' ticks")
 Daily.pageSave(plugin, { shelf = "1", count = "2" })
 check(st2.enabled == nil and not Daily.enabled(plugin), "Save with Daily paper unticked: off")
@@ -721,6 +826,7 @@ net.usb = false
 local phone = read(PLUGIN .. "/gzreader_phone.lua")
 check(phone:find('routes["/paper"]', 1, true) and phone:find('routes["/paper/add"]', 1, true) and phone:find('routes["/paper/remove"]', 1, true)
     and phone:find('require("gzreader_daily").pageState(plugin)', 1, true), "the setup page's server has the section's state and its three forms")
+check(phone:find("W.geocode(town)", 1, true) and not phone:match("Log%.[a-z]+%([^\n]*town"), "a town typed on the page is looked up, and not logged")
 check(not phone:match('routes%["/paper/add"%].-Log%.[a-z]+%([^\n]*form%.feeds'), "… and logs no pasted address")
 rows = Paper.settingsItems(plugin)
 plugin.store.daily.enabled = true

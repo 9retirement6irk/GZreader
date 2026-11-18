@@ -745,6 +745,30 @@ local function pageClass()
             self.rules[#self.rules + 1] = { y = y, h = 1 }
             y = y + S(6)
         end
+        -- the weather box: now and the next days, each with its sky's engraving
+        self.weather = nil
+        local Wx = require("gzreader_weather")
+        if first and edition and Wx.on(self.plugin) then
+            local cells = Wx.cells(edition.weather, nil, 4)
+            if #cells > 0 then
+                local label = TextWidget:new{ text = _("WEATHER"), face = Font:getFace("smallinfofontbold", 8) }
+                local lw = label:getSize().w + S(10)
+                self.widgets[#self.widgets + 1] = label
+                local icon = S(44)
+                local cell_w = math.floor((inner_w - lw) / #cells)
+                local built = {}
+                for i, c in ipairs(cells) do
+                    local day = TextWidget:new{ text = c.head, face = Font:getFace("smallinfofontbold", 9), max_width = cell_w - icon - S(12) }
+                    local line = TextWidget:new{ text = c.line, face = serif(10), max_width = cell_w - icon - S(12) }
+                    self.widgets[#self.widgets + 1] = day
+                    self.widgets[#self.widgets + 1] = line
+                    built[i] = { head = day, line = line, kind = c.kind }
+                end
+                local box_h = icon + S(8)
+                self.weather = { x = margin, y = y, w = inner_w, h = box_h, label = label, label_w = lw, cells = built, cell_w = cell_w, icon = icon }
+                y = y + box_h + S(7)
+            end
+        end
         -- today's diary: the day's calendar events in a ruled box under the date
         self.diary = nil
         if first and Paper.calendarOn(self.plugin) then
@@ -840,6 +864,23 @@ local function pageClass()
             for d = -arm, arm do
                 bb:paintRect(cx + d, cy + d, 2, 2, Blitbuffer.COLOR_BLACK)
                 bb:paintRect(cx + d, cy - d, 2, 2, Blitbuffer.COLOR_BLACK)
+            end
+        end
+        if self.weather then
+            local wx = self.weather
+            bb:paintBorder(x + wx.x, y + wx.y, wx.w, wx.h, 1, Blitbuffer.COLOR_BLACK)
+            bb:paintRect(x + wx.x + 1, y + wx.y + 1, wx.label_w - 2, wx.h - 2, Blitbuffer.COLOR_WHITE)
+            wx.label:paintTo(bb, x + wx.x + S(5), y + wx.y + math.floor((wx.h - wx.label:getSize().h) / 2))
+            bb:invertRect(x + wx.x + 1, y + wx.y + 1, wx.label_w - 2, wx.h - 2)
+            for i, c in ipairs(wx.cells) do
+                local cx = x + wx.x + wx.label_w + (i - 1) * wx.cell_w
+                if i > 1 then bb:paintRect(cx, y + wx.y + S(5), 1, wx.h - S(10), Blitbuffer.COLOR_GRAY) end
+                require("gzreader_weather").icon(bb, c.kind, cx + S(6), y + wx.y + S(4), wx.icon)
+                local tx = cx + S(6) + wx.icon + S(6)
+                local th = c.head:getSize().h + c.line:getSize().h
+                local ty = y + wx.y + math.floor((wx.h - th) / 2)
+                c.head:paintTo(bb, tx, ty)
+                c.line:paintTo(bb, tx, ty + c.head:getSize().h)
             end
         end
         if self.diary then
@@ -1161,6 +1202,82 @@ function Paper.feedItems(plugin)
     return items
 end
 
+--- Set the weather's town: found with Open-Meteo (Wi-Fi turned on for it).
+--- after(ok) once it's known.
+function Paper.setTown(plugin, town, after)
+    local W = require("gzreader_weather")
+    require("gzreader_net").run(function()
+        local found, err = W.geocode(town)
+        if not found then
+            info(err == "not found" and T(_("No town called “%1” was found. Try its name with the country, or a bigger town nearby."), town)
+                or _("Couldn't look the town up. Check the Wi-Fi and try again."))
+            return after and after(false)
+        end
+        local w = W.store(plugin)
+        w.lat, w.lon, w.place = found.lat, found.lon, found.place
+        w.unit = w.unit or found.unit
+        plugin:save()
+        Daily().feedsChanged()
+        info(T(_("Weather for %1."), found.place), 3)
+        if after then after(true) end
+    end, { reason = "the weather's town" })
+end
+
+--- Settings → Home → Daily paper → Weather.
+function Paper.weatherItems(plugin)
+    local W = require("gzreader_weather")
+    local function w() return W.store(plugin) end
+    local function unit() return w().unit or "C" end
+    return {
+        {
+            text = _("Weather on the front page"),
+            help_text = _("A weather box at the top of the front page: now and the next days, each with a small drawing of its sky. It comes with the day's paper: from your Home Assistant when the House tab's is connected (nothing leaves your network), otherwise from Open-Meteo (open-meteo.com, free, no account) for the town you set here. Open-Meteo is sent the town's name once, to find it, and after that its coordinates rounded to about a kilometre; neither is written to the log."),
+            checked_func = function() return w().off ~= true end,
+            callback = function()
+                w().off = (w().off ~= true) or nil
+                plugin:save()
+            end,
+        },
+        {
+            text_func = function()
+                if W.source(plugin) == "ha" then return _("From your Home Assistant") end
+                return w().place and T(_("Town: %1"), w().place) or _("Town (none set: no weather yet)")
+            end,
+            enabled_func = function() return W.source(plugin) ~= "ha" end,
+            keep_menu_open = true,
+            callback = function(touchmenu)
+                local InputDialog = require("ui/widget/inputdialog")
+                local d
+                d = InputDialog:new{
+                    title = _("Town for the weather"), input = "", input_hint = _("e.g. Springfield, Illinois"),
+                    buttons = { {
+                        { text = _("Cancel"), id = "close", callback = function() UIManager:close(d) end },
+                        { text = _("Find"), is_enter_default = true, callback = function()
+                            local town = d:getInputText()
+                            UIManager:close(d)
+                            Paper.setTown(plugin, town, function() if touchmenu and touchmenu.updateItems then touchmenu:updateItems() end end)
+                        end },
+                    } },
+                }
+                UIManager:show(d)
+                d:onShowKeyboard()
+            end,
+        },
+        {
+            text_func = function() return unit() == "F" and _("Degrees: Fahrenheit") or _("Degrees: Celsius") end,
+            help_text = _("For Open-Meteo's weather. Home Assistant's comes in its own unit."),
+            enabled_func = function() return W.source(plugin) ~= "ha" end,
+            keep_menu_open = true,
+            callback = function(touchmenu)
+                w().unit = unit() == "F" and "C" or "F"
+                plugin:save()
+                Daily().feedsChanged()
+                if touchmenu and touchmenu.updateItems then touchmenu:updateItems() end
+            end,
+        },
+    }
+end
+
 --- The setup page (gzreader_phone.lua) at its Daily paper section.
 function Paper.browserSetup(plugin)
     require("gzreader_net").run(function()
@@ -1229,6 +1346,7 @@ function Paper.settingsItems(plugin)
                 D.feedsChanged()
             end,
         },
+        { text = _("Weather"), enabled_func = on, sub_item_table_func = function() return Paper.weatherItems(plugin) end },
         {
             text = _("Today's calendar events"),
             help_text = _("Today's events from the Calendar tab's calendars in a box at the top of the front page (all-day ones first). They are the ones the Calendar tab last synced, kept on this Kindle: nothing is fetched for it, and nothing about them leaves the Kindle. A tap on the box opens the Calendar tab. Nothing is shown on a day without events."),
