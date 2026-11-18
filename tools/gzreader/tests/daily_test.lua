@@ -619,6 +619,135 @@ rows = Paper.settingsItems(plugin)
 check(#rows == 1 and rows[1].enabled == false and rows[1].text:find("Wi-Fi", 1, true), "a Kindle without Wi-Fi: Settings says the paper needs it")
 net.usb = false
 
+print("== a story's text from its own page")
+local Article = require("gzreader_article")
+local P1 = "The lighthouse keeper counted the ships again on Tuesday morning, and again there were seven where the harbour log had six. He wrote it down, as he had the day before, and went to put the kettle on while he thought about it."
+local P2 = "Nobody on the island could say where the seventh had come from, though several people had a theory by lunchtime. The baker held that it was a trick of the light; the schoolmistress, that it was a visitor too shy to land."
+local P3 = "By evening the council had sent a boat out, which came back with the news that the seventh ship was a rock. It had been there for some thousands of years, the boatman said, and nobody had counted it before."
+local PAGE = [==[<!DOCTYPE html><HTML><head><title>Seven ships</title><style>p { color: red }</style>
+<script>var x = "<p>not this, it is inside a script and quite long enough to count as a paragraph of text otherwise.</p>";</script></head>
+<body><header><p>Example World: the news from the island, every day of the week, since 1904 and still going.</p></header>
+<NAV><ul><li><a href="/">Home</a></li><li><a href="/world">World news from everywhere.</a></li></ul></NAV>
+<main><article class="story"><header><h1>Seven ships seen</h1><p>By A. Reporter</p></header>
+<p class="lead">]==] .. P1 .. [==[</p>
+<p>Advertisement</p>
+<figure><img src="https://img.example.com/a.jpg"><figcaption>The lighthouse, seen from the north on a clear day last week.</figcaption></figure>
+<P>]==] .. P2 .. [==[ It&rsquo;s &ldquo;odd&rdquo;.</P>
+<h2>What the council did</h2>
+<p>]==] .. P3 .. [==[
+<p>Unclosed paragraphs are read too, up to the next one, as browsers do with them.</p>
+<ul><li>Short item</li><li>The harbour master said the log would be corrected by Friday at the latest.</li></ul>
+<aside><p>Related: six other stories about ships that you might like to read after this one, with pictures.</p></aside>
+<p>Share this</p><p>Sign up for our newsletter</p>
+<form><p>Type your email address here to get the news from the island every single morning.</p></form>
+<h3>More on this story</h3>
+</article></main>
+<footer><p>Copyright Example World. All rights reserved. Registered at the island post office as a newspaper.</p></footer></body></HTML>]==]
+local story = Article.extract(PAGE, "text/html; charset=utf-8")
+check(story and story:find(P1, 1, true) and story:find(P2 .. " It\u{2019}s \u{201C}odd\u{201D}.", 1, true) and story:find(P3, 1, true),
+    "the article's paragraphs, in order, entities read")
+check(story:find("\n\nWhat the council did\n\n", 1, true) and story:find("Unclosed paragraphs are read too", 1, true)
+    and story:find("\u{2022} The harbour master said", 1, true), "its sub-headings, unclosed paragraphs, and list items that are sentences")
+local clean = true
+for _i, not_story in ipairs({ "not this", "since 1904", "World news from everywhere", "Advertisement", "seen from the north", "Related:", "Share this", "Sign up",
+        "Type your email", "More on this story", "All rights reserved", "Short item", "By A. Reporter", "color: red" }) do
+    if story:find(not_story, 1, true) then clean = false; print("    still there: " .. not_story) end
+end
+check(clean, "none of the page's furniture: script, style, header, menu, ad line, caption, sidebar, share and sign-up lines, form, footer")
+check(not story:find("\n\n\n", 1, true) and not story:find("<", 1, true) and story:sub(1, #P1) == P1, "plain paragraphs, an empty line between")
+local teaser, why_not = Article.extract("<html><body><article><p>" .. P1 .. "</p><p>Subscribe to read the rest.</p></article></body></html>")
+check(teaser == nil and why_not == "no article", "a paywall's teaser isn't an article: nothing (the feed's summary stays)")
+check(Article.extract('<html><body><div id="root"></div><script src="/app.js"></script></body></html>') == nil, "a page built by scripts: nothing")
+check(Article.extract("") == nil and Article.extract(nil) == nil and Article.extract("%PDF-1.4 binary") == nil and select(2, Article.extract("{\"json\":true}")) == "not html",
+    "not a web page: nothing")
+local plain = Article.extract("<html><body><div><p>" .. P1 .. "</p><div><p>" .. P2 .. "</p></div><p>" .. P3 .. "</p><p>Read more: other things</p></div></body></html>")
+check(plain == P1 .. "\n\n" .. P2 .. "\n\n" .. P3, "a page without <article>: the body's paragraphs")
+local two = Article.extract("<html><body><article><p>A short card about something else on the page.</p></article><article><p>" .. P1 .. "</p><p>" .. P2 .. "</p><p>" .. P3 .. "</p></article></body></html>")
+check(two == P1 .. "\n\n" .. P2 .. "\n\n" .. P3, "several <article>s: the one with the most text")
+local latin = Article.extract("<html><head><meta charset=\"iso-8859-1\"></head><body><p>" .. P1 .. " Caf\233.</p><p>" .. P2 .. "</p><p>" .. P3 .. "</p></body></html>")
+check(latin and latin:find("Café.", 1, true), "a Latin-1 page read as UTF-8 (from its meta tag; or from the answer's content type)")
+check(Article.extract("<html><body><p>" .. P1 .. " Caf\233.</p><p>" .. P2 .. "</p><p>" .. P3 .. "</p></body></html>", "text/html; charset=ISO-8859-1"):find("Café.", 1, true), "… the content type")
+check(select(2, Article.extract("<html>" .. string.rep("x", Article.MAX_HTML) .. "</html>")) == "too big", "a page over " .. (Article.MAX_HTML / 1024 / 1024) .. " MB isn't read")
+check(Article.extract("<html><body><p>" .. P1 .. "</p><p>" .. P1 .. "</p><p>" .. P2 .. "</p><p>" .. P3 .. "</p></body></html>") == P1 .. "\n\n" .. P2 .. "\n\n" .. P3, "a paragraph the page has twice is kept once")
+
+print("== whole stories with the paper")
+local long_text = string.rep("This feed carries the whole story already. ", 80)
+local fed = { day = "d", sections = {
+    { topic = "World", items = { { title = "Short", text = "One line.", link = "https://w.example.com/short?utm=SECRET" },
+        { title = "Whole", text = long_text, link = "https://w.example.com/whole" }, { title = "No link", text = "x" } } },
+    { topic = "Science", items = { { title = "Paywall", text = "A teaser of fair length from the feed itself.", link = "https://s.example.com/paywall" },
+        { title = "Gone", text = "y", link = "https://s.example.com/gone" }, { title = "Shorter page", text = string.rep("Feed text. ", 200), link = "https://s.example.com/shorter" } } } } }
+local page_asks = {}
+local function page(url)
+    page_asks[#page_asks + 1] = url
+    if url:find("/short", 1, true) and not url:find("shorter", 1, true) then return PAGE, "text/html" end
+    if url:find("paywall", 1, true) then return "<html><body><article><p>" .. P1 .. "</p><p>Subscribe to read the rest.</p></article></body></html>", "text/html" end
+    if url:find("shorter", 1, true) then return "<html><body><p>" .. P1 .. "</p><p>" .. P2 .. "</p><p>" .. P3 .. "</p><p>" .. P1 .. " Again, differently.</p><p>" .. P2 .. " Again.</p><p>" .. P3 .. " Again.</p><p>" .. P1 .. " Thrice.</p><p>" .. P2 .. " Thrice.</p><p>" .. P3 .. " Thrice.</p></body></html>", "text/html" end
+    if url:find("gone", 1, true) then error("socket closed") end
+    return nil, "unreachable"
+end
+local filled, asked_n = Daily.addFullText(fed, page)
+check(filled == 1 and fed.sections[1].items[1].full == true and fed.sections[1].items[1].text:find(P3, 1, true), "a story with a line from its feed gets its page's article")
+check(fed.sections[1].items[2].text == long_text and fed.sections[1].items[2].full == nil and not table.concat(page_asks, " "):find("/whole", 1, true),
+    "a story the feed carries whole: its page isn't fetched")
+check(fed.sections[2].items[1].text:find("^A teaser") and fed.sections[2].items[1].full == nil and fed.sections[2].items[2].text == "y",
+    "a paywall, a page that fails: the feed's text stays")
+check(fed.sections[2].items[3].full == nil and fed.sections[2].items[3].text:find("^Feed text"), "a page's text that isn't clearly longer than the feed's: the feed's stays")
+check(asked_n == 4 and #page_asks == 4 and page_asks[1]:find("/short", 1, true) and page_asks[2]:find("paywall", 1, true), "pages asked for in the front page's order; none for a story without a link … " .. asked_n)
+local tick_now = 0
+local slow = { day = "d", sections = { { topic = "World", items = {} } } }
+for i = 1, 60 do slow.sections[1].items[i] = { title = "T" .. i, text = "s", link = "https://w.example.com/short" .. i } end
+filled, asked_n = Daily.addFullText(slow, function() tick_now = tick_now + 100; return PAGE, "text/html" end, 300, function() return tick_now end)
+check(asked_n == 3 and filled == 3 and slow.sections[1].items[4].full == nil, "it stops when its time is up (300 s): the rest keep their summaries")
+filled, asked_n = Daily.addFullText(slow, function() return PAGE, "text/html" end, 300, function() return 0 end)
+check(asked_n == Daily.MAX_FULL - 0 and filled == Daily.MAX_FULL - 3 + 0 or asked_n == Daily.MAX_FULL, Daily.MAX_FULL .. " pages an edition at most … " .. asked_n)
+local huge = { day = "d", sections = { { topic = "World", items = { { title = "Long", text = "s", link = "https://w.example.com/long" } } } } }
+Daily.addFullText(huge, function()
+    local t = { "<html><body>" }
+    for i = 1, 400 do t[#t + 1] = "<p>" .. P1 .. " Paragraph number " .. i .. " of this very long story.</p>" end
+    return table.concat(t) .. "</body></html>", "text/html"
+end)
+check(huge.sections[1].items[1].full and #huge.sections[1].items[1].text <= Daily.MAX_TEXT + 3 and huge.sections[1].items[1].text:sub(-3) == "\u{2026}",
+    "a very long story is cut at " .. Daily.MAX_TEXT .. " bytes, at a word")
+-- through the paper's own fetch
+plugin = { store = { daily = { enabled = true, pictures = false, feeds = { { url = "https://ok.example.com/rss?key=SECRET", name = "Mine" } } } }, save = function() end }
+for _i, f in ipairs(Daily.DEFAULT_FEEDS) do Daily.setDefaultOn(plugin, f, false) end
+http.answers["https://ok.example.com/rss?key=SECRET"] = { body = '<rss><channel><item><title>Seven ships</title><link>https://news.example.com/seven?ref=SECRET</link><description>One line.</description></item></channel></rss>' }
+http.answers["https://news.example.com/seven?ref=SECRET"] = { body = "GZ:" .. PAGE, headers = { ["content-encoding"] = "gzip", ["content-type"] = "text/html; charset=utf-8" } }
+Daily.edition, Daily.loaded, Daily.tried_at = nil, true, nil
+logged = {}
+Daily.refresh(plugin)
+local whole = Daily.edition and Daily.edition.sections[1].items[1]
+check(whole and whole.full and whole.text:find(P2, 1, true) and Daily.edition.full == 1 and Daily.edition.pages == 1, "fetched with the day's paper (a compressed page unpacked), and counted")
+local scall
+for _i, c in ipairs(http.calls) do if c.url:find("news.example.com/seven", 1, true) then scall = c end end
+check(scall and scall.opts.log_url:find("news.example.com", 1, true) and scall.opts.log_url:find("(story)", 1, true) and not scall.opts.log_url:find("SECRET", 1, true)
+    and not scall.opts.log_url:find("seven", 1, true) and scall.opts.timeouts[2] <= 30, "the log gets the story's site, never its address; with a time limit")
+leaked = false
+for _i, line in ipairs(logged) do if line:find("SECRET", 1, true) or line:find("/seven", 1, true) then leaked = true end end
+check(not leaked and logged[#logged]:find("1 whole stories from 1 pages", 1, true), "… and the day's line counts them … " .. show(logged[#logged]))
+http.answers["https://news.example.com/seven?ref=SECRET"] = { body = "%PDF-1.4", headers = { ["content-type"] = "application/pdf" } }
+Daily.edition.day = ""
+Daily.refresh(plugin)
+check(Daily.edition.sections[1].items[1].text == "One line." and not Daily.edition.sections[1].items[1].full, "a link that isn't a web page: the summary stays")
+plugin.store.daily.full = false
+local before_calls = #http.calls
+Daily.edition.day = ""
+Daily.refresh(plugin)
+local story_calls = 0
+for i = before_calls + 1, #http.calls do if http.calls[i].url:find("news.example.com", 1, true) then story_calls = story_calls + 1 end end
+check(story_calls == 0 and not Daily.fullStories(plugin), "Whole stories off: no page is asked for")
+plugin.store.daily.full = nil
+rows = Paper.settingsItems(plugin)
+check(row("Whole stories").checked_func() == true and row("Whole stories").help_text:find("paywall", 1, true) and row("Whole stories").help_text:find("internet address", 1, true),
+    "Settings → Home → Daily paper → Whole stories: on, and says what it does, what it can't, and who sees the Kindle")
+row("Whole stories").callback()
+check(plugin.store.daily.full == false and row("Whole stories").checked_func() == false, "unticked")
+row("Whole stories").callback()
+check(plugin.store.daily.full == nil, "ticked again")
+check(Paper.articleText({ title = "T", text = "x", link = "https://x.example.com/1", full = true }):find("From the story's own page", 1, true), "a whole story says where its text is from")
+check(Daily.MAX_TEXT >= 12000, "a feed that carries whole stories is no longer cut at 4,000 bytes")
+
 print("== today's calendar events on the front page")
 local function tm(day, h, m) return os.time{ year = 2026, month = 11, day = day, hour = h, min = m or 0 } end
 local evs = {
@@ -809,6 +938,7 @@ Daily.pageSave(plugin, form)
 local st2 = plugin.store.daily
 check(ps.weather and ps.weather.on == true and ps.weather.source == nil and html:find('name="weather" value="1" checked', 1, true) and html:find('name="town"', 1, true)
     and html:find('name="unit"', 1, true) and W.store(plugin).off == true, "Weather: its tick, the town and the degrees on the page; unticked when Save comes without it")
+check(st2.full == false and ps.full == true and html:find('name="full" value="1" checked', 1, true), "Whole stories: ticked on the page; unticked when Save comes without it")
 check(st2.calendar == false and ps.calendar == true and html:find('name="calendar" value="1" checked', 1, true), "Today's calendar events: ticked on the page; unticked when Save comes without it")
 check(st2.pictures == false and ps.pictures == true and html:find('name="pictures" value="1" checked', 1, true), "With pictures: ticked on the page; unticked when Save comes without it")
 check(st2.enabled == true and st2.shelf == false and st2.feeds[1].enabled == false and st2.feeds[2].enabled == nil, "Save: the switches and your feeds' ticks as sent (an unticked box isn't sent)")

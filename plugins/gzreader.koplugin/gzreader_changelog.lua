@@ -10,6 +10,7 @@ return {
         version = "next",
         changes = {
             { short = "Every request now says GZreader and its version", text = "What GZreader sends to servers to say what it is (its user agent) was LuaSocket's name, KOReader's version, or something else depending on the request. Every request now says GZreader/ and the version, for example GZreader/1.34.0: to Grimmory, Memos, Immich, Plex, calendars, Home Assistant, the daily paper's feeds and pages, GitHub for updates, and the bug report. Nothing else is in it (no Kindle model, no KOReader version)." },
+            { short = "Daily paper: whole stories, not just the feed's summary", text = "The daily paper now carries whole stories. Many feeds give only a sentence or two of each story; for those, the story's own web page is now fetched with the day's paper and the article taken out of it (as a browser's reader view does), so the paper reads whole with Wi-Fi off. Feeds that already carry whole stories are no longer cut short either (up to about 2,500 words a story). The day's fetch takes longer for it: a page a story, in the background, five minutes at most. Stories behind a paywall or on pages built by scripts keep the feed's summary, and say so. A story's page can be on another site than its feed's, which then also sees this Kindle's internet address; story addresses are not written to the log. Settings → Home → Daily paper → Whole stories (or the setup page's Daily paper tab) turns it off." },
         },
     },
     {
