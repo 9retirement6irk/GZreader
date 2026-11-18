@@ -662,7 +662,11 @@ function Shelf:paintTo(bb, x, y)
         if t and menu and menu._zen_home_focus_id == t.id and slot.book.is_group ~= true then picked = i end
     end
     local face_w = self.cover_w + 2 * S(6) + S(M.PAGES) + S(5)
-    local function width_of(i) return i == picked and face_w or self.slots[i].w end
+    local function width_of(i)
+        if i ~= picked then return self.slots[i].w end
+        -- (GZreader: the daily paper's front page has its own width)
+        return self.slots[i].gz_paper and (self.slots[i].face_w + 2 * S(6)) or face_w
+    end
     local room = self.w - S(8) - S(4)
     local first = 1
     if picked then
@@ -673,12 +677,15 @@ function Shelf:paintTo(bb, x, y)
     if self.empty_text then
         -- nothing on it yet: cobwebs in its corners, and a word
         local r = math.min(S(90), math.floor(area_h * 0.4))
-        cobweb(bb, x + S(2), y + S(2), 1, 1, r)
+        -- (GZreader: not behind the daily paper, which stands at the left end)
+        if not (self.slots[1] and self.slots[1].gz_paper) then cobweb(bb, x + S(2), y + S(2), 1, 1, r) end
         cobweb(bb, x + self.w - S(2), board_y - 1, -1, -1, math.floor(r * 0.8))
         local TextBoxWidget = require("ui/widget/textboxwidget")
+        -- (GZreader: beside the daily paper when it stands there)
+        local taken = (self.slots[1] and self.slots[1].gz_paper) and (S(8) + self.slots[1].w) or 0
         local msg = TextBoxWidget:new{ text = self.empty_text, face = Font:getFace("cfont", 17),
-            width = self.w - S(80), alignment = "center", fgcolor = Blitbuffer.gray(0.75) }
-        msg:paintTo(bb, x + S(40), y + math.floor((area_h - msg:getSize().h) / 2))
+            width = self.w - S(80) - taken, alignment = "center", fgcolor = Blitbuffer.gray(0.75) }
+        msg:paintTo(bb, x + S(40) + taken, y + math.floor((area_h - msg:getSize().h) / 2))
         msg:free()
     end
     self.overlay = nil
@@ -705,7 +712,17 @@ function Shelf:paintTo(bb, x, y)
             slot.hidden = true
         else
             slot.hidden = false
-            if i == picked then
+            if i == picked and slot.gz_paper then
+                -- GZreader: the daily paper turned to its front page, in its place
+                self[i]:paintTo(bb, x + px, board_y - slot.h)
+                bb:paintRect(x + px, board_y - slot.h, slot.w, slot.h, Blitbuffer.COLOR_WHITE)
+                local cx, cy = x + px + S(6), board_y - slot.face_h - S(2)
+                slot.face:paintTo(bb, cx, cy)
+                for k = 0, 1 do
+                    bb:paintBorder(cx - S(3) - k, cy - S(3) - k, slot.face_w + 2 * (S(3) + k), slot.face_h + 2 * (S(3) + k), 1, Blitbuffer.COLOR_BLACK)
+                end
+                self.overlay = { rect = Geom:new{ x = cx, y = cy, w = slot.face_w, h = slot.face_h }, slot = slot }
+            elseif i == picked then
                 if not slot.cover then
                     slot.cover = cover_common.make_cover_widget(slot.book, self.cover_w, self.cover_h, {
                         border = cover_common.BORDER_SIZE, background = Blitbuffer.COLOR_LIGHT_GRAY })
@@ -741,6 +758,7 @@ end
 function Shelf:free()
     for _i, slot in ipairs(self.slots or {}) do
         if slot.cover then slot.cover:free(); slot.cover = nil end
+        if slot.face and slot.face.free then pcall(slot.face.free, slot.face) end -- GZreader: the daily paper's front page
     end
     for i = 1, #self do if self[i].free then pcall(self[i].free, self[i]) end end
 end
@@ -778,6 +796,67 @@ function M.build(books, opts)
             local Theme = require("gzreader_shelftheme")
             if Theme.keeps("home", r, rows) then keep = Theme.reserve(area_h) end
         end)
+        -- GZreader: the daily paper stands at the start of Home's first shelf,
+        -- a folded newspaper on its side among the books; picked (a tap, the
+        -- 5-way) it turns to show its front page as a book shows its cover, and
+        -- a second tap or a press opens it (gzreader_dailyscreen.lua draws both)
+        if r == 1 and opts.gz_home then
+            local okp, paper = pcall(function()
+                local hook = rawget(_G, "__GZ_SHELF_PAPER")
+                return hook and hook(ctx, area_h, cover_w, cover_h)
+            end)
+            if okp and type(paper) == "table" and paper.spine and paper.face
+                    and x + paper.face_w + S(6) <= width - S(4) - keep then
+                local slot = { x = x, w = paper.spine_w, h = paper.h, gz_paper = true, book = { gz_paper = true },
+                    face = paper.face, face_w = paper.face_w, face_h = paper.face_h }
+                local item = paper.spine
+                local function open() paper.open(); return true end
+                if opts.interactive and Device:isTouchDevice() then
+                    local whole = Geom:new{ x = 0, y = 0, w = Screen:getWidth(), h = Screen:getHeight() }
+                    local tap = InputContainer:new{
+                        dimen = Geom:new{ w = paper.spine_w, h = paper.h },
+                        ges_events = { TapGzPaper = { GestureRange:new{ ges = "tap", range = whole } } },
+                    }
+                    tap.onTapGzPaper = function(self_, _, ges)
+                        if not (ges and ges.pos) then return false end
+                        if ctx.openTopMenu and ctx.openTopMenu(ges) then return true end
+                        local ov = shelf.overlay
+                        if ov and ov.rect:contains(ges.pos) then
+                            if ov.slot ~= slot then return false end
+                            return open()
+                        end
+                        if slot.hidden or not (self_.dimen and self_.dimen:contains(ges.pos)) then return false end
+                        if not (slot.target and type(ctx.focusHomeTarget) == "function") then return open() end
+                        if menu and menu._zen_home_focus_id == slot.target.id then return open() end
+                        ctx.focusHomeTarget(slot.target)
+                        return true
+                    end
+                    tap[1] = item
+                    item = tap
+                end
+                if opts.interactive and type(ctx.prepareHomeFocusTarget) == "function" then
+                    local target = {
+                        key = "gz:daily-paper", subrow = (opts.row_offset or 0) + r, col = 1,
+                        width = paper.spine_w, height = paper.h, slow_refresh = true, badge_at_bottom = true,
+                        own_focus_box = true, activate = open,
+                        focus_rect = function()
+                            local d = shelf.dimen
+                            if not d then return { x = 0, y = 0, w = 1, h = 1 } end
+                            return { x = d.x, y = d.y - S(8), w = shelf.w, h = shelf.h + S(8) }
+                        end,
+                    }
+                    slot.target = target
+                    item = ctx.prepareHomeFocusTarget(target, item)
+                    targets[#targets + 1] = target
+                else
+                    -- (nothing to pick it with: its front page, as before)
+                    slot.w, slot.h, item = paper.face_w + S(6), paper.face_h, paper.face
+                end
+                shelf.slots[1] = slot
+                shelf[1] = item
+                x = x + slot.w
+            end
+        end
         for i = (r - 1) * per_row + 1, math.min(#books, r * per_row) do
             local book = books[i]
             local look = M.look(book, area_h)

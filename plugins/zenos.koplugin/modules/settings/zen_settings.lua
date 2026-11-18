@@ -35,7 +35,7 @@ local function compact(t, n)
     return out
 end
 
--- GZreader: its settings for a section ("general", "reader", "interface").
+-- GZreader: its settings for a section ("general", "reader", "interface", "home").
 local function gz_section(name)
     local g = gzreader()
     if not (g and type(g.sectionItems) == "function") then return {} end
@@ -160,6 +160,14 @@ function M.build(plugin)
         local list = interface_item.sub_item_table
         list[#list].separator = true
         for _i, item in ipairs(gz_interface) do list[#list + 1] = item end
+    end
+
+    -- GZreader: the daily paper (feeds fetched once a day, read on Home) at
+    -- the end of Home's own rows
+    local gz_home = gz_section("home")
+    if #gz_home > 0 and type(home_item.sub_item_table) == "table" then
+        local list = home_item.sub_item_table
+        for _i, item in ipairs(gz_home) do list[#list + 1] = item end
     end
 
     -- GZreader: no Downloads section (ZenOS's Library section, which sets up

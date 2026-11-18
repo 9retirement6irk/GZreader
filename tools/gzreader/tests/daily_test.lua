@@ -1,0 +1,582 @@
+-- The daily paper: feeds read into headlines and text (gzreader_feeds.lua),
+-- an edition put together from them once a day (gzreader_daily.lua), and
+-- what the screen shows of it (gzreader_dailyscreen.lua). No network: the
+-- feeds' texts are given, and the HTTP layer is stood in for.
+--   luajit daily_test.lua <repo> <tests lib> <work dir>
+local REPO, LIB, WORK = arg[1], arg[2], arg[3]
+local PLUGIN = REPO .. "/plugins/gzreader.koplugin"
+package.path = PLUGIN .. "/?.lua;" .. LIB .. "/?.lua;" .. package.path
+os.execute("mkdir -p '" .. WORK .. "'")
+
+local pass, fail = 0, 0
+local function check(cond, msg)
+    if cond then pass = pass + 1; print("  ok   " .. msg) else fail = fail + 1; print("  FAIL " .. msg) end
+end
+local function show(s) return (tostring(s):gsub("\n", "\\n")) end
+local function read(path)
+    local f = assert(io.open(path, "rb"))
+    local s = f:read("*a")
+    f:close()
+    return s
+end
+
+---------------------------------------------------------------- stand-ins
+local dkjson = require("dkjson")
+local logged = {}
+package.preload["gettext"] = function() return function(t) return t end end
+package.preload["gzreader_log"] = function()
+    local function line(...)
+        local parts = {}
+        for i = 1, select("#", ...) do parts[#parts + 1] = tostring((select(i, ...))) end
+        logged[#logged + 1] = table.concat(parts, " ")
+    end
+    return { info = line, warn = line, err = line, enabled = true }
+end
+package.preload["gzreader_json"] = function()
+    return { encode = dkjson.encode, decode = function(s) return (dkjson.decode(s)) end, list = function(t) return t end }
+end
+package.preload["datastorage"] = function() return { getSettingsDir = function() return WORK end } end
+package.preload["ffi/util"] = function()
+    return { template = function(s, ...)
+        local args = { ... }
+        return (s:gsub("%%(%d)", function(n) return tostring(args[tonumber(n)]) end))
+    end }
+end
+local shown, scheduled = {}, {}
+package.preload["ui/uimanager"] = function()
+    return {
+        show = function(_s, w) shown[#shown + 1] = w end,
+        close = function() end,
+        nextTick = function(_s, fn) scheduled[#scheduled + 1] = fn end,
+        setDirty = function() end,
+    }
+end
+package.preload["ui/widget/infomessage"] = function() return { new = function(_s, o) o.kind = "info"; return o end } end
+package.preload["ffi/blitbuffer"] = function() return { COLOR_BLACK = 0, COLOR_DARK_GRAY = 1 } end
+package.preload["device"] = function() return { screen = { scaleBySize = function(_s, n) return n end, getWidth = function() return 600 end, getHeight = function() return 800 end }, isTouchDevice = function() return true end } end
+package.preload["ui/font"] = function() return { getFace = function() return {} end } end
+package.preload["ui/geometry"] = function() return { new = function(_s, o) return o end } end
+local net = { usb = false, mode = "auto", runs = 0 }
+package.preload["gzreader_net"] = function()
+    return setmetatable({ run = function(fn, opts)
+        net.runs = net.runs + 1
+        net.last_opts = opts
+        if net.mode == "off" and opts and opts.quiet then return end
+        fn()
+    end }, { __index = function(_t, k) if k == "usb" then return net.usb end end })
+end
+package.preload["gzreader_async"] = function()
+    return { run = function(_api, fn, on_done, name, opts)
+        net.async = { name = name, opts = opts }
+        local ok, a, b = pcall(fn)
+        if ok then on_done(a, b) else on_done(nil, a) end
+    end }
+end
+package.preload["gzreader_gzip"] = function()
+    return { available = function() return true end, inflate = function(s) return s:match("^GZ:(.*)$") end }
+end
+local http = { calls = {} }
+package.preload["gzreader_api"] = function()
+    return { rawRequest = function(method, url, opts)
+        http.calls[#http.calls + 1] = { method = method, url = url, opts = opts }
+        local answer = http.answers and http.answers[url]
+        if not answer then return nil, nil, nil, "connection refused" end
+        if answer.code and answer.code >= 400 then return answer.code, nil, {} end
+        local body = answer.body or ""
+        for i = 1, #body, 1000 do
+            if not opts.sink(body:sub(i, i + 999)) then return nil, nil, nil, "sink" end
+        end
+        opts.sink(nil)
+        return answer.code or 200, nil, answer.headers or {}
+    end }
+end
+
+local Feeds = require("gzreader_feeds")
+local Daily = require("gzreader_daily")
+
+---------------------------------------------------------------- feeds
+print("== feeds read into headlines and text")
+local RSS = [==[<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:dc="http://purl.org/dc/elements/1.1/">
+<channel>
+<title>Example &amp; News</title><link>https://news.example.com/</link>
+<atom:link href="https://news.example.com/rss" rel="self" type="application/rss+xml"/>
+<image><title>logo</title><link>https://news.example.com/</link></image>
+<item><title><![CDATA[First <b>story</b> &amp; more]]></title><link>https://news.example.com/1?a=1&amp;b=2</link>
+<description>Short &lt;p&gt;summary&lt;/p&gt; here.</description>
+<content:encoded><![CDATA[<p>Para one&nbsp;is here.</p><script>track("x")</script><ul><li>a</li><li class="x">b</li></ul>
+<p>Para&#8217;s two &mdash; done.</p>]]></content:encoded>
+<pubDate>Tue, 17 Nov 2026 07:05:00 -0500</pubDate></item>
+<item><title>Second</title><guid>https://news.example.com/2</guid><description>Only this</description><dc:date>2026-11-16T23:00:00Z</dc:date></item>
+<item><title>Third</title><guid isPermaLink="false">tag:3</guid><link>javascript:alert(1)</link><description></description></item>
+<item><title></title><description>No title here. But a body.</description></item>
+</channel></rss>]==]
+local feed = Feeds.parse(RSS)
+check(feed and feed.title == "Example & News" and #feed.items == 4, "RSS: the feed's name and its 4 stories … " .. tostring(feed and #feed.items))
+local it = feed.items[1]
+check(it.title == "First story & more", "a title: CDATA, tags out, entities read … " .. show(it.title))
+check(it.link == "https://news.example.com/1?a=1&b=2", "its link, the & read … " .. tostring(it.link))
+check(it.text == "Para one is here.\n\n\u{2022} a\n\u{2022} b\n\nPara\u{2019}s two \u{2014} done.",
+    "the whole story (content:encoded) rather than the summary: paragraphs, a list, no script … " .. show(it.text))
+check(it.at == 1794917100, "pubDate with -0500 as UTC seconds … " .. tostring(it.at))
+check(feed.items[2].link == "https://news.example.com/2" and feed.items[2].at == 1794870000 and feed.items[2].text == "Only this",
+    "no <link>: the guid when it's a permalink; dc:date read")
+check(feed.items[3].link == nil, "a link that isn't http(s), a guid that isn't a permalink: no link")
+check(feed.items[4].title == "No title here. But a body.", "a story without a title: named by the start of its text")
+
+local ATOM = [==[<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom"><title type="text">Atom Example</title>
+<link href="https://a.example.com/feed" rel="self"/><link href="https://a.example.com/"/>
+<entry><title type="html">Hello &amp;amp; goodbye</title><link rel="replies" href="https://a.example.com/c"/><link rel="alternate" href="https://a.example.com/p1"/>
+<published>2026-11-17T12:00:00.123+01:00</published><updated>2026-11-17T13:00:00Z</updated><summary type="text">1 &lt; 2 &amp; so on</summary></entry>
+<entry><title>X</title><link href="https://a.example.com/p2"/><content type="xhtml"><div xmlns="http://www.w3.org/1999/xhtml"><p>In <em>XHTML</em>.</p></div></content></entry>
+</feed>]==]
+feed = Feeds.parse(ATOM)
+check(feed and feed.title == "Atom Example" and #feed.items == 2, "Atom: 2 entries")
+check(feed.items[1].title == "Hello & goodbye" and feed.items[1].link == "https://a.example.com/p1", "an entry's title and its alternate link (not replies, not self)")
+check(feed.items[1].at == 1794913200, "published (+01:00, fractions) as UTC … " .. tostring(feed.items[1].at))
+check(feed.items[1].text == "1 < 2 & so on", "a text summary keeps its < and & … " .. show(feed.items[1].text))
+check(feed.items[2].text == "In XHTML.", "xhtml content as text … " .. show(feed.items[2].text))
+
+local RDF = [==[<?xml version="1.0" encoding="ISO-8859-1"?><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns="http://purl.org/rss/1.0/">
+<channel><title>RDF caf]==] .. "\233" .. [==[</title><items><rdf:Seq/></items></channel>
+<item rdf:about="https://r.example.com/1"><title>Caf]==] .. "\233 \147quoted\148" .. [==[</title><link>https://r.example.com/1</link><description>d</description></item></rdf:RDF>]==]
+feed = Feeds.parse(RDF)
+check(feed and #feed.items == 1 and feed.items[1].title == "Café \u{201C}quoted\u{201D}" and feed.title == "RDF café",
+    "RSS 1.0 in Latin-1 / Windows-1252: read as UTF-8 … " .. show(feed and feed.items[1] and feed.items[1].title))
+check(Feeds.parse("<html><body>Sign in</body></html>") == nil, "a web page isn't a feed")
+check(Feeds.parse(nil) == nil and Feeds.parse("") == nil, "nothing isn't a feed")
+feed = Feeds.parse("<rss><channel><title>Empty</title></channel></rss>")
+check(feed and #feed.items == 0, "a feed with no stories is a feed")
+local many = { "<rss><channel>" }
+for i = 1, 30 do many[#many + 1] = "<item><title>T" .. i .. "</title><description>" .. string.rep("word ", 2000) .. "</description></item>" end
+many[#many + 1] = "</channel></rss>"
+feed = Feeds.parse(table.concat(many), { max_items = 7, max_text = 500 })
+check(#feed.items == 7 and feed.items[7].title == "T7", "only the first max_items stories are read")
+check(#feed.items[1].text <= 503 and feed.items[1].text:sub(-3) == "\u{2026}" and not feed.items[1].text:find("wor\u{2026}", 1, true),
+    "a long text is cut at a word, with … (" .. #feed.items[1].text .. " bytes)")
+check(Feeds.cut("aé" .. string.rep("é", 10), 4) == "aé\u{2026}", "a cut never splits a character … " .. Feeds.cut("aé" .. string.rep("é", 10), 4))
+check(Feeds.utf8("ok \255\254 caf\195\169 \195") == "ok  café ", "bytes that aren't UTF-8 are dropped")
+check(Feeds.entities("&lt;&#65;&#x42;&unknown;&nbsp;&hellip;") == "<AB&unknown; \u{2026}", "entities: named, decimal, hex; unknown ones stay")
+check(Feeds.text("a<br>b<br/>c") == "a\nb\nc" and Feeds.text("plain\ntext") == "plain\ntext", "<br> is a new line; plain text keeps its lines")
+check(Feeds.text("<p>one</p>\n<p>two</p><style>p{}</style><!-- c --><div>three</div>") == "one\n\ntwo\n\nthree", "paragraphs apart; style and comments out")
+check(Feeds.date("Mon, 16 Nov 2026 23:00:00 GMT") == 1794870000 and Feeds.date("16 Nov 2026 18:00 EST") == 1794870000
+    and Feeds.date("2026-11-16T23:00:00Z") == 1794870000 and Feeds.date("2026-11-16 23:00:00+00:00") == 1794870000,
+    "dates: RFC 822 (GMT, EST, no weekday, no seconds) and ISO 8601")
+check(Feeds.date("yesterday") == nil and Feeds.date("") == nil and Feeds.date("2026-13-40T00:00:00Z") == nil, "not a date: nil")
+check(Feeds.timegm(1970, 1, 1) == 0 and Feeds.timegm(2000, 3, 1) == 951868800 and Feeds.timegm(2024, 2, 29, 12) == 1709208000, "days counted right (leap years)")
+
+---------------------------------------------------------------- the edition
+print("== an edition from the feeds")
+local NOW = 1794920400 -- 2026-11-17 13:00 UTC
+local function rss(name, stories)
+    local out = { "<rss><channel><title>" .. name .. "</title>" }
+    for _i, s in ipairs(stories) do
+        out[#out + 1] = "<item><title>" .. s[1] .. "</title><link>https://" .. name .. ".example.com/" .. (s[3] or s[1]):gsub("%s", "-") .. "</link>"
+            .. "<description>About " .. s[1] .. "</description>"
+            .. (s[2] and ("<pubDate>" .. os.date("!%a, %d %b %Y %H:%M:%S GMT", NOW - s[2] * 3600) .. "</pubDate>") or "") .. "</item>"
+    end
+    out[#out + 1] = "</channel></rss>"
+    return table.concat(out)
+end
+local bodies = {
+    ["https://one.example.com/rss"] = rss("one", { { "A1", 1 }, { "A2", 2 }, { "A3", 3 }, { "A4", 4 }, { "A5", 5 }, { "A6", 6 }, { "A7", 7 } }),
+    ["https://two.example.com/rss"] = rss("two", { { "B1", 1 }, { "A1", 2, "same-title" }, { "B old", 80 }, { "B2", 3 } }),
+    ["https://slow.example.com/rss"] = rss("slow", { { "S last week", 200 }, { "S last month", 700 } }),
+    ["https://undated.example.com/rss"] = rss("undated", { { "U1" }, { "U2" } }),
+    ["https://page.example.com/rss"] = "<html>not a feed</html>",
+}
+local function fetch(url)
+    if bodies[url] then return bodies[url] end
+    return nil, "unreachable"
+end
+local feeds = {
+    { url = "https://one.example.com/rss", name = "One", topic = "World" },
+    { url = "https://two.example.com/rss", topic = "World" },
+    { url = "https://slow.example.com/rss", name = "Slow", topic = "Science" },
+    { url = "https://undated.example.com/rss", name = "Undated", topic = "Knitting" },
+    { url = "https://page.example.com/rss", name = "Page", topic = "World" },
+    { url = "https://down.example.com/rss", topic = "Books" },
+}
+local ed = Daily.build(feeds, NOW, fetch)
+local function titles(section)
+    local t = {}
+    for _i, item in ipairs(section.items) do t[#t + 1] = item.title end
+    return table.concat(t, ",")
+end
+check(ed and ed.day == "2026-11-17" and ed.at == NOW, "an edition for the day")
+check(#ed.sections == 3 and ed.sections[1].topic == "World" and ed.sections[2].topic == "Science" and ed.sections[3].topic == "Knitting",
+    "sections: GZreader's topics in their order, then your own; a topic with nothing isn't there")
+check(titles(ed.sections[1]) == "A1,B1,A2,A3,B2,A4,A5", "the feeds of a topic take turns; a headline twice is shown once; " .. Daily.PER_FEED .. " a feed at most … " .. titles(ed.sections[1]))
+check(not titles(ed.sections[1]):find("B old", 1, true), "a story older than a day and a half stays out")
+check(titles(ed.sections[2]) == "S last week", "a feed that posts seldom: its newest story rather than nothing")
+check(titles(ed.sections[3]) == "U1,U2", "stories without a date are taken as they come")
+check(ed.sections[1].items[1].source == "One" and ed.sections[1].items[2].source == "two", "a story's source: the feed's name as you gave it, else its own")
+check(#ed.failed == 2 and ed.failed[1] == "Page" and ed.failed[2] == "down.example.com", "feeds that failed are named (by name, else by site) … " .. table.concat(ed.failed, ","))
+local e2, err2 = Daily.build({ feeds[5], feeds[6] }, NOW, fetch)
+check(e2 == nil and err2 == "unreachable", "no feed answered: no edition (the old one stays)")
+e2, err2 = Daily.build({}, NOW, fetch)
+check(e2 == nil and err2 == "no feeds", "no feeds: no edition")
+e2 = Daily.build({ feeds[2] }, 86400 * 3, fetch)
+check(e2 and titles(e2.sections[1]):find("B old", 1, true), "a clock that ran down (1970): stories aren't judged by age")
+local big = {}
+for i = 1, 4 do big[#big + 1] = { url = "https://one.example.com/rss", name = "F" .. i, topic = "World" } end
+bodies["https://one.example.com/rss"] = rss("one", { { "A1", 1 }, { "A2", 2 }, { "A3", 3 } })
+local function fetchn(url)
+    fetchn_count = (fetchn_count or 0) + 1 -- luacheck: ignore
+    return (bodies[url]:gsub("<title>A", "<title>F" .. fetchn_count .. " A"):gsub("example%.com/", "example.com/F" .. fetchn_count .. "-"))
+end
+e2 = Daily.build(big, NOW, fetchn)
+check(#e2.sections[1].items == Daily.PER_SECTION, "a section holds " .. Daily.PER_SECTION .. " stories at most … " .. #e2.sections[1].items)
+local front = Daily.front(ed, 4)
+check(#front == 4 and front[1].title == "A1" and front[2].title == "S last week" and front[3].title == "U1" and front[4].title == "B1",
+    "the front page: each section's first story, then their seconds")
+check(#Daily.front(nil, 3) == 0 and #Daily.front(ed, 0) == 0 and #Daily.front(ed, 99) == Daily.count(ed), "the front page of nothing; never more than there is")
+check(Daily.count(ed) == 10, "stories counted … " .. Daily.count(ed))
+
+print("== the paper's day")
+local function at(h, m) return os.time{ year = 2026, month = 11, day = 17, hour = h, min = m or 0 } end
+check(Daily.day(at(4, 59)) == "2026-11-16" and Daily.day(at(5, 0)) == "2026-11-17" and Daily.day(at(23, 59)) == "2026-11-17",
+    "a new day's paper from 5 in the morning (reading past midnight keeps yesterday's)")
+
+---------------------------------------------------------------- settings
+print("== feeds chosen")
+local saves = 0
+local plugin = { store = {}, save = function() saves = saves + 1 end }
+check(Daily.enabled(plugin) == false, "off until turned on")
+local list = Daily.feeds(plugin)
+local n_default = 0
+for _i, f in ipairs(Daily.DEFAULT_FEEDS) do if not f.off then n_default = n_default + 1 end end
+check(#list == n_default and #list >= 6, "GZreader's own feeds: " .. #list .. " on to start with, " .. (#Daily.DEFAULT_FEEDS - n_default) .. " to tick")
+local topics_ok, ids, https = true, {}, true
+for _i, f in ipairs(Daily.DEFAULT_FEEDS) do
+    local known = false
+    for _j, t in ipairs(Daily.TOPICS) do if t == f.topic then known = true end end
+    if not known or ids[f.id] then topics_ok = false end
+    ids[f.id] = true
+    if not f.url:match("^https://") then https = false end
+end
+check(topics_ok and https, "each has an id of its own, a known topic and an https address")
+Daily.setDefaultOn(plugin, Daily.DEFAULT_FEEDS[1], false)
+local optional
+for _i, f in ipairs(Daily.DEFAULT_FEEDS) do if f.off then optional = f end end
+Daily.setDefaultOn(plugin, optional, true)
+list = Daily.feeds(plugin)
+local has_first, has_opt = false, false
+for _i, f in ipairs(list) do
+    if f.url == Daily.DEFAULT_FEEDS[1].url then has_first = true end
+    if f.url == optional.url then has_opt = true end
+end
+check(not has_first and has_opt and #list == n_default, "one ticked off, an optional one ticked on")
+check(Daily.normalizeUrl(" blog.example.com/feed ") == "https://blog.example.com/feed" and Daily.normalizeUrl("feed://x.example.com/a") == "https://x.example.com/a"
+    and Daily.normalizeUrl("feed:https://x.example.com/a") == "https://x.example.com/a" and Daily.normalizeUrl("http://x.example.com/rss") == "http://x.example.com/rss",
+    "an address as typed: no scheme, feed://, feed:https://, http://")
+check(Daily.normalizeUrl("not an address") == nil and Daily.normalizeUrl("") == nil and Daily.normalizeUrl("ftp://x.example.com/a") == nil
+    and Daily.normalizeUrl("https://localhost") == nil, "not an address: refused")
+local e, why = Daily.addFeed(plugin, "blog.example.com/feed", " My blog ", "")
+check(e and e.url == "https://blog.example.com/feed" and e.name == "My blog" and e.topic == nil, "a feed of your own added")
+e, why = Daily.addFeed(plugin, "https://blog.example.com/feed")
+check(e == nil and why == "have", "the same feed twice: refused")
+e, why = Daily.addFeed(plugin, Daily.DEFAULT_FEEDS[2].url)
+check(e == nil and why == "have", "one GZreader already has: refused")
+e, why = Daily.addFeed(plugin, "nope")
+check(e == nil and why == "bad", "not an address: refused")
+list = Daily.feeds(plugin)
+check(list[#list].url == "https://blog.example.com/feed" and list[#list].topic == Daily.OWN_TOPIC, "your feed is in the paper, under Your feeds")
+plugin.store.daily.feeds[1].enabled = false
+check(#Daily.feeds(plugin) == n_default, "a feed of yours unticked stays out")
+plugin.store.daily.feeds[1].enabled = nil
+local lines = Daily.parseFeedLines("\239\187\191# my feeds\r\nhttps://a.example.com/rss\r\n\r\nKnitting weekly | b.example.com/feed\nCrafts | Knit | https://c.example.com/atom.xml\nnot a link\n  # x\n")
+check(#lines == 3 and lines[1].url == "https://a.example.com/rss" and lines[1].name == nil and lines[2].name == "Knitting weekly"
+    and lines[3].topic == "Crafts" and lines[3].name == "Knit", "feeds.txt: an address, Name | address, Topic | Name | address; comments and junk skipped")
+for i = 1, Daily.MAX_FEEDS + 2 do Daily.addFeed(plugin, "https://n" .. i .. ".example.com/feed") end
+e, why = Daily.addFeed(plugin, "https://onemore.example.com/feed")
+check(e == nil and why == "full" and #plugin.store.daily.feeds == Daily.MAX_FEEDS, "at most " .. Daily.MAX_FEEDS .. " feeds of your own")
+check(Daily.site("https://www.example.com/a/b?key=secret") == "example.com" and Daily.site("https://feeds.example.org:8443/x") == "example.org", "a feed's site, for lists and the log")
+
+---------------------------------------------------------------- fetching
+print("== fetching a feed")
+http.answers = {
+    ["https://ok.example.com/rss?key=SECRET"] = { body = RSS },
+    ["https://gz.example.com/rss"] = { body = "GZ:" .. RSS, headers = { ["content-encoding"] = "gzip" } },
+    ["https://gone.example.com/rss"] = { code = 404 },
+    ["https://huge.example.com/rss"] = { body = string.rep("x", Daily.MAX_BYTES + 5000) },
+    ["https://blank.example.com/rss"] = { body = "" },
+}
+local body, ferr = Daily.fetch("https://ok.example.com/rss?key=SECRET")
+check(body == RSS, "a feed's body, whole")
+local call = http.calls[#http.calls]
+check(call.method == "GET" and call.opts.log_url and not call.opts.log_url:find("SECRET", 1, true) and not call.opts.log_url:find("rss", 1, true)
+    and call.opts.log_url:find("ok.example.com", 1, true), "the log gets the feed's site, never its address … " .. tostring(call.opts.log_url))
+check(call.opts.headers["Accept-Encoding"] == "gzip" and call.opts.headers["User-Agent"]:find("GZreader", 1, true) and call.opts.timeouts[2] <= 60,
+    "asked for compressed, as GZreader, with a time limit")
+local sends_more = false
+for k in pairs(call.opts.headers) do
+    local name = k:lower()
+    if name == "cookie" or name == "authorization" or name == "referer" then sends_more = true end
+end
+check(not sends_more and call.opts.body == nil and call.opts.raw_body == nil, "nothing about you is sent: no cookie, sign-in or body")
+body = Daily.fetch("https://gz.example.com/rss")
+check(body == RSS, "a compressed answer is unpacked")
+body, ferr = Daily.fetch("https://gone.example.com/rss")
+check(body == nil and ferr == "http_404", "a feed that's gone: http_404")
+body, ferr = Daily.fetch("https://huge.example.com/rss")
+check(body == nil and ferr == "too big", "a feed over " .. math.floor(Daily.MAX_BYTES / 1024) .. " KB isn't read to the end")
+body, ferr = Daily.fetch("https://blank.example.com/rss")
+check(body == nil and ferr == "empty", "an empty answer: no feed")
+body, ferr = Daily.fetch("https://nowhere.example.com/rss")
+check(body == nil and ferr == "unreachable", "a site that doesn't answer: unreachable")
+
+---------------------------------------------------------------- once a day
+print("== once a day")
+plugin = { store = { daily = { enabled = true, off = {}, feeds = { { url = "https://ok.example.com/rss?key=SECRET", name = "Mine" } } } }, save = function() saves = saves + 1 end }
+for _i, f in ipairs(Daily.DEFAULT_FEEDS) do Daily.setDefaultOn(plugin, f, false) end
+os.remove(Daily.cachePath())
+Daily.edition, Daily.loaded, Daily.tried_at, Daily.last_error = nil, nil, nil, nil
+local changes = 0
+Daily.listen("test", function() changes = changes + 1 end)
+check(Daily.due(plugin) == true, "no edition yet: due")
+logged = {}
+local started = Daily.maybeRefresh(plugin)
+check(started == true and net.last_opts.quiet == true, "asked for quietly (Wi-Fi off stays off)")
+check(net.async and net.async.name == "daily paper" and net.async.opts.timeout >= 120, "fetched in the background, with a time limit")
+check(Daily.edition and Daily.count(Daily.edition) == 4 and Daily.edition.sections[1].topic == Daily.OWN_TOPIC, "today's edition is there … " .. tostring(Daily.edition and Daily.count(Daily.edition)))
+check(Daily.due(plugin) == false and Daily.maybeRefresh(plugin) == false, "today's is there: not due, not fetched again")
+check(changes >= 2, "what shows the paper was told (a try began, an edition came)")
+local kept = dkjson.decode(read(Daily.cachePath()))
+check(kept and kept.day == Daily.edition.day and kept.sections[1].items[1].title == "First story & more", "kept on the Kindle (settings/gzreader-daily.json)")
+local leaked = false
+for _i, line in ipairs(logged) do if line:find("SECRET", 1, true) or line:find("/rss", 1, true) then leaked = true end end
+check(not leaked and #logged >= 1, "the log names no feed address … " .. show(logged[#logged]))
+Daily.edition, Daily.loaded = nil, nil
+check(Daily.load() and Daily.load().day == kept.day, "read again after a restart")
+-- tomorrow
+local tomorrow = os.time() + 86400
+check(Daily.due(plugin, tomorrow) == true, "the next day: due again")
+http.answers["https://ok.example.com/rss?key=SECRET"] = nil
+Daily.tried_at = nil
+local before = Daily.edition
+net.runs = 0
+check(Daily.maybeRefresh(plugin, tomorrow) == true and Daily.edition == before and Daily.last_error == "unreachable", "a failed try keeps the edition there is")
+check(Daily.maybeRefresh(plugin, tomorrow + 60) == false and Daily.maybeRefresh(plugin, tomorrow + Daily.RETRY - 1) == false, "after a failed try: not again for " .. (Daily.RETRY / 60) .. " minutes")
+check(Daily.maybeRefresh(plugin, tomorrow + Daily.RETRY + 1) == true, "then again")
+net.mode = "off"
+Daily.tried_at = nil
+local calls_before = #http.calls
+Daily.maybeRefresh(plugin, tomorrow)
+check(#http.calls == calls_before, "Wi-Fi turned off by you: nothing is fetched")
+net.mode = "auto"
+plugin.store.daily.enabled = nil
+Daily.tried_at = nil
+check(Daily.due(plugin, tomorrow) == false and Daily.maybeRefresh(plugin, tomorrow) == false, "the paper off: nothing is fetched")
+plugin.store.daily.enabled = true
+net.usb = true
+check(Daily.enabled(plugin) == false and Daily.maybeRefresh(plugin, tomorrow) == false, "a Kindle without Wi-Fi: no paper")
+local okr, errr
+Daily.refresh(plugin, function(ok, err) okr, errr = ok, err end)
+check(okr == false and errr == "usb", "… and asking says why")
+net.usb = false
+plugin.store.daily.feeds = {}
+Daily.refresh(plugin, function(ok, err) okr, errr = ok, err end)
+check(okr == false and errr == "no feeds", "no feed ticked: said so")
+for _i, code in ipairs({ "usb", "no feeds", "busy", "empty", "timeout", "unreachable", "whatever" }) do
+    if type(Daily.why(code)) ~= "string" or Daily.why(code) == "" then check(false, "why: " .. code) end
+end
+check(true, "every way it can fail has its words")
+
+---------------------------------------------------------------- the screen
+print("== what the screen shows")
+local Paper = require("gzreader_dailyscreen")
+http.answers["https://ok.example.com/rss?key=SECRET"] = { body = RSS }
+plugin.store.daily.feeds = { { url = "https://ok.example.com/rss?key=SECRET", name = "Mine" } }
+Daily.tried_at = nil
+Daily.edition.day = ""
+Daily.maybeRefresh(plugin)
+check(Paper.dateText(os.time{ year = 2026, month = 11, day = 7, hour = 12 }) == "Saturday, November 7", "the date: Saturday, November 7")
+check(Paper.timeText(os.time{ year = 2026, month = 11, day = 7, hour = 7, min = 5 }) == "7:05", "the time: 7:05")
+check(Paper.statusText(plugin):match("^4 stories · %d+:%d%d$"), "today's paper: its stories and when it came … " .. Paper.statusText(plugin))
+check(Paper.statusText(plugin, os.time() + 2 * 86400):match("^from %a+, %a+ %d+$"), "an older paper says which day it's from … " .. Paper.statusText(plugin, os.time() + 2 * 86400))
+local stories = Paper.stories(Daily.edition)
+check(#stories == 4 and stories[1].kicker == true and stories[2].kicker == false and stories[1].topic == Daily.OWN_TOPIC
+    and stories[1].item.title == "First story & more", "the paper's stories in reading order, a section's first one marked for its heading")
+check(#Paper.stories(nil) == 0, "no edition: no stories")
+check(Paper.excerpt("One.\n\nTwo\nthree.", 100) == "One. Two three." and #Paper.excerpt(string.rep("word ", 300), 420) <= 423
+    and Paper.excerpt(nil) == "", "how a story begins on the page: one paragraph, cut at a word")
+check(Paper.columnCount(600, 167) == 2 and Paper.columnCount(1072, 300) == 2 and Paper.columnCount(824, 150) == 3 and Paper.columnCount(1860, 300) == 3,
+    "columns: 2 on a 6-inch Kindle, 3 on a DX or a Scribe")
+-- stories into columns
+local function heights(list) return function(i) return list[i] end end
+local function placedText(placed)
+    local t = {}
+    for _i, p in ipairs(placed) do t[#t + 1] = p.i .. "@" .. p.col .. ":" .. p.y end
+    return table.concat(t, " ")
+end
+local placed, nxt = Paper.fill(1, 5, 2, 100, 10, heights({ 40, 40, 40, 40, 40 }))
+check(placedText(placed) == "1@1:0 2@1:50 3@2:0 4@2:50" and nxt == 5, "columns fill top to bottom, left to right; what doesn't fit starts the next page … " .. placedText(placed))
+placed, nxt = Paper.fill(5, 5, 2, 100, 10, heights({ 40, 40, 40, 40, 40 }))
+check(placedText(placed) == "5@1:0" and nxt == 6, "the next page carries on from there, to the last story")
+placed, nxt = Paper.fill(1, 3, 2, 100, 10, heights({ 300, 20, 20 }))
+check(placedText(placed) == "1@1:0 2@2:0 3@2:30" and nxt == 4, "a story taller than a column gets one to itself (never an endless page)")
+placed, nxt = Paper.fill(1, 2, 3, 100, 10, heights({ 100, 100 }))
+check(placedText(placed) == "1@1:0 2@2:0" and nxt == 3, "a story that fills a column exactly")
+placed, nxt = Paper.fill(4, 3, 2, 100, 10, heights({}))
+check(#placed == 0 and nxt == 4, "nothing left: an empty page, nothing asked")
+local every, seen_all, start, pages = {}, true, 1, 0
+local hs = {}
+for i = 1, 40 do hs[i] = 30 + (i * 37) % 90 end
+while start <= 40 and pages < 50 do
+    placed, nxt = Paper.fill(start, 40, 2, 400, 9, heights(hs))
+    for _i, p in ipairs(placed) do
+        every[#every + 1] = p.i
+        if p.y > 0 and p.y + hs[p.i] > 400 then seen_all = false end
+    end
+    if nxt <= start then seen_all = false; break end
+    start, pages = nxt, pages + 1
+end
+local in_order = #every == 40
+for i, v in ipairs(every) do if v ~= i then in_order = false end end
+check(in_order and seen_all, "40 stories over " .. pages .. " pages: each once, in order, none past a column's foot")
+-- Home's folded newspaper
+local sizes = { shadow = 3, pad = 6, margin = 2, top = 2, gutter = 14, mast_h = 24, rules_h = 7, lead_h = 20, line_h = 16 }
+local L = Paper.homeLayout(576, 130, sizes)
+check(L.lead and L.rows == 3 and L.w == 576 - 3 - 4 and L.h == 130 - 3 - 2 and L.col_w * 2 + sizes.gutter <= L.inner_w,
+    "Home's newspaper: the sheet with room for its shadow, the lead headline and 3 rows of two")
+L = Paper.homeLayout(576, 90, sizes)
+check(L.lead and L.rows == 1, "a lower row: the lead and one row")
+L = Paper.homeLayout(576, 50, sizes)
+check(not L.lead and L.rows == 0, "a very low row: the name alone")
+local items = { nil, nil, { callback = function() Paper.article(plugin, stories[1].item) end } }
+shown = {}
+package.loaded["ui/widget/textviewer"] = { new = function(_s, o) o.kind = "viewer"; return o end }
+items[3].callback()
+local viewer = shown[#shown]
+check(viewer and viewer.kind == "viewer" and viewer.title == "First story & more" and viewer.text:find("Para one is here.", 1, true)
+    and viewer.text:find("^Mine · Tuesday, November 17"), "a story opens as text, its source and day first")
+check(viewer.buttons_table[1][1].text == "QR code" and viewer.buttons_table[1][2].text == "Close", "with its link as a QR code, and Close")
+package.loaded["ui/widget/qrmessage"] = { new = function(_s, o) o.kind = "qr"; return o end }
+viewer.buttons_table[1][1].callback()
+check(shown[#shown].kind == "qr" and shown[#shown].text == "https://news.example.com/1?a=1&b=2", "the QR code is the story's link")
+local no_link = Paper.article(plugin, { title = "T", text = "x" })
+check(#no_link.buttons_table[1] == 1 and no_link.buttons_table[1][1].text == "Close" and no_link.text == "x", "a story without a link: no QR code")
+check(Paper.articleText({ title = "T", text = "short", link = "https://x.example.com/1", source = "S" }):find("only a summary", 1, true),
+    "a short text says it's the feed's summary")
+Daily.edition, Daily.loaded = nil, true
+check(Paper.statusText(plugin) == "comes when Wi-Fi is on", "… and Home says when it comes")
+
+print("== Settings → Home → Daily paper")
+local home = { rows = { order = { "datetime", "featured" }, enabled = { datetime = true, featured = true } }, modules = {} }
+local units = { datetime = 1, featured = 4, daily_paper = 3 }
+local saved_home, redrawn = 0, 0
+package.loaded["config/preset_store"] = {
+    getSettings = function() return home end,
+    saveSettings = function(_kind, cfg) home = cfg; saved_home = saved_home + 1 end,
+}
+local registered = {}
+package.loaded["modules/filebrowser/patches/home/components/registry"] = {
+    CAPACITY_UNITS = 10,
+    get = function(id) return registered[id] end,
+    sizeUnits = function(comp) return units[comp.id] end,
+    totalUnits = function(enabled) local t = 0; for id, on in pairs(enabled) do if on then t = t + (units[id] or 0) end end return t end,
+}
+package.loaded["common/gz_view"] = { redrawHome = function() redrawn = redrawn + 1 end }
+check(Paper.install(plugin) == false, "ZenOS not started yet: nothing registered")
+rawset(_G, "__ZENOS_REGISTER_HOME_ITEM", function(id, build, opts)
+    registered[id] = { id = id, build = build, label = opts.label, size = opts.size }
+    return true
+end)
+check(Paper.install(plugin) == true and registered.daily_paper and registered.daily_paper.label == "Daily paper" and registered.daily_paper.size == "m",
+    "Home gets a Daily paper widget (size M)")
+plugin.store.daily.enabled = nil
+local rows = Paper.settingsItems(plugin)
+local function row(text) for _i, r in ipairs(rows) do if (r.text or (r.text_func and r.text_func())):find(text, 1, true) then return r end end end
+check(row("Daily paper").checked_func() == false and row("Feeds").enabled_func() == false and row("Read the paper").enabled_func() == false,
+    "off: the rest is greyed")
+check(row("Daily paper").help_text:find("internet address", 1, true), "the switch says what a feed's site learns")
+shown = {}
+Paper.show(plugin)
+check(shown[#shown] and shown[#shown].kind == "info" and shown[#shown].text:find("Settings → Home → Daily paper", 1, true), "opening the paper while it's off says where to turn it on")
+saves = 0
+check(Paper.onShelf(plugin) == false and Paper.shelfItem(plugin, {}, 300, 150) == nil, "off: no newspaper on the shelf")
+row("Daily paper").callback()
+check(Daily.enabled(plugin) and saves == 1 and home.rows.enabled.daily_paper ~= true and redrawn == 1,
+    "turned on: kept, no row of its own on Home, Home drawn again")
+check(Paper.onShelf(plugin) and row("On Home's bookshelf").checked_func() == true, "… the newspaper goes on Home's bookshelf")
+check(type(rawget(_G, "__GZ_SHELF_PAPER")) == "function", "the shelf can ask for it")
+row("On Home's bookshelf").callback()
+check(not Paper.onShelf(plugin) and Daily.enabled(plugin) and plugin.store.daily.shelf == false and redrawn == 2, "unticked: off the shelf, the paper stays on")
+row("On Home's bookshelf").callback()
+check(Paper.onShelf(plugin) and plugin.store.daily.shelf == nil, "ticked again")
+local pw, ph = Paper.shelfSize(300, 150)
+check(ph == 240 and pw == 168, "on the shelf: a little lower than the books, a front page's shape … " .. pw .. "x" .. ph)
+check(Paper.spineWidth(300) == 30 and Paper.spineWidth(100) == 16 and Paper.spineWidth(300) * 5 < ph,
+    "on its side it's a folded paper's thickness, far narrower than its front page")
+pw, ph = Paper.shelfSize(300, 400)
+check(pw == 192, "never much wider than it is tall … " .. pw)
+row("Headlines as a row on Home").callback()
+check(home.rows.enabled.daily_paper == true and home.rows.order[#home.rows.order] == "daily_paper", "Headlines as a row on Home: the widget ticked (last)")
+check(row("Headlines as a row on Home").checked_func() == true, "… and shown ticked")
+home.rows.order = { "datetime", "featured", "strip", "quotes", "daily_paper" }
+home.rows.enabled.daily_paper = false
+row("Headlines as a row on Home").callback()
+check(table.concat(home.rows.order, ",") == "datetime,featured,daily_paper,strip,quotes", "with books on Home, the paper goes above them (the bookshelf stays last) … " .. table.concat(home.rows.order, ","))
+home.rows.order = { "daily_paper", "datetime", "featured", "strip" }
+row("Headlines as a row on Home").callback()
+row("Headlines as a row on Home").callback()
+check(home.rows.order[3] == "daily_paper" and #home.rows.order == 4, "listed once, however often it's switched")
+row("Headlines as a row on Home").callback()
+check(home.rows.enabled.daily_paper == false and row("Headlines as a row on Home").checked_func() == false and Daily.enabled(plugin), "the row unticked: the paper stays on")
+units.featured = 8
+shown = {}
+row("Headlines as a row on Home").callback()
+check(home.rows.enabled.daily_paper == false and shown[#shown] and shown[#shown].text:find("no room", 1, true), "Home full: said so, nothing changed")
+units.featured = 4
+row("Headlines as a row on Home").callback()
+check(home.rows.enabled.daily_paper == true, "the row on again")
+row("Daily paper").callback()
+check(not Daily.enabled(plugin) and home.rows.enabled.daily_paper == false and not Paper.onShelf(plugin), "the paper turned off: its row and the shelf's newspaper go too")
+row("Daily paper").callback()
+local feed_rows = Paper.feedItems(plugin)
+local n_rows = #Daily.DEFAULT_FEEDS + #plugin.store.daily.feeds + 3
+check(#feed_rows == n_rows and feed_rows[1].text == "World: " .. Daily.DEFAULT_FEEDS[1].name, "Feeds: GZreader's by topic, yours, Add a feed, Add from feeds.txt, About feeds")
+local was = feed_rows[1].checked_func()
+feed_rows[1].callback()
+check(feed_rows[1].checked_func() == (not was) and Daily.tried_at == nil, "a tick changes the feed; the paper is made again at the next look")
+local mine = feed_rows[#Daily.DEFAULT_FEEDS + 1]
+mine.callback()
+local unticked = mine.checked_func()
+mine.callback()
+check(unticked == false and mine.checked_func() == true, "a feed of yours unticked, and ticked again")
+check(mine.text == "Mine · ok.example.com" and not mine.text:find("SECRET", 1, true), "your feed is listed by name and site, not its address")
+local fh = io.open(WORK .. "/feeds.txt", "wb")
+fh:write("Tea | tea.example.com/feed\nhttps://ok.example.com/rss?key=SECRET\n")
+fh:close()
+plugin.feeds_file = WORK .. "/feeds.txt"
+local added, where = Paper.importFile(plugin)
+check(added == 1 and where == WORK .. "/feeds.txt" and plugin.store.daily.feeds[2].name == "Tea", "feeds.txt: the new one added, the one there already left")
+plugin.feeds_file = WORK .. "/none.txt"
+rawset(_G, "G_reader_settings", { readSetting = function() return WORK .. "/nohome/GZreader" end })
+added, where = Paper.importFile(plugin)
+check(added == nil and where:find("feeds.txt", 1, true), "no feeds.txt: says where to put one")
+net.usb = true
+rows = Paper.settingsItems(plugin)
+check(#rows == 1 and rows[1].enabled == false and rows[1].text:find("Wi-Fi", 1, true), "a Kindle without Wi-Fi: Settings says the paper needs it")
+net.usb = false
+
+print("== wired in")
+local main = read(PLUGIN .. "/main.lua")
+check(main:find('section == "home"', 1, true) and main:find('require("gzreader_dailyscreen").settingsItems(self)', 1, true), "the plugin gives Settings → Home its Daily paper row")
+check(main:find('require("gzreader_dailyscreen").install(self)', 1, true), "the plugin registers Home's widget at start")
+local zs = read(REPO .. "/plugins/zenos.koplugin/modules/settings/zen_settings.lua")
+check(zs:find('gz_section("home")', 1, true), "ZenOS's Settings asks GZreader for Home's rows")
+local sh = read(REPO .. "/plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/shelf.lua")
+check(sh:find('rawget(_G, "__GZ_SHELF_PAPER")', 1, true) and sh:find("opts.gz_home", 1, true) and sh:find("gz_paper = true", 1, true),
+    "ZenOS's shelf asks for the newspaper, on Home's first shelf only")
+check(sh:find("i == picked and slot.gz_paper", 1, true) and sh:find("slot.face:paintTo", 1, true) and sh:find("ctx.focusHomeTarget(slot.target)", 1, true),
+    "… stands it on its side, and turns it to its front page when it's picked, as a book shows its cover")
+check(read(REPO .. "/plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/strip_common.lua"):find("gz_home = true", 1, true), "Home's shelf says it's Home's")
+local src = read(PLUGIN .. "/gzreader_daily.lua") .. read(PLUGIN .. "/gzreader_dailyscreen.lua")
+check(not src:find("Log%.[a-z]+%([^\n]*%f[%w]url%f[%W][^\n]*%)") or not src:find("Log%.[a-z]+%([^\n]*[^%.]url[,%)]"), "no log line takes a feed's address")
+local cl = read(PLUGIN .. "/gzreader_changelog.lua")
+check(cl:find("Daily paper", 1, true) or cl:find("daily paper", 1, true), "the changelog tells about it")
+
+print(string.format("%d passed, %d failed", pass, fail))
+os.exit(fail == 0 and 0 or 1)

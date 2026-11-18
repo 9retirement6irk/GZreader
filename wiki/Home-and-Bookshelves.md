@@ -146,6 +146,14 @@ still showed it keeps its other widgets.
 The book you're reading shows its progress as the book's page edges, read
 pages darker, with a ribbon bookmark where you are.
 
+## The daily paper on Home
+
+A folded **newspaper** can stand on Home's bookshelf beside your books, on its
+side as they are: the day's headlines from the news feeds you choose, fetched
+once a day. Picked, it shows its front page; another tap opens it, laid out
+as a newspaper. It's off until you turn it on in **Settings → Home →
+Daily paper**. → [Daily paper](Daily-Paper)
+
 ## Sleep screen
 
 While a book is open: its cover. From Home and menus: a random picture from

@@ -79,9 +79,9 @@
 2 plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/cover_common.lua
 14 plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/featured_common.lua
 7 plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/grimmory_stats.lua
-6 plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/shelf.lua
+38 plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/shelf.lua
 8 plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/stats_triplet.lua
-14 plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/strip_common.lua
+18 plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/strip_common.lua
 1 plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/strip_controls.lua
 57 plugins/zenos.koplugin/modules/filebrowser/patches/home_page.lua
 4 plugins/zenos.koplugin/modules/filebrowser/patches/metadata_editor.lua
@@ -122,7 +122,7 @@
 3 plugins/zenos.koplugin/modules/settings/sections/reader_settings.lua
 3 plugins/zenos.koplugin/modules/settings/sections/updates_settings.lua
 3 plugins/zenos.koplugin/modules/settings/zen_bugreporter.lua
-66 plugins/zenos.koplugin/modules/settings/zen_settings.lua
+100 plugins/zenos.koplugin/modules/settings/zen_settings.lua
 2 plugins/zenos.koplugin/modules/settings/zen_settings_page.lua
 12 plugins/zenos.koplugin/modules/settings/zen_updater.lua
 6 reader.lua
