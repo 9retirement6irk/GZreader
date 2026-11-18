@@ -12,8 +12,17 @@ editor shows it, typed into directly (no Markdown to see).
 - Enter starts a new line (the next item in a list; Enter on an empty item
   ends the list); ⌫ at a line's start joins it to the line before.
 - Swipe up or down: scroll a long note.
-- Code, quotes, tables and pictures show as their Markdown in grey and edit
-  as text.
+- Code, quotes, tables show as their Markdown in grey and edit as text.
+- A picture on a line of its own shows as the picture (when the editor
+  gives `pictures`, and it's on the Kindle), at the size and place Memos'
+  web editor gave it (`![alt|center|320](…)`, Sticky.altSize). A tap picks
+  it: a frame and a pull tab on each side; drag a tab to make it wider or
+  narrower, written back as the web editor writes it. Above it, the web
+  editor's picture toolbar: Left, Center, Right, then ↑ ↓ (move it up or
+  down a paragraph), Alt (its description), 1:1 (its own size) and ✕
+  (delete). Dragging the picture itself moves it to another place in the
+  note (a line shows where it goes). Typing with a picture picked starts
+  a line after it.
 
 The note is kept as `gzreader_blocks.lua`'s blocks (one per line on the
 screen) and written back as Memos' rich editor writes it. For the on-screen
@@ -31,6 +40,7 @@ local InputContainer = require("ui/widget/container/inputcontainer")
 local RenderText = require("ui/rendertext")
 local UIManager = require("ui/uimanager")
 local Blocks = require("gzreader_blocks")
+local Sticky = require("gzreader_sticky")
 
 local Screen = Device.screen
 local S = function(px) return Screen:scaleBySize(px) end
@@ -46,7 +56,14 @@ local RichEdit = InputContainer:extend{
     gz_multiline = true, -- (the on-screen keyboard keeps Enter and ← →)
     gz_hash_key = true, -- (and a # key for tags: gzreader_hashkey.lua)
     focused = true,
+    -- the note's pictures: { size = function(src) → w, h (the file's) or nil
+    -- (not here: fetched, then `relayoutPictures()`), bb = function(src, w, h) → its picture at that size }
+    pictures = nil,
 }
+
+RichEdit.TAB_W = 14 -- a pull tab, scaled (wide, and its touch area 3 times that)
+RichEdit.TAB_H = 48
+RichEdit.MIN_PICTURE = 40 -- the narrowest a picture is dragged to
 
 RichEdit.TEXT_SIZE = 20
 RichEdit.HEADING_SIZE = { 28, 24, 22, 21, 20, 20 }
@@ -116,9 +133,31 @@ local function charFace(b, k, st)
     return RichEdit.face(st.size, st.bold or (m and m.b), m and m.i)
 end
 
+--- A picture block's picture: { src, alt, width, height, align } (the web
+--- editor's size, Sticky.altSize), or nil when it isn't one.
+function RichEdit.pictureOf(b)
+    if b.kind ~= "image" then return nil end
+    local alt, src = table.concat(b.chars):match("^%s*!%[([^%]]*)%]%(([^%)%s]+)[^%)]*%)%s*$")
+    if not src then return nil end
+    local size = Sticky.altSize(alt)
+    size.src = src
+    return size
+end
+
+--- How big a picture `nw` x `nh` (its file) shows on a page `width` wide:
+--- a size set in Memos takes its share of Memos' column (Sticky.pictureWidth),
+--- enlarged if need be; else as big as fits `max_h`, only shrunk.
+function RichEdit.pictureSize(pic, nw, nh, width, max_h)
+    local want = Sticky.pictureWidth(pic.width, width)
+    if want then return want, math.max(1, math.floor(nh * want / nw + 0.5)) end
+    return Sticky.fitSize(nw, nh, width, max_h)
+end
+
 --- Lays the note out `width` wide: the screen lines, each
---- { b, a, z, y, h, base, x0, xs (x of positions a … z+1), first, last, st }.
-function RichEdit.layout(doc, width)
+--- { b, a, z, y, h, base, x0, xs (x of positions a … z+1), first, last, st }
+--- (a picture's line also `picture` = { w, h, src, align, …, x }).
+--- `pictured(b)`: the size a picture block shows at (w, h), or nil (its Markdown).
+function RichEdit.layout(doc, width, pictured)
     local lines = {}
     local y = 0
     local prev, prev_num
@@ -132,6 +171,22 @@ function RichEdit.layout(doc, width)
         if prev then
             local same_list = prev.kind == b.kind and (b.kind == "bullet" or b.kind == "task" or b.kind == "ordered")
             y = y + (same_list and S(2) or S(8))
+        end
+        local pw, ph, pic
+        if pictured then pw, ph, pic = pictured(b) end
+        if pw then
+            -- a picture: one line as tall as it, placed as in Memos
+            local room = math.max(0, width - pw)
+            local px = pic.align == "center" and math.floor(room / 2) or pic.align == "right" and room or 0
+            local xs = {}
+            for _i = 1, #b.chars do xs[#xs + 1] = px end
+            xs[#xs + 1] = px + pw
+            pic.x, pic.w, pic.h = px, pw, ph
+            lines[#lines + 1] = { b = b, a = 1, z = #b.chars, y = y, h = ph, base = 0, x0 = px, xs = xs, st = st, w = {},
+                first = true, last = true, picture = pic }
+            y = y + ph
+            prev, prev_num = b, num
+            goto next_block
         end
         local base_face = RichEdit.face(st.size, st.bold, false, st.mono)
         local lh, base = lineMetrics(base_face)
@@ -173,6 +228,7 @@ function RichEdit.layout(doc, width)
         if n == 0 or chars[n] == "\n" then push(n + 1, n) end
         lines[#lines].last = true
         prev, prev_num = b, num
+        ::next_block::
     end
     return lines, y
 end
@@ -238,6 +294,9 @@ function RichEdit:init()
         HoldPanEdit = { GestureRange:new{ ges = "hold_pan", range = function() return self.dimen end } },
         HoldReleaseEdit = { GestureRange:new{ ges = "hold_release", range = function() return self.dimen end } },
         SwipeEdit = { GestureRange:new{ ges = "swipe", range = function() return self.dimen end } },
+        -- (a picture moved or sized follows the finger anywhere on the screen)
+        PanEdit = { GestureRange:new{ ges = "pan", range = function() return self:panRange() end } },
+        PanReleaseEdit = { GestureRange:new{ ges = "pan_release", range = function() return self:panRange() end } },
     }
     self:relayout()
     self:keepCursorInView()
@@ -245,9 +304,27 @@ end
 
 function RichEdit:getSize() return self.dimen end
 
+--- The size picture block `b` shows at here (w, h, its picture), or nil
+--- (no `pictures`, not a picture, or its file not here yet).
+function RichEdit:pictured(b)
+    if not self.pictures then return nil end
+    local pic = RichEdit.pictureOf(b)
+    if not pic then return nil end
+    local nw, nh = self.pictures.size(pic.src)
+    if not nw or nw < 1 or nh < 1 then return nil end
+    pic.nw, pic.nh = nw, nh
+    local w, h = RichEdit.pictureSize(pic, nw, nh, self.width, math.floor(self.height * 0.6))
+    return w, h, pic
+end
+
+--- A picture arrived (fetched): lay out again and redraw.
+function RichEdit:relayoutPictures()
+    self:update()
+end
+
 --- Lays out again after a change (and the flat text for the keyboard).
 function RichEdit:relayout()
-    self.lines, self.total_h = RichEdit.layout(self.doc, self.width)
+    self.lines, self.total_h = RichEdit.layout(self.doc, self.width, function(b) return self:pictured(b) end)
     local list, pos = {}, nil
     for k, b in ipairs(self.doc.blocks) do
         if k > 1 then list[#list + 1] = "\n" end
@@ -262,7 +339,10 @@ function RichEdit:keepCursorInView()
     local li = RichEdit.lineOf(self.lines, self.cur)
     local l = li and self.lines[li]
     if not l then return end
-    if l.y < self.top then self.top = l.y
+    if l.picture and l.h > self.height - S(60) then
+        -- (a picture taller than the page: its top in view, a little above it showing)
+        if l.y < self.top or l.y > self.top + self.height - S(60) then self.top = math.max(0, l.y - S(60)) end
+    elseif l.y < self.top then self.top = l.y
     elseif l.y + l.h > self.top + self.height then self.top = l.y + l.h - self.height end
     self.top = math.max(0, math.min(self.top, math.max(0, self.total_h - self.height)))
 end
@@ -307,6 +387,13 @@ end
 function RichEdit:addChars(chars)
     if type(chars) == "table" then chars = table.concat(chars) end
     if chars == "" then return end
+    if self:onPicture() then
+        -- (a picture takes no typing: the words go on a new line after it)
+        self.picked = nil
+        self.cur = { b = Blocks.split(self.doc, self.cur.b, #self.cur.b.chars + 1), i = 1 }
+        self.doc.changed = true
+        if chars == "\n" then return self:update("structure") end
+    end
     local structure = self:deleteSelection()
     local b = self.cur.b
     local raw = b.kind == "raw" or b.kind == "image"
@@ -332,6 +419,210 @@ function RichEdit:addChars(chars)
         end
     end
     self:update(structure and "structure" or true)
+end
+
+--- The cursor is on a picture shown as one.
+function RichEdit:onPicture()
+    for _i, l in ipairs(self.lines or {}) do
+        if l.picture and l.b == self.cur.b then return true end
+    end
+    return false
+end
+
+--- The picture line of block `b` (shown as a picture), if any.
+function RichEdit:pictureLine(b)
+    for _i, l in ipairs(self.lines or {}) do
+        if l.picture and l.b == b then return l end
+    end
+end
+
+--- The pull tabs of the picked picture, on the widget: { left = rect, right = rect }
+--- (rects as drawn; a touch counts in a wider area, tabAt).
+function RichEdit:tabs()
+    local l = self.picked and self:pictureLine(self.picked)
+    if not l then return nil end
+    local tw, th = S(RichEdit.TAB_W), math.min(S(RichEdit.TAB_H), l.h)
+    local ty = RichEdit.tabY(l.y - self.top, l.h, th, self.height)
+    local x1, x2 = l.picture.x, l.picture.x + l.picture.w
+    return {
+        left = { x = math.max(0, x1 - math.floor(tw / 2)), y = ty, w = tw, h = th },
+        right = { x = math.min(self.width - tw, x2 - math.floor(tw / 2)), y = ty, w = tw, h = th },
+        line = l,
+    }
+end
+
+--- Where the tabs go on a picture at `top`, `h` tall, on a page `page_h`
+--- tall: the middle of the part on the page (all of it when it fits).
+function RichEdit.tabY(top, h, th, page_h)
+    local a, z = math.max(0, top), math.min(page_h, top + h)
+    if z - a < th then a, z = top, top + h end
+    return a + math.floor((z - a - th) / 2)
+end
+
+--- The tab at (x, y) on the widget ("left" or "right"), or nil.
+function RichEdit:tabAt(x, y)
+    local t = self:tabs()
+    if not t then return nil end
+    for _i, side in ipairs({ "right", "left" }) do
+        local r = t[side]
+        local pad = r.w
+        if x >= r.x - pad and x < r.x + r.w + pad and y >= r.y - pad and y < r.y + r.h + pad then return side end
+    end
+end
+
+-- the picked picture's toolbar, as the web editor's (mbe-image-toolbar), plus moving it
+RichEdit.PICTURE_BAR = {
+    { id = "left", align = "left", label = "Align left" },
+    { id = "center", align = "center", label = "Align center" },
+    { id = "right", align = "right", label = "Align right" },
+    { id = "up", text = "\u{2191}", label = "Move up" },
+    { id = "down", text = "\u{2193}", label = "Move down" },
+    { id = "alt", text = "Alt", label = "Alt text" },
+    { id = "reset", text = "1:1", label = "Reset size" },
+    { id = "delete", text = "\u{2715}", label = "Delete" },
+}
+
+--- The picked picture's toolbar (relative to the widget): above the picture,
+--- under it when there's no room, on the page. nil when no picture is picked.
+function RichEdit:pictureBarRect()
+    local l = self.picked and self:pictureLine(self.picked)
+    if not l then return nil end
+    local n = #RichEdit.PICTURE_BAR
+    local cell = math.min(S(50), math.floor(self.width / n))
+    local w, h, gap = cell * n, S(44), S(6)
+    local top = l.y - self.top
+    local y = top - h - gap
+    if y < 0 then y = top + l.h + gap end
+    if y + h > self.height then y = math.max(0, math.min(self.height - h, top + gap)) end
+    local x = math.max(0, math.min(self.width - w, l.picture.x + math.floor((l.picture.w - w) / 2)))
+    return { x = x, y = y, w = w, h = h, cell = cell }
+end
+
+--- The toolbar's button at (x, y), or nil.
+function RichEdit:pictureBarAt(x, y)
+    local r = self:pictureBarRect()
+    if not r or x < r.x or x >= r.x + r.w or y < r.y or y >= r.y + r.h then return nil end
+    return RichEdit.PICTURE_BAR[math.min(#RichEdit.PICTURE_BAR, math.floor((x - r.x) / r.cell) + 1)]
+end
+
+--- Moves block `b` to position `to` among the blocks (1 … #blocks): the
+--- blocks around where it was and where it goes are joined again as Memos'
+--- editor writes them.
+function RichEdit:moveBlock(b, to)
+    local blocks = self.doc.blocks
+    local from
+    for k, x in ipairs(blocks) do if x == b then from = k end end
+    if not from then return false end
+    to = math.max(1, math.min(#blocks, to))
+    if to == from then return false end
+    local function mark(k) if blocks[k] then blocks[k].moved = true end end
+    mark(from + 1)
+    table.remove(blocks, from)
+    table.insert(blocks, to, b)
+    mark(to); mark(to + 1)
+    b.dirty = true
+    self.doc.changed = true
+    return true
+end
+
+--- A toolbar button on picture block `b`.
+function RichEdit:pictureTool(t, b)
+    local pic = RichEdit.pictureOf(b)
+    if not pic then return end
+    local line = table.concat(b.chars)
+    if t.align then
+        Blocks.setText(b, Sticky.setImageSize(line, 1, { width = pic.width, align = t.align ~= "left" and t.align or nil }))
+    elseif t.id == "reset" then
+        Blocks.setText(b, Sticky.setImageSize(line, 1, { align = pic.align }))
+    elseif t.id == "up" or t.id == "down" then
+        local k
+        for i, x in ipairs(self.doc.blocks) do if x == b then k = i end end
+        if not (k and self:moveBlock(b, k + (t.id == "up" and -1 or 1))) then return end
+    elseif t.id == "delete" then
+        local blocks = self.doc.blocks
+        local k
+        for i, x in ipairs(blocks) do if x == b then k = i end end
+        if not k then return end
+        if blocks[k + 1] then blocks[k + 1].moved = true end
+        table.remove(blocks, k)
+        if #blocks == 0 then blocks[1] = Blocks.new("paragraph") end
+        local near = blocks[math.max(1, k - 1)]
+        self.picked = nil
+        self.cur = { b = near, i = #near.chars + 1 }
+        self.doc.changed = true
+    elseif t.id == "alt" then
+        return self:askAlt(b)
+    end
+    self:update("structure", true)
+end
+
+--- Alt: the picture's description, typed (its size and place kept).
+function RichEdit.withAlt(line, alt)
+    local open, old, rest = line:match("^(%s*!%[)([^%]]*)(%].*)$")
+    if not open then return nil end
+    local size = Sticky.altSize(old)
+    alt = tostring(alt or ""):gsub("[%[%]\n|]", " ")
+    return open .. alt .. Sticky.imageSuffix{ width = size.width, height = size.height, align = size.align } .. rest
+end
+
+function RichEdit:askAlt(b)
+    local InputDialog = require("ui/widget/inputdialog")
+    local pic = RichEdit.pictureOf(b)
+    local dialog
+    dialog = InputDialog:new{
+        title = "Alt text", input = pic.alt or "", input_hint = "Describe the image\u{2026}",
+        buttons = { {
+            { text = "Cancel", id = "close", callback = function() UIManager:close(dialog) end },
+            { text = "Save", is_enter_default = true, callback = function()
+                local line = RichEdit.withAlt(table.concat(b.chars), dialog:getInputText())
+                UIManager:close(dialog)
+                if line then
+                    Blocks.setText(b, line)
+                    self:update("structure", true)
+                end
+            end },
+        } },
+    }
+    UIManager:show(dialog)
+    dialog:onShowKeyboard()
+end
+
+--- Where pans are taken: the page; the whole screen while a picture is being moved or sized.
+function RichEdit:panRange()
+    if self.moving or self.drag then
+        return Geom:new{ x = 0, y = 0, w = Screen:getWidth(), h = Screen:getHeight() }
+    end
+    return self.dimen
+end
+
+RichEdit.EDGE = 48 -- a picture dragged this near the page's top or bottom scrolls the note
+
+--- Where a picture dragged to `y` (on the widget) goes: the block position
+--- (1 … #blocks + 1) and the line's y on the widget, to show it.
+function RichEdit:dropAt(y)
+    local yy = y + self.top
+    local blocks = self.doc.blocks
+    local at, line_y = #blocks + 1, self.total_h
+    for k, b in ipairs(blocks) do
+        local top, bottom
+        for _i, l in ipairs(self.lines) do
+            if l.b == b then top = top or l.y; bottom = math.max(bottom or 0, l.y + l.h) end
+        end
+        if top and yy < (top + bottom) / 2 then at, line_y = k, top; break end
+    end
+    return at, line_y - self.top
+end
+
+--- A picture dragged to `w` pixels wide here: its size in Memos (CSS
+--- pixels, its share of Memos' column), written into the note.
+function RichEdit:resizePicture(b, w)
+    local pic = RichEdit.pictureOf(b)
+    if not pic then return end
+    local css = math.max(1, math.min(Sticky.WEB_COLUMN, math.floor(w * Sticky.WEB_COLUMN / self.width + 0.5)))
+    local line = Sticky.setImageSize(table.concat(b.chars), 1, { width = css, align = pic.align })
+    Blocks.setText(b, line)
+    self:update("structure", true)
+    return css
 end
 
 function RichEdit:delChar()
@@ -666,8 +957,26 @@ function RichEdit:onTapEdit(_arg, ges)
         end
         return true
     end
+    -- the picked picture's toolbar
+    local ptool = self.picked and self:pictureBarAt(x, y)
+    if ptool then
+        self:pictureTool(ptool, self.picked)
+        return true
+    end
     local p, l = self:posAt(x, y)
     if not p then return true end
+    -- a picture: picked (its pull tabs), the cursor after it; a tap elsewhere lets it go
+    if l and l.picture and x >= l.picture.x and x < l.picture.x + l.picture.w then
+        self.picked = l.b
+        self.anchor = nil
+        self.cur = { b = l.b, i = #l.b.chars + 1 }
+        -- (the keyboard away: room for the picture, its toolbar and moving it)
+        if self.keyboard and self.keyboard:isVisible() then self:onCloseKeyboard() end
+        self:update(nil, true)
+        return true
+    end
+    if self.picked and self:tabAt(x, y) then return true end
+    self.picked = nil
     -- a checklist item's box: ticks it
     if l and l.first and l.b.kind == "task" and x < l.x0 and y + self.top >= l.y then
         Blocks.toggleDone(l.b)
@@ -724,7 +1033,98 @@ function RichEdit:onHoldReleaseEdit(_arg, ges)
     return true
 end
 
+--- A pull tab dragged: the picture's new width as an outline while the
+--- finger moves (drawn at that size once it lifts: PanReleaseEdit).
+function RichEdit:onPanEdit(_arg, ges)
+    if not self.picked then return false end
+    if not self.drag and not self.moving then
+        -- (the picture itself, not a tab: moved to another place in the note)
+        local sp = ges.start_pos or ges.pos
+        local sx, sy = sp.x - (self.dimen.x or 0), sp.y - (self.dimen.y or 0)
+        local pl = self:pictureLine(self.picked)
+        local top = pl and (pl.y - self.top)
+        if not self:tabAt(sx, sy) and pl and sx >= pl.picture.x and sx < pl.picture.x + pl.picture.w and sy >= top and sy < top + pl.h then
+            self.moving = { b = self.picked, start_y = sy }
+        end
+    end
+    if self.moving then
+        local m = self.moving
+        local dy = (ges.relative and ges.relative.y) or 0
+        local fy = m.start_y + dy
+        -- (near the top or the bottom: the note scrolls under the finger)
+        local edge = S(RichEdit.EDGE)
+        local max_top = math.max(0, self.total_h - self.height)
+        local step = S(RichEdit.EDGE)
+        if fy < edge and self.top > 0 then
+            local was = self.top
+            self.top = math.max(0, self.top - step)
+            m.start_y = m.start_y + (was - self.top)
+        elseif fy > self.height - edge and self.top < max_top then
+            local was = self.top
+            self.top = math.min(max_top, self.top + step)
+            m.start_y = m.start_y - (self.top - was)
+        end
+        m.at, m.line_y = self:dropAt(math.max(0, math.min(self.height, m.start_y + dy)))
+        UIManager:setDirty(self.editor or self, function() return "fast", self.dimen end)
+        return true
+    end
+    if not self.drag then
+        local sp = ges.start_pos or ges.pos
+        local side = self:tabAt(sp.x - (self.dimen.x or 0), sp.y - (self.dimen.y or 0))
+        if not side then return false end
+        local l = self:pictureLine(self.picked)
+        self.drag = { side = side, b = self.picked, w = l.picture.w, h = l.picture.h, x = l.picture.x,
+            align = l.picture.align, start = l.picture.w }
+    end
+    local d = self.drag
+    local dx = (ges.relative and ges.relative.x) or 0
+    -- (a centred picture grows on both sides: twice as fast)
+    local f = (d.side == "right" and 1 or -1) * (d.align == "center" and 2 or 1)
+    d.w = math.max(S(RichEdit.MIN_PICTURE), math.min(self.width, d.start + dx * f))
+    UIManager:setDirty(self.editor or self, function() return "fast", self.dimen end) -- (an outline: quick)
+    return true
+end
+
+function RichEdit:onPanReleaseEdit(_arg, _ges)
+    local m = self.moving
+    if m then
+        self.moving = nil
+        local from
+        for k, x in ipairs(self.doc.blocks) do if x == m.b then from = k end end
+        -- (dropped below where it was: the places after it move up one)
+        local to = m.at and from and (m.at > from and m.at - 1 or m.at)
+        if to and self:moveBlock(m.b, to) then
+            self:update("structure", true)
+        else
+            UIManager:setDirty(self.editor or self, function() return "ui", self.dimen end)
+        end
+        return true
+    end
+    local d = self.drag
+    if not d then return false end
+    self.drag = nil
+    if math.abs(d.w - d.start) >= 2 then
+        self:resizePicture(d.b, d.w)
+    else
+        UIManager:setDirty(self.editor or self, function() return "ui", self.dimen end)
+    end
+    return true
+end
+
 function RichEdit:onSwipeEdit(_arg, ges)
+    -- (a quick drag of a pull tab comes as a swipe)
+    if self.picked and ges.pos then
+        local x, y = rel(self, ges)
+        local side = self:tabAt(x, y)
+        if side and (ges.direction == "east" or ges.direction == "west") then
+            local l = self:pictureLine(self.picked)
+            local dist = ges.distance or 0
+            local sign = (ges.direction == "east") == (side == "right") and 1 or -1
+            local f = l.picture.align == "center" and 2 or 1
+            self:resizePicture(self.picked, math.max(S(RichEdit.MIN_PICTURE), math.min(self.width, l.picture.w + sign * dist * f)))
+            return true
+        end
+    end
     if ges.direction == "north" then self:scrollDown(); return true end
     if ges.direction == "south" then self:scrollUp(); return true end
     return false
@@ -754,7 +1154,9 @@ function RichEdit:paintTo(bb, x, y)
     for k, b in ipairs(self.doc.blocks) do index[b] = k end
     for _li, l in ipairs(self.lines) do
         local ly = l.y - top
-        if ly + l.h > 0 and ly < h then
+        if l.picture and ly + l.h > 0 and ly < h then
+            self:paintPicture(bb, x, y, l, ly)
+        elseif ly + l.h > 0 and ly < h then
             if ly >= 0 and ly + l.h <= h then
                 local st, b = l.st, l.b
                 -- the selection's part of this line
@@ -803,8 +1205,8 @@ function RichEdit:paintTo(bb, x, y)
             end
         end
     end
-    -- the cursor
-    if not p then
+    -- the cursor (not on a picture: it's picked instead)
+    if not p and not self:onPicture() then
         local li, cx = RichEdit.lineOf(self.lines, self.cur)
         local l = li and self.lines[li]
         if l then
@@ -818,6 +1220,92 @@ function RichEdit:paintTo(bb, x, y)
     if top > 0 then bb:paintRect(x, y, self.width, 1, Blitbuffer.COLOR_DARK_GRAY) end
     if top + h < self.total_h then bb:paintRect(x, y + h - 1, self.width, 1, Blitbuffer.COLOR_DARK_GRAY) end
     self:paintBar(bb, x, y)
+end
+
+--- A picture's line: the picture (the part on the page), its frame and pull
+--- tabs when it's picked, and the outline of the new size while a tab is dragged.
+function RichEdit:paintPicture(bb, x, y, l, ly)
+    local pic = l.picture
+    local h = self.height
+    local img = self.pictures and self.pictures.bb(pic.src, pic.w, pic.h)
+    local from, to = math.max(0, -ly), math.min(pic.h, h - ly)
+    if img and to > from then
+        bb:blitFrom(img, x + pic.x, y + ly + from, 0, from, math.min(pic.w, img:getWidth()), math.min(to, img:getHeight()) - from)
+    elseif to > from then
+        bb:paintBorder(x + pic.x, y + math.max(0, ly), pic.w, to - from, 1, Blitbuffer.COLOR_DARK_GRAY)
+    end
+    if self.picked ~= l.b then return end
+    self:paintPictureBar(bb, x, y)
+    if self.moving and self.moving.line_y then
+        -- (where the picture goes: a thick line between the paragraphs)
+        local ly2 = math.max(0, math.min(h - S(4), self.moving.line_y - S(2)))
+        bb:paintRect(x, y + ly2, self.width, S(4), Blitbuffer.COLOR_BLACK)
+    end
+    local t = self:tabs()
+    local d = self.drag
+    local fx, fw = pic.x, pic.w
+    if d and d.b == l.b then
+        fw = math.floor(d.w)
+        fx = d.align == "center" and math.floor((self.width - fw) / 2) or d.align == "right" and (self.width - fw)
+            or (d.side == "left" and (pic.x + pic.w - fw) or pic.x)
+        fx = math.max(0, math.min(self.width - fw, fx))
+    end
+    local fh = d and d.b == l.b and math.max(1, math.floor(pic.h * fw / math.max(1, pic.w))) or pic.h
+    local fy = ly
+    local b2 = math.max(2, S(3))
+    -- (the frame, clipped to the page)
+    local top, bottom = math.max(0, fy), math.min(h, fy + fh)
+    if bottom > top then
+        if fy >= 0 then bb:paintRect(x + fx, y + fy, fw, b2, Blitbuffer.COLOR_BLACK) end
+        if fy + fh <= h then bb:paintRect(x + fx, y + fy + fh - b2, fw, b2, Blitbuffer.COLOR_BLACK) end
+        bb:paintRect(x + fx, y + top, b2, bottom - top, Blitbuffer.COLOR_BLACK)
+        bb:paintRect(x + fx + fw - b2, y + top, b2, bottom - top, Blitbuffer.COLOR_BLACK)
+    end
+    -- the pull tabs, on the frame's sides
+    if t then
+        local tw, th = t.right.w, t.right.h
+        local ty = RichEdit.tabY(fy, fh, th, h)
+        for _i, tx in ipairs({ fx - math.floor(tw / 2), fx + fw - math.floor(tw / 2) }) do
+            tx = math.max(0, math.min(self.width - tw, tx))
+            if ty >= 0 and ty + th <= h then
+                bb:paintRect(x + tx, y + ty, tw, th, Blitbuffer.COLOR_BLACK)
+                bb:paintRect(x + tx + math.floor(tw / 2) - 1, y + ty + S(8), 2, th - S(16), Blitbuffer.COLOR_WHITE)
+            end
+        end
+    end
+end
+
+--- The picked picture's toolbar: the align buttons drawn as the web's icons
+--- (a picture at the left, the middle or the right under a line), the chosen one inverted.
+function RichEdit:paintPictureBar(bb, x, y)
+    local r = self:pictureBarRect()
+    if not r then return end
+    local pic = RichEdit.pictureOf(self.picked) or {}
+    local align = pic.align or "left"
+    local bx, by = x + r.x, y + r.y
+    local border = math.max(2, S(2))
+    bb:paintRoundedRect(bx, by, r.w, r.h, Blitbuffer.COLOR_WHITE, S(8))
+    bb:paintBorder(bx, by, r.w, r.h, border, Blitbuffer.COLOR_BLACK, S(8))
+    for i, t in ipairs(RichEdit.PICTURE_BAR) do
+        local cx = bx + (i - 1) * r.cell
+        local on = t.align ~= nil and t.align == align
+        local ink = on and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK
+        if on then bb:paintRect(cx + border + 1, by + border + 1, r.cell - 2 * border - 2, r.h - 2 * border - 2, Blitbuffer.COLOR_BLACK) end
+        if i > 1 then bb:paintRect(cx, by + S(8), 1, r.h - S(16), Blitbuffer.COLOR_DARK_GRAY) end
+        if t.align then
+            local iw, ih = math.floor(r.cell * 0.56), math.floor(r.h * 0.5)
+            local ix, iy = cx + math.floor((r.cell - iw) / 2), by + math.floor((r.h - ih) / 2)
+            bb:paintRect(ix, iy, iw, math.max(1, S(2)), ink)
+            local pw2 = math.floor(iw * 0.5)
+            local px = t.align == "left" and ix or t.align == "center" and ix + math.floor((iw - pw2) / 2) or ix + iw - pw2
+            bb:paintRect(px, iy + S(6), pw2, ih - S(6), ink)
+        else
+            local face = RichEdit.face(t.id == "alt" and 15 or 18, t.id == "alt" or t.id == "reset", false)
+            local tw = RenderText:sizeUtf8Text(0, r.cell, face, t.text, true, false).x
+            local fh, base = lineMetrics(face)
+            RenderText:renderUtf8Text(bb, cx + math.floor((r.cell - tw) / 2), by + math.floor((r.h - fh) / 2) + base, face, t.text, true, false, ink)
+        end
+    end
 end
 
 return RichEdit

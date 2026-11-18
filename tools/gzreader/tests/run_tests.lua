@@ -7807,6 +7807,42 @@ print("Notes (Memos v0.31)")
     local t2 = Sticky.toggle(md, 2)
     check(t2:match("%- %[ %] map") and t2:match("%- %[ %] permit") and t2:match("^## Trip"), "tick: the 2nd item unticked, the rest untouched")
     check(Sticky.toggle(Sticky.toggle("- [ ] a\n- [ ] b", 1), 1) == "- [ ] a\n- [ ] b", "tick twice: as before")
+    -- a picture's size and place, as Memos' web editor writes them in the alt text
+    do
+        local function sz(alt) local r = Sticky.altSize(alt); return r.alt, r.width, r.height, r.align end
+        local a, w, h, al = sz("The sea|320")
+        check(a == "The sea" and w == 320 and h == nil and al == nil, "picture size: |320")
+        a, w, h, al = sz("x|320x200")
+        check(a == "x" and w == 320 and h == 200 and al == nil, "picture size: |320x200")
+        a, w, h, al = sz("x|center")
+        check(a == "x" and w == nil and al == "center", "picture place: |center")
+        a, w, h, al = sz("x|right|480x100")
+        check(a == "x" and w == 480 and h == 100 and al == "right", "picture place and size: |right|480x100")
+        a, w = sz("a|b|left|12")
+        check(a == "a|b" and w == 12, "only the end of the alt text counts")
+        a, w = sz("photo\\|320")
+        check(a == "photo\\|320" and w == nil, "an escaped | is part of the alt text")
+        a, w = sz("x|0")
+        check(a == "x|0" and w == nil, "|0 is not a size")
+        check(Sticky.imageSuffix{ width = 320, align = "center" } == "|center|320" and Sticky.imageSuffix{} == ""
+            and Sticky.imageSuffix{ width = 9, height = 4 } == "|9x4" and Sticky.imageSuffix{ align = "right" } == "|right",
+            "picture size written back as the web editor writes it")
+        local note = "# Trip\n![one](/file/attachments/a/1.jpg)\ntext\n  ![two|center|320x200](/file/attachments/b/2.jpg \"t\")\n- [ ] x"
+        local pl = {}
+        for _i, l in ipairs(Sticky.lines(note)) do if l.kind == "image" then pl[#pl + 1] = l end end
+        check(#pl == 2 and pl[1].n == 1 and pl[1].width == nil and pl[2].n == 2 and pl[2].width == 320 and pl[2].height == 200
+            and pl[2].align == "center" and pl[2].alt == "two" and pl[2].src == "/file/attachments/b/2.jpg", "a note's pictures: numbered, with their sizes")
+        local n2 = Sticky.setImageSize(note, 2, { width = 640, align = "center" })
+        check(n2 == note:gsub("|center|320x200", "|center|640"), "a new width: the height dropped, the rest of the note untouched")
+        local n3 = Sticky.setImageSize(note, 2, { width = 320, align = "right" })
+        check(n3 == note:gsub("|center|320x200", "|right|320x200"), "the same width elsewhere: the height kept")
+        check(Sticky.setImageSize(note, 1, { width = 160 }) == note:gsub("%[one%]", "[one|160]"), "the first picture: |160")
+        check(Sticky.setImageSize(n2, 2, {}) == note:gsub("|center|320x200", ""), "As it comes, on the left: the alt text alone")
+        check(Sticky.setImageSize("a\r\n![p|5](/x)\r\nb", 1, { width = 7 }) == "a\r\n![p|7](/x)\r\nb", "Windows line ends kept")
+        check(Sticky.preview(note):find("|", 1, true) == nil, "the board's preview doesn't show the size")
+        check(Notes.pictureWidth(320, 1000) == 500 and Notes.pictureWidth(160, 1000) == 250 and Notes.pictureWidth(2000, 1000) == 1000
+            and Notes.pictureWidth(nil, 1000) == nil, "a size takes its share of Memos' 640-pixel column, at most the page")
+    end
     local now = os.time()
     check(Sticky.when(os.date("!%Y-%m-%dT%H:%M:%SZ", now), now):match("^Today %d+:%d%d [AP]M$"), "date: today with the time (UTC turned local)")
     check(Sticky.when(os.date("!%Y-%m-%dT%H:%M:%SZ", now - 400 * 86400), now):match(", %d%d%d%d$"), "date: another year shows it")
