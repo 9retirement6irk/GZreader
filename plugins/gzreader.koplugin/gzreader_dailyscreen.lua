@@ -730,6 +730,7 @@ local function pageClass()
                 GzFocusNext = { { { "Down", "Right" } } },
                 GzFocusPrev = { { { "Up", "Left" } } },
                 GzPress = { { "Press" } },
+                GzType = { { "Menu" } },
             }
         end
         if Device:isTouchDevice() then
@@ -756,32 +757,38 @@ local function pageClass()
             parts[#parts + 1] = { widget = widget, y = h }
             h = h + widget:getSize().h + (gap or 0)
         end
+        -- (the front page's type: Paper.frontFont)
+        local ff = Paper.frontFont(self.plugin)
+        local function fz(n) return math.max(5, math.floor(n * ff.scale + 0.5)) end
+        local head_face = face(ff.face.bold, fz(lead and 17 or 12), "smallinfofontbold")
+        local body_face = face(ff.face.regular, fz(10), "smallinfofont")
         if story.kicker then
-            add(TextWidget:new{ text = D.topicLabel(story.topic):upper(), face = Font:getFace("smallinfofontbold", 8), max_width = w }, S(1))
+            add(TextWidget:new{ text = D.topicLabel(story.topic):upper(), face = Font:getFace("smallinfofontbold", fz(8)), max_width = w }, S(1))
         end
-        local head = TextBoxWidget:new{ text = story.item.title, face = serifBold(lead and 17 or 12), width = w, alignment = "left" }
+        local head = TextBoxWidget:new{ text = story.item.title, face = head_face, width = w, alignment = "left" }
         local max_lines = lead and 3 or 4
         if head:getSize().h > head:getLineHeight() * max_lines then
             local lh = head:getLineHeight()
             head:free()
-            head = TextBoxWidget:new{ text = story.item.title, face = serifBold(lead and 17 or 12), width = w, alignment = "left",
+            head = TextBoxWidget:new{ text = story.item.title, face = head_face, width = w, alignment = "left",
                 height = lh * max_lines, height_adjust = true, height_overflow_show_ellipsis = true }
         end
         add(head, S(2))
         if story.item.source and story.item.source ~= "" then
-            add(TextWidget:new{ text = story.item.source, face = serifItalic(8), max_width = w, fgcolor = Blitbuffer.COLOR_DARK_GRAY }, S(2))
+            add(TextWidget:new{ text = story.item.source, face = ff.face.id == "serif" and serifItalic(fz(8)) or face(ff.face.regular, fz(8), "smallinfofont"),
+                max_width = w, fgcolor = Blitbuffer.COLOR_DARK_GRAY }, S(2))
         end
         local pic_path = D.pictures(self.plugin) and D.pagePicture(story.item) and D.picturePath(story.item)
         local pic = pic_path and Paper.pictureWidget(pic_path, w, math.floor(w * (lead and 0.3 or 0.5)))
         if pic then add(pic, S(4)) end
         local text = Paper.excerpt(story.item.text, lead and 700 or 420)
         if text ~= "" and text ~= story.item.title then
-            local body = TextBoxWidget:new{ text = text, face = serif(10), width = w, alignment = "left", justified = true }
+            local body = TextBoxWidget:new{ text = text, face = body_face, width = w, alignment = "left", justified = true }
             local lines = (lead and 4 or 5) - (pic and 2 or 0)
             if body:getSize().h > body:getLineHeight() * lines then
                 local lh = body:getLineHeight()
                 body:free()
-                body = TextBoxWidget:new{ text = text, face = serif(10), width = w, alignment = "left", justified = true,
+                body = TextBoxWidget:new{ text = text, face = body_face, width = w, alignment = "left", justified = true,
                     height = lh * lines, height_adjust = true, height_overflow_show_ellipsis = true }
             end
             add(body)
@@ -819,11 +826,14 @@ local function pageClass()
             self.rules[#self.rules + 1] = { y = y, h = 1 }
             y = y + S(6)
         end
+        local pfont = Paper.frontFont(self.plugin)
+        local function pz(n) return math.max(5, math.floor(n * pfont.scale + 0.5)) end
         -- the weather box: now and the next days, each with its sky's engraving
         self.weather = nil
         local Wx = require("gzreader_weather")
         if first and edition and Wx.on(self.plugin) then
-            local cells = Wx.cells(edition.weather, nil, 4)
+            -- (bigger type: fewer days, so each day's line still fits)
+            local cells = Wx.cells(edition.weather, nil, Paper.weatherDays(pfont.scale))
             if #cells > 0 then
                 local label = TextWidget:new{ text = _("WEATHER"), face = Font:getFace("smallinfofontbold", 8) }
                 local lw = label:getSize().w + S(10)
@@ -832,13 +842,13 @@ local function pageClass()
                 local cell_w = math.floor((inner_w - lw) / #cells)
                 local built = {}
                 for i, c in ipairs(cells) do
-                    local day = TextWidget:new{ text = c.head, face = Font:getFace("smallinfofontbold", 9), max_width = cell_w - icon - S(12) }
-                    local line = TextWidget:new{ text = c.line, face = serif(10), max_width = cell_w - icon - S(12) }
+                    local day = TextWidget:new{ text = c.head, face = Font:getFace("smallinfofontbold", pz(9)), max_width = cell_w - icon - S(12) }
+                    local line = TextWidget:new{ text = c.line, face = face(pfont.face.regular, pz(10), "smallinfofont"), max_width = cell_w - icon - S(12) }
                     self.widgets[#self.widgets + 1] = day
                     self.widgets[#self.widgets + 1] = line
                     built[i] = { head = day, line = line, kind = c.kind }
                 end
-                local box_h = icon + S(8)
+                local box_h = math.max(icon, built[1].head:getSize().h + built[1].line:getSize().h) + S(8)
                 self.weather = { x = margin, y = y, w = inner_w, h = box_h, label = label, label_w = lw, cells = built, cell_w = cell_w, icon = icon }
                 y = y + box_h + S(7)
             end
@@ -850,11 +860,11 @@ local function pageClass()
             if #list > 0 then
                 local label = TextWidget:new{ text = _("TODAY"), face = Font:getFace("smallinfofontbold", 8) }
                 local lw = label:getSize().w + S(10)
-                local text = TextBoxWidget:new{ text = Paper.diaryText(list), face = serif(10), width = inner_w - lw - S(12), alignment = "left" }
+                local text = TextBoxWidget:new{ text = Paper.diaryText(list), face = face(pfont.face.regular, pz(10), "smallinfofont"), width = inner_w - lw - S(12), alignment = "left" }
                 if text:getSize().h > text:getLineHeight() * 3 then
                     local lh = text:getLineHeight()
                     text:free()
-                    text = TextBoxWidget:new{ text = Paper.diaryText(list), face = serif(10), width = inner_w - lw - S(12), alignment = "left",
+                    text = TextBoxWidget:new{ text = Paper.diaryText(list), face = face(pfont.face.regular, pz(10), "smallinfofont"), width = inner_w - lw - S(12), alignment = "left",
                         height = lh * 3, height_adjust = true, height_overflow_show_ellipsis = true }
                 end
                 self.widgets[#self.widgets + 1] = label
@@ -871,6 +881,10 @@ local function pageClass()
         local foot_y = H - foot_h
         self.widgets[#self.widgets + 1] = fetch
         self.foot = { y = foot_y, h = foot_h, fetch = { widget = fetch, x = margin, y = foot_y + S(5), w = fetch:getSize().w + S(20) } }
+        -- Aa: the front page's type (touch: a tap; keys: Menu)
+        local aa = TextWidget:new{ text = "Aa", face = Font:getFace("smallinfofontbold", 10) }
+        self.widgets[#self.widgets + 1] = aa
+        self.foot.type = { widget = aa, x = self.foot.fetch.x + self.foot.fetch.w + S(14), y = foot_y + S(5), w = aa:getSize().w + S(28) }
         self.close_w = Device:isTouchDevice() and S(48) or 0
 
         self.blocks, self.col_rules = {}, {}
@@ -984,6 +998,8 @@ local function pageClass()
         bb:paintRect(x + margin, y + f.y, W - margin * 2, 1, Blitbuffer.COLOR_BLACK)
         f.fetch.widget:paintTo(bb, x + f.fetch.x, y + f.fetch.y)
         f.label.widget:paintTo(bb, x + f.label.x, y + f.label.y)
+        f.type.widget:paintTo(bb, x + f.type.x, y + f.type.y)
+        bb:paintBorder(x + f.type.x - S(6), y + f.type.y - S(1), f.type.widget:getSize().w + S(12), f.type.widget:getSize().h + S(2), 1, Blitbuffer.COLOR_DARK_GRAY)
         if self.keys and self.focus == #self.blocks + 1 then
             bb:paintBorder(x + f.fetch.x - S(4), y + f.fetch.y - S(2), f.fetch.widget:getSize().w + S(8), f.fetch.widget:getSize().h + S(4), S(2), Blitbuffer.COLOR_BLACK)
         end
@@ -1016,6 +1032,7 @@ local function pageClass()
         if i == #self.blocks + 1 then return Paper.refresh(self.plugin, self) end
     end
 
+    function PaperPage:onGzType() Paper.frontDialog(self.plugin); return true end
     function PaperPage:onGzNextPage() return self:turn(1) end
     function PaperPage:onGzPrevPage() return self:turn(-1) end
     function PaperPage:onGzClose() UIManager:close(self); return true end
@@ -1037,6 +1054,7 @@ local function pageClass()
         if self.close_w > 0 and px >= W - self.close_w and py <= self.close_w then return "close" end
         if py >= self.foot.y then
             if px <= self.foot.fetch.x + self.foot.fetch.w then return "fetch" end
+            if px >= self.foot.type.x - S(14) and px <= self.foot.type.x + self.foot.type.w then return "type" end
             if px >= W * 0.75 then return "next" end
             if px >= W * 0.5 then return "prev" end
             return nil
@@ -1054,6 +1072,7 @@ local function pageClass()
         if what == "fetch" then Paper.refresh(self.plugin, self); return true end
         if what == "next" then return self:turn(1) end
         if what == "prev" then return self:turn(-1) end
+        if what == "type" then Paper.frontDialog(self.plugin); return true end
         if what == "diary" then
             -- (the Calendar tab, for the day's events in full)
             UIManager:close(self)
@@ -1143,6 +1162,105 @@ function Paper.openPanel(plugin)
 end
 
 ---------------------------------------------------------------- a story's type
+
+Paper.FRONT_SIZES = { { id = "small", scale = 0.85 }, { id = "normal", scale = 1 }, { id = "large", scale = 1.2 }, { id = "larger", scale = 1.45 } }
+
+function Paper.frontSizeLabel(id)
+    if id == "small" then return _("Small") end
+    if id == "large" then return _("Large") end
+    if id == "larger" then return _("Larger") end
+    return _("Normal")
+end
+
+--- How the paper's own pages are set (headlines, how stories begin, the
+--- weather and TODAY boxes; the paper's name keeps its own face): { face =
+--- one of FACES, size = one of FRONT_SIZES, scale }.
+function Paper.frontFont(plugin)
+    local st = Daily().store(plugin)
+    local f = type(st.front) == "table" and st.front or {}
+    local out = { face = Paper.FACES[1], size = Paper.FRONT_SIZES[2] }
+    for _i, c in ipairs(Paper.FACES) do if c.id == f.face then out.face = c end end
+    for _i, c in ipairs(Paper.FRONT_SIZES) do if c.id == f.size then out.size = c end end
+    out.scale = out.size.scale
+    return out
+end
+
+--- How many days the weather box shows at a size of type.
+function Paper.weatherDays(scale)
+    if scale > 1.3 then return 2 end
+    if scale > 1 then return 3 end
+    return 4
+end
+
+--- Change the pages' "face" or "size" and keep it; the open paper is laid
+--- out again from its first page. Returns true when something changed.
+function Paper.setFrontFont(plugin, what, value)
+    if what ~= "face" and what ~= "size" then return false end
+    local st = Daily().store(plugin)
+    st.front = type(st.front) == "table" and st.front or {}
+    local now = Paper.frontFont(plugin)
+    local known = false
+    for _i, c in ipairs(what == "face" and Paper.FACES or Paper.FRONT_SIZES) do if c.id == value then known = true end end
+    if not known or value == (what == "face" and now.face.id or now.size.id) then return false end
+    st.front[what] = value
+    plugin:save()
+    if Paper.instance and not Paper.instance.closed then Paper.instance:reload() end
+    return true
+end
+
+--- The rows of the pages' Aa box.
+function Paper.frontRows(plugin)
+    local font = Paper.frontFont(plugin)
+    local rows = { {}, {} }
+    for _i, c in ipairs(Paper.FRONT_SIZES) do
+        rows[1][#rows[1] + 1] = { text = Paper.frontSizeLabel(c.id), on = c.id == font.size.id, run = function() return Paper.setFrontFont(plugin, "size", c.id) end }
+    end
+    for _i, c in ipairs(Paper.FACES) do
+        rows[2][#rows[2] + 1] = { text = Paper.faceLabel(c.id), on = c.id == font.face.id, run = function() return Paper.setFrontFont(plugin, "face", c.id) end }
+    end
+    return rows
+end
+
+--- The Aa box over the paper's pages (it stays up while you try them).
+function Paper.frontDialog(plugin)
+    local ButtonDialog = require("ui/widget/buttondialog")
+    if Paper.front_dialog then UIManager:close(Paper.front_dialog) end
+    local buttons = {}
+    for r, row in ipairs(Paper.frontRows(plugin)) do
+        buttons[r] = {}
+        for _i, b in ipairs(row) do
+            buttons[r][#buttons[r] + 1] = { text = (b.on and "\u{2713} " or "") .. b.text, callback = function()
+                if b.run() then Paper.frontDialog(plugin) end
+            end }
+        end
+    end
+    buttons[#buttons + 1] = { { text = _("Done"), id = "close", callback = function()
+        UIManager:close(Paper.front_dialog)
+        Paper.front_dialog = nil
+    end } }
+    Paper.front_dialog = ButtonDialog:new{ title = _("The paper's pages"), title_align = "center", buttons = buttons,
+        tap_close_callback = function() Paper.front_dialog = nil end }
+    UIManager:show(Paper.front_dialog)
+    return Paper.front_dialog
+end
+
+--- Settings → … → Daily paper → The paper's pages.
+function Paper.frontItems(plugin)
+    local function font() return Paper.frontFont(plugin) end
+    local faces, sizes = {}, {}
+    for _i, c in ipairs(Paper.FACES) do
+        faces[#faces + 1] = { text = Paper.faceLabel(c.id), radio = true, checked_func = function() return font().face.id == c.id end,
+            callback = function() Paper.setFrontFont(plugin, "face", c.id) end }
+    end
+    for _i, c in ipairs(Paper.FRONT_SIZES) do
+        sizes[#sizes + 1] = { text = Paper.frontSizeLabel(c.id), radio = true, checked_func = function() return font().size.id == c.id end,
+            callback = function() Paper.setFrontFont(plugin, "size", c.id) end }
+    end
+    return {
+        { text_func = function() return T(_("Typeface: %1"), Paper.faceLabel(font().face.id)) end, sub_item_table = faces },
+        { text_func = function() return T(_("Size: %1"), Paper.frontSizeLabel(font().size.id)) end, sub_item_table = sizes },
+    }
+end
 
 Paper.FACES = {
     { id = "serif", regular = "NotoSerif-Regular.ttf", bold = "NotoSerif-Bold.ttf" },
@@ -1694,6 +1812,12 @@ function Paper.settingsItems(plugin)
                         or _("Home's widgets can't be changed from here just now. Use Settings → Home → Widgets."))
                 end
             end,
+        },
+        {
+            text = _("The paper's pages"),
+            help_text = _("The type of the paper's own pages: the headlines, how each story begins, the weather and TODAY boxes. A typeface and four sizes; bigger type means fewer stories on a page and more pages, and fewer days in the weather box. The same can be changed on the paper itself, with Aa at its foot (on a Kindle with keys: Menu). The paper's name keeps its own face."),
+            enabled_func = on,
+            sub_item_table_func = function() return Paper.frontItems(plugin) end,
         },
         {
             text = _("Story text"),

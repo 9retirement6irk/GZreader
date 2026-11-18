@@ -158,6 +158,42 @@ add({ fn = function(E)
     check(E, inside, "every story is inside the page, above the foot")
     page:turn(1)
 end, after = 8 })
+-- the pages' type: Aa at the foot; Large + Sans, laid out again
+add({ fn = function(E)
+    local Paper = require("gzreader_dailyscreen")
+    local page = Paper.instance
+    page.page, page.starts = 1, { 1 }
+    page:build()
+    E.front_blocks = #page.blocks
+    E.front_h = page.blocks[2] and page.blocks[2].h or 0
+    check(E, page:at(page.foot.type.x + 4, page.foot.y + 6) == "type", "Aa at the foot of the paper")
+    page:onGzTap(nil, { pos = { x = page.foot.type.x + 4, y = page.foot.y + 6 } })
+    check(E, Paper.front_dialog ~= nil, "…opens the pages' type box")
+    Paper.frontRows(plugin())[1][3].run()
+    Paper.frontRows(plugin())[2][2].run()
+    Paper.frontDialog(plugin())
+end, after = 6 })
+add({ shot = "daily-3b-front-type" })
+add({ fn = function(E)
+    local Paper = require("gzreader_dailyscreen")
+    local UIManager = require("ui/uimanager")
+    if Paper.front_dialog then UIManager:close(Paper.front_dialog); Paper.front_dialog = nil end
+    local page = Paper.instance
+    check(E, page.page == 1 and page.blocks[2] and page.blocks[2].h > E.front_h, "Large, Sans: the page is laid out again with bigger type (a story's block " .. tostring(page.blocks[2] and page.blocks[2].h) .. " > " .. tostring(E.front_h) .. " px)")
+    local inside = true
+    for _i, b in ipairs(page.blocks) do
+        if b.x < 0 or b.x + b.w > page.dimen.w or b.y + math.min(b.h, b.clip or b.h) > page.foot.y then inside = false end
+    end
+    check(E, inside and #page.blocks <= E.front_blocks, "…everything still inside the page, fewer or as many stories on it (" .. #page.blocks .. " ≤ " .. E.front_blocks .. ")")
+    page:turn(1)
+end, after = 6 })
+add({ shot = "daily-3c-front-large" })
+add({ fn = function()
+    local Paper = require("gzreader_dailyscreen")
+    Paper.setFrontFont(plugin(), "size", "normal")
+    Paper.setFrontFont(plugin(), "face", "serif")
+    Paper.instance:turn(1)
+end, after = 4 })
 add({ shot = "daily-3-page2" })
 add({ fn = function(E)
     local page = require("gzreader_dailyscreen").instance
