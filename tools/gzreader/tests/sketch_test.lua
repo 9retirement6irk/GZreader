@@ -162,6 +162,44 @@ print("== a pull down from the top: the quick panel")
         "far enough down, and more down than across")
 end)()
 
+print("== inline (a journal entry): the page moves under the box")
+;(function()
+    local moved = {}
+    local function on_pan(dx, dy) moved[#moved + 1] = { dx, dy }; return true end
+    local function run_frames(sk, list)
+        local any = false
+        for i, f in ipairs(list) do any = sk:frame(f, i * 0.4).panned or any end
+        return any
+    end
+    -- a finger Kindle: the finger draws; the hand tool moves the page
+    local sk = Sketch.new{ canvas = { x = 0, y = 0, w = 1000, h = 1400 }, per_unit = 2 }
+    sk.inline_pan, sk.on_pan = true, on_pan
+    run_frames(sk, { { finger(0, 200, 600) }, { finger(0, 260, 620) }, { lift(0) } })
+    check(#sk.strokes == 1 and #moved == 0, "a finger Kindle, inline: the finger draws")
+    sk.tool = "hand"
+    local panned = run_frames(sk, { { finger(0, 500, 900) }, { finger(0, 500, 700) }, { finger(0, 500, 500) }, { lift(0) } })
+    check(panned and #moved > 0 and #sk.strokes == 1, "the hand tool: the page moves (on_pan), nothing drawn")
+    local dy = 0
+    for _i, m in ipairs(moved) do dy = dy + m[2] end
+    check(dy == -400, "…by as far as the finger went (" .. dy .. ")")
+    -- a pen Kindle: a finger moves the page, the pen draws
+    moved = {}
+    local pk = Sketch.new{ canvas = { x = 0, y = 0, w = 1000, h = 1400 }, pen_only = true, pen_slot = PEN_SLOT, per_unit = 2 }
+    pk.inline_pan, pk.on_pan = true, on_pan
+    panned = run_frames(pk, { { finger(0, 500, 900) }, { finger(0, 500, 800) }, { finger(0, 500, 600) }, { lift(0) } })
+    check(panned and #pk.strokes == 0, "a pen Kindle, inline: a finger moves the page")
+    run_frames(pk, { { pen(300, 300) }, { pen(380, 330) }, { hover(380, 330) } })
+    check(#pk.strokes == 1, "…the pen draws")
+    pk.tool = "hand"
+    moved = {}
+    panned = run_frames(pk, { { pen(500, 900) }, { pen(500, 800) }, { pen(500, 600) }, { hover(500, 600) } })
+    check(panned and #pk.strokes == 1 and #moved > 0, "…the hand tool: the pen moves the page too")
+    -- not inline: a pen Kindle's finger still does nothing until zoomed in
+    local nk = Sketch.new{ canvas = { x = 0, y = 0, w = 1000, h = 1400 }, pen_only = true, pen_slot = PEN_SLOT, per_unit = 2 }
+    panned = run_frames(nk, { { finger(0, 500, 900) }, { finger(0, 500, 600) }, { lift(0) } })
+    check(not panned and #nk.strokes == 0, "the full drawing screen, not zoomed: a finger still does nothing")
+end)()
+
 print("== pinch to zoom")
 ;(function()
     local W, H = CANVAS.w, CANVAS.h

@@ -334,10 +334,23 @@ API to `/api` are found too.
     (the ten words nearest the step; **More feelings…** has them all) and
     **What's behind it…** (work, family, health…).
   - **What did you do?** your activities. **Goals:** tick the ones you did.
-  - A **prompt** (**Another prompt** for the next one) and **Write about
-    it…**, a box for the words.
+  - A **prompt** (**↻ Another** for the next one) and, right under it, your
+    **words on lined paper**, typed straight in as plain text. A tap in it
+    brings the keyboard; the questions above fold away while you type, so
+    only the prompt and your words show. **Done** (top left) puts the
+    keyboard away.
+    **✎** in the box's top right corner turns the box into a **drawing**,
+    right there under the prompt, on lined paper (the questions fold away
+    here too). The box is a window onto a page as big as the screen: on the
+    Scribe the pen draws and **a finger moves the page**; on other Kindles a
+    finger draws and the **hand** moves it (the hand works with the pen too).
+    Its tools sit in its top right corner: pen, eraser, hand, undo, redo and
+    **Aa**, which goes back to typing (so does **Done**, or a tap on ✎ again
+    goes on drawing). ✎ shows how many sheets go with the entry. Touches
+    outside the box (Save, Done) work as usual while you draw.
+    (Kindles with keys: **W** writes in a box of its own, as before.)
   - **Save** makes a private note: the prompt as a quote and your words, the
-    goals as a checklist, then the tags, like
+    goals as a checklist, any drawings as the note's drawings, then the tags, like
     `#mood/pleasant #mood/today #felt/grateful #impact/work #did/reading`.
     It's written exactly as the fork's web editor writes an entry, so its
     Insights count entries from the Kindle; any Memos shows it as a note.

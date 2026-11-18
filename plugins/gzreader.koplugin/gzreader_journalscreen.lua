@@ -8,8 +8,19 @@ journaling mode on a Kindle (words and writing: gzreader_journal.lua).
   What's behind it…                   causes (work, family, health…)
   What did you do?                    your activities
   Goals                               your goals, ticked when done
-  A prompt, Another prompt, Write about it…
+  A prompt, Another prompt
+  ┌───────────────────────────── [✎] ┐   touch Kindles: the entry's words,
+  │ typed here, plain text, on lined │   typed right under the prompt; ✎ in
+  │ paper ─────────────────────────  │   the corner turns the box into a
+  └──────────────────────────────────┘   drawing (lined), drawn right there
   Save
+
+Touch Kindles: a tap in the box brings the keyboard and makes room for it
+(only the prompt and the words above it, Done puts it away). ✎ draws in the
+same box (gzreader_drawscreen.lua's inline mode: a window onto a page as big
+as the screen, moved by a finger on a pen Kindle or the hand tool; Aa goes
+back to typing). The drawings go with the entry as the note's drawings. Kindles with keys: W writes in a
+box of its own, as before.
 
 The entry is saved as an ordinary note (its mood and activities as tags), so
 it reads the same in Memos and in the fork's Insights.
@@ -19,6 +30,11 @@ picks on Kindles with keys; a keyboard Kindle has a key for each too
 (1–7 the step, T today / right now, F feelings, I what's behind it,
 A activities, G goals, P another prompt, W write, S save).
 ]]
+
+local GestureRange = require("ui/gesturerange")
+local Log = require("gzreader_log")
+local OverlapGroup = require("ui/widget/overlapgroup")
+local RightContainer = require("ui/widget/container/rightcontainer")
 
 local Blitbuffer = require("ffi/blitbuffer")
 local Button = require("ui/widget/button")
@@ -31,6 +47,7 @@ local FrameContainer = require("ui/widget/container/framecontainer")
 local Geom = require("ui/geometry")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
+local InputContainer = require("ui/widget/container/inputcontainer")
 local LeftContainer = require("ui/widget/container/leftcontainer")
 local Size = require("ui/size")
 local TextBoxWidget = require("ui/widget/textboxwidget")
@@ -56,6 +73,8 @@ local JournalScreen = FocusManager:extend{
 
 JournalScreen.MOOD_KEYS = { "1", "2", "3", "4", "5", "6", "7" }
 JournalScreen.MOOD_ROW = { "Q", "W", "E", "R", "T", "Y", "U" } -- (Alt + these: the Kindle Keyboard's digits)
+JournalScreen.PAPER = "ruled-medium" -- a journal entry's drawing: lined paper
+JournalScreen.MIN_BOX = 140 -- the words' box at least this high (scaled), however much is above it
 
 function JournalScreen:init()
     local sw, sh = Screen:getWidth(), Screen:getHeight()
@@ -66,6 +85,12 @@ function JournalScreen:init()
         prompt_i = (self.prompt_i or (os.time() % #Journal.PROMPTS)) % #Journal.PROMPTS + 1,
     }
     self.state.prompt = Journal.PROMPTS[self.state.prompt_i]
+    -- touch Kindles: the words typed right under the prompt, formatted, on lined paper
+    self.inline = Touch.on() and not Touch.keys()
+    if self.inline then
+        self.is_always_active = true -- (taps reach the page under the on-screen keyboard, and around an inline drawing)
+    end
+    self.pages = self.pages or nil -- the drawings, once drawn: { path, filename, changed } (DrawScreen's)
     self.key_events.Close = { { Device.input and Device.input.group and Device.input.group.Back or "Back" } }
     -- touch: a swipe down from the top opens the quick panel, as at Home and in a book
     if Touch.on() and self.plugin then
@@ -193,8 +218,8 @@ function JournalScreen:write()
     local InputDialog = require("ui/widget/inputdialog")
     local d
     d = InputDialog:new{
-        title = (self.settings.showPrompt and self.state.prompt) or _("Write about it"),
-        input = self.state.body, input_hint = _("Write about it…"),
+        title = (self.settings.showPrompt and self.state.prompt) or _("Journal"),
+        input = self.state.body, input_hint = _("Write here…"),
         allow_newline = true, use_available_height = true, gz_multiline = true,
         buttons = { { { text = _("Cancel"), id = "close", callback = function() UIManager:close(d) end },
             { text = _("Done"), callback = function()
@@ -215,19 +240,232 @@ function JournalScreen:nextPrompt()
     self:rebuild("prompt")
 end
 
+--- The drawings to send with the entry: { path, filename } each.
+function JournalScreen:drawings()
+    local out = {}
+    for _i, p in ipairs(self.pages or {}) do
+        if p.path and not p.removed then out[#out + 1] = { path = p.path, filename = p.filename } end
+    end
+    return out
+end
+
 function JournalScreen:save()
-    if Journal.isEmpty(self.state) then
+    self:finishDrawing(true) -- (an inline drawing: kept first)
+    self:keepWords()
+    local drawings = self:drawings()
+    if Journal.isEmpty(self.state) and #drawings == 0 then
         return UIManager:show(require("ui/widget/infomessage"):new{ timeout = 3,
             text = _("Nothing to save yet. Choose how you felt, or write something.") })
     end
     local content = self:content()
     self.saved = true
     UIManager:close(self, "full")
-    if self.on_save then self.on_save(content) end
+    if self.on_save then self.on_save(content, #drawings > 0 and drawings or nil) end
 end
 
+-- ------------------------------------------------------------ writing, drawing (touch)
+
+function JournalScreen:isShown()
+    for _i, w in ipairs(UIManager._window_stack or {}) do if w.widget == self then return true end end
+    return false
+end
+
+--- Done while drawing: the drawing kept, the whole entry again.
+function JournalScreen:stopDrawing()
+    self:finishDrawing(true)
+    self:rebuild("draw")
+end
+
+--- The words typed so far, into the entry.
+function JournalScreen:keepWords()
+    if self.input then self.state.body = self.input:getText() or "" end
+end
+
+--- The keyboard came up for the words: room for it (the questions above fold away).
+function JournalScreen:startWriting()
+    if self.writing then return end
+    self:keepWords()
+    self.writing = true
+    Log.info("journal: writing")
+    self:rebuild("done-writing")
+end
+
+--- Done: the keyboard away, the whole entry again.
+function JournalScreen:stopWriting(quiet)
+    self:keepWords()
+    if self.input and self.input.onCloseKeyboard then self.input:onCloseKeyboard() end
+    if not self.writing then return end
+    self.writing = false
+    if not quiet then self:rebuild("write") end
+end
+
+--- ✎ in the box's corner: the box turns into the entry's drawing, on lined
+--- paper, drawn right there under the prompt (its pages, once drawn).
+function JournalScreen:startDrawing()
+    if self.drawing then return end
+    self:stopWriting(true)
+    self.drawing = true
+    Log.info("journal: drawing inline,", self.pages and #self.pages or 0, "page(s) so far")
+    self:rebuild("draw")
+end
+
+--- The inline drawing over the box at `rect` (screen pixels).
+function JournalScreen:openDrawing(rect)
+    if self.drawing_open then return self.drawing_open end
+    local pages = self.pages
+    if not pages or #pages == 0 then
+        local Drawing = require("gzreader_drawing")
+        local scene = Drawing.newScene()
+        local el, file_id, file = require("gzreader_notepaper").element(JournalScreen.PAPER)
+        if el then
+            scene.files[file_id] = file
+            table.insert(scene.elements, 1, el)
+        end
+        pages = { { scene = scene } }
+    end
+    self.drawing_rect = rect
+    self.drawing_open = require("gzreader_drawscreen").show{
+        plugin = self.plugin,
+        pages = pages,
+        title = _("Journal"),
+        inline = { rect = rect },
+        on_done = function(res)
+            res.reordered, res.title, res.tags = nil, nil, nil
+            local kept = {}
+            for _i, p in ipairs(res) do if not p.removed then kept[#kept + 1] = p end end
+            if #kept > 0 then self.pages = kept end
+            self.drawing_open = nil
+            if self.drawing then
+                -- (Aa: back to typing)
+                self.drawing = false
+                if not self.finishing then self:rebuild("draw") end
+            end
+        end,
+        on_cancel = function()
+            self.drawing_open = nil
+            self.drawing = false
+            if not self.finishing then self:rebuild("draw") end
+        end,
+    }
+    return self.drawing_open
+end
+
+--- An inline drawing still open: kept (its Done), before the entry is saved or left.
+function JournalScreen:finishDrawing(quiet)
+    local d = self.drawing_open
+    if not d then return end
+    self.finishing = quiet
+    d:done()
+    self.finishing = nil
+    if self.drawing_open == d then
+        -- (it couldn't be saved: closed anyway)
+        self.drawing_open = nil
+        d:close()
+    end
+    self.drawing = false
+end
+
+function JournalScreen:sheetCount()
+    local n = 0
+    for _i, p in ipairs(self.pages or {}) do if not p.removed then n = n + 1 end end
+    return n
+end
+
+--- Lined paper under the words: a light rule under each line of `input`
+--- (painted after it, at the bottom of each line, where no letters are).
+function JournalScreen.paintRules(input, bb, x, y)
+    local tw = input.text_widget
+    local tb = tw and (tw.text_widget or tw)
+    local pitch = tb and tb.line_height_px
+    if not pitch or pitch < 4 or not tb.dimen or not tb.dimen.y then return 0 end
+    local top, bottom = tb.dimen.y, y + (input.height or tb.height or 0)
+    local w = input.width or tb.width
+    local n = 0
+    local ry = top + pitch - 1
+    while ry < bottom do
+        bb:paintRect(tb.dimen.x or x, ry, w, 1, Blitbuffer.COLOR_LIGHT_GRAY)
+        n = n + 1
+        ry = ry + pitch
+    end
+    return n
+end
+
+--- The words' box: plain text (KOReader's InputText), lined, `h` high, with
+--- ✎ in its top right corner (and how many sheets, once drawn). Drawing:
+--- the same place, empty, for the inline drawing laid over it (`at`: where
+--- the box's top left corner is on the screen).
+function JournalScreen:writingBox(width, h, at)
+    local screen = self
+    if self.drawing then
+        local rect = Geom:new{ x = at.x, y = at.y, w = width + 2 * S(4) + 2 * Size.border.thin, h = h + 2 * S(4) + 2 * Size.border.thin }
+        self.drawing_box = rect
+        UIManager:nextTick(function()
+            if screen.drawing and not screen.drawing_open and screen:isShown() then screen:openDrawing(rect) end
+        end)
+        return VerticalSpan:new{ width = rect.h }
+    end
+    if self.input then
+        if self.input.onCloseKeyboard then pcall(self.input.onCloseKeyboard, self.input) end
+        self.input = nil
+    end
+    local input = require("ui/widget/inputtext"):new{
+        text = self.state.body or "", width = width, height = h, scroll = true, parent = self,
+        face = Font:getFace("cfont", 18), bordersize = 0, padding = 0, margin = 0,
+        hint = _("Start writing…"), focused = false,
+        gz_multiline = true, gz_hash_key = true, -- (the keyboard's Enter, ← →, and # bar)
+        edit_callback = function(edited) if edited and screen.input then screen.state.body = screen.input:getText() or "" end end,
+    }
+    -- (✎ lies over the box's top right corner: a tap there is for it, not the text)
+    local tap_text = input.onTapTextBox
+    input.onTapTextBox = function(i, arg, ges)
+        local d = screen.draw_chip and screen.draw_chip.dimen
+        if d and d.x and ges and ges.pos and ges.pos.x >= d.x and ges.pos.x < d.x + d.w and ges.pos.y >= d.y and ges.pos.y < d.y + d.h then
+            screen:startDrawing()
+            return true
+        end
+        return tap_text(i, arg, ges)
+    end
+    local show_kb = input.onShowKeyboard
+    input.onShowKeyboard = function(i, ...)
+        local r = show_kb(i, ...)
+        screen:startWriting()
+        return r
+    end
+    local paint = input.paintTo
+    input.paintTo = function(i, bb, x, y)
+        paint(i, bb, x, y)
+        JournalScreen.paintRules(i, bb, x, y)
+    end
+    self.input = input
+    if self.writing then
+        -- (laid out again for the keyboard: the new box takes it)
+        UIManager:nextTick(function() if screen.input == input and screen.writing then input:onShowKeyboard() end end)
+    end
+    local n = self:sheetCount()
+    local icon = require("ui/widget/iconwidget"):new{ file = require("gzreader_drawscreen").ICON_DIR .. "pen.svg",
+        width = S(26), height = S(26), alpha = true }
+    local inside = HorizontalGroup:new{ align = "center", icon }
+    if n > 0 then
+        inside[#inside + 1] = HorizontalSpan:new{ width = S(4) }
+        inside[#inside + 1] = TextWidget:new{ text = tostring(n), face = Font:getFace("cfont", 15), bold = true }
+    end
+    local chip = FrameContainer:new{ padding = S(6), radius = S(6), margin = 0, bordersize = Size.border.thick,
+        background = Blitbuffer.COLOR_WHITE, inside }
+    local tap = InputContainer:new{ dimen = Geom:new{ w = chip:getSize().w, h = chip:getSize().h }, chip }
+    tap.ges_events = { TapDraw = { GestureRange:new{ ges = "tap", range = function() return tap.dimen end } } }
+    function tap:onTapDraw() screen:startDrawing(); return true end
+    self.draw_chip = tap
+    return FrameContainer:new{ padding = S(4), margin = 0, bordersize = Size.border.thin, radius = S(4),
+        OverlapGroup:new{ dimen = Geom:new{ w = width, h = h }, input,
+            RightContainer:new{ dimen = Geom:new{ w = width, h = chip:getSize().h }, tap } } }
+end
+
+
 function JournalScreen:onClose()
-    if Journal.isEmpty(self.state) then UIManager:close(self, "full"); return true end
+    if self.writing then self:stopWriting(); return true end
+    if self.drawing then self:stopDrawing(); return true end
+    self:keepWords()
+    if Journal.isEmpty(self.state) and #self:drawings() == 0 then UIManager:close(self, "full"); return true end
     local dialog
     dialog = ButtonDialog:new{ title = _("Save this journal entry?"), buttons = {
         { { text = _("Save"), align = "left", callback = function() UIManager:close(dialog); self:save() end } },
@@ -245,6 +483,7 @@ end
 --- A swipe down from the top: the quick panel over the entry (kept as it is under it).
 function JournalScreen:onPullPanel(_arg, ges)
     if not (ges and ges.direction == "south") then return false end
+    self:stopWriting() -- (the keyboard would stay over the panel)
     require("gzreader_panel").show(self.plugin)
     return true
 end
@@ -270,7 +509,7 @@ function JournalScreen:onGzKey(_args, key)
     elseif k == "A" then self:pickActivities()
     elseif k == "G" then self:pickGoals()
     elseif k == "P" then self:nextPrompt()
-    elseif k == "W" then self:write()
+    elseif k == "W" then if self.inline and self.input then self.input:onShowKeyboard() else self:write() end
     elseif k == "S" then self:save()
     else return false end
     return true
@@ -326,15 +565,33 @@ function JournalScreen:build()
     end
     -- title: ✕ Journal · the date … Save
     local date = Journal.heading(os.time()):gsub(", %d%d%d%d$", "")
-    local close = self:button("close", "\u{2715}", S(44), function() self:onClose() end, false, 18)
+    -- (writing: Done in place of ✕, the keyboard away and the whole entry back)
+    local busy = self.writing or self.drawing
+    local close_w = busy and S(84) or S(44)
+    local close = busy and self:button("done-writing", _("Done"), close_w, function()
+            if self.drawing then self:stopDrawing() else self:stopWriting() end
+        end, false, 17)
+        or self:button("close", "\u{2715}", close_w, function() self:onClose() end, false, 18)
     local save = self:button("save", _("Save"), S(84), function() self:save() end, true, 18)
     local title = TextWidget:new{ text = _("Journal") .. "  \u{00B7}  " .. date, face = Font:getFace("smalltfont", 20), bold = true,
-        max_width = inner - S(44) - S(84) - S(20) }
+        max_width = inner - close_w - S(84) - S(20) }
     col[#col + 1] = HorizontalGroup:new{ align = "center", close, HorizontalSpan:new{ width = S(10) },
-        LeftContainer:new{ dimen = Geom:new{ w = inner - S(44) - S(84) - S(20), h = S(44) }, title },
+        LeftContainer:new{ dimen = Geom:new{ w = inner - close_w - S(84) - S(20), h = S(44) }, title },
         HorizontalSpan:new{ width = S(10) }, save }
     self.layout[#self.layout + 1] = { close, save }
     gap(10)
+    if self.inline and (self.writing or self.drawing) then
+        -- writing: the prompt, and the words over the keyboard; drawing: the prompt, and the drawing under it
+        if set.showPrompt then
+            col[#col + 1] = TextBoxWidget:new{ text = st.prompt, face = Font:getFace("cfont", 17), width = inner, bold = true }
+            gap(6)
+        end
+        local kb = self.input and self.input.keyboard
+        local kb_h = self.drawing and 0 or (kb and kb.dimen and kb.dimen.h or math.floor(sh * 0.4))
+        local used = col:getSize().h + S(10)
+        col[#col + 1] = self:writingBox(inner - 2 * S(4), sh - used - kb_h - S(18), { x = margin, y = used })
+        return self:finish(col, sw, sh, margin)
+    end
     -- how you felt
     label(_("How have you felt?"))
     col[#col + 1] = self:rows({
@@ -400,16 +657,34 @@ function JournalScreen:build()
         gap(8)
     end
     -- the prompt and the words
-    if set.showPrompt then
+    if set.showPrompt and self.inline then
+        -- (touch: the prompt, Another at its right, and the words right under it)
+        local another_w = S(120)
+        local another = self:button("prompt", "\u{21BB} " .. _("Another"), another_w, function() self:nextPrompt() end, false, 15)
+        col[#col + 1] = HorizontalGroup:new{ align = "center",
+            LeftContainer:new{ dimen = Geom:new{ w = inner - another_w - S(10), h = math.max(S(40), another:getSize().h) },
+                TextBoxWidget:new{ text = st.prompt, face = Font:getFace("cfont", 17), width = inner - another_w - S(10), bold = true } },
+            HorizontalSpan:new{ width = S(10) }, another }
+        self.layout[#self.layout + 1] = { another }
+    elseif set.showPrompt then
         col[#col + 1] = TextBoxWidget:new{ text = st.prompt, face = Font:getFace("cfont", 17), width = inner, bold = true }
         gap(6)
     end
     local written = st.body:gsub("^%s+", ""):gsub("%s+$", "")
     local rows = {}
-    if set.showPrompt then rows[#rows + 1] = { id = "prompt", text = _("Another prompt"), size = 15, callback = function() self:nextPrompt() end } end
-    rows[#rows + 1] = { id = "write", text = written ~= "" and _("Edit what you wrote…") or _("Write about it…"), size = 15, on = written ~= "",
-        callback = function() self:write() end }
-    col[#col + 1] = self:rows(rows, #rows, inner)
+    if set.showPrompt and not self.inline then rows[#rows + 1] = { id = "prompt", text = _("Another prompt"), size = 15, callback = function() self:nextPrompt() end } end
+    if not self.inline then
+        rows[#rows + 1] = { id = "write", text = written ~= "" and _("Edit what you wrote…") or _("Write…"), size = 15, on = written ~= "",
+            callback = function() self:write() end }
+    end
+    if #rows > 0 then col[#col + 1] = self:rows(rows, #rows, inner) end
+    if self.inline then
+        -- the words, right under the prompt: the rest of the page, lined
+        gap(6)
+        local used = col:getSize().h + S(10)
+        col[#col + 1] = self:writingBox(inner - 2 * S(4), math.max(S(JournalScreen.MIN_BOX), sh - used - S(24)), { x = margin, y = used })
+        return self:finish(col, sw, sh, margin)
+    end
     if written ~= "" then
         gap(6)
         local first = written:gsub("%s+", " ")
@@ -424,14 +699,32 @@ function JournalScreen:build()
         gap(8)
         label(_("The 5-way moves, Press picks. Back closes."), true)
     end
+    return self:finish(col, sw, sh, margin)
+end
+
+function JournalScreen:finish(col, sw, sh, margin)
+    -- (measured before the words' box went in: measured again)
+    if col.resetLayout then col:resetLayout() end
     self.column = col
     self[1] = FrameContainer:new{ width = sw, height = sh, padding = 0, bordersize = 0, background = Blitbuffer.COLOR_WHITE,
         VerticalGroup:new{ align = "left", VerticalSpan:new{ width = S(10) },
             HorizontalGroup:new{ HorizontalSpan:new{ width = margin }, col } } }
 end
 
+--- Takes `w` out of the widget tree `node` (so freeing the tree leaves it alone).
+function JournalScreen:unparent(node, w)
+    if type(node) ~= "table" then return false end
+    for i = #node, 1, -1 do
+        if node[i] == w then table.remove(node, i); return true end
+        if type(node[i]) == "table" and self:unparent(node[i], w) then return true end
+    end
+    return false
+end
+
 --- Build the page again after a choice; the 5-way stays on the button `focus_id`.
 function JournalScreen:rebuild(focus_id)
+    -- (the words' page is kept: taken out before the old layout is freed)
+    if self.input then self:unparent(self[1], self.input) end
     if self[1] and self[1].free then pcall(self[1].free, self[1]) end
     self:build()
     self.selected = { x = 1, y = 1 }
