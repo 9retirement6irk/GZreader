@@ -2067,6 +2067,11 @@ function DrawScreen:use(t)
     elseif t.id == "cancel" and self.journal and not t.row then
         -- a journal entry's drawing: back to the whole entry, the drawing kept
         self.flyout = nil; self.after = "entry"; self:done()
+    elseif t.id == "cancel" and not t.row and self.changed then
+        -- ← with something drawn: saved as you leave (as the Kindle's own notebooks do);
+        -- ⋮ → Close without saving still asks and leaves without it
+        Log.info("drawing: left with changes: saved")
+        self.flyout = nil; self:done()
     elseif t.id == "cancel" then self.flyout = nil; self:layoutBar(); self:cancel()
     elseif t.id == "typing" then
         -- a journal entry's drawing: back to typing (the drawing kept)
@@ -2405,6 +2410,12 @@ end
 --- of its own unless it had one; emptied: removed, when it's in Memos).
 function DrawScreen:done()
     local results = {}
+    -- "Saving…" at once when pages are to be made into pictures (a second or more on a big screen)
+    local box
+    for _i, p in ipairs(self.pages) do
+        if p.modified then box = require("gzreader_saving").show(); break end
+    end
+    local function closeBox() if box then require("gzreader_saving").close(box); box = nil end end
     for i, p in ipairs(self.pages) do
         if not p.modified then
             -- left as it was (this time): as it came
@@ -2420,6 +2431,7 @@ function DrawScreen:done()
                 local res, err = self:save()
                 if not res then
                     Log.warn("drawing: couldn't save page", i, tostring(err))
+                    closeBox()
                     UIManager:show(require("ui/widget/infomessage"):new{ text = _("Couldn't save the drawing."), timeout = 3 })
                     return
                 end
@@ -2435,6 +2447,8 @@ function DrawScreen:done()
     results.reordered = self.reordered or nil
     self:close()
     if self.on_done then self.on_done(results) end
+    -- (the note's own Saving… follows when it's saved from here: this one goes once that's up)
+    if box then UIManager:scheduleIn(0.2, closeBox) end
 end
 
 --- opts: pages ({ att, path, filename, changed, removed }: the note's
