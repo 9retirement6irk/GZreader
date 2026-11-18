@@ -392,28 +392,6 @@ function Editor:init()
         }
         -- (the formatted page has no frame of its own: a little room under the bar's line)
         if self.keys_bar and self.rich then table.insert(column, 2, VerticalSpan:new{ width = S(8) }) end
-        if self.keys_bar then
-            -- (the text box is a whole number of lines tall: if the page is taller than the
-            -- screen with its bar, toolbar and the keys at the foot, the box gives way)
-            self.bar_slot[1] = VerticalSpan:new{ width = self.tool_h }
-            self.hint_slot[1] = VerticalSpan:new{ width = self.footer_h }
-            local over = column:getSize().h - sh
-            if over > 0 and self.rich then
-                -- (the formatted page: any height)
-                local page = self.input
-                page.height = math.max(S(80), page.height - over)
-                page.dimen.h = page.height
-                page:keepCursorInView()
-            elseif over > 0 then
-                if self.input.free then pcall(self.input.free, self.input) end
-                self.input = box(text_h - over)
-                column[2] = self.input
-            end
-            -- (measured with stand-ins for the toolbar and the keys' line: laid out again with the real ones)
-            self.bar_slot:clear()
-            self.hint_slot:clear()
-            column:resetLayout()
-        end
     end
     if self.floating then
         -- a window: what's under it (the book, Home) stays on the screen around it
@@ -436,6 +414,29 @@ function Editor:init()
         self.ges_events.PullPanel = { GestureRange:new{ ges = "swipe", range = function() return self:pullZone() end } }
     end
     self:drawChrome()
+    if self.keys_bar then
+        -- (the text box is a whole number of lines tall: if the page is taller than the screen
+        -- with its bar, toolbar and the keys at the foot, the box gives way)
+        local over = column:getSize().h - sh
+        if over > 0 then self:shorten(column, box, text_h, over) end
+    end
+end
+
+--- The page `over` pixels too tall for the screen: its text box made shorter.
+function Editor:shorten(column, box, text_h, over)
+    if self.rich then
+        -- (the formatted page: any height)
+        local page = self.input
+        page.height = math.max(S(80), page.height - over)
+        page.dimen.h = page.height
+        page:keepCursorInView()
+        column:resetLayout()
+        return
+    end
+    if self.input.free then pcall(self.input.free, self.input) end
+    self.input = box(text_h - over)
+    column[2] = self.input
+    column:resetLayout()
 end
 
 --- Where a swipe down opens the quick panel: the title row (and a little
