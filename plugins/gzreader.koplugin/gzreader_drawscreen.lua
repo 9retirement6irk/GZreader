@@ -236,6 +236,8 @@ function DrawScreen:init()
     self.has_color = DrawScreen.hasColor()
     -- a Kindle with a pen: its pressure and tilt make the line heavier (a choice in the pen's panel)
     self.pressure_on = DrawScreen.pressureOn()
+    -- draw and hold: a rough shape becomes a clean one (on unless turned off in the Shapes panel)
+    self.snap_shapes = not (G_reader_settings and G_reader_settings:isFalse("gzreader_drawing_snap"))
     local was = DrawScreen.loadPenRange()
     self._pen_range_was = { p_seen = was.p_seen, t_seen = was.t_seen, n = was.n }
     self.color = DrawScreen.lastColor()
@@ -338,6 +340,7 @@ function DrawScreen:syncTool()
     sk.shape = self.shape
     sk.eraser_width = self.eraser_width
     sk.pressure_on = self.pressure_on
+    sk.snap_shapes = self.snap_shapes
     -- the lasso: how near a corner of the frame counts as its handle; another tool lets go of what's chosen
     sk.lasso_handle, sk.lasso_pad = S(26), S(10)
     if self.tool ~= "lasso" then
@@ -370,6 +373,8 @@ function DrawScreen:flyoutRows(which)
         for _i, id in ipairs(Sketch.SHAPES) do
             rows[#rows + 1] = { id = "s-" .. id, row = true, shape = id, icon = id, label = DrawScreen.SHAPE_NAMES[id] }
         end
+        -- (or with any pen: draw it roughly and hold the pen still at the end: gzreader_shapesnap.lua)
+        rows[#rows + 1] = { id = "snap", row = true, switch = self.snap_shapes, label = _("Draw and hold: clean shapes") }
     elseif which == "eraser" then
         for k, w in ipairs(Sketch.ERASER_WIDTHS) do
             rows[#rows + 1] = { id = "e" .. tostring(w), row = true, eraser_width = w, bar = k, hollow = true, label = DrawScreen.WIDTH_NAMES[k] }
@@ -1979,6 +1984,12 @@ function DrawScreen:use(t)
     elseif t.id == "newtag" then self:newTag()
     elseif t.id == "tag" then self:setFlyout(self.flyout ~= "tags" and "tags" or nil)
     elseif t.id == "title" then self:setFlyout(nil); self:rename()
+    elseif t.id == "snap" then
+        self.snap_shapes = not self.snap_shapes
+        keep("gzreader_drawing_snap", self.snap_shapes)
+        self:syncTool()
+        Log.info("drawing: draw and hold for clean shapes", self.snap_shapes and "on" or "off")
+        self:setFlyout("shape")
     elseif t.id == "pressure" then
         self.pressure_on = not self.pressure_on
         keep("gzreader_drawing_pressure", self.pressure_on)

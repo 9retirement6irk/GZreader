@@ -1069,6 +1069,22 @@ local function endContact(self, slot, out)
         for _i, p in ipairs(pts) do c.stroke.points[#c.stroke.points + 1] = p end
         out.redraw = #pts > 0
     end
+    -- held still at its end (shapes cleaned up: the Newton's way): a rough line, circle,
+    -- triangle or box becomes a clean one, where it was drawn
+    if c.kind == "draw" and not c.shape and self.snap_shapes and c.stroke and #c.pieces == 0
+        and require("gzreader_shapesnap").held(c.trail, c.lift_at) then
+        local SS = require("gzreader_shapesnap")
+        local kind, clean = SS.recognise(c.stroke.points)
+        if kind then
+            local before = self:strokeBox(c.stroke)
+            for _i, p in ipairs(clean) do p[1], p[2] = math.floor(p[1] + 0.5), math.floor(p[2] + 0.5) end
+            c.stroke.points = clean
+            out.redraw = true
+            out.area = self:strokesArea({ c.stroke }, before)
+            out.snapped = kind
+            self.snapped = (self.snapped or 0) + 1
+        end
+    end
     if c.kind == "draw" and (#c.pieces > 0 or (c.stroke and #c.stroke.points > 0)) then
         if c.stroke and #c.stroke.points > 0 then
             c.pieces[#c.pieces + 1] = c.stroke
@@ -1159,10 +1175,18 @@ function Sketch:frame(slots, now)
                     end
                 elseif c.kind == "draw" then
                     if not c.shape then addPoint(self, c, s.x, s.y, out) end -- (a shape: drawn when the pen lifts)
+                    -- (the stroke's last moments, to tell a hold at its end: gzreader_shapesnap.lua)
+                    if self.snap_shapes and not c.shape then
+                        local tr = c.trail or {}
+                        tr[#tr + 1] = { now, s.x, s.y }
+                        if #tr > 60 then table.remove(tr, 1) end
+                        c.trail = tr
+                    end
                 elseif c.kind == "lasso" then lassoMove(self, c, s, now, out)
                 elseif c.kind == "erase" then erase(self, c, s.x, s.y, out) end
             end
         elseif c then
+            c.lift_at = now
             endContact(self, s.slot, out)
         end
     end

@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Drawing: draw a rough shape and hold, and it becomes a clean one", text = "As on the Apple Newton (and an iPad): with any pen, draw a line, a circle or an oval, a triangle or a box roughly, and keep the pen still on the screen for a moment at the end. When you lift it, the stroke becomes a clean one in the same place: a straight line, a round circle, straight-sided triangle or box (level when you drew it about level), or a clean four- to eight-sided shape. Lift at once and it stays as you drew it, so writing is never changed, and something smaller than about a fingertip is left alone. One Undo takes the clean shape away. The Shapes panel has a switch to turn it off (Draw and hold: clean shapes); it's on unless you turn it off." },
+        },
+    },
+    {
         version = "1.33.0",
         changes = {
             { short = "Drawing: the pencil and the highlighter draw much faster", text = "The pencil and the highlighter were several times slower than the pen: every pixel under the line was read and written through a slow route, several times over. They now write the page's pixels directly, the pencil's texture is looked up instead of worked out for each pixel, and its line is painted in fewer steps. In GZreader's emulator the highlighter's ink takes about a tenth of the time it did and the pencil's about a quarter, close to the pen's. A long stroke's line in the diagnostic log now also says how long each of its frames took to handle." },

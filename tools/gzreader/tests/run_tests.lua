@@ -10198,6 +10198,11 @@ print("Notes (Memos v0.31)")
                 and dsrcs:find('if self:repaintArea(area) then self:refreshBar() else self:redrawAll() end', 1, true) ~= nil
                 and dsrcs:find('if not area or sk.zoomed then return false end', 1, true) ~= nil,
                 "drawing: a rubbed-out stroke, an Undo, a Redo draw and refresh only their part of the page (all of it when zoomed in)")
+            -- draw and hold (shapesnap_test.lua: the recogniser; sketch_test.lua: the hold; emulator/shape_snap.lua: on screen)
+            check(dsrcs:find('rows[#rows + 1] = { id = "snap", row = true, switch = self.snap_shapes, label = _("Draw and hold: clean shapes") }', 1, true) ~= nil
+                and dsrcs:find('self.snap_shapes = not (G_reader_settings and G_reader_settings:isFalse("gzreader_drawing_snap"))', 1, true) ~= nil
+                and dsrcs:find("sk.snap_shapes = self.snap_shapes", 1, true) ~= nil,
+                "drawing: draw and hold for clean shapes, on unless turned off in the Shapes panel")
             -- the lasso (sketch_test.lua checks choosing, moving, growing, copying; emulator/lasso.lua checks it on the screen)
             check(dsrcs:find('{ id = "lasso", icon = "lasso", label = _("Lasso") },', 1, true) ~= nil
                 and dsrcs:find('{ id = "sel-copy", icon = "copy", label = _("Copy") },', 1, true) ~= nil

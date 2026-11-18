@@ -1017,6 +1017,39 @@ end)()
     local el
     for _i, e in ipairs(scene.elements) do if e.type == "freedraw" then el = e end end
     check(el and #el.points == 5, "…sent to Memos as a stroke along its outline")
+    -- draw and hold: a rough circle, held still at the end, becomes a clean one (gzreader_shapesnap.lua)
+    do
+        local function roughCircle(skx, hold, t0)
+            local n = 40
+            for i = 0, n do
+                local a = 2 * math.pi * i / n
+                skx:frame({ { slot = 0, id = 1, x = 300 + 100 * math.cos(a) + (i % 3) * 2, y = 400 + 100 * math.sin(a) - (i % 2) * 3 } }, t0 + i * 0.01)
+            end
+            local t = t0 + n * 0.01
+            if hold then
+                for k = 1, 8 do skx:frame({ { slot = 0, id = 1, x = 400 + (k % 2), y = 400 } }, t + k * 0.1) end
+                t = t + 0.85
+            end
+            return skx:frame({ { slot = 0, id = -1 } }, t + 0.01)
+        end
+        local a = sketch(); a.snap_shapes = true
+        local out = roughCircle(a, true, 10)
+        local st = a:live()[1]
+        local wobbly = false
+        for _i, p in ipairs(st.points) do
+            local r = math.sqrt((p[1] - 300) ^ 2 + (p[2] - 400) ^ 2)
+            if r < 95 or r > 107 then wobbly = true end
+        end
+        check(out.snapped == "circle" and not wobbly and out.redraw and out.area and #a:live() == 1,
+            "draw and hold: a rough circle held at its end becomes a round one, in its place (redrawn there)")
+        check(a:canUndo() and a:undo() and #a:live() == 0, "…one Undo takes it away")
+        local b = sketch(); b.snap_shapes = true
+        local out2 = roughCircle(b, false, 20)
+        check(out2.snapped == nil and #b:live()[1].points > 30, "lifted at once: left as drawn")
+        local c = sketch(); c.snap_shapes = false
+        local out3 = roughCircle(c, true, 30)
+        check(out3.snapped == nil, "the switch off (Shapes panel): left as drawn, even held")
+    end
     local sk2 = sketch()
     sk2.tool, sk2.shape = "shape", "line"
     drag(sk2, 100, 100, 102, 101, 1)
