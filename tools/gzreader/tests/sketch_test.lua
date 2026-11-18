@@ -162,41 +162,36 @@ print("== a pull down from the top: the quick panel")
         "far enough down, and more down than across")
 end)()
 
-print("== inline (a journal entry): the page moves under the box")
+print("== the hand tool; a page opened smaller than full size (a journal's drawing under its prompt)")
 ;(function()
-    local moved = {}
-    local function on_pan(dx, dy) moved[#moved + 1] = { dx, dy }; return true end
     local function run_frames(sk, list)
         local any = false
-        for i, f in ipairs(list) do any = sk:frame(f, i * 0.4).panned or any end
+        for i, f in ipairs(list) do any = sk:frame(f, i * 0.4).view or any end
         return any
     end
-    -- a finger Kindle: the finger draws; the hand tool moves the page
-    local sk = Sketch.new{ canvas = { x = 0, y = 0, w = 1000, h = 1400 }, per_unit = 2 }
-    sk.inline_pan, sk.on_pan = true, on_pan
-    run_frames(sk, { { finger(0, 200, 600) }, { finger(0, 260, 620) }, { lift(0) } })
-    check(#sk.strokes == 1 and #moved == 0, "a finger Kindle, inline: the finger draws")
+    -- a page made at full size (930 x 1240 units, 2 pixels a unit) opened in a shorter canvas:
+    -- fitted smaller, and that's its view to come back to (a pinch is measured from it)
+    local Drawing = require("gzreader_drawing")
+    local scene = Drawing.newScene()
+    scene.elements[1] = { id = "paper", type = "image", x = 0, y = 0, width = 930, height = 1240, locked = true, fileId = "p" }
+    scene.files = { p = { dataURL = "data:image/png;base64,AA" } }
+    local opts = { canvas = { x = 0, y = 0, w = 1860, h = 2300 }, pen_only = true, pen_slot = PEN_SLOT, per_unit = 2, max_per_unit = 2 }
+    local sk = Sketch.fromScene(scene, opts)
+    local fv = sk:fitView()
+    check(sk.per_unit < 2 and math.abs(fv.per_unit - sk.per_unit) < 1e-9 and sk:zoom() == 1 and not sk.zoomed,
+        "a page that doesn't fit at full size: fitted smaller (" .. string.format("%.2f", sk.per_unit) .. " px a unit), and that's its unzoomed view (zoom 1)")
+    check(sk:zoomBy(1.5, 900, 1000, 900, 1000) > 1.4 and sk.zoomed, "…pinched bigger from there")
+    local oy = sk.oy
+    local moved = run_frames(sk, { { finger(0, 900, 1500) }, { finger(0, 900, 1300) }, { finger(0, 900, 1000) }, { lift(0) } })
+    check(moved and sk.oy > oy and #sk.strokes == 0, "…and a finger moves it (a pen Kindle, zoomed in)")
+    -- the hand tool: the pen moves the page too, nothing drawn
     sk.tool = "hand"
-    local panned = run_frames(sk, { { finger(0, 500, 900) }, { finger(0, 500, 700) }, { finger(0, 500, 500) }, { lift(0) } })
-    check(panned and #moved > 0 and #sk.strokes == 1, "the hand tool: the page moves (on_pan), nothing drawn")
-    local dy = 0
-    for _i, m in ipairs(moved) do dy = dy + m[2] end
-    check(dy == -400, "…by as far as the finger went (" .. dy .. ")")
-    -- a pen Kindle: a finger moves the page, the pen draws
-    moved = {}
-    local pk = Sketch.new{ canvas = { x = 0, y = 0, w = 1000, h = 1400 }, pen_only = true, pen_slot = PEN_SLOT, per_unit = 2 }
-    pk.inline_pan, pk.on_pan = true, on_pan
-    panned = run_frames(pk, { { finger(0, 500, 900) }, { finger(0, 500, 800) }, { finger(0, 500, 600) }, { lift(0) } })
-    check(panned and #pk.strokes == 0, "a pen Kindle, inline: a finger moves the page")
-    run_frames(pk, { { pen(300, 300) }, { pen(380, 330) }, { hover(380, 330) } })
-    check(#pk.strokes == 1, "…the pen draws")
-    pk.tool = "hand"
-    moved = {}
-    panned = run_frames(pk, { { pen(500, 900) }, { pen(500, 800) }, { pen(500, 600) }, { hover(500, 600) } })
-    check(panned and #pk.strokes == 1 and #moved > 0, "…the hand tool: the pen moves the page too")
-    -- not inline: a pen Kindle's finger still does nothing until zoomed in
+    oy = sk.oy
+    moved = run_frames(sk, { { pen(900, 1600) }, { pen(900, 1400) }, { pen(900, 1200) }, { hover(900, 1200) } })
+    check(moved and sk.oy > oy and #sk.strokes == 0, "the hand tool: the pen moves the page, nothing drawn")
+    -- not zoomed: a pen Kindle's finger still does nothing
     local nk = Sketch.new{ canvas = { x = 0, y = 0, w = 1000, h = 1400 }, pen_only = true, pen_slot = PEN_SLOT, per_unit = 2 }
-    panned = run_frames(nk, { { finger(0, 500, 900) }, { finger(0, 500, 600) }, { lift(0) } })
+    local panned = run_frames(nk, { { finger(0, 500, 900) }, { finger(0, 500, 600) }, { lift(0) } })
     check(not panned and #nk.strokes == 0, "the full drawing screen, not zoomed: a finger still does nothing")
 end)()
 

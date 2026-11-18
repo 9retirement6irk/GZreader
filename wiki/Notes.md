@@ -354,15 +354,14 @@ API to `/api` are found too.
     brings the keyboard; the questions above fold away while you type, so
     only the prompt and your words show. **Done** (top left) puts the
     keyboard away.
-    **✎** in the box's top right corner turns the box into a **drawing**,
-    right there under the prompt, on lined paper (the questions fold away
-    here too). The box is a window onto a page as big as the screen: on the
-    Scribe the pen draws and **a finger moves the page**; on other Kindles a
-    finger draws and the **hand** moves it (the hand works with the pen too).
-    Its tools sit in its top right corner: pen, eraser, hand, undo, redo and
-    **Aa**, which goes back to typing (so does **Done**, or a tap on ✎ again
-    goes on drawing). ✎ shows how many sheets go with the entry. Touches
-    outside the box (Save, Done) work as usual while you draw.
+    **✎** in the box's top right corner opens the **drawing screen** right
+    under the prompt, on lined paper: the same screen as a note's drawing,
+    with every tool (pen, fountain pen, marker, pencil, highlighter, shapes,
+    text, eraser, hand), **pinch to zoom**, moving the page (a finger on the
+    Scribe once zoomed in, or the hand), paper and pages. Only its top bar
+    differs: **←** goes back to the whole entry (the drawing kept), **Aa**
+    back to typing, and **Save** saves the journal entry, words and drawing
+    together. ✎ shows how many sheets go with the entry.
     (Kindles with keys: **W** writes in a box of its own, as before.)
   - **Save** makes a private note: the prompt as a quote and your words, the
     goals as a checklist, any drawings as the note's drawings, then the tags, like

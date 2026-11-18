@@ -9551,15 +9551,40 @@ print("Notes (Memos v0.31)")
             check(r1 == false and r2 == false and r3 == false and r4 == true and r5 == true and r6 == true and r7 == true and r8 == false
                 and d._pane_slots[4] == nil,
                 "split view: a touch belongs where it began (the book's go to KOReader, the notes' to the drawing), wherever it moves after")
+            -- the pen up over the notes, hovering, then gone: the drawing's (it must know the pen left,
+            -- or fingers count as a resting hand for seconds); over the book: the book's
+            d.sketch, d._pane_slots = { pen_slot = 4 }, {}
+            local p1 = frame({ { slot = 4, id = 8, x = 500, y = 2000 } })
+            local p2 = frame({ { slot = 4, id = -1, x = 500, y = 2000 } })
+            local p3 = frame({ { slot = 4, id = -1, x = 520, y = 2010 } })              -- hovering over the notes
+            local p4 = frame({ { slot = 4, id = -1 } })                                -- gone out of range
+            local p5 = frame({ { slot = 4, id = -1, x = 520, y = 600 } })               -- back, hovering over the book
+            local p6 = frame({ { slot = 4, id = -1 } })                                -- gone from there
+            d.sketch = nil
+            check(p1 and p2 and p3 and p4 and not p5 and not p6,
+                "a pane: the pen hovering over the drawing, or leaving from there, is the drawing's (it went to KOReader: fingers were ignored for 5 s after writing); over the book, the book's")
             local dsrcs = io.open(PLUGIN .. "/gzreader_drawscreen.lua"):read("*a")
             -- (the sizes themselves are checked on the Scribe's screen by emulator/split_view.lua: every tool fits the pane)
             check(dsrcs:find('if self.pane then self.tool_sz = DrawScreen.paneToolSize(sh, self.top_h, #DrawScreen.SIDE_TOOLS) end', 1, true) ~= nil,
                 "split view: the tools made smaller to fit a short pane")
             check(dsrcs:find('if screen.pane and not screen:paneFrame(det, tevs) then return orig(det, tevs) end', 1, true) ~= nil
                 and dsrcs:find('if reader and UIManager:getTopmostVisibleWidget() == self then return reader:handleEvent(event) end', 1, true) ~= nil
-                and dsrcs:find('if self.pane then pcall(function() require("gzreader_splitview").closed(self) end) end', 1, true) ~= nil
+                and dsrcs:find('if self.pane and not self.journal then pcall(function() require("gzreader_splitview").closed(self) end) end', 1, true) ~= nil
                 and dsrcs:find('x, y = ges.pos.x - self.ox, ges.pos.y - self.oy', 1, true) ~= nil,
                 "split view: the drawing screen passes the book's touches on, works from its pane's corner, and gives the book its screen back when it closes")
+            -- a journal entry's drawing: the same drawing screen, in a pane under the prompt
+            local jsrc = io.open(PLUGIN .. "/gzreader_journalscreen.lua"):read("*a")
+            check(jsrc:find('pane = { x = rect.x, y = rect.y, w = rect.w, h = rect.h },', 1, true) ~= nil
+                and jsrc:find('journal = { under = self },', 1, true) ~= nil and not jsrc:find('inline = { rect', 1, true)
+                and not dsrcs:find('INLINE_TOOLS', 1, true) and not dsrcs:find('function DrawScreen:passThrough', 1, true)
+                and dsrcs:find('local taken = split and not opts.journal and split.take()', 1, true) ~= nil
+                and dsrcs:find('if under and UIManager:getTopmostVisibleWidget() == self then return under:handleEvent(event) end', 1, true) ~= nil,
+                "journal: its drawing is the whole drawing screen (every tool, pinch, pan) in a pane under the prompt, not a box with a few tools; touches above go to the entry")
+            check(dsrcs:find('add({ id = "done", label = self.journal and _("Save") or _("Done") }', 1, true) ~= nil
+                and dsrcs:find('if self.journal then icons[#icons + 1] = { id = "typing", label = _("Aa") } end', 1, true) ~= nil
+                and dsrcs:find('self.flyout = nil; self.after = "entry"; self:done()', 1, true) ~= nil
+                and jsrc:find('if after == "save" then', 1, true) ~= nil,
+                "journal's drawing: ← back to the entry (kept), Aa to typing, Save saves the entry")
         end)()
         -- a long stroke keeps up with the pen: the ink shown at most 60 times a second, 8 while behind
         ;(function()

@@ -531,6 +531,11 @@ function Sketch.fromScene(scene, opts)
         self.per_unit = math.max(0.05, math.min(self.per_unit, fit))
         -- (in the middle across, at the top)
         self.ox, self.oy = b.x - (c.w / self.per_unit - b.w) / 2, b.y - margin / self.per_unit
+        -- (and this is the view to come back to: a pinch is measured from it, and
+        -- never smaller than it; without it, a page that didn't fit at full size
+        -- (a journal's drawing under its prompt) was taken for zoomed out, and
+        -- couldn't be pinched bigger or moved with a finger)
+        self.fit = { per_unit = self.per_unit, ox = self.ox, oy = self.oy }
     end
     for _i, el in ipairs(Drawing.liveElements(scene)) do
         if el.type == "freedraw" and type(el.points) == "table" and #el.points > 0 then
@@ -745,9 +750,8 @@ local function startContact(self, s, now, out)
         c.kind, c.pull = "tap", true
     elseif not inside then
         c.kind = "tap"
-    elseif self.tool == "hand" or (self.inline_pan and self.pen_only and not pen) then
-        -- the hand: the pen (or a finger) takes hold of the page and moves it; and (a
-        -- journal's inline drawing) a finger on a pen Kindle moves the page under the window
+    elseif self.tool == "hand" then
+        -- the hand: the pen (or a finger) takes hold of the page and moves it
         c.kind, c.slot = "pan", s.slot
         c.px, c.py, c.at = s.x, s.y, now
     elseif self.tool == "text" then
@@ -857,12 +861,6 @@ local function applyPan(self, c, out)
     if not c.panning then self.stats.panned = (self.stats.panned or 0) + 1 end
     self.pan_slot = c.slot
     c.panning = true
-    if self.on_pan then
-        -- (inline: the window moves over the page, the page itself stays as it is)
-        if self.on_pan(dx, dy) then out.panned = true end
-        c.px, c.py = c.x, c.y
-        return true
-    end
     local cv = self.canvas
     self:zoomBy(1, c.px - cv.x, c.py - cv.y, c.x - cv.x, c.y - cv.y)
     c.px, c.py = c.x, c.y
