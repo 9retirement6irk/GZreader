@@ -134,7 +134,7 @@ What's already on the Kindle is never brought again: the page shows it as **On t
 The Catalog tab works from the copy: browse, search, Libraries, Shelves,
 Authors and Series, a book's page with its description. Download puts the
 book in the sync queue (a book's page says "Add to sync queue"; selecting a
-queued book offers to take it off; Settings → Connections → Sync through a
+queued book offers to take it off; Settings → General → Transfer → Sync through a
 computer → Sync queue lists them). The quick panel's **Sync** tile shows the
 steps, what's waiting to be sent and the queue, with **Exit GZreader now**.
 
