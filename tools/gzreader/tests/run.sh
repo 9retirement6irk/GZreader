@@ -77,10 +77,6 @@ echo "== the Kindle Scribe's pen mode (ink that keeps up with the pen)"
 (cd "$T" && luajit penmode_test.lua "$REPO/plugins/gzreader.koplugin") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
 
-echo "== shapes cleaned up: draw and hold (the Newton's way)"
-(cd "$T" && luajit shapesnap_test.lua "$REPO/plugins/gzreader.koplugin") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
-
 echo "== mark up a PDF (its pages as drawing pages)"
 (cd "$T" && luajit pdfmarkup_test.lua "$REPO/plugins/gzreader.koplugin" "$T/lib" "$KOBASE" "$WORK/pdfmarkup") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
@@ -89,6 +85,10 @@ echo "== notes formatted (Memos' rich editor: reading and writing its Markdown; 
 (cd "$T" && luajit blocks_test.lua "$REPO/plugins/gzreader.koplugin") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
 (cd "$T" && luajit richedit_test.lua "$REPO/plugins/gzreader.koplugin") 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+
+echo "== shapes cleaned up: draw and hold (the Newton's way)"
+(cd "$T" && luajit shapesnap_test.lua "$REPO/plugins/gzreader.koplugin") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
 
 echo "== journal entries (written as the Memos fork's journaling mode writes them)"
