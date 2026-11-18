@@ -199,6 +199,11 @@ function Daily.pageState(plugin)
     end
     local edition = Daily.load()
     return { enabled = st.enabled == true, shelf = st.shelf ~= false, pictures = st.pictures ~= false, calendar = st.calendar ~= false,
+        weather = (function()
+            local W = require("gzreader_weather")
+            local w = W.store(plugin)
+            return { on = w.off ~= true, source = W.source(plugin), place = w.place, unit = w.unit }
+        end)(),
         defaults = defaults, own = own, max = Daily.MAX_FEEDS,
         stories = edition and Daily.count(edition) or nil, day = edition and edition.day or nil }
 end
@@ -213,6 +218,9 @@ function Daily.pageSave(plugin, form)
     if form.shelf == "1" then st.shelf = nil else st.shelf = false end
     if form.pictures == "1" then st.pictures = nil else st.pictures = false end
     if form.calendar == "1" then st.calendar = nil else st.calendar = false end
+    local w = require("gzreader_weather").store(plugin)
+    w.off = (form.weather ~= "1") or nil
+    if form.unit == "F" or form.unit == "C" then w.unit = form.unit end
     for _i, f in ipairs(Daily.DEFAULT_FEEDS) do Daily.setDefaultOn(plugin, f, form["d_" .. f.id] == "1") end
     if tonumber(form.count) == #st.feeds then
         for i, f in ipairs(st.feeds) do
@@ -562,9 +570,16 @@ function Daily.refresh(plugin, on_done)
     Daily.tried_at = math.max(Daily.tried_at or 0, now)
     Daily.changed()
     local pictures = Daily.pictures(plugin)
+    local weather_plan = require("gzreader_weather").plan(plugin)
     require("gzreader_async").run({}, function()
         local edition, err = Daily.build(feeds, now, Daily.fetch)
         if not edition then return nil, err end
+        -- (the day's weather, for the front page's box: gzreader_weather.lua)
+        if weather_plan then
+            local okw, weather = pcall(require("gzreader_weather").fetch, weather_plan, now)
+            edition.weather = okw and weather or nil
+            if not edition.weather then Log.warn("daily paper: no weather") end
+        end
         -- (pictures: after the stories, into the cache folder; a new edition's replace the old one's)
         if pictures then
             Daily.clearPictures()

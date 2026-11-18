@@ -43,6 +43,20 @@ and how it begins.
 The paper shows what a feed carries. Some feeds carry whole stories; many
 carry only a sentence or two, and the paper says so under such a story.
 
+**Weather**: a box under the date shows now, today and the next two days,
+each with a small drawing of its sky, the high and low, and the chance of
+rain on a wet day. It comes with the day's paper:
+
+- from your **Home Assistant** when the [House](House) tab's is connected (its
+  first weather entity); nothing leaves your network;
+- otherwise from **Open‑Meteo** (open-meteo.com: free, no account) for the
+  town you set in **Settings → Home → Daily paper → Weather → Town**, or on
+  the setup page's Daily paper tab. **Degrees** switches Fahrenheit and
+  Celsius (it starts as the town's country uses).
+
+With no town set and no Home Assistant there's no box; **Weather on the front
+page** turns it off.
+
 **Today's calendar events**: when you use the [Calendar](Calendar) tab, the
 front page has a **TODAY** box under the date with today's events, all-day
 ones first, then by time. They're the events the Calendar tab last synced,
@@ -116,6 +130,11 @@ in a browser would be: the site sees the Kindle's internet address and that
 GZreader asked. Nothing else is sent: no account, no cookies, nothing about
 you or what you read. Nothing goes through anyone else's server. With
 **Pictures** on, a story's picture is fetched the same way from wherever the
-feed says it is, often a picture server on another site than the feed's. Feed
+feed says it is, often a picture server on another site than the feed's.
+For the weather, Open‑Meteo is sent the town's name once (to find where it
+is) and after that only its coordinates rounded to two decimals, about a
+kilometre, with each day's request; it sees the Kindle's internet address
+too. The town and the coordinates are never written to the log. Home
+Assistant's weather stays on your network. Feed
 addresses are never written to the [diagnostic log](Privacy-and-Diagnostics#diagnostic-log)
 (only the site's name), as some carry a personal key.

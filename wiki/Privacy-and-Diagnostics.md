@@ -125,6 +125,11 @@ the Kindle's internet address and that GZreader asked, as with any web page;
 no account, cookie or anything about you is sent, and feed addresses are
 never written to the log.
 
+Its weather box asks your own Home Assistant when that's connected;
+otherwise [Open‑Meteo](https://open-meteo.com), with the town you set (its
+name once, then its coordinates rounded to about a kilometre). See
+[Daily paper](Daily-Paper#privacy).
+
 ## Remote debugging
 
 For freezes and hard reboots, where the Kindle's own log may be lost:

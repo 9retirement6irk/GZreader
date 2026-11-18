@@ -578,8 +578,24 @@ function Phone.open(plugin, opts)
     -- the daily paper: its switches and feeds (addresses are never logged)
     routes["/paper"] = function(form)
         require("gzreader_daily").pageSave(plugin, form)
+        -- (a town typed for the weather: looked up now; neither it nor where it is gets logged)
+        local town = (form.town or ""):gsub("^%s+", ""):gsub("%s+$", "")
+        local town_error
+        if town ~= "" then
+            local W = require("gzreader_weather")
+            local found, err = W.geocode(town)
+            if found then
+                local w = W.store(plugin)
+                w.lat, w.lon, w.place = found.lat, found.lon, found.place
+                w.unit = w.unit or found.unit
+            else
+                town_error = err == "not found" and _("Saved, but no town of that name was found for the weather: try it with its country, or a bigger town nearby.")
+                    or _("Saved, but the town couldn't be looked up for the weather just now.")
+            end
+        end
         plugin:save()
         S.changes.paper = true
+        if town_error then return back({ section = "paper", error = town_error }) end
         return back({ ok = true, text = _("Saved. The paper is made again the next time Home is shown."), section = "paper" })
     end
     routes["/paper/add"] = function(form)

@@ -65,6 +65,16 @@ add({ fn = function(E)
         local n = Daily.addPictures(edition, Daily.pictureDir(), function(url) return url:find("Seven", 1, true) and bytes or (url:find("comet", 1, true) or url:find("radio", 1, true)) and bytes or nil end)
         check(E, n == 3 and Daily.picturePath(edition.sections[1].items[1]) ~= nil, "3 stories got their picture … " .. tostring(n))
     end
+    -- the weather, as Open-Meteo gives it for a town (given here; no network)
+    local Wx = require("gzreader_weather")
+    local w = Wx.store(p)
+    w.lat, w.lon, w.place, w.unit = 51.48, 0, "Example Town", "F"
+    local day = os.date("%Y-%m-%d")
+    local function plus(n) return os.date("%Y-%m-%d", os.time() + n * 86400) end
+    edition.weather = Wx.fromMeteo({ current = { temperature_2m = 51.6, weather_code = 61 },
+        daily = { time = { day, plus(1), plus(2) }, weather_code = { 63, 2, 0 }, temperature_2m_max = { 54.2, 49.1, 57 },
+            temperature_2m_min = { 41, 36.4, 39 }, precipitation_probability_max = { 80, 20, 0 } } }, "F")
+    check(E, Wx.on(p) and #Wx.cells(edition.weather) == 4, "the day's weather: now and three days")
     -- today's calendar events, as the Calendar tab keeps them
     local t = os.date("*t")
     local function at(h, m) return os.time{ year = t.year, month = t.month, day = t.day, hour = h, min = m or 0 } end
@@ -139,6 +149,7 @@ add({ fn = function(E)
     check(E, page ~= nil and page.page == 1 and #page.blocks >= 3 and page.blocks[1].w > page.blocks[2].w,
         "the front page: the lead story across it, the others in columns … " .. tostring(page and #page.blocks))
     check(E, page.has_next, "more pages behind it")
+    check(E, page.weather ~= nil and #page.weather.cells == 4 and page.weather.y < page.blocks[1].y, "the weather box above the stories, a sky drawn for each day")
     check(E, page.diary ~= nil and page.diary.y < page.blocks[1].y and page:at(page.diary.x + 5, page.diary.y + 5) == "diary", "today's events in a box above the lead story")
     local inside = true
     for _i, b in ipairs(page.blocks) do

@@ -262,6 +262,17 @@ local function paperSection(st, base)
     local rows = { tick("enabled", p.enabled, "<b>Daily paper</b>"), tick("shelf", p.shelf, "Show it on Home's bookshelf"),
         tick("pictures", p.pictures, "With pictures (the lead story's and a few more)"),
         tick("calendar", p.calendar, "Today's calendar events on the front page") }
+    local wx = p.weather or {}
+    rows[#rows + 1] = tick("weather", wx.on, "Weather on the front page")
+    if wx.source == "ha" then
+        rows[#rows + 1] = '<p class="note" style="margin:-4px 0 10px">The weather comes from your Home Assistant.</p>'
+    else
+        rows[#rows + 1] = input("p_town", "town", "Town for the weather" .. (wx.place and (" (now: " .. esc(wx.place) .. "; leave empty to keep it)") or ""), "",
+                'placeholder="Springfield, Illinois" ' .. NAME_ATTRS)
+            .. '<label for="p_unit">Degrees</label><select id="p_unit" name="unit" class="sel"><option value=""' .. (not wx.unit and " selected" or "")
+            .. '>As the town\'s country uses</option><option value="C"' .. (wx.unit == "C" and " selected" or "") .. '>Celsius</option><option value="F"' .. (wx.unit == "F" and " selected" or "") .. ">Fahrenheit</option></select>"
+            .. '<p class="note" style="margin:-4px 0 10px">From Open-Meteo (open-meteo.com), which is sent the town\'s name once and then its rounded coordinates.</p>'
+    end
     local topic
     for _i, f in ipairs(p.defaults or {}) do
         if f.topic ~= topic then
