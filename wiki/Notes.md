@@ -132,7 +132,11 @@ API to `/api` are found too.
 - **The on-screen keyboard** keeps **⮠ Enter** and **← →** on its letters page
   in boxes where you type several lines (notes, KOReader's text editor).
   One-line boxes (search, names, passwords) keep the shorter bottom row, with
-  Enter on the symbols page.
+  Enter on the symbols page. Where you write a note (the editor, a quick
+  note, a journal entry) a **slim bar on top of the keyboard** has **#**
+  (for tags) and the arrow keys **← ↑ ↓ →** (hold ← → for the start or end
+  of the line, ↑ ↓ to scroll), on every page of the keyboard. The letters
+  page then has a **comma** before the full stop, and a wider space bar.
 - **Editor (keyboard Kindles):** a full page with a toolbar at the bottom: List, Check, Num,
   Head, *I*, **B**, # Tag and Save. **Menu** jumps to the toolbar from
   anywhere in the text (on the tool used last) and the cursor stays where it
@@ -225,7 +229,9 @@ API to `/api` are found too.
     connected, **Erase page**, **Close without saving**)
     and **Done** (keeps the drawings with the note). The small tab under the
     bar **folds the bar away** so you can draw on the top of the page; the
-    tab stays at the top edge to bring it back.
+    tab stays at the top edge to bring it back. **Pull down** from the bar
+    (folded away: from the very top edge) for the [quick
+    panel](Using-GZreader#how-it-opens); the drawing stays as it is.
   - **A new drawing** (**Draw** on the Notes tab) is named and tagged from
     the top bar: tap its name (**Untitled drawing** ✎) to type a title,
     which becomes the note's heading; tap **Tags** for your most used tags
@@ -370,10 +376,37 @@ API to `/api` are found too.
     (the ten words nearest the step; **More feelings…** has them all) and
     **What's behind it…** (work, family, health…).
   - **What did you do?** your activities. **Goals:** tick the ones you did.
-  - A **prompt** (**Another prompt** for the next one) and **Write about
-    it…**, a box for the words.
+  - **On touch Kindles it looks as the fork's web journal does:** the
+    question with small **Overall today / Right now** toggles beside it; a
+    big **face** beside a **slider** of the seven steps (tap a place on it or
+    drag along it; the face shows the step, faded until one is chosen;
+    **Clear** takes it back); feelings and causes as chips that **fill black
+    when chosen** (light grey otherwise); activities as chips with **their
+    icons** (the ones set in Memos: briefcase, dumbbell, people, book, music,
+    coffee, plane, gamepad, palette, cutlery, tree, heart, star). The faces
+    are the web's, in greys of the same lightness as its colours. Keyboard
+    Kindles and the Kindle 4 keep the rows of buttons (for the keys and the
+    5-way).
+  - **Saved entries** show their mood as the web does: the **face beside the
+    note's time** on the board's sticky note and, on its page, the face and
+    the mood's name above the text, and the **tags as light grey chips**.
+  - A **prompt** (**↻ Another** for the next one) and, right under it, your
+    **words on lined paper**, typed straight in as plain text. A tap in it
+    brings the keyboard; the questions above fold away while you type, so
+    only the prompt and your words show. **Done** (top left) puts the
+    keyboard away.
+    **✎** in the box's top right corner turns the box into a **drawing**,
+    right there under the prompt, on lined paper (the questions fold away
+    here too). The box is a window onto a page as big as the screen: on the
+    Scribe the pen draws and **a finger moves the page**; on other Kindles a
+    finger draws and the **hand** moves it (the hand works with the pen too).
+    Its tools sit in its top right corner: pen, eraser, hand, undo, redo and
+    **Aa**, which goes back to typing (so does **Done**, or a tap on ✎ again
+    goes on drawing). ✎ shows how many sheets go with the entry. Touches
+    outside the box (Save, Done) work as usual while you draw.
+    (Kindles with keys: **W** writes in a box of its own, as before.)
   - **Save** makes a private note: the prompt as a quote and your words, the
-    goals as a checklist, then the tags, like
+    goals as a checklist, any drawings as the note's drawings, then the tags, like
     `#mood/pleasant #mood/today #felt/grateful #impact/work #did/reading`.
     It's written exactly as the fork's web editor writes an entry, so its
     Insights count entries from the Kindle; any Memos shows it as a note.
