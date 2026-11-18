@@ -15,6 +15,12 @@ says the certificate isn't trusted and nothing is downloaded. A Nook or DX
 whose clock has run back to 2000 or 1970 can still check (a certificate's
 dates are only ignored while the clock is before 2026).
 
+**A clock that ran down is set as soon as Wi‑Fi connects.** A Kindle or Nook
+whose clock is before 2024 (a Kindle Touch came back from a reboot in 2013)
+asks a time server, `pool.ntp.org`, for the time; if that's blocked, it
+takes the time from GitHub's answer. The log says `clock: said … set from a
+time server …`. Nothing is asked while the clock is right.
+
 After an update, GZreader opens a **What's new** screen once: "Updated to
 v<version>" and a short point for each change (for a test build, what it
 brings; for a release after a skipped one, both). Press Get Started (or the

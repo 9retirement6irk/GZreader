@@ -76,6 +76,7 @@ local function fakeMupdf(opts)
             if opts.fail_open then error("cannot open") end
             log.opened = path
             return {
+                setColorRendering = function(_d, on) log.colour_asked = on end,
                 needsPassword = function() return opts.password == true end,
                 getPages = function() return opts.count or 3 end,
                 openPage = function(_d, n)
@@ -144,6 +145,55 @@ print("== the PDF's pages as drawing pages")
         "the drawing saved: the PDF's page under the ink, its pixels kept")
 end)()
 
+print("== a colour PDF stays in colour")
+;(function()
+    fakeMupdf()
+    log.colour_asked = nil
+    local pages = PdfMarkup.pages("/x/a.pdf", { 1 }, WORK)
+    check(pages and log.colour_asked == true and pages[1].colour == false,
+        "MuPDF is asked to draw in colour (it drew grey: a colour PDF marked up was grey in Memos); a buffer that isn't colour is written as before")
+    local okb, Blitbuffer = pcall(require, "ffi/blitbuffer")
+    if okb and Blitbuffer and Blitbuffer.TYPE_BBRGB32 then
+        local function page(paint)
+            local bb = Blitbuffer.new(40, 30, Blitbuffer.TYPE_BBRGB32)
+            bb:fill(Blitbuffer.ColorRGB32(255, 255, 255, 255))
+            paint(bb)
+            return bb
+        end
+        -- (the PNG writer stood in for: what it's given is what's checked)
+        local got
+        local real_png = package.loaded["ffi/png"]
+        package.loaded["ffi/png"] = { encodeToFile = function(path, mem, w, h, n)
+            got = { path = path, w = w, h = h, n = n, at = function(x, y, k) return mem[(y * w + x) * n + k] end }
+            return true
+        end }
+        local red = page(function(bb) bb:paintRectRGB32(5, 5, 10, 10, Blitbuffer.ColorRGB32(220, 30, 30, 255)) end)
+        local c1 = PdfMarkup.writePage(red, WORK .. "/red.png")
+        check(c1 == true and got and got.n == 3 and got.w == 40 and got.h == 30 and got.path == WORK .. "/red.png",
+            "a page with colour on it: a colour picture, the page's size")
+        check(got and got.at(7, 7, 0) == 220 and got.at(7, 7, 1) == 30 and got.at(7, 7, 2) == 30 and got.at(0, 0, 0) == 255 and got.at(0, 0, 2) == 255,
+            "…its colours as the PDF's (red stays red, the paper white)")
+        got = nil
+        local swapped = PdfMarkup.writePage(red, WORK .. "/bgr.png", true)
+        check(swapped == true and got and got.at(7, 7, 0) == 30 and got.at(7, 7, 2) == 220, "drawn blue first (a screen that wants it so): turned back")
+        red:free()
+        got = nil
+        local grey = page(function(bb) bb:paintRectRGB32(5, 5, 10, 10, Blitbuffer.ColorRGB32(90, 90, 90, 255)) end)
+        local c2 = PdfMarkup.writePage(grey, WORK .. "/grey.png")
+        check(c2 == false and got and got.n == 1 and got.at(7, 7, 0) == 90 and got.at(0, 0, 0) == 255,
+            "a page of black, white and greys: a grey picture (a third the data), as before")
+        grey:free()
+        got = nil
+        local tint = page(function(bb) bb:paintRectRGB32(5, 5, 10, 10, Blitbuffer.ColorRGB32(250, 246, 240, 255)) end)
+        check(PdfMarkup.writePage(tint, WORK .. "/tint.png") == false and got and got.n == 1, "a faint tint (a scan's paper) isn't colour")
+        tint:free()
+        package.loaded["ffi/png"] = real_png
+    else
+        print("  (no ffi/blitbuffer here: the picture's own checks skipped)")
+    end
+    check(PdfMarkup.MAX_BYTES_COLOR > PdfMarkup.MAX_BYTES, "a colour picture may be bigger before it's rendered smaller")
+end)()
+
 print("== a page too big, a PDF that can't be used")
 ;(function()
     fakeMupdf({ big_until = 2 })
@@ -174,7 +224,7 @@ print("== the drawing screen and the editor take such pages")
         and dsrc:find("new = p.scene and true or nil, scene = p.scene, modified = p.scene and true or nil }", 1, true) ~= nil,
         "the drawing screen opens a page made ready (a PDF's page) as a new, changed page")
     local esrc = readAll(PLUGIN .. "/gzreader_noteeditor.lua")
-    check(esrc:find("drawing_atts = atts, extra_pages = opts.extra_pages }", 1, true) ~= nil
+    check(esrc:find("drawing_atts = atts, extra_pages = opts.extra_pages, pictures = opts.pictures }", 1, true) ~= nil
         and esrc:find("page = page or (#list + 1)", 1, true) ~= nil
         and esrc:find("if extra and not self:changed() then return UIManager:close(self, \"full\") end", 1, true) ~= nil,
         "the editor puts them after the note's drawings, shows the first; Cancel at once leaves the note as it was")

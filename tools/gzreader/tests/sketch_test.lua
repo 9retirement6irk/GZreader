@@ -75,6 +75,51 @@ print("== a finger Kindle (Paperwhite 3)")
     check(#out.taps == 0 and #sk.strokes == 2, "a contact that starts on the toolbar never draws")
 end)()
 
+print("== pictures (photos from Immich), as memos' drawing sheet places them")
+;(function()
+    -- placing: in the middle of what's shown, at most 60 % of it, never enlarged; several fanned out
+    local view = { cx = 500, cy = 400, w = 1000, h = 800 }
+    local one = Sketch.placePictures({ { w = 1440, h = 1080 } }, view)
+    check(math.abs(one[1].w - 600) < 0.01 and math.abs(one[1].h - 450) < 0.01 and one[1].cx == 500 and one[1].cy == 400,
+        "a big photo: 60 % of the page shown (here across: 600 of 1000), its shape kept, in its middle")
+    local small = Sketch.placePictures({ { w = 200, h = 100 } }, view)
+    check(small[1].w == 200 and small[1].h == 100, "a small one: its own size")
+    local three = Sketch.placePictures({ { w = 100, h = 100 }, { w = 100, h = 100 }, { w = 100, h = 100 } }, view)
+    check(three[1].cx == 500 - Sketch.PICTURE_STEP and three[2].cx == 500 and three[3].cy == 400 + Sketch.PICTURE_STEP,
+        "three: fanned out from the middle, a step down and to the right each")
+    -- on the page: an image element and its file in the scene; undo takes it off, redo puts it back
+    local sk = Sketch.new{ canvas = CANVAS, per_unit = 2 }
+    run(sk, { { finger(0, 100, 200) }, { finger(0, 300, 200) }, { lift(0) } })
+    local url = "data:image/jpeg;base64,/9j/AAAA"
+    local el = sk:addPicture(url, "image/jpeg", 320, 240, 250, 300, 1700000000000)
+    check(el.type == "image" and el.x == 90 and el.y == 180 and el.width == 320 and el.height == 240 and el.locked == false
+        and sk.base.files[el.fileId].dataURL == url and sk.base.files[el.fileId].mimeType == "image/jpeg",
+        "a picture: an image element centred where asked, its pixels a file of the scene (movable in memos)")
+    local scene = sk:scene()
+    local kinds = {}
+    for _i, e in ipairs(scene.elements) do kinds[#kinds + 1] = e.type end
+    local live = Drawing.liveScene and Drawing.liveScene(scene) or scene
+    check(table.concat(kinds, ",") == "image,freedraw" and live.files[el.fileId] ~= nil,
+        "the drawing as memos keeps it: the picture, the ink drawn before it, the file kept (" .. table.concat(kinds, ",") .. ")")
+    local b = sk:bounds()
+    check(b and b.w >= 320 * 2 and b.h >= 240 * 2, "the drawing's picture (its crop) takes the picture in")
+    check(sk:undo() and #sk:scene().elements == 1 and sk:scene().elements[1].type == "freedraw", "undo: the picture off, the ink left")
+    check(sk:redo() and sk:scene().elements[1] == el and #sk:scene().elements == 2, "redo: back")
+    -- on a new page with nothing drawn
+    local sk2 = Sketch.new{ canvas = CANVAS, per_unit = 2 }
+    local el2 = sk2:addPicture(url, "image/jpeg", 100, 50, 0, 0)
+    check(sk2.base and #sk2:scene().elements == 1 and sk2:scene().elements[1] == el2, "a blank page: the picture alone")
+    -- a page that was in memos: its own pictures stay, the new one goes after
+    local old = Drawing.newScene()
+    old.elements[1] = { id = "x", type = "image", x = 0, y = 0, width = 10, height = 10, fileId = "f1", locked = true }
+    old.files = { f1 = { mimeType = "image/png", dataURL = "data:image/png;base64,AA" } }
+    local sk3 = Sketch.fromScene(old, { canvas = CANVAS, per_unit = 2 })
+    local el3 = sk3:addPicture(url, "image/jpeg", 10, 10, 50, 50)
+    local s3 = sk3:scene()
+    check(#s3.elements == 2 and s3.elements[1].id == "x" and s3.elements[2] == el3 and s3.files.f1 and s3.files[el3.fileId],
+        "an opened drawing: its own picture first, the new one after, both files kept")
+end)()
+
 print("== a pen Kindle (Scribe): only the pen draws")
 ;(function()
     local sk = Sketch.new{ canvas = CANVAS, pen_only = true, pen_slot = PEN_SLOT, per_unit = 2 }
@@ -120,6 +165,195 @@ print("== palm rejection")
     -- a finger Kindle has no palm guard
     local f = Sketch.new{ canvas = CANVAS, per_unit = 2 }
     check(f:palmGuard(0) == false, "a finger Kindle never ignores fingers")
+end)()
+
+print("== a pull down from the top: the quick panel")
+;(function()
+    local function pulled(sk, frames)
+        local any, taps, t = false, 0, 0
+        for _i, f in ipairs(frames) do
+            local out = sk:frame(f, t)
+            any = any or out.pull == true
+            taps = taps + #out.taps
+            t = t + 0.01
+        end
+        return any, taps
+    end
+    -- a finger Kindle, the top bar shown (it's a hole, 52 px high)
+    local sk = Sketch.new{ canvas = { x = 0, y = 0, w = 1000, h = 1400 }, per_unit = 2 }
+    sk.holes, sk.pull_zone, sk.pull_distance = { { x = 0, y = 0, w = 1000, h = 52 } }, 52, 60
+    local p, taps = pulled(sk, { { finger(0, 500, 20) }, { finger(0, 505, 90) }, { finger(0, 510, 200) }, { lift(0) } })
+    check(p and taps == 0 and #sk.strokes == 0, "a finger pulled down from the top bar: the quick panel, no ink, no tap")
+    p, taps = pulled(sk, { { finger(0, 500, 20) }, { finger(0, 502, 22) }, { lift(0) } })
+    check(not p and taps == 1, "a tap on the top bar is still a tap (its buttons)")
+    p = pulled(sk, { { finger(0, 500, 20) }, { finger(0, 700, 60) }, { lift(0) } })
+    check(not p, "a drag along the bar isn't a pull")
+    p = pulled(sk, { { finger(0, 500, 400) }, { finger(0, 500, 700) }, { lift(0) } })
+    check(not p and #sk.strokes == 1, "a stroke down the page draws, as before")
+    -- the top bar folded away: only a strip at the very top
+    sk.holes, sk.pull_zone = {}, 24
+    p = pulled(sk, { { finger(0, 300, 5) }, { finger(0, 300, 150) }, { lift(0) } })
+    check(p and #sk.strokes == 1, "folded away: a pull from the top edge still opens it")
+    p = pulled(sk, { { finger(0, 300, 40) }, { finger(0, 300, 200) }, { lift(0) } })
+    check(not p and #sk.strokes == 2, "…a stroke starting under that strip draws")
+    -- a pen Kindle: a finger pulls; the pen on the page still draws, even at the top
+    local pk = Sketch.new{ canvas = { x = 0, y = 0, w = 1000, h = 1400 }, pen_only = true, pen_slot = PEN_SLOT, per_unit = 2 }
+    pk.holes, pk.pull_zone, pk.pull_distance = {}, 24, 60
+    p = pulled(pk, { { finger(0, 400, 4) }, { finger(0, 400, 160) }, { lift(0) } })
+    check(p and #pk.strokes == 0, "a pen Kindle: a finger pulled down from the top edge opens it")
+    p = pulled(pk, { { pen(400, 10) }, { pen(400, 200) }, { hover(400, 200) } })
+    check(not p and #pk.strokes == 1, "…the pen there draws")
+    check(Sketch.pulledDown(0, 0, 10, 80, 60) and not Sketch.pulledDown(0, 0, 10, 40, 60) and not Sketch.pulledDown(0, 0, 90, 80, 60),
+        "far enough down, and more down than across")
+end)()
+
+print("== the hand tool; a page opened smaller than full size (a journal's drawing under its prompt)")
+;(function()
+    local function run_frames(sk, list)
+        local any = false
+        for i, f in ipairs(list) do any = sk:frame(f, i * 0.4).view or any end
+        return any
+    end
+    -- a page made at full size (930 x 1240 units, 2 pixels a unit) opened in a shorter canvas:
+    -- fitted smaller, and that's its view to come back to (a pinch is measured from it)
+    local Drawing = require("gzreader_drawing")
+    local scene = Drawing.newScene()
+    scene.elements[1] = { id = "paper", type = "image", x = 0, y = 0, width = 930, height = 1240, locked = true, fileId = "p" }
+    scene.files = { p = { dataURL = "data:image/png;base64,AA" } }
+    local opts = { canvas = { x = 0, y = 0, w = 1860, h = 2300 }, pen_only = true, pen_slot = PEN_SLOT, per_unit = 2, max_per_unit = 2 }
+    local sk = Sketch.fromScene(scene, opts)
+    local fv = sk:fitView()
+    check(sk.per_unit < 2 and math.abs(fv.per_unit - sk.per_unit) < 1e-9 and sk:zoom() == 1 and not sk.zoomed,
+        "a page that doesn't fit at full size: fitted smaller (" .. string.format("%.2f", sk.per_unit) .. " px a unit), and that's its unzoomed view (zoom 1)")
+    check(sk:zoomBy(1.5, 900, 1000, 900, 1000) > 1.4 and sk.zoomed, "…pinched bigger from there")
+    local oy = sk.oy
+    local moved = run_frames(sk, { { finger(0, 900, 1500) }, { finger(0, 900, 1300) }, { finger(0, 900, 1000) }, { lift(0) } })
+    check(moved and sk.oy > oy and #sk.strokes == 0, "…and a finger moves it (a pen Kindle, zoomed in)")
+    -- the hand tool: the pen moves the page too, nothing drawn
+    sk.tool = "hand"
+    oy = sk.oy
+    moved = run_frames(sk, { { pen(900, 1600) }, { pen(900, 1400) }, { pen(900, 1200) }, { hover(900, 1200) } })
+    check(moved and sk.oy > oy and #sk.strokes == 0, "the hand tool: the pen moves the page, nothing drawn")
+    -- not zoomed: a pen Kindle's finger still does nothing
+    local nk = Sketch.new{ canvas = { x = 0, y = 0, w = 1000, h = 1400 }, pen_only = true, pen_slot = PEN_SLOT, per_unit = 2 }
+    local panned = run_frames(nk, { { finger(0, 500, 900) }, { finger(0, 500, 600) }, { lift(0) } })
+    check(not panned and #nk.strokes == 0, "the full drawing screen, not zoomed: a finger still does nothing")
+end)()
+
+print("== the lasso: choose, move, resize, copy, cut, paste")
+;(function()
+    local Lasso = require("gzreader_lasso")
+    -- its rules
+    local square = { { 0, 0 }, { 100, 0 }, { 100, 100 }, { 0, 100 } }
+    check(Lasso.inside(square, 50, 50) and not Lasso.inside(square, 150, 50) and not Lasso.inside(square, 50, -1) and not Lasso.inside({ { 0, 0 }, { 5, 5 } }, 1, 1),
+        "inside a loop or not (a loop of two points encloses nothing)")
+    local horseshoe = { { 0, 0 }, { 100, 0 }, { 100, 100 }, { 70, 100 }, { 70, 30 }, { 30, 30 }, { 30, 100 }, { 0, 100 } }
+    check(Lasso.inside(horseshoe, 15, 80) and not Lasso.inside(horseshoe, 50, 80) and Lasso.inside(horseshoe, 50, 15), "…a loop that bends back on itself: the hollow isn't inside")
+    local inside_st = { points = { { 20, 20 }, { 40, 40 }, { 60, 60 } } }
+    local half_st = { points = { { 90, 50 }, { 110, 50 }, { 130, 50 }, { 150, 50 } } }
+    local most_st = { points = { { 50, 50 }, { 70, 50 }, { 90, 50 }, { 110, 50 } } }
+    local gone_st = { points = { { 20, 20 }, { 30, 30 } }, gone = true }
+    local picked = Lasso.pick({ inside_st, half_st, most_st, gone_st }, square)
+    check(#picked == 2 and picked[1] == inside_st and picked[2] == most_st, "a loop chooses the strokes mostly inside it (not one mostly outside, not one rubbed out)")
+    local box = { x0 = 100, y0 = 100, x1 = 300, y1 = 200 }
+    check(Lasso.hit(box, 102, 98, 20) == "nw" and Lasso.hit(box, 310, 205, 20) == "se" and Lasso.hit(box, 295, 95, 20) == "ne" and Lasso.hit(box, 95, 205, 20) == "sw"
+        and Lasso.hit(box, 200, 150, 20) == "inside" and Lasso.hit(box, 400, 150, 20) == nil and Lasso.hit(nil, 1, 1, 20) == nil,
+        "a touch on the frame: a corner's handle, inside, or elsewhere")
+    local f, ax, ay = Lasso.scaleFor(box, "se", 300, 200, 400, 250)
+    check(math.abs(f - 1.5) < 1e-9 and ax == 100 and ay == 100, "the bottom right corner dragged out by half the frame's width: 1.5 times, from the top left corner")
+    local f2, ax2, ay2 = Lasso.scaleFor(box, "nw", 100, 100, 150, 125)
+    check(math.abs(f2 - 0.75) < 1e-9 and ax2 == 300 and ay2 == 200, "the top left corner dragged in: 0.75 times, from the bottom right corner")
+    check(Lasso.scaleFor(box, "se", 300, 200, 105, 105) == Lasso.MIN_SCALE and Lasso.scaleFor(box, "se", 300, 200, 5000, 5000) == Lasso.MAX_SCALE,
+        "never under " .. Lasso.MIN_SCALE .. " or over " .. Lasso.MAX_SCALE .. " times in one drag")
+    local after = Lasso.boxAfter(box, "se", 0, 0, 1.5, 100, 100)
+    check(after.x0 == 100 and after.y0 == 100 and after.x1 == 400 and after.y1 == 250 and Lasso.boxAfter(box, "inside", 10, -5).y0 == 95, "the frame after a drag: scaled from the corner that stays, or moved")
+
+    -- on a pen Kindle, with the pen
+    local sk = Sketch.new{ canvas = CANVAS, pen_only = true, pen_slot = PEN_SLOT, per_unit = 2 }
+    local oy = CANVAS.y
+    -- two strokes near each other and one far away
+    run(sk, { { hover(200, 300) }, { pen(200, 300) }, { pen(260, 300) }, { pen(320, 300) }, { hover(320, 300) },
+        { pen(200, 360) }, { pen(260, 360) }, { pen(320, 360) }, { hover(320, 360) },
+        { pen(700, 900) }, { pen(760, 900) }, { hover(760, 900) }, { penGone() } }, 0)
+    check(#sk:live() == 3, "three strokes drawn")
+    sk:setTool("lasso")
+    local loop_bits, changed = 0, false
+    local function lasso(frames, t)
+        local res = { taps = {} }
+        for i, fr in ipairs(frames) do
+            local o = sk:frame(fr, t + i * 0.4)
+            loop_bits = loop_bits + #(o.loop or {})
+            for k, v in pairs(o) do if k ~= "segments" and k ~= "taps" and v then res[k] = v end end
+        end
+        return res
+    end
+    -- a loop around the first two
+    local o = lasso({ { hover(150, 250) }, { pen(150, 250) }, { pen(400, 250) }, { pen(400, 420) }, { pen(150, 420) }, { pen(150, 260) }, { hover(150, 260) } }, 10)
+    local b = sk:selectionBox()
+    check(o.sel_changed and sk.selection and #sk.selection.strokes == 2 and loop_bits >= 4 and #sk:live() == 3 and #sk.history == 3,
+        "a loop around two of them: those two chosen (its bits given to draw, nothing drawn on the page, nothing to undo)")
+    check(b and b.x0 < 200 and b.x1 > 320 and b.y0 < 300 - oy and b.y1 > 360 - oy and b.y1 < 500 - oy, "…their frame around them both")
+    -- dragged from inside the frame: they move, the third stays
+    local far = sk:live()[3].points[1][1]
+    o = lasso({ { hover(260, 330) }, { pen(260, 330) }, { pen(300, 400) }, { pen(360, 530) }, { hover(360, 530) } }, 20)
+    local p1 = sk.selection.strokes[1].points[1]
+    check(o.redraw and o.sel_changed and o.area and math.abs(p1[1] - 300) < 1e-6 and math.abs(p1[2] - (300 - oy + 200)) < 1e-6 and sk:live()[3].points[1][1] == far
+        and o.area.y0 < 300 - oy and o.area.y1 > 560 - oy,
+        "dragged from inside the frame: the two moved as far as the pen went (100 right, 200 down), the other where it was; from where they were to where they are, drawn again")
+    check(sk:undo() and math.abs(sk:live()[1].points[1][1] - 200) < 1e-6 and sk.selection == nil, "Undo: back where they were, let go of")
+    check(sk:redo() and math.abs(sk:live()[1].points[1][1] - 300) < 1e-6, "Redo: moved again")
+    -- chosen again, a corner dragged: bigger, in proportion, from the opposite corner
+    lasso({ { hover(250, 440) }, { pen(250, 440) }, { pen(500, 440) }, { pen(500, 620) }, { pen(250, 620) }, { pen(250, 450) }, { hover(250, 450) } }, 30)
+    b = sk:selectionBox()
+    local w0, h0 = b.x1 - b.x0, b.y1 - b.y0
+    local first_before = { sk.selection.strokes[1].points[1][1], sk.selection.strokes[1].points[1][2] }
+    lasso({ { hover(b.x1 + CANVAS.x, b.y1 + oy) }, { pen(b.x1 + CANVAS.x, b.y1 + oy) }, { pen(b.x1 + CANVAS.x + w0 / 2, b.y1 + oy + 10) },
+        { pen(b.x1 + CANVAS.x + w0, b.y1 + oy + 10) }, { hover(b.x1 + CANVAS.x + w0, b.y1 + oy + 10) } }, 40)
+    local first_after = sk.selection.strokes[1].points[1]
+    check(math.abs((first_after[1] - b.x0) - 2 * (first_before[1] - b.x0)) < 1e-6 and math.abs((first_after[2] - b.y0) - 2 * (first_before[2] - b.y0)) < 1e-6,
+        "the bottom right handle dragged out by the frame's width: twice the size, from the top left corner (" .. string.format("%.0f x %.0f", w0, h0) .. " before)")
+    sk:undo()
+    -- Copy, a tap on an empty place: Paste offered there; pasted: new strokes, chosen
+    lasso({ { hover(250, 440) }, { pen(250, 440) }, { pen(500, 440) }, { pen(500, 620) }, { pen(250, 620) }, { pen(250, 450) }, { hover(250, 450) } }, 50)
+    check(sk:lassoCopy() and Lasso.clipboard and #Lasso.clipboard.strokes == 2 and math.abs(Lasso.clipboard.w - 60) < 1e-6 and math.abs(Lasso.clipboard.h - 30) < 1e-6,
+        "Copy: the two strokes kept, in the drawing's own units (60 x 30 at 2 pixels a unit)")
+    o = lasso({ { hover(900, 200) }, { pen(900, 200) }, { hover(900, 200) } }, 60)
+    check(o.sel_changed and sk.selection == nil and not o.paste_at, "a tap elsewhere: lets go of them")
+    o = lasso({ { hover(900, 200) }, { pen(900, 200) }, { hover(900, 200) } }, 62)
+    check(o.paste_at and o.paste_at.x == 900 and o.paste_at.y == 200, "with something copied, a tap on an empty place: Paste, there")
+    local ok, area = sk:lassoPaste(900, 200)
+    b = sk:selectionBox()
+    check(ok and #sk:live() == 5 and #sk.selection.strokes == 2 and area and math.abs((b.x0 + b.x1) / 2 - 900) < 2 and math.abs((b.y0 + b.y1) / 2 - (200 - oy)) < 2,
+        "Paste: two new strokes, their middle where the tap was, chosen (to move into place)")
+    check(sk:undo() and #sk:live() == 3, "Undo takes the pasted strokes back")
+    -- Cut: gone from the page, kept for Paste; Delete
+    lasso({ { hover(250, 440) }, { pen(250, 440) }, { pen(500, 440) }, { pen(500, 620) }, { pen(250, 620) }, { pen(250, 450) }, { hover(250, 450) } }, 70)
+    Lasso.clipboard = nil
+    local cut, cut_area = sk:lassoCut()
+    check(cut and cut_area and #sk:live() == 1 and Lasso.clipboard and sk.selection == nil, "Cut: off the page, kept for Paste")
+    check(sk:undo() and #sk:live() == 3, "Undo brings them back")
+    lasso({ { hover(250, 440) }, { pen(250, 440) }, { pen(500, 440) }, { pen(500, 620) }, { pen(250, 620) }, { pen(250, 450) }, { hover(250, 450) } }, 80)
+    Lasso.clipboard = nil
+    check(sk:lassoDelete() and #sk:live() == 1 and Lasso.clipboard == nil, "Delete: off the page, nothing kept")
+    sk:undo()
+    -- a moved stroke of an opened drawing is written where it is now
+    local st1 = sk:live()[1]
+    st1.el = { id = "from-memos" }
+    lasso({ { hover(250, 440) }, { pen(250, 440) }, { pen(500, 440) }, { pen(500, 620) }, { pen(250, 620) }, { pen(250, 450) }, { hover(250, 450) } }, 90)
+    b = sk:selectionBox()
+    lasso({ { hover(b.x0 + 20 + CANVAS.x, b.y0 + 20 + oy) }, { pen(b.x0 + 20 + CANVAS.x, b.y0 + 20 + oy) }, { pen(b.x0 + 80 + CANVAS.x, b.y0 + 20 + oy) }, { hover(b.x0 + 80 + CANVAS.x, b.y0 + 20 + oy) } }, 100)
+    check(st1.el == nil, "a stroke that came with an opened drawing, moved: saved where it is now (not as it came)")
+    -- another tool: let go of
+    lasso({ { hover(900, 200) }, { pen(900, 200) }, { hover(900, 200) } }, 110)
+    lasso({ { hover(350, 440) }, { pen(350, 440) }, { pen(600, 440) }, { pen(600, 620) }, { pen(350, 620) }, { pen(350, 450) }, { hover(350, 450) } }, 120)
+    local had = sk.selection ~= nil
+    sk:setTool("pen")
+    check(had and sk.selection == nil, "another tool taken: nothing chosen any more")
+    -- a finger on a pen Kindle doesn't lasso
+    sk:setTool("lasso")
+    run(sk, { { penGone() }, { finger(0, 150, 250) }, { finger(0, 400, 250) }, { finger(0, 400, 420) }, { finger(0, 150, 420) }, { lift(0) } }, 200, 0.4)
+    check(sk.selection == nil, "a finger on a pen Kindle doesn't lasso (fingers don't draw there)")
+    Lasso.clipboard = nil
 end)()
 
 print("== pinch to zoom")
@@ -209,6 +443,27 @@ print("== the eraser, undo, clear")
     -- the pen's other end crosses the first stroke
     local out = run(sk, { { hover(200, 150, ERASER) }, { pen(200, 150, ERASER) }, { pen(200, 260, ERASER) }, { hover(200, 260, ERASER) }, { penGone() } }, 10)
     check(#sk:live() == 1 and out.redraw and sk:live()[1].points[1][2] == 500, "the pen's eraser end rubs out the stroke it crosses")
+    -- what changed on the page: the rubbed-out stroke's place (only that is drawn again and refreshed)
+    local sk2 = Sketch.new{ canvas = CANVAS, pen_only = true, pen_slot = PEN_SLOT, per_unit = 2 }
+    run(sk2, { { hover(100, 200) }, { pen(100, 200) }, { pen(300, 200) }, { hover(300, 200) }, { penGone() } }, 0)
+    local area
+    for i, fr in ipairs({ { hover(200, 150, ERASER) }, { pen(200, 150, ERASER) }, { pen(200, 260, ERASER) }, { hover(200, 260, ERASER) } }) do
+        local o = sk2:frame(fr, 10 + i * 0.01)
+        area = o.area or area
+    end
+    -- (the page's own pixels: the canvas starts at CANVAS.x, CANVAS.y on the screen)
+    local ly = 200 - CANVAS.y
+    check(area and area.x0 <= 100 - CANVAS.x and area.x0 > 80 - CANVAS.x and area.x1 >= 300 - CANVAS.x and area.x1 < 320 - CANVAS.x
+        and area.y0 < ly and area.y0 > ly - 20 and area.y1 > ly and area.y1 < ly + 20,
+        "…and says where it was: the stroke's own rectangle (" .. tostring(area and (area.x0 .. "," .. area.y0 .. " to " .. area.x1 .. "," .. area.y1)) .. "), not the whole page")
+    local back, back_area = sk2:undo()
+    local again, again_area = sk2:redo()
+    check(back and back_area and back_area.x0 == area.x0 and back_area.y1 == area.y1 and again and again_area and again_area.x1 == area.x1,
+        "Undo and Redo of it say the same rectangle")
+    sk2:undo() -- (the stroke back on the page)
+    check(sk2:clear(), "the page cleared")
+    local cleared, clear_area = sk2:undo()
+    check(cleared and clear_area == nil, "Undo of a cleared page: the whole page (no rectangle)")
     check(sk:undo() and #sk:live() == 2, "undo brings it back")
     -- the pen's side button held (the Premium Pen): the tip rubs out; let go, it draws again
     sk.side_button = true
@@ -237,6 +492,86 @@ print("== the eraser, undo, clear")
     while sk:undo() do end
     check(sk:isEmpty() and not sk:canUndo(), "undo back to the empty page")
     check(not sk:clear(), "clearing an empty page changes nothing")
+end)()
+
+print("== text boxes: added, moved, resized, undone; in the memos scene")
+;(function()
+    local DrawText = require("gzreader_drawtext")
+    local sk = Sketch.new{ canvas = { x = 0, y = 0, w = 1000, h = 1400 }, per_unit = 2 }
+    sk.tool, sk.text_handle = "text", 40
+    sk.text_height = function(el) return 25 * math.ceil(#el.text * 10 / (el.width * 2)) / 2 end
+    local function frames(list)
+        local last
+        for i, f in ipairs(list) do last = sk:frame(f, i * 0.4) end
+        return last
+    end
+    -- a tap where there's no box: the drawing screen asks for its words
+    local out = frames({ { finger(0, 200, 300) }, { lift(0) } })
+    check(out.text_tap and out.text_tap.el == nil and out.text_tap.x == 200 and out.text_tap.y == 300 and #sk.strokes == 0,
+        "the text tool: a tap on the page is for a new box there (no ink)")
+    local el = DrawText.element(100, 150, 200, "Buy milk", nil)
+    sk:addText(el)
+    check(not sk:isEmpty() and #sk:liveTexts() == 1 and el.type == "text" and el.autoWidth == false and el.fontSize == 20
+        and el.fontFamily == "system-ui, sans-serif" and el.height == 25, "a box: memos' text element, 20 units, wrapping at its width")
+    -- canvas: x 200..600, y 300..350 (2 px a unit)
+    local hit, part = sk:textAt(300, 320)
+    check(hit == el and part == "move", "a point in it: the box, to move")
+    hit, part = sk:textAt(590, 345)
+    check(hit == el and part == "resize", "its bottom right corner: to resize")
+    check(sk:textAt(700, 700) == nil, "elsewhere: no box")
+    out = frames({ { finger(0, 300, 320) }, { lift(0) } })
+    check(out.text_tap and out.text_tap.el == el, "a tap on a box: that box (chosen, or its words to change)")
+    -- drag it 100 px right, 60 down
+    out = frames({ { finger(0, 300, 320) }, { finger(0, 350, 350) }, { finger(0, 400, 380) }, { lift(0) } })
+    check(el.x == 150 and el.y == 180 and out.stroke_done and out.redraw and #sk.strokes == 0, "dragged: the box moves with it (in scene units), no ink")
+    -- resize from its corner: 200 px wider
+    local cx, cy = sk:toCanvas(el.x + el.width, el.y + el.height)
+    frames({ { finger(0, cx - 5, cy - 5) }, { finger(0, cx + 95, cy) }, { finger(0, cx + 195, cy - 5) }, { lift(0) } })
+    check(el.width == 300 and el.x == 150 and el.height >= 25, "its corner dragged: wider (" .. el.width .. "), not moved, never shorter than its lines")
+    local narrow = frames({ { finger(0, sk:toCanvas(el.x + el.width, el.y + el.height)) }, { finger(0, 120, 500) }, { lift(0) } })
+    check(narrow and el.width == DrawText.MIN_WIDTH, "…never narrower than " .. DrawText.MIN_WIDTH .. " units")
+    sk:undo()
+    check(el.width == 300, "Undo: the size back")
+    sk:undo()
+    check(el.width == 200 and el.x == 150, "…again: the size before")
+    sk:undo()
+    check(el.x == 100 and el.y == 150, "…again: where it was")
+    sk:redo()
+    check(el.x == 150 and el.y == 180, "Redo: moved again")
+    sk:changeText(el, { text = "Buy oat milk" })
+    sk:removeText(el)
+    check(#sk:liveTexts() == 0 and sk:isEmpty(), "deleted: off the page")
+    sk:undo()
+    check(#sk:liveTexts() == 1 and el.text == "Buy oat milk", "Undo: back, its words as changed")
+    sk:undo()
+    check(el.text == "Buy milk", "…and its words before")
+    -- Clear takes boxes too; Undo brings them back
+    check(sk:clear() and #sk:liveTexts() == 0, "Erase page: the boxes go too")
+    sk:undo()
+    check(#sk:liveTexts() == 1, "…Undo: back")
+    -- the scene: the box, as memos reads text (containerId null)
+    local scene = sk:scene()
+    local found
+    for _i, e in ipairs(scene.elements) do if e.type == "text" then found = e end end
+    local txt = Drawing.encode(scene)
+    check(found == el and txt:find('"containerId":null', 1, true) and txt:find('"text":"Buy milk"', 1, true)
+        and txt:find('"autoWidth":false', 1, true), "the memos scene has it: a text element, containerId null")
+    -- a drawing with a box (made here or in memos): the box can be moved, and goes back in its place
+    local back = Drawing.decode(txt)
+    local sk2 = Sketch.fromScene(back, { canvas = { x = 0, y = 0, w = 1000, h = 1400 }, per_unit = 2 })
+    check(#sk2:liveTexts() == 1 and #sk2.locked == 0, "opened again: its box is a box (not kept as it is)")
+    sk2.tool, sk2.text_handle = "text", 40
+    local bx, by = sk2:toCanvas(sk2.texts[1].x + 10, sk2.texts[1].y + 5)
+    for i, f in ipairs({ { finger(0, bx, by) }, { finger(0, bx + 40, by) }, { finger(0, bx + 80, by) }, { lift(0) } }) do sk2:frame(f, i * 0.4) end
+    local s2 = sk2:scene()
+    local n_text = 0
+    for _i, e in ipairs(s2.elements) do if e.type == "text" then n_text = n_text + 1 end end
+    check(n_text == 1 and s2.elements[#s2.elements].type == "text" and s2.elements[#s2.elements].x > back.elements[#back.elements].x - 1,
+        "…moved, written back once, in its place")
+    -- the pen draws as before when the tool isn't text
+    sk.tool = "pen"
+    frames({ { finger(0, 600, 900) }, { finger(0, 650, 950) }, { lift(0) } })
+    check(#sk.strokes == 1, "another tool: a stroke over the box draws as before")
 end)()
 
 print("== the PNG's crop and the memos scene")
@@ -280,7 +615,8 @@ print("== opening a drawing to go on with it (one made in memos' web app)")
     local original = Drawing.encode(scene)
     local PW3 = { x = 0, y = 100, w = 1072, h = 1300 }
     local sk = Sketch.fromScene(scene, { canvas = PW3, per_unit = 2 })
-    check(#sk.strokes == 6 and #sk.locked == 2, "its 6 pen strokes can be changed; the ellipse and the text are kept as they are")
+    check(#sk.strokes == 6 and #sk.locked == 1 and #sk:liveTexts() == 1,
+        "its 6 pen strokes can be changed; its text is a box to move or retype; the ellipse is kept as it is")
     local b = sk:bounds()
     check(sk.per_unit < 2 and b.x >= 0 and b.y >= 0 and b.x + b.w <= PW3.w + 1 and b.y + b.h <= PW3.h + 1,
         "bigger than the page: scaled down to fit (" .. string.format("%.2f", sk.per_unit) .. " px a unit), all on the page")
@@ -319,7 +655,7 @@ print("== opening a drawing to go on with it (one made in memos' web app)")
         "the new stroke is placed in the drawing's own units (where it was drawn on it)")
     check(out.appState.viewBackgroundColor == scene.appState.viewBackgroundColor and out.files == scene.files,
         "its paper and files kept")
-    check(sk:clear() and not sk:isEmpty() and #sk:live() == 0, "Clear rubs out the strokes; memos' shapes and text stay")
+    check(sk:clear() and not sk:isEmpty() and #sk:live() == 0 and #sk:liveTexts() == 0, "Clear rubs out the strokes and text boxes; memos' shapes stay")
     -- a small drawing isn't enlarged
     local small = Drawing.newScene()
     Drawing.addStroke(small, { { 10, 10 }, { 60, 40 } })
@@ -585,8 +921,12 @@ print("== pen pressure and tilt (a Kindle with a pen)")
     check(fo.light < pn.light and fo.hard > pn.hard,
         "fountain pen: thinner than the pen when light, wider when pressed (" .. fo.light .. "–" .. fo.hard .. " px; pen "
             .. pn.light .. "–" .. pn.hard .. ")")
-    check(pc.gray and pc.gray > 0 and pc.gray < 0xC0 and pc.hard < pn.hard and pc.hard - pc.light < pn.hard - pn.light,
-        "pencil: grey, thinner, and pressure changes it less")
+    -- (wider than the pen's line: a pencil line two or three pixels across was too thin for its
+    -- grain to show, a hairline in Memos on the web; the owner, 2026-11-17)
+    check(pc.gray and pc.gray > 0 and pc.gray < 0xC0 and pc.light > pn.light and pc.hard >= pn.hard and pc.hard <= pn.hard * 1.5
+        and pc.hard - pc.light <= pn.hard - pn.light,
+        "pencil: grey, a little wider than the pen, and pressure changes it no more (" .. pc.light .. "–" .. pc.hard .. " px; pen "
+            .. pn.light .. "–" .. pn.hard .. ")")
     check(hl.gray and hl.gray > pc.gray and hl.light == hl.hard and hl.hard > 3 * pn.light and sth.points[1][3] == nil,
         "highlighter: light grey, broad, even (no pressure)")
     local tsc = Drawing.decode(Drawing.encode(sk:scene()))
@@ -740,6 +1080,136 @@ end)()
     check(z1.redraw and z1.view and z1.zoom == nil and zmid > 2.4 and zmid < 3.3 and z2.redraw and math.abs(pz:zoom() - 4) < 0.05
         and z3.zoom and math.abs(z3.zoom.from - 2) < 0.01 and math.abs(z3.zoom.to - 4) < 0.05,
         "a pinch: the page zooms while the fingers are still down (2x, part of the way, 4x), told once when they lift")
+end)()
+
+-- the hand tool, and a finger moving a zoomed page while something else rests on the screen
+;(function()
+    local function sketch(pen_only)
+        local sk = Sketch.new{ canvas = { x = 0, y = 0, w = 600, h = 800 }, per_unit = 1, tap_slop = 8, pen_only = pen_only, pen_slot = pen_only and 4 or nil }
+        sk:zoomBy(2, 300, 400, 300, 400)
+        return sk
+    end
+    -- a thumb at the screen's edge first, then a finger: the finger moves the page
+    local sk = sketch(true)
+    local oy0 = sk.oy
+    sk:frame({ { slot = 0, id = 1, x = 20, y = 700 } }, 1)
+    sk:frame({ { slot = 0, id = 1, x = 21, y = 701 } }, 3)
+    sk:frame({ { slot = 0, id = 1, x = 21, y = 701 }, { slot = 1, id = 2, x = 300, y = 400 } }, 4)
+    local o = sk:frame({ { slot = 0, id = 1, x = 21, y = 701 }, { slot = 1, id = 2, x = 300, y = 300 } }, 4.5)
+    check(o.redraw and o.view and math.abs((sk.oy - oy0) - 50) < 0.5 and sk.stats.panned == 1,
+        "a thumb resting at the edge, then a finger: the finger moves the zoomed page (it didn't: only a first, lone finger could)")
+    sk:frame({ { slot = 0, id = 1, x = 21, y = 701 }, { slot = 1, id = -1 } }, 5)
+    -- the thumb shuffles a little afterwards: under the limit, nothing; the next finger moves the page again
+    local o2 = sk:frame({ { slot = 0, id = 1, x = 24, y = 704 } }, 6)
+    sk:frame({ { slot = 0, id = 1, x = 24, y = 704 }, { slot = 2, id = 3, x = 300, y = 400 } }, 7)
+    local o3 = sk:frame({ { slot = 0, id = 1, x = 24, y = 704 }, { slot = 2, id = 3, x = 300, y = 440 } }, 7.5)
+    check(not o2.redraw and o3.view and sk.pan_slot == 2 and sk.stats.panned == 2, "…and again with the next finger; the thumb's small shuffle moves nothing")
+    -- the pen arrives while a finger holds the page: the finger is dropped, and later fingers still move it
+    sk:frame({ { slot = 4, id = 9, x = 100, y = 100, tool = Sketch.TOOL_PEN } }, 8)
+    sk:frame({ { slot = 4, id = -1, tool = Sketch.TOOL_PEN } }, 8.1)
+    sk:frame({ { slot = 2, id = -1 }, { slot = 0, id = -1 } }, 8.2)
+    sk:frame({ { slot = 4, id = -1 } }, 12)
+    sk:frame({ { slot = 1, id = 5, x = 300, y = 400 } }, 20)
+    local o4 = sk:frame({ { slot = 1, id = 5, x = 300, y = 460 } }, 20.5)
+    check(o4.view == true, "after the pen has come and gone: a finger moves the page as before")
+    -- the hand tool: the pen moves the page and draws nothing; on a finger Kindle a finger does
+    local hp = sketch(true)
+    hp.tool = "hand"
+    local hy0 = hp.oy
+    hp:frame({ { slot = 4, id = 9, x = 300, y = 400, tool = Sketch.TOOL_PEN } }, 30)
+    local h1 = hp:frame({ { slot = 4, id = 9, x = 300, y = 340, tool = Sketch.TOOL_PEN } }, 30.4)
+    local h2 = hp:frame({ { slot = 4, id = -1, tool = Sketch.TOOL_PEN } }, 30.5)
+    check(h1.view and #h1.segments == 0 and math.abs((hp.oy - hy0) - 30) < 0.5 and #hp:live() == 0 and not h2.stroke_done and not hp:canUndo(),
+        "the hand tool: the pen moves the page (60 px up the screen at 2x: 30 of the page) and draws nothing")
+    local hf = sketch(false)
+    hf.tool = "hand"
+    local fy0 = hf.oy
+    hf:frame({ { slot = 0, id = 1, x = 300, y = 400 } }, 40)
+    local f1 = hf:frame({ { slot = 0, id = 1, x = 300, y = 480 } }, 40.4)
+    hf:frame({ { slot = 0, id = -1 } }, 40.5)
+    hf.tool = "pen"
+    hf:frame({ { slot = 0, id = 1, x = 300, y = 400 } }, 41)
+    hf:frame({ { slot = 0, id = 1, x = 320, y = 420 } }, 41.1)
+    hf:frame({ { slot = 0, id = -1 } }, 41.2)
+    check(f1.view and math.abs((hf.oy - fy0) + 40) < 0.5 and #hf:live() == 1, "…a finger Kindle: a finger moves the page with the hand, and draws again with the pen")
+end)()
+
+-- the pencil's ink as a picture for Memos
+;(function()
+    local function sketch()
+        return Sketch.new{ canvas = { x = 0, y = 0, w = 600, h = 800 }, per_unit = 2, tap_slop = 8 }
+    end
+    local function line(sk, y, t)
+        sk:frame({ { slot = 0, id = 1, x = 100, y = y } }, t)
+        sk:frame({ { slot = 0, id = 1, x = 300, y = y } }, t + 0.01)
+        sk:frame({ { slot = 0, id = 1, x = 500, y = y } }, t + 0.02)
+        sk:frame({ { slot = 0, id = -1 } }, t + 0.03)
+    end
+    local sk = sketch()
+    sk.width = 7
+    line(sk, 100, 1)
+    sk.writing = "pencil"
+    line(sk, 200, 2)
+    line(sk, 300, 3)
+    -- saved: the pencil's strokes are ordinary see-through strokes, shown, with their tool
+    -- (Memos' editor can move and erase them; the owner, 2026-11-17), and no picture of them
+    local scene = sk:scene()
+    local shown, pictures = 0, 0
+    for _i, e in ipairs(scene.elements) do
+        if e.type == "freedraw" and e.customData and e.customData.gzTool == "pencil" and e.opacity == 70 then shown = shown + 1 end
+        if e.type == "image" then pictures = pictures + 1 end
+    end
+    check(shown == 2 and pictures == 0 and Sketch.pencilLayer == nil and Sketch.hidePencil == nil,
+        "saved for Memos: the pencil's strokes shown (see-through, their tool kept), editable there; no picture of them")
+    -- a drawing saved by the betas that hid the strokes under a picture of them: opened, the
+    -- strokes are the pencil's, the picture and its file dropped; saved again, they show
+    for _i, e in ipairs(scene.elements) do
+        if e.type == "freedraw" and e.customData and e.customData.gzTool == "pencil" then e.opacity = 0 end
+    end
+    table.insert(scene.elements, 1, { id = "layer", type = "image", locked = true, fileId = "f1", x = 0, y = 0, width = 10, height = 10,
+        customData = { gzLayer = "pencil" } })
+    scene.files = { f1 = { dataURL = "x" }, other = { dataURL = "y" } }
+    local back = Sketch.fromScene(scene, { canvas = { x = 0, y = 0, w = 600, h = 800 }, per_unit = 2, tap_slop = 8 })
+    local kinds = {}
+    for _i, st in ipairs(back:live()) do kinds[#kinds + 1] = st.kind or "pen" end
+    local again = back:scene()
+    local has_layer, reshown = false, 0
+    for _i, e in ipairs(again.elements) do
+        if e.id == "layer" then has_layer = true end
+        if e.type == "freedraw" and e.customData and e.customData.gzTool == "pencil" and e.opacity == 70 then reshown = reshown + 1 end
+    end
+    check(table.concat(kinds, ",") == "pen,pencil,pencil" and #back.locked == 0 and not has_layer and again.files.f1 == nil and again.files.other ~= nil
+        and reshown == 2,
+        "a drawing with the pencil as a picture (an earlier beta's): pen, pencil, pencil; the picture and its file dropped, the strokes shown again when saved")
+end)()
+
+-- the pencil's grain
+;(function()
+    local lo, hi, sum, same = 1, 0, 0, true
+    for y = 0, 99 do
+        for x = 0, 99 do
+            local g = Sketch.grain(x, y)
+            lo, hi, sum = math.min(lo, g), math.max(hi, g), sum + g
+            if g ~= Sketch.grain(x, y) then same = false end
+        end
+    end
+    check(same and lo >= 0 and hi < 1 and lo < 0.1 and hi > 0.9 and math.abs(sum / 10000 - 0.5) < 0.03,
+        "the paper's tooth: between 0 and 1, the same for a pixel every time, even over a patch (mean " .. string.format("%.2f", sum / 10000) .. ")")
+    check(Sketch.grain(3, 9) == Sketch.grain(259, 9) and Sketch.grain(3, 9) == Sketch.grain(3, 265) and Sketch.grain(-1, -1) == Sketch.grain(255, 255),
+        "…worked out once for a 256-pixel patch that repeats (looked up, not worked out, for each pixel of a line)")
+    local function covered(density, d2, r)
+        local n = 0
+        for y = 0, 99 do for x = 0, 99 do if Sketch.grainHit(x, y, density, d2, r) then n = n + 1 end end end
+        return n / 10000
+    end
+    local light, mid, hard = Sketch.grainDensity("pencil", 0.1), Sketch.grainDensity("pencil"), Sketch.grainDensity("pencil", 1)
+    check(light < mid and mid < hard and light >= 0.4 and hard <= 0.85 and Sketch.grainDensity("pen", 0.5) == nil and Sketch.grainDensity("highlighter") == nil
+        and Sketch.grainDensity("fountain", 1) == nil,
+        "only the pencil has a grain; it covers more of the paper the harder it's pressed")
+    local cl, cm, ch, edge = covered(light, 0, 6), covered(mid, 0, 6), covered(hard, 0, 6), covered(mid, 36, 6)
+    check(cl > 0.15 and cl < cm and cm < ch and ch < 0.97 and edge < cm * 0.75,
+        string.format("…%.0f%%, %.0f%%, %.0f%% of a line's pixels marked (light, as drawn without pressure, pressed); fewer at its edge (%.0f%%)",
+            cl * 100, cm * 100, ch * 100, edge * 100))
 end)()
 
 print(string.format("sketch: %d passed, %d failed", pass, fail))

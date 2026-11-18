@@ -1,4 +1,4 @@
-**Package:** `gzreader-kindlehf-<version>.zip` — for any Kindle on firmware **5.16.3 or newer**: the **Paperwhite 3** (tested), and untested: Paperwhite 4, 5 and Signature Edition, Paperwhite 6, Kindle 2019, 2022, 2024, Oasis 3, Scribe, Colorsoft (shown in greys). Built on KOReader's `kindlehf` package (hard-float, for the newer system libraries).
+**Package:** `gzreader-kindlehf-<version>.zip` — for any Kindle on firmware **5.16.3 or newer**: the **Paperwhite 3** and the **Kindle Scribe** (tested), and untested: Paperwhite 4, 5 and Signature Edition, Paperwhite 6, Kindle 2019, 2022, 2024, Oasis 3, Colorsoft and Scribe Colorsoft (in colour: covers, the shelf ornaments and the players). Built on KOReader's `kindlehf` package (hard-float, for the newer system libraries).
 
 On firmware 5.6.1 – 5.16.2.x take the [`kindlepw2` package](Install-Kindle-PW2) instead. The firmware version is in **Settings → Device Options → Device Info**.
 
@@ -26,8 +26,8 @@ The setup guide runs on the first start ([After installing](Installing#after-ins
 
 ## Notes for these Kindles
 
-- Touch throughout. → [Using GZreader → Touch Kindles](Using-GZreader#touch-kindles-kindle-touch-paperwhite-3)
-- Kindles with a frontlight get a light slider in the quick panel; those with a warm light (Paperwhite 5 and newer, Oasis 3, Scribe, Colorsoft) also a warmth slider, cool to warm. → [Using GZreader → Touch Kindles](Using-GZreader#touch-kindles-kindle-touch-paperwhite-3)
+- Touch throughout. → [Using GZreader → Touch Kindles](Using-GZreader#touch-kindles-kindle-touch-paperwhite-3-scribe)
+- Kindles with a frontlight get a light slider in the quick panel; those with a warm light (Paperwhite 5 and newer, Oasis 3, Scribe, Colorsoft) also a warmth slider, cool to warm. → [Using GZreader → Touch Kindles](Using-GZreader#touch-kindles-kindle-touch-paperwhite-3-scribe)
 - These Kindles have no speaker or headphone jack (the newer ones play audio over Bluetooth only): audiobooks, music and read aloud play through Bluetooth headphones or a speaker → [Audiobooks and Read Aloud](Audiobooks-and-Read-Aloud). Bluetooth itself is in Settings → Audio → Bluetooth (on or off, pairing, connecting). → [Bluetooth](Bluetooth)
 
 Updating and uninstalling: [Updating and uninstalling](Updating-and-Uninstalling).

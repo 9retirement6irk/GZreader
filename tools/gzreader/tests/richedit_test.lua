@@ -218,6 +218,178 @@ do
         "the heading drawn big and bold")
 end
 
+-- ------------------------------------------------------------ pictures, sized with pull tabs
+do
+    local made = {}
+    local function fakeBB(w, h) return { w = w, h = h, getWidth = function(b) return b.w end, getHeight = function(b) return b.h end } end
+    local pictures = {
+        -- (c.jpg: a photo, bigger than Memos' column; the others 400 x 200)
+        size = function(src) if src:match("here/c") then return 1600, 800 elseif src:match("here") then return 400, 200 end end,
+        bb = function(src, w, h) made[#made + 1] = src .. " " .. w .. "x" .. h; return fakeBB(w, h) end,
+    }
+    local doc = Blocks.parse("Trip\n\n![sea|center|320](/file/attachments/here/a.jpg)\n\n![far](/file/attachments/away/b.jpg)\n\nend")
+    local r = RE:new{ width = 300, max_height = 900, doc = doc, editor = {}, hint = "Write", pictures = pictures }
+    local pl
+    for _i, l in ipairs(r.lines) do if l.picture then pl = l end end
+    check(pl and pl.picture.w == 150 and pl.h == 75 and pl.picture.x == 75,
+        "a picture sized in Memos (|center|320): half of the page (its share of Memos' 640-pixel column), centred")
+    local far
+    for _i, l in ipairs(r.lines) do if l.b.kind == "image" and not l.picture then far = l end end
+    check(far ~= nil, "a picture not on the Kindle yet: its Markdown until it comes")
+    local blits = {}
+    local bb = { paintRect = function() end, paintBorder = function() end,
+        blitFrom = function(_s, src, x, y) blits[#blits + 1] = { w = src.w, x = x, y = y } end }
+    r.top = 0
+    r:paintTo(bb, 0, 0)
+    check(#blits == 1 and blits[1].w == 150 and blits[1].x == 75, "painted as the picture, where it's placed")
+    -- a tap picks it: its pull tabs
+    r:onTapEdit(nil, ges(150, pl.y + 30))
+    check(r.picked == pl.b and r:onPicture(), "a tap on the picture picks it")
+    local t = r:tabs()
+    check(t and math.abs(t.left.x + t.left.w / 2 - 75) <= 1 and math.abs(t.right.x + t.right.w / 2 - 225) <= 1,
+        "its pull tabs on its left and right sides")
+    local tabs_drawn = 0
+    r:paintTo({ paintRect = function(_s, _x, _y, w, h) if w == RE.TAB_W and h == RE.TAB_H then tabs_drawn = tabs_drawn + 1 end end,
+        paintBorder = function() end, blitFrom = function() end, paintRoundedRect = function() end }, 0, 0)
+    check(tabs_drawn == 2, "both tabs drawn")
+    check(RE.tabY(-100, 400, 48, 200) == 76 and RE.tabY(10, 100, 48, 500) == 36 and RE.tabY(480, 300, 48, 500) == 606,
+        "the tabs: in the middle of the part of a tall picture on the page (all of it when too little shows)")
+    -- drag the right tab out by 30: centred, so 60 wider
+    local rx, ry = t.right.x + 5, t.right.y + 5
+    check(r:onPanEdit(nil, { start_pos = { x = rx, y = ry }, pos = { x = rx + 20, y = ry }, relative = { x = 20, y = 0 } }), "a drag from a tab is the tab's")
+    r:onPanEdit(nil, { start_pos = { x = rx, y = ry }, pos = { x = rx + 30, y = ry }, relative = { x = 30, y = 0 } })
+    check(r.drag and r.drag.w == 210, "while dragging: the new width (both sides, it's centred)")
+    r:onPanReleaseEdit(nil, { pos = { x = rx + 30, y = ry } })
+    check(text(r):match("!%[sea|center|448%]%(/file/attachments/here/a%.jpg%)"),
+        "let go: written as Memos' web editor writes it (210 of 300 = 448 of 640) … " .. show(text(r)))
+    for _i, l in ipairs(r.lines) do if l.picture then pl = l end end
+    check(pl.picture.w == 210 and r.picked == pl.b, "shown at the new width, still picked")
+    -- the left tab of a left-placed picture: drag it right to narrow it
+    local d2 = Blocks.parse("![p](/file/attachments/here/c.jpg)")
+    local r2 = RE:new{ width = 300, max_height = 900, doc = d2, editor = {}, pictures = pictures }
+    local l2 = r2.lines[1]
+    check(l2.picture and l2.picture.w == 300 and l2.picture.x == 0, "no size, a photo wider than Memos' column: the page's width")
+    local r4 = RE:new{ width = 300, max_height = 900, doc = Blocks.parse("![small](/file/attachments/here/d.jpg)"), editor = {}, pictures = pictures }
+    check(r4.lines[1].picture and r4.lines[1].picture.w == 188 and r4.lines[1].h == 94,
+        "no size, a small picture (400 px): its own width's share of Memos' 640-pixel column (188 of 300), as Memos shows it; not as wide as fits ("
+            .. tostring(r4.lines[1].picture and r4.lines[1].picture.w) .. ")")
+    r2:onTapEdit(nil, ges(100, l2.y + 10))
+    local lt = r2:tabs().left
+    r2:onPanEdit(nil, { start_pos = { x = lt.x + 2, y = lt.y + 2 }, relative = { x = 150, y = 0 } })
+    r2:onPanReleaseEdit(nil, {})
+    check(Blocks.write(r2.doc) == "![p|320](/file/attachments/here/c.jpg)", "the left tab dragged in by half: |320 … " .. show(Blocks.write(r2.doc)))
+    r2:onTapEdit(nil, ges(10, r2.lines[1].y + 5))
+    lt = r2:tabs().left
+    r2:onPanEdit(nil, { start_pos = { x = lt.x + 2, y = lt.y + 2 }, relative = { x = 290, y = 0 } })
+    check(r2.drag.w == RE.MIN_PICTURE, "never narrower than " .. RE.MIN_PICTURE)
+    r2:onPanReleaseEdit(nil, {})
+    -- a quick drag comes as a swipe
+    r2:onTapEdit(nil, ges(10, r2.lines[1].y + 5))
+    local rt = r2:tabs().right
+    r2:onSwipeEdit(nil, { direction = "east", distance = 500, pos = { x = rt.x + 2, y = rt.y + 2 } })
+    check(Blocks.write(r2.doc) == "![p|640](/file/attachments/here/c.jpg)", "a quick drag (a swipe) out: the page's width, |640 … " .. show(Blocks.write(r2.doc)))
+    -- typing with it picked: a new line after it
+    r2:addChars("caption")
+    check(Blocks.write(r2.doc) == "![p|640](/file/attachments/here/c.jpg)\n\ncaption" and not r2.picked,
+        "typing with a picture picked: the words on a new line after it")
+    -- a tap elsewhere lets it go
+    r:onTapEdit(nil, ges(5, r.lines[1].y + 5))
+    check(r.picked == nil and r:tabs() == nil, "a tap elsewhere: no picture picked")
+    -- without `pictures` (a quick note): its Markdown, as before
+    local r3 = RE:new{ width = 300, max_height = 900, doc = Blocks.parse("![p|320](/x.jpg)"), editor = {} }
+    check(r3.lines[1].picture == nil and r3.lines[1].st.mono, "without pictures: the picture's Markdown in grey")
+
+    -- the picked picture's toolbar (the web's: Left, Center, Right, then ↑ ↓, Alt, 1:1, ✕) and moving it
+    local function picDoc(content)
+        local d = Blocks.parse(content)
+        local ed = RE:new{ width = 300, max_height = 900, doc = d, editor = {}, pictures = pictures }
+        return ed, d
+    end
+    local function pl(ed) for _i, l in ipairs(ed.lines) do if l.picture then return l end end end
+    local function tapPic(ed) local l = pl(ed); ed:onTapEdit(nil, ges(l.picture.x + 5, l.y - ed.top + 5)) end
+    local function tapTool(ed, id)
+        local rr = ed:pictureBarRect()
+        for i, t in ipairs(RE.PICTURE_BAR) do
+            if t.id == id then return ed:onTapEdit(nil, ges(rr.x + (i - 1) * rr.cell + 2, rr.y + 2)) end
+        end
+    end
+    local pe = picDoc("Before\n\n![sea|320](/file/attachments/here/a.jpg)\n\nAfter")
+    check(pe:pictureBarRect() == nil, "nothing picked: no picture toolbar")
+    tapPic(pe)
+    local br = pe:pictureBarRect()
+    local bl = pl(pe)
+    check(br and (br.y + br.h <= bl.y - pe.top or br.y >= bl.y - pe.top + bl.h), "picked: its toolbar above it (or under it), not over it")
+    local painted = {}
+    pe:paintTo({ paintRect = function() end, paintBorder = function() end, blitFrom = function() end,
+        paintRoundedRect = function(_s, _x, _y, w, h) painted[#painted + 1] = w .. "x" .. h end }, 0, 0)
+    check(#painted >= 1, "…drawn")
+    tapTool(pe, "center")
+    check(text(pe):find("![sea|center|320](", 1, true) ~= nil, "Center: written as the web does (|center|320) … " .. show(text(pe)))
+    tapTool(pe, "right")
+    check(text(pe):find("![sea|right|320](", 1, true) ~= nil and pe.picked ~= nil, "Right: |right|320, still picked")
+    tapTool(pe, "left")
+    check(text(pe):find("![sea|320](", 1, true) ~= nil, "Left: the place left out (left is the web's default)")
+    tapTool(pe, "reset")
+    check(text(pe):find("![sea](", 1, true) ~= nil, "1:1: its own size again")
+    tapTool(pe, "up")
+    check(text(pe) == "![sea](/file/attachments/here/a.jpg)\n\nBefore\n\nAfter", "↑: up a paragraph … " .. show(text(pe)))
+    tapTool(pe, "up")
+    check(text(pe) == "![sea](/file/attachments/here/a.jpg)\n\nBefore\n\nAfter", "↑ at the top: stays")
+    tapTool(pe, "down"); tapTool(pe, "down")
+    check(text(pe) == "Before\n\nAfter\n\n![sea](/file/attachments/here/a.jpg)", "↓ ↓: to the end … " .. show(text(pe)))
+    check(RE.withAlt("![sea|center|320](/x.jpg)", "A calm [sea]") == "![A calm  sea |center|320](/x.jpg)",
+        "Alt: the description changed, its size and place kept")
+    tapTool(pe, "delete")
+    check(text(pe) == "Before\n\nAfter" and pe.picked == nil, "✕: the picture deleted … " .. show(text(pe)))
+    -- dragging the picture itself: to another place, a line showing where
+    local pd = picDoc("One\n\nTwo\n\n![p](/file/attachments/here/b.jpg)\n\nThree")
+    tapPic(pd)
+    local l0 = pl(pd)
+    local sy = l0.y - pd.top + 10
+    local first_y = pd.lines[1].y - pd.top
+    check(pd:onPanEdit(nil, { start_pos = { x = l0.picture.x + math.floor(l0.picture.w / 2), y = sy }, pos = { x = 0, y = 0 }, relative = { x = 0, y = first_y + 2 - sy } }),
+        "the picture dragged (not a tab): it's being moved")
+    check(pd.moving and pd.moving.at == 1 and pd.moving.line_y == first_y, "…a line where it goes (before One)")
+    pd:onPanReleaseEdit(nil, {})
+    check(text(pd) == "![p](/file/attachments/here/b.jpg)\n\nOne\n\nTwo\n\nThree", "let go: there … " .. show(text(pd)))
+    tapPic(pd)
+    local l1 = pl(pd)
+    local sy1 = l1.y - pd.top + 10
+    pd:onPanEdit(nil, { start_pos = { x = l1.picture.x + math.floor(l1.picture.w / 2), y = sy1 }, relative = { x = 0, y = pd.total_h - pd.top - sy1 + 50 } })
+    pd:onPanReleaseEdit(nil, {})
+    check(text(pd) == "One\n\nTwo\n\nThree\n\n![p](/file/attachments/here/b.jpg)", "dragged below the end: last … " .. show(text(pd)))
+    -- a long note: dragged to the top edge, it scrolls up under the finger
+    local paras = {}
+    for i = 1, 40 do paras[#paras + 1] = "Paragraph " .. i end
+    local pl2 = picDoc(table.concat(paras, "\n\n") .. "\n\n![p](/file/attachments/here/c.jpg)")
+    pl2.top = math.max(0, pl2.total_h - pl2.height)
+    tapPic(pl2)
+    local lp = pl(pl2)
+    local top_before = pl2.top
+    local sy2 = lp.y - pl2.top + 10
+    pl2:onPanEdit(nil, { start_pos = { x = lp.picture.x + math.floor(lp.picture.w / 2), y = sy2 }, relative = { x = 0, y = 5 - sy2 } })
+    pl2:onPanEdit(nil, { start_pos = { x = lp.picture.x + math.floor(lp.picture.w / 2), y = sy2 }, relative = { x = 0, y = 5 - sy2 } })
+    check(pl2.moving and pl2.top < top_before, "dragged to the page's top edge: the note scrolls up under it")
+    local Screen = require("device").screen
+    local rr2 = pl2:panRange()
+    check(rr2.w == Screen:getWidth() and rr2.h == Screen:getHeight(), "…and the finger is followed off the page too")
+    pl2:onPanReleaseEdit(nil, {})
+    check(pl2:panRange() == pl2.dimen, "let go: pans on the page only again")
+    local kbd = editor("Hi\n\n![p](/file/attachments/here/a.jpg)")
+    kbd.pictures = pictures
+    kbd:relayout()
+    kbd.keyboard:showKeyboard()
+    local kl = pl(kbd)
+    kbd:onTapEdit(nil, ges(kl.picture.x + 5, kl.y - kbd.top + 5))
+    check(kbd.picked and not kbd.keyboard:isVisible(), "picking a picture puts the keyboard away")
+    -- a tab still resizes (not a move)
+    tapPic(pd)
+    local tr = pd:tabs().right
+    pd:onPanEdit(nil, { start_pos = { x = tr.x + 2, y = tr.y + 2 }, relative = { x = -60, y = 0 } })
+    check(pd.drag ~= nil and pd.moving == nil, "a pull tab dragged: resizing, not moving")
+    pd:onPanReleaseEdit(nil, {})
+end
+
 -- ------------------------------------------------------------ a long note scrolls
 do
     local parts = {}
@@ -375,6 +547,132 @@ do
     local labels = {}
     for _i, d in ipairs(drawn) do labels[d.text] = true end
     check(labels["B"] and labels["I"] and labels["H"] and labels["1."] and labels["#"], "painted with the page: B I H … 1. #")
+end
+
+-- ------------------------------------------------------------ the keyboard while writing a note
+do
+    local HashKey = require("gzreader_hashkey")
+    local r = editor("", true)
+    check(r.gz_hash_key == true and HashKey.wants(r), "a note's page asks for the note keyboard (# and arrows on top)")
+    check(HashKey.wants({ parent = { gz_hash_key = true } }) and not HashKey.wants({}) and not HashKey.wants(nil),
+        "…a box inside a note's window too; other boxes (search, passwords) don't")
+    -- KOReader's English bottom row: ⌥ 🌐 . space ← → Enter
+    local comma = { { ",", ";" }, { ",", ";" }, label = "," }
+    local row = { { label = "⌥", width = 1.5 }, { label = "🌐" }, { ".", ":", ".", ":" },
+        { label = "_", " ", " ", " ", " ", width = 3.0 }, { label = "←" }, { label = "→" }, { label = "⮠", width = 1.5 } }
+    local function width(list)
+        local w = 0
+        for _i, k in ipairs(list) do w = w + (k.width or 1) end
+        return w
+    end
+    local before = width(row)
+    local new, saved = HashKey.row(row, comma)
+    check(new and #new == 6 and new[3] == comma and new[4] == row[3] and new[5] == row[4] and new[6] == row[7],
+        "the letters' bottom row: ⌥ 🌐 , . space ⮠ (KOReader's own comma key; ← → go up to the bar)")
+    check(new and width(new) == before, "…the space bar a key wider: the row as wide as before")
+    HashKey.restore(row, saved)
+    check(row[4].width == 3.0 and #row == 7, "…and KOReader's own row is left as it was")
+    check(HashKey.row({ row[1], row[4], row[2] }) == nil, "a short row (a one-line box) isn't changed")
+    local plain = HashKey.row(row)
+    check(plain and plain[3][1] == "," and plain[3].label == ",", "without KOReader's comma key to hand: a plain comma")
+    HashKey.restore(row, 3.0)
+    -- the bar on top: # ← ↑ ↓ →, shorter than a key, the keyboard taller by it
+    local function grp() local g = {}; function g:resetLayout() self.reset = true end; return g end
+    package.loaded["ui/widget/horizontalgroup"] = { new = function(_s, o) local g = grp(); for k, v in pairs(o or {}) do g[k] = v end; return g end }
+    package.loaded["ui/widget/horizontalspan"] = { new = function(_s, o) return { span = o.width } end }
+    package.loaded["ui/widget/verticalspan"] = { new = function(_s, o) return { vspan = o.width } end }
+    local made = {}
+    local VK = { new = function(_s, o) made[#made + 1] = o; return o end }
+    local rows = grp()
+    rows[1], rows[2] = "row 1", "row 2"
+    local center = { dimen = { w = 590, h = 380 }, rows }
+    local frame = { center, getSize = function(f) return { w = 600, h = f[1].dimen.h + 10 } end }
+    local kb = { KEYS = { 1, 2, 3, 4, 5 }, height = 400, key_padding = 2, padding = 3, layout = { "keys" }, { frame } }
+    local ok = HashKey.addBar(kb, VK)
+    local labels = {}
+    for i, k in ipairs(made) do labels[i] = k.label end
+    check(ok and table.concat(labels, " ") == "# ← ↑ ↓ →" and made[1].key == "#" and made[2].keyboard == kb,
+        "a bar on top of the keyboard: # ← ↑ ↓ → (KOReader's keys: the arrows move the cursor, # types)")
+    local key_h = math.floor((400 - 6 * 2 - 6) / 5)
+    check(made[1].height == HashKey.barHeight(key_h, 30) and made[1].height < key_h and made[1].height >= 30,
+        "…slim: about half a key high (" .. tostring(made[1].height) .. " of " .. key_h .. ")")
+    check(rows[1].reset == nil and rows[1][1] == made[1] and rows[3] == "row 1" and kb.layout[1][1] == made[1],
+        "…above the first row of keys (the 5-way reaches it too)")
+    check(center.dimen.h == 380 + made[1].height + 2 and kb.dimen.h == center.dimen.h + 10 and kb.height == 400,
+        "…the keyboard taller by it (the keys keep their size)")
+    local f = io.open(PLUGIN .. "/../zenos.koplugin/modules/global/patches/responsive_keyboard.lua")
+    local src = f and f:read("*a") or ""
+    if f then f:close() end
+    check(src:find("mod.row(bottom_row, is_comma and last_key or nil)", 1, true) and src:find("HashKey.addBar, self, VirtualKey", 1, true),
+        "ZenOS's keyboard asks for the row and the bar")
+end
+
+-- ------------------------------------------------------------ a <details> section (as the web editor shows it)
+do
+    package.preload["gettext"] = package.preload["gettext"] or function() return function(t) return t end end
+    local md = "## Tuesday\n\n<details>\n<summary>Text from a.png</summary>\n\n```text\nWork took most\n```\n\n</details>\n\nafter"
+    local r = editor(md, false)
+    local function lineOf(b) for _i, l in ipairs(r.lines) do if l.b == b then return l end end end
+    local start, code, stop, after = block(r, 2), block(r, 3), block(r, 4), block(r, 5)
+    local row = lineOf(start)
+    check(row and row.section and row.section.start and row.section.folded and row.section.title == "Text from a.png"
+        and lineOf(code) == nil and lineOf(stop) == nil and lineOf(after) ~= nil,
+        "a <details> section: a row with its title, folded (what's in it and its end not shown)")
+    -- the chevron opens it: what's in it indented, its end a thin line
+    r:onTapEdit(nil, ges(5, row.y + 5))
+    local cl = lineOf(code)
+    check(start.folded == false and cl and cl.x0 == RE.SECTION_INDENT and lineOf(stop) and lineOf(stop).section
+        and lineOf(after).x0 == 0 and text(r) == md,
+        "a tap on the chevron opens it: what's in it indented, its end a line; the note unchanged")
+    -- folding again with the cursor inside: the cursor goes to its row
+    r:setCursor({ b = code, i = 2 })
+    r:onTapEdit(nil, ges(5, lineOf(start).y + 5))
+    check(start.folded == true and r.cur.b == start and lineOf(code) == nil, "folded again: a cursor inside goes to its row")
+    -- typing on the row: a new line inside the section, which opens
+    r:addChars("hello")
+    check(start.folded == false and r.cur.b == block(r, 3) and Blocks.plain(block(r, 3)) == "hello"
+        and text(r) == "## Tuesday\n\n<details>\n<summary>Text from a.png</summary>\n\nhello\n\n```text\nWork took most\n```\n\n</details>\n\nafter",
+        "typing on a section's row: a new line inside it, the section kept (" .. show(text(r)) .. ")")
+    -- ⌫ on its row doesn't eat its Markdown
+    r:setCursor({ b = start, i = #start.chars + 1 })
+    r:delChar()
+    check(r.cur.b == block(r, 1) and text(r):find("<summary>Text from a.png</summary>", 1, true) ~= nil, "⌫ on a section's row: to the line before, the section kept")
+    -- an arrow key into a folded section opens it
+    start.folded = true
+    r:update()
+    r:setCursor({ b = code, i = 1 })
+    r:update()
+    check(start.folded == false and lineOf(code) ~= nil, "the cursor going into a folded section (arrow keys) opens it")
+    -- drawn: the chevron, the title (cut to fit), the end's line; the cursor on the row frames it
+    require("ui/rendertext").truncateTextByWidth = function(_s, t) return t end
+    drawn = {}
+    local framed = 0
+    r:setCursor({ b = start, i = 1 })
+    r:update()
+    r:paintTo({ paintRect = function() end, paintBorder = function() framed = framed + 1 end }, 0, 0)
+    local title_drawn
+    for _i, d in ipairs(drawn) do if d.text == "Text from a.png" and d.x == RE.CHEVRON + 8 then title_drawn = true end end
+    check(title_drawn and framed == 1, "drawn: the chevron and the title beside it; the cursor on the row frames it")
+    -- its menu: rename, remove (keeping what's in it), delete with it
+    local shown
+    package.loaded["ui/widget/buttondialog"] = { new = function(_s, o) shown = o; return o end }
+    local UIM = require("ui/uimanager")
+    local real_show = UIM.show
+    UIM.show = function() end
+    r:onTapEdit(nil, ges(150, lineOf(start).y + 5))
+    check(shown and shown.title == "Text from a.png" and #shown.buttons == 4, "a tap on a section's title: its menu (open or fold, rename, remove, delete)")
+    Blocks.setText(start, Blocks.sectionMarkdown("New & title", false))
+    r:update("structure")
+    check(lineOf(start).section.title == "New & title" and text(r):find("<summary>New &amp; title</summary>", 1, true) ~= nil, "renamed: the title escaped as the web writes it")
+    r:removeSection(start, false)
+    check(kinds(r) == "heading,paragraph,raw,paragraph" and text(r) == "## Tuesday\n\nhello\n\n```text\nWork took most\n```\n\nafter",
+        "Remove the section: its start and end go, what was in it stays (" .. show(text(r)) .. ")")
+    local r2 = editor("one\n\n<details open><summary>S</summary>\n\nin it\n\n</details>\n\ntwo", false)
+    check(block(r2, 2).folded == false, "<details open>: shown open")
+    r2:removeSection(block(r2, 2), true)
+    check(text(r2) == "one\n\ntwo", "Delete the section: with what's in it (" .. show(text(r2)) .. ")")
+    UIM.show = real_show
+    package.loaded["ui/widget/buttondialog"] = nil
 end
 
 print(("richedit: %d passed, %d failed"):format(pass, fail))

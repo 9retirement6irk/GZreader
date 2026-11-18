@@ -6,10 +6,10 @@
 
 <p align="center">
   <b>Grimmory + ZenOS + KOReader for Kindles</b><br>
-  Your <a href="https://grimmory.org">Grimmory</a> (formerly BookLore) library on a Kindle,
-  from the Kindle Keyboard to the Paperwhite: download books, audiobooks and
-  Plex music from one Catalog, read or listen, and keep your place, bookmarks
-  and highlights in sync. Notes, calendars, and books sent from your browser too.
+  Your <a href="https://grimmory.org">Grimmory</a> (formerly BookLore) library on an e-reader,
+  from the Kindle 2 and Nook 1 to the Scribe: read, and keep your place, bookmarks,
+  highlights and notes in sync with Grimmory; send books from your browser; listen to
+  audiobooks and Plex music; write and draw Memos notes; see your calendars.
 </p>
 
 <p align="center">
@@ -25,9 +25,10 @@ GZreader is [KOReader](https://github.com/koreader/koreader) trimmed down to
 reading, with the [ZenOS](https://github.com/xZenLabs/zen-os) interface and a
 built-in connection to your self-hosted **Grimmory** book server.
 
-It runs on Kindles with a keyboard, a 5-way or a touchscreen, and as test
-builds on the Nook 1st Edition and Nook Simple Touch: which ones have been
-tried is in [device compatibility](https://github.com/9retirement6irk/GZreader/wiki/Device-Compatibility).
+It runs on Kindles with a keyboard, a 5-way, a touchscreen or a pen, from the
+Kindle 2 to the Kindle Scribe, and as test builds on the Nook 1st Edition and
+Nook Simple Touch: which ones have been tried is in
+[device compatibility](https://github.com/9retirement6irk/GZreader/wiki/Device-Compatibility).
 
 <table>
 <tr><td align="center" width="25%"><img src="docs/screenshots/home.png" alt="Home: the book you're reading and your shelf" width="200"><br><sub>Home</sub></td><td align="center" width="25%"><img src="docs/screenshots/catalog-books.png" alt="The Catalog's Books page, laid out like a bookshop" width="200"><br><sub>Catalog: books</sub></td><td align="center" width="25%"><img src="docs/screenshots/catalog-audiobooks.png" alt="The Catalog's Audiobooks page: Continue listening, Recently added" width="200"><br><sub>Catalog: audiobooks</sub></td><td align="center" width="25%"><img src="docs/screenshots/catalog-music.png" alt="The Catalog's Music page: Plex albums as CD cases" width="200"><br><sub>Catalog: music</sub></td></tr>
@@ -39,6 +40,10 @@ tried is in [device compatibility](https://github.com/9retirement6irk/GZreader/w
 
 ## What it does
 
+- 📖 **Reading:** EPUB, PDF, MOBI, AZW3, FB2, CBZ and more, with KOReader's reader
+  and the ZenOS interface. Your **place (to the exact spot), bookmarks, highlights
+  and notes sync both ways with Grimmory**, with ratings and reading sessions for
+  its statistics, so you can carry on in Grimmory's web reader or another Kindle.
 - 📚 **The Catalog:** one tab, three pages you swipe (or page) between, each laid out
   like a shop: covers on display ledges, then a bookcase of lists. Pick something,
   and it downloads in the background:
@@ -53,7 +58,8 @@ tried is in [device compatibility](https://github.com/9retirement6irk/GZreader/w
     first track is in.
 
   Audiobooks and Music are on Kindles with a speaker or headphone jack (Kindle 2, 3,
-  DX, Touch); the others have the Books page.
+  DX, Touch) or with Bluetooth (Scribe, Paperwhite 5 and newer…); the others have
+  the Books page.
 - 🗄️ **Bookshelves:** your books stand on shelves, spines out; the one you pick turns
   to show its cover. Audiobooks sit on the shelf as a cassette walkman (each one a
   cassette tape inside), music as a CD player (each album a CD). Lists and tiles are a tap away.
@@ -63,7 +69,10 @@ tried is in [device compatibility](https://github.com/9retirement6irk/GZreader/w
   open it); in colour on the Kindle Colorsoft.
 - 🌐 **Set up from your browser:** scan one QR code, or type the Kindle's address
   into any browser on your Wi‑Fi and enter the PIN it shows. One page connects
-  everything (single sign-on works too) and **sends books** straight to the Kindle.
+  everything (single sign-on works too).
+- 📤 **Send books from your browser:** pick EPUBs, PDFs and other books on your
+  phone or computer and they land in the Kindle's Downloads, ready to read; pictures
+  sent the same way become sleep screens.
 - 🔁 **Copy connections** from another GZreader over the Wi‑Fi with a PIN.
 - 🔌 **No Wi‑Fi? Sync with a computer** *(Kindle 2, DX)*: plug the Kindle in and open
   the [sync page](https://9retirement6irk.github.io/GZreader/sync/) in Chrome or Edge.
@@ -71,25 +80,32 @@ tried is in [device compatibility](https://github.com/9retirement6irk/GZreader/w
   or the page), notes, calendars, GZreader updates and a copy of your library (to browse
   the Catalog tab) come back.
 - 📝 **Notes:** your [Memos](https://usememos.com) notes as sticky notes; tick
-  checklists, write and edit (formatted, like Memos' own editor, on touch Kindles),
-  journal entries, offline too.
-- ✏️ **Drawing notes** *(touch Kindles)*: draw in a note with a finger, or with the
-  pen on a Kindle Scribe (your hand can rest on the screen). Pages, notepaper
-  (ruled, Gregg, dot grid, graph, Cornell), undo and redo; drawings go to Memos as
-  Memos' own drawings, and ones made in Memos open on the Kindle.
-- 📅 **Calendar:** CalDAV accounts and calendar links (Proton, Google…): agenda,
-  day, week, month.
-- 🎵 **Music** *(Kindles with audio)*: albums and playlists from **Plex**, played
+  checklists, journal entries, offline too. On touch Kindles, a **rich text editor**
+  like Memos' own: headings, bold and italic, lists, numbered lists, checklists
+  and tags from a formatting bar, typed straight into the formatted note.
+- ✏️ **Drawing notes** *(touch and pen Kindles)*: full drawing in a note with a
+  finger, or with the pen on a Kindle Scribe: pressure, the side button erases, and
+  your hand can rest on the screen. Pen, fountain pen, marker, pencil, highlighter and eraser,
+  undo and redo, pinch zoom, pages,
+  notepaper (ruled, Gregg, dot grid, graph, Cornell); drawings go to Memos as
+  Memos' own drawings, and ones made in Memos open and edit on the Kindle.
+- 📅 **Calendars:** CalDAV accounts and calendar links (Proton, Google, Outlook…):
+  agenda, day, week, month.
+- 🎵 **Music** *(Kindles with audio or Bluetooth)*: albums and playlists from **Plex**, played
   while you read, in a portable CD player with its queue on the back of the case. The
   quick panel gets a Music tile while it plays. A Music tab of its own is in Settings → Home and tabs → Tab bar → Tabs.
 - 🏠 **House:** your [Home Assistant](https://www.home-assistant.io) rooms on a
   tab: switch lights (and dim them), switches, thermostats, locks, garage doors and
   scenes, straight over your Wi‑Fi.
-- 🔊 **Read aloud** *(Kindle 2, 3, DX, Touch)*: any EPUB, MOBI, AZW3, FB2 or TXT
-  read to you in the Kindle's own voice, the sentence being spoken highlighted and the
-  pages turning by themselves. Shift + Sym plays and stops, like the stock Kindle.
-- 🎧 **Audiobooks** *(Kindles with audio)*: a cassette walkman with chapters, a sleep
-  timer and the volume keys; your place syncs with Grimmory's audiobook progress.
+- 🔊 **Read aloud** *(Kindle 2, 3, DX, Touch; Bluetooth Kindles)*: any EPUB, MOBI,
+  AZW3, FB2 or TXT read to you in the Kindle's own voice, the sentence being spoken
+  highlighted and the pages turning by themselves. Shift + Sym plays and stops, like
+  the stock Kindle.
+- 🎧 **Audiobooks** *(Kindles with audio or Bluetooth)*: a cassette walkman with
+  chapters, a sleep timer and the volume keys; your place syncs with Grimmory's
+  audiobook progress.
+- 🎧 **Bluetooth** *(Scribe, Paperwhite 5 and newer…)*: pair and connect headphones
+  or a speaker in Settings; audiobooks, music and read aloud play through them.
 - 🔋 Wi‑Fi only when needed, a built-in English dictionary, updates from GitHub.
 
 All the details are in **[the wiki](https://github.com/9retirement6irk/GZreader/wiki)**:
@@ -109,7 +125,7 @@ All the details are in **[the wiki](https://github.com/9retirement6irk/GZreader/
    | --- | --- |
    | Kindle 2, Keyboard (3), DX | `gzreader-kindle-legacy-<version>.zip` |
    | Kindle 4, Kindle Touch, Paperwhite 1 *(untested)* | `gzreader-kindle-<version>.zip` |
-   | Any Kindle on firmware 5.16.3 or newer: Paperwhite 3, *untested:* Paperwhite 4, 5, 6, Kindle 2019, 2022, 2024, Oasis 3, Scribe, Colorsoft | `gzreader-kindlehf-<version>.zip` |
+   | Any Kindle on firmware 5.16.3 or newer: Paperwhite 3, Scribe, *untested:* Paperwhite 4, 5, 6, Kindle 2019, 2022, 2024, Oasis 3, Scribe Colorsoft, Colorsoft | `gzreader-kindlehf-<version>.zip` |
    | Paperwhite 2 and newer on firmware 5.16.2.1.1 or older: Paperwhite 3, *untested:* Paperwhite 2, 4, 5, Voyage, Oasis 1–3, Kindle 2014, 2016, 2019, 2022 | `gzreader-kindlepw2-<version>.zip` |
 
    The firmware version is in the Kindle's Settings → Device Info.

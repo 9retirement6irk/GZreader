@@ -69,6 +69,13 @@ echo "== the drawing screen's input (finger; pen only, palm rejection)"
 echo "== pen Kindles: the pen and the touch screen kept apart (KOReader's input.lua)"
 (cd "$T" && luajit peninput_test.lua "$REPO" "$KOBASE") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+echo "== a two-finger tap without a first event (KOReader's gesture detector)"
+(cd "$T" && luajit twofinger_test.lua "$REPO" "$KOBASE") 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+
+echo "== the Kindle Scribe's pen mode (ink that keeps up with the pen)"
+(cd "$T" && luajit penmode_test.lua "$REPO/plugins/gzreader.koplugin") 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
 
 echo "== mark up a PDF (its pages as drawing pages)"
 (cd "$T" && luajit pdfmarkup_test.lua "$REPO/plugins/gzreader.koplugin" "$T/lib" "$KOBASE" "$WORK/pdfmarkup") 2>&1 | grep -E "FAIL|passed"
@@ -82,6 +89,10 @@ echo "== notes formatted (Memos' rich editor: reading and writing its Markdown; 
 
 echo "== journal entries (written as the Memos fork's journaling mode writes them)"
 (cd "$T" && luajit journal_test.lua "$REPO/plugins/gzreader.koplugin" "$T/lib") 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+
+echo "== the daily paper (feeds read, an edition a day, Home's widget and Settings)"
+(cd "$T" && luajit daily_test.lua "$REPO" "$T/lib" "$WORK/daily") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
 
 echo "== screen rotation (Auto-rotate tile, Home keeps the rotation, notes turn with the screen)"
@@ -122,6 +133,10 @@ echo "== Kindles with Bluetooth: Wi-Fi off keeps Bluetooth on"
 
 echo "== Settings as GZreader trims it (Advanced, About, KOReader, tabs)"
 (cd "$T" && luajit gz_settings_test.lua "$REPO/plugins/zenos.koplugin" "$REPO/plugins/gzreader.koplugin") 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+
+echo "== Reset GZreader (settings, downloads, accounts; the setup guide)"
+(cd "$T" && luajit reset_test.lua "$REPO/plugins/gzreader.koplugin" "$WORK") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
 
 echo "== Nook screens"

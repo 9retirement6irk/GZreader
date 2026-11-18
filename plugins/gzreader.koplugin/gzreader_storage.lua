@@ -183,6 +183,7 @@ function Storage.notes(data_dir, settings_dir)
         items[#items + 1] = { name = Storage.noteName(m.content), bytes = bytes }
     end
     local files = Storage.dirSize(data_dir .. "/cache/gzreader-notes")
+        + Storage.dirSize(data_dir .. "/cache/gzreader-notes-small") -- (big pictures' small copies: gzreader_sticky.lua)
     return { bytes = fileSize(cache_file) + files, count = #items, items = largest(items) }
 end
 

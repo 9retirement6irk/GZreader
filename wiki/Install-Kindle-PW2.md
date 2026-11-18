@@ -26,7 +26,7 @@ The setup guide runs on the first start ([After installing](Installing#after-ins
 
 ## Notes for these Kindles
 
-- Touch throughout: tabs at the bottom, swipe down from the top for the quick panel (with a light slider), tap the sides to turn pages, swipe up for the page browser. → [Using GZreader → Touch Kindles](Using-GZreader#touch-kindles-kindle-touch-paperwhite-3)
+- Touch throughout: tabs at the bottom, swipe down from the top for the quick panel (with a light slider), tap the sides to turn pages, swipe up for the page browser. → [Using GZreader → Touch Kindles](Using-GZreader#touch-kindles-kindle-touch-paperwhite-3-scribe)
 - The Paperwhite has no speaker or headphone jack: audiobooks, music and read aloud aren't offered.
 - The Kindle's own time zone is used.
 

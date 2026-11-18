@@ -2309,6 +2309,50 @@ print("Wi-Fi network names stay out of the log and reports")
     check(logged:find("wifi (quiet): Connecting to network <network>…\n", 1, true) and logged:find("wifi (quiet): Scanning for networks…\n", 1, true)
         and not logged:find("Example Net", 1, true),
         "the quiet scan's messages logged, without the network's name (or a stray number after them)")
+    -- KOReader's scan finds no network (a Paperwhite 3 and a Touch after a restart): the
+    -- Kindle's connection manager is asked to join its saved network, as ZenOS's Wi-Fi menu does
+    local Dev = require("device")
+    local was_kindle = Dev.isKindle
+    Dev.isKindle = function() return true end
+    local asked, closed = {}, 0
+    local function handle(profiles)
+        return {
+            new_hasharray = function() return { destroy = function() end } end,
+            access_hash_property = function(_h, svc, prop)
+                assert(svc == "com.lab126.wifid" and prop == "profileData")
+                return { to_table = function() return profiles end, destroy = function() end }
+            end,
+            set_string_property = function(_h, svc, prop, v) asked[#asked + 1] = svc .. " " .. prop .. " " .. v end,
+            close = function() closed = closed + 1 end,
+        }
+    end
+    local cbs, scans = 0, 0
+    NM.reconnectOrShowNetworkMenu = function(_self, _cb)
+        scans = scans + 1
+        UIM:show({ text = "Scanning for networks…" })
+        return false -- ("Initial Wi-Fi scan yielded no results", twice)
+    end
+    Net._scan = nil
+    Net._wrapScan()
+    Net.automatic = true
+    Net._lipc = { open_no_name = function() return handle({ { essid = "Example Net", netid = 1 }, { essid = "Other Example" } }) end }
+    local r = NM:reconnectOrShowNetworkMenu(function() cbs = cbs + 1 end, false)
+    Log.flush()
+    lf = io.open(Log.path, "rb"); logged = lf:read("*a"); lf:close()
+    check(r == nil and cbs == 1 and asked[1] == "com.lab126.cmd ensureConnection wifi:Example Net" and #asked == 1 and closed == 1
+        and logged:find("asked the Kindle to join its saved one (2 saved)", 1, true) and not logged:find("Example Net", 1, true),
+        "empty scan: the Kindle asked to join its saved network; KOReader's connectivity check waits (not \"failed\"); no name logged")
+    asked, cbs = {}, 0
+    Net._lipc = { open_no_name = function() return handle({}) end }
+    r = NM:reconnectOrShowNetworkMenu(function() cbs = cbs + 1 end, false)
+    check(r == false and cbs == 0 and #asked == 0, "no saved network: failed as before")
+    r = NM:reconnectOrShowNetworkMenu(function() cbs = cbs + 1 end, true)
+    check(r == false and #asked == 0, "your own Wi-Fi menu (interactive): KOReader's own behaviour")
+    Dev.isKindle = function() return false end
+    Net._lipc = { open_no_name = function() return handle({ { essid = "Example Net" } }) end }
+    r = NM:reconnectOrShowNetworkMenu(function() cbs = cbs + 1 end, false)
+    check(r == false and #asked == 0, "not a Kindle (the Nook): failed as before")
+    Dev.isKindle, Net._lipc = was_kindle, nil
     NM.reconnectOrShowNetworkMenu, Net._scan, Net.automatic = saved[1], saved[2], saved[3]
     -- a saved or sent log: an older log line and crash.log's end too
     Log.flush()
@@ -4726,6 +4770,40 @@ do
         "a clock in the year 2000 (a Nook's after its battery ran down): set from the server's")
     set_to = nil
     check(not Clock.fromServer({ date = "Sat, 07 Nov 2026 06:58:01 GMT" }, 946729600) and set_to == nil, "…once per start")
+    -- as soon as Wi-Fi connects: a time server (NTP), or GitHub's Date
+    local function ntpAnswer(t)
+        local s = t + 2208988800
+        return string.rep("\0", 40) .. string.char(math.floor(s / 16777216) % 256, math.floor(s / 65536) % 256,
+            math.floor(s / 256) % 256, s % 256) .. string.rep("\0", 4)
+    end
+    check(Clock.parseNtp(ntpAnswer(1794034621)) == 1794034621 and Clock.parseNtp("short") == nil
+        and Clock.parseNtp(string.rep("\0", 48)) == nil, "an NTP answer read (seconds since 1900 -> 1970)")
+    local sent, heads = {}, 0
+    local answer
+    Clock.udp = function()
+        return { settimeout = function() end, close = function() end,
+            sendto = function(_u, data, host, port) sent[#sent + 1] = { #data, data:byte(1), host, port }; return #data end,
+            receive = function() if answer then return answer end; return nil, "timeout" end }
+    end
+    Clock.head = function(url) heads = heads + 1; return url == "https://github.com/" and { date = "Sat, 07 Nov 2026 06:57:01 GMT" } or nil end
+    set_to, Clock.done = nil, false
+    check(not Clock.online(1794030000) and #sent == 0 and heads == 0 and Clock.done,
+        "Wi-Fi connected, the clock right: no request at all")
+    Clock.done, answer = false, ntpAnswer(1794034700)
+    local Touch2013 = 1364846400 -- (2013-04-01, the Kindle Touch after its reboot)
+    check(Clock.online(Touch2013) and set_to == 1794034700 and sent[1][1] == 48 and sent[1][2] == 0x1B
+        and sent[1][3] == "pool.ntp.org" and sent[1][4] == 123 and heads == 0,
+        "a clock in 2013: set from a time server (NTP) as soon as Wi-Fi connects")
+    set_to = nil
+    check(not Clock.online(Touch2013) and set_to == nil, "…once per start")
+    Clock.done, answer, sent = false, nil, {}
+    check(Clock.online(Touch2013) and set_to == 1794034621 and #sent == 1 and heads == 1,
+        "NTP blocked (no answer): set from GitHub's Date instead")
+    Clock.done, set_to = false, nil
+    Clock.head = function() return nil end
+    check(not Clock.online(Touch2013) and set_to == nil and not Clock.done,
+        "neither answers: left for the next server answer (fromServer)")
+    Clock.udp, Clock.head = nil, nil
     Clock.set, Clock.done = orig_set, true
 end
 
@@ -7715,6 +7793,32 @@ print("Notes (Memos v0.31)")
     check(Sticky.firstImage(md) == "/file/attachments/abc/p.png", "first picture found")
     check(Sticky.tagsOnly("#travel #hiking") and not Sticky.tagsOnly("#idea buy milk") and not Sticky.tagsOnly(""), "a line of only tags")
     check(Sticky.preview("Title\n\nbody\n\n#a #b") == "Title\nbody", "sticky preview: no blank lines, tag line left out")
+    ;(function() -- a note's page as the web lays it out: <details> sections, code blocks, tag lines
+        local md = "## Tuesday\n\n#mood/neutral #felt/drained #trip\n\n<details>\n<summary>Text from a &amp; b.png</summary>\n\n"
+            .. "```text\nWork took most of my energy.\n- [ ] not a real box\n#notatag\n```\n\n</details>\n\n- [ ] after\n"
+            .. "<details open><summary>Inner</summary>\nline\n<details>\n<summary>Deeper</summary>\n- [x] deep box\n</details>\n</details>\n"
+            .. "<details>\n<summary>Never closed</summary>\nrest"
+        local p = Sticky.page(md)
+        local kinds = {}
+        for _i, l in ipairs(p) do if not (l.kind == "text" and l.text == "") then kinds[#kinds + 1] = l.kind end end
+        local d1 = p[5]
+        local code = d1 and d1.items[1]
+        check(table.concat(kinds, ",") == "heading,tags,details,check,details,details", "note page: a heading, a tag line, a section, a box, two more sections (" .. table.concat(kinds, ",") .. ")")
+        check(d1 and d1.kind == "details" and d1.summary == "Text from a & b.png" and not d1.open and #d1.items == 1
+            and code.kind == "code" and code.lang == "text" and code.text == "Work took most of my energy.\n- [ ] not a real box\n#notatag"
+            and code.checks == 1,
+            "note page: a <details> section folded under its title (entities read), its code block as written (" .. tostring(code and code.text):gsub("\n", "\\n") .. ")")
+        local inner = p[8]
+        check(inner and inner.kind == "details" and inner.open and inner.summary == "Inner" and inner.items[1].text == "line"
+            and inner.items[2].kind == "details" and inner.items[2].summary == "Deeper" and inner.items[2].items[1].kind == "check",
+            "note page: <details open> written open, its title on the same line; a section inside a section")
+        check(p[9] and p[9].kind == "details" and p[9].items[1].text == "rest", "note page: a section never closed runs to the end")
+        check(Sticky.pageChecks(p) == 3 and select(2, md:gsub("%- %[[ x]%]", "")) == 3,
+            "note page: checklist items counted as Sticky.toggle counts them (in code and folded sections too)")
+        check(p[3].kind == "tags" and table.concat(p[3].tags, " ") == "mood/neutral felt/drained trip", "note page: a line of tags, its tags in order")
+        check(#Sticky.page("") == 0 and Sticky.page("```\nx")[1].text == "x" and Sticky.page("</details>\nplain")[1].kind == "text",
+            "note page: empty; an unclosed code block; a stray </details> left as text")
+    end)()
     ;(function() -- Memos 26.11's rich editor: "&nbsp;" for an empty paragraph, entities, backslash escapes
         local rich = "First paragraph.\n\n&nbsp;\n\nSecond&nbsp;one: Tom &amp; Jerry &lt;3\n\n\\* not a bullet, 2 \\* 3 \\_x\\_\n\n&#35; not a heading &#124; pipe&#10;next"
         local pv = Sticky.preview(rich)
@@ -7735,6 +7839,46 @@ print("Notes (Memos v0.31)")
     local t2 = Sticky.toggle(md, 2)
     check(t2:match("%- %[ %] map") and t2:match("%- %[ %] permit") and t2:match("^## Trip"), "tick: the 2nd item unticked, the rest untouched")
     check(Sticky.toggle(Sticky.toggle("- [ ] a\n- [ ] b", 1), 1) == "- [ ] a\n- [ ] b", "tick twice: as before")
+    -- a picture's size and place, as Memos' web editor writes them in the alt text
+    do
+        local function sz(alt) local r = Sticky.altSize(alt); return r.alt, r.width, r.height, r.align end
+        local a, w, h, al = sz("The sea|320")
+        check(a == "The sea" and w == 320 and h == nil and al == nil, "picture size: |320")
+        a, w, h, al = sz("x|320x200")
+        check(a == "x" and w == 320 and h == 200 and al == nil, "picture size: |320x200")
+        a, w, h, al = sz("x|center")
+        check(a == "x" and w == nil and al == "center", "picture place: |center")
+        a, w, h, al = sz("x|right|480x100")
+        check(a == "x" and w == 480 and h == 100 and al == "right", "picture place and size: |right|480x100")
+        a, w = sz("a|b|left|12")
+        check(a == "a|b" and w == 12, "only the end of the alt text counts")
+        a, w = sz("photo\\|320")
+        check(a == "photo\\|320" and w == nil, "an escaped | is part of the alt text")
+        a, w = sz("x|0")
+        check(a == "x|0" and w == nil, "|0 is not a size")
+        check(Sticky.imageSuffix{ width = 320, align = "center" } == "|center|320" and Sticky.imageSuffix{} == ""
+            and Sticky.imageSuffix{ width = 9, height = 4 } == "|9x4" and Sticky.imageSuffix{ align = "right" } == "|right",
+            "picture size written back as the web editor writes it")
+        local note = "# Trip\n![one](/file/attachments/a/1.jpg)\ntext\n  ![two|center|320x200](/file/attachments/b/2.jpg \"t\")\n- [ ] x"
+        local pl = {}
+        for _i, l in ipairs(Sticky.lines(note)) do if l.kind == "image" then pl[#pl + 1] = l end end
+        check(#pl == 2 and pl[1].n == 1 and pl[1].width == nil and pl[2].n == 2 and pl[2].width == 320 and pl[2].height == 200
+            and pl[2].align == "center" and pl[2].alt == "two" and pl[2].src == "/file/attachments/b/2.jpg", "a note's pictures: numbered, with their sizes")
+        local n2 = Sticky.setImageSize(note, 2, { width = 640, align = "center" })
+        check(n2 == note:gsub("|center|320x200", "|center|640"), "a new width: the height dropped, the rest of the note untouched")
+        local n3 = Sticky.setImageSize(note, 2, { width = 320, align = "right" })
+        check(n3 == note:gsub("|center|320x200", "|right|320x200"), "the same width elsewhere: the height kept")
+        check(Sticky.setImageSize(note, 1, { width = 160 }) == note:gsub("%[one%]", "[one|160]"), "the first picture: |160")
+        check(Sticky.setImageSize(n2, 2, {}) == note:gsub("|center|320x200", ""), "As it comes, on the left: the alt text alone")
+        check(Sticky.setImageSize("a\r\n![p|5](/x)\r\nb", 1, { width = 7 }) == "a\r\n![p|7](/x)\r\nb", "Windows line ends kept")
+        check(Sticky.preview(note):find("|", 1, true) == nil, "the board's preview doesn't show the size")
+        check(Notes.pictureWidth(320, 1000) == 500 and Notes.pictureWidth(160, 1000) == 250 and Notes.pictureWidth(2000, 1000) == 1000
+            and Notes.pictureWidth(nil, 1000) == nil, "a size takes its share of Memos' 640-pixel column, at most the page")
+        -- none set: its own width, as Memos shows it (the file's pixels as CSS pixels); the editor's: richedit_test.lua
+        local nsrc3 = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
+        check(nsrc3:find('end, l.width or "own")', 1, true) ~= nil and nsrc3:find('if width == "own" then', 1, true) ~= nil,
+            "the note's page: a picture with no size at its own width (as the editor and Memos)")
+    end
     local now = os.time()
     check(Sticky.when(os.date("!%Y-%m-%dT%H:%M:%SZ", now), now):match("^Today %d+:%d%d [AP]M$"), "date: today with the time (UTC turned local)")
     check(Sticky.when(os.date("!%Y-%m-%dT%H:%M:%SZ", now - 400 * 86400), now):match(", %d%d%d%d$"), "date: another year shows it")
@@ -7831,6 +7975,107 @@ print("Notes (Memos v0.31)")
         check(NL.pageOf(pages, 1) == 1 and NL.pageOf(pages, 11) == 2 and NL.pageOf(pages, 30) == 3 and NL.pageOf(pages, 99) == 3,
             "full: the page a note is on (after a change of layout the board shows that page)")
         check(#NL.paginate({}, 2, 100) == 0 and #NL.paginate({ { top = 20, blocks = {} } }, 2, 100) == 1, "full: no notes; a note with nothing but its top")
+
+        -- the board draws its neighbouring pages' notes ahead while it's still (a page turn then only shows them)
+        ;(function()
+            local Tch = require("gzreader_touch")
+            local UIMa = require("ui/uimanager")
+            local Lay = require("gzreader_layout")
+            local saved = { on = Tch.on, keys = Tch.keys, sched = UIMa.scheduleIn, mem = Lay.memTotalKB, draw = Notes.aheadDraw,
+                top = Notes.onTop, board = Notes.board }
+            local function entries(count)
+                local t = {}
+                for i = 1, count do t[i] = { memo = { name = "memos/a" .. i, content = "note " .. i } } end
+                return t
+            end
+            local function listed(specs)
+                local t = {}
+                for i, one in ipairs(specs) do t[i] = one.entry.memo.name:match("a(%d+)$") .. (one.focused and "f" or "") end
+                return table.concat(t, " ")
+            end
+            Tch.on, Tch.keys = function() return true end, function() return false end
+            local m = { item_table = entries(20), page = 2, page_num = 4, _gz_ahead = { kind = "compact", per = 6, cell_w = 300, cell_h = 200 } }
+            local specs = Notes.aheadSpecs(m)
+            check(listed(specs) == "13 14 15 16 17 18 1 2 3 4 5 6", "ahead (compact): the next page's notes, then the page before's (" .. listed(specs) .. ")")
+            check(specs[1].w == 300 and specs[1].h == 200 and specs[1].look == Sticky.look(1) and specs[8].look == Sticky.look(2)
+                and specs[1].shortcut == nil and not specs[1].focused, "ahead (compact): each with its place's look and size, no letter on a touch Kindle")
+            m.page = 4
+            check(listed(Notes.aheadSpecs(m)) == "1 2 3 4 5 6 13 14 15 16 17 18", "ahead: after the last page comes the first (as the page keys go round)")
+            m.page, m.page_num = 1, 2
+            check(listed(Notes.aheadSpecs(m)) == "7 8 9 10 11 12", "ahead: with two pages, the other one once")
+            m.page_num = 1
+            m.item_table = { { text = "No notes yet." } }
+            check(#Notes.aheadSpecs(m) == 0 and #Notes.aheadSpecs({ item_table = entries(3) }) == 0, "ahead: one page, a message, or a board not drawn yet: nothing")
+            Tch.on, Tch.keys = function() return false end, function() return true end
+            m = { item_table = entries(20), page = 1, page_num = 4, _gz_ahead = { kind = "compact", per = 6, cell_w = 300, cell_h = 200 } }
+            specs = Notes.aheadSpecs(m)
+            check(listed(specs) == "7 8 9 10 11 12 7f 19 20 19f" and specs[1].shortcut == "Q" and specs[2].shortcut == "W" and specs[7].shortcut == "Q",
+                "ahead (keys): letters as the page gives them, and each page's first note with the 5-way's frame too (" .. listed(specs) .. ")")
+            -- Full: pages of parts; a note's parts share its letter
+            local sizes = { { sig = "s1" }, { sig = "s2" }, { sig = "s3" }, { sig = "s4" } }
+            local full_pages = { { { note = 1, col = 1, from = 1, to = 4, h = 100 } },
+                { { note = 2, col = 1, from = 1, to = 9, h = 300 }, { note = 2, col = 2, from = 10, to = 12, h = 90 }, { note = 3, col = 2, from = 1, to = 2, h = 80 } },
+                { { note = 4, col = 1, from = 1, to = 3, h = 120 } } }
+            m = { item_table = entries(4), page = 1, page_num = 3, _gz_ahead = { kind = "full", pages = full_pages, sizes = sizes, col_w = 280 } }
+            specs = Notes.aheadSpecs(m)
+            check(listed(specs) == "2 2 3 2f 4 4f" and specs[1].shortcut == "Q" and specs[2].shortcut == "Q" and specs[3].shortcut == "W"
+                and specs[2].part == full_pages[2][2] and specs[2].size == sizes[2] and specs[2].h == 90 and specs[2].w == 280 and specs[3].look == Sticky.look(3),
+                "ahead (full): the next page's parts with their note's letter, measure and height (" .. listed(specs) .. ")")
+            -- Scroll up and down: the rows under what's drawn, then the rows above
+            Tch.on, Tch.keys = function() return true end, function() return false end
+            m = { item_table = entries(20), page = 1, page_num = 1, _gz_ahead = { kind = "scroll", offset = 4, count = 8, screen = 6, cell_w = 300, cell_h = 180 } }
+            specs = Notes.aheadSpecs(m)
+            check(listed(specs) == "13 14 15 16 17 18 4 3 2 1" and specs[1].look == Sticky.look(13) and specs[7].look == Sticky.look(4),
+                "ahead (scrolling): the rows below, then the rows above from the nearest (" .. listed(specs) .. ")")
+            Tch.keys = function() return true end
+            check(#Notes.aheadSpecs(m) == 0, "ahead (scrolling): not with letter keys (a letter goes by where the note is on screen)")
+            Tch.keys = function() return false end
+
+            -- one note a turn, after the board was still; ended by a newer draw, a window over it, the tab closed
+            local timers = {}
+            UIMa.scheduleIn = function(_u, sec, fn) timers[#timers + 1] = { s = sec, fn = fn } end
+            local function turnOne() local t = table.remove(timers, 1); if t then t.fn() end; return t end
+            local drawn = {}
+            Notes.aheadDraw = function(_m, one)
+                drawn[#drawn + 1] = one.entry.memo.name
+                return one.entry.memo.name ~= "memos/a14" -- (a14: its image was kept already)
+            end
+            Notes.onTop = function() return true end
+            Lay.memTotalKB = function() return 512 * 1024 end
+            m = { item_table = entries(20), page = 2, page_num = 4, _gz_ahead = { kind = "compact", per = 6, cell_w = 300, cell_h = 200 } }
+            Notes.board = m
+            check(Notes.drawAhead(m) == true and #timers == 1 and timers[1].s == Notes.AHEAD_DELAY and #drawn == 0, "ahead: starts only once the board has been still")
+            turnOne()
+            check(#drawn == 1 and #timers == 1 and timers[1].s == Notes.AHEAD_GAP, "ahead: one note, then a pause for whatever else is asked")
+            turnOne()
+            check(#drawn == 3 and drawn[2] == "memos/a14", "ahead: a note whose image is kept already costs no turn (" .. #drawn .. ")")
+            for _i = 1, 30 do turnOne() end
+            check(#drawn == 12 and #timers == 0, "ahead: both pages' notes, then it's done (" .. #drawn .. ")")
+            drawn = {}
+            Notes.drawAhead(m); turnOne()
+            Notes.drawAhead(m) -- (the board drawn again: a page turn, a scroll)
+            local before_new = #drawn
+            turnOne() -- (the older run's next turn)
+            check(before_new == 1 and #drawn == 1 and #timers == 1, "ahead: a newer draw of the board ends the older one's")
+            Notes.onTop = function() return false end
+            turnOne()
+            check(#drawn == 1 and #timers == 0, "ahead: nothing while a window is over the board")
+            Notes.onTop = function() return true end
+            Notes.drawAhead(m); m._gz_closed = true; turnOne()
+            check(#drawn == 1 and #timers == 0, "ahead: nothing once the tab is closed")
+            m._gz_closed = nil
+            Lay.memTotalKB = function() return 125 * 1024 end
+            check(Notes.drawAhead(m) == false and #timers == 0, "ahead: not on a Kindle with little memory (the 2 and DX)")
+            Notes.aheadDraw = function() error("boom") end
+            Lay.memTotalKB = function() return 512 * 1024 end
+            Notes.drawAhead(m)
+            check(pcall(turnOne) and #timers == 0, "ahead: a note that can't be drawn ends it quietly")
+            Tch.on, Tch.keys, UIMa.scheduleIn, Lay.memTotalKB, Notes.aheadDraw = saved.on, saved.keys, saved.sched, saved.mem, saved.draw
+            Notes.onTop, Notes.board = saved.top, saved.board
+            local src = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
+            check(src:find("    Notes.drawAhead(m)\nend\n\n-- The board: a Menu", 1, true) and src:find('m._gz_ahead = { kind = "full", pages = pages, sizes = sizes, col_w = col_w }', 1, true)
+                and src:find('or { kind = "compact", per = per, cell_w = cell_w, cell_h = cell_h }', 1, true), "ahead: started by each draw of the board, from what that draw laid out")
+        end)()
 
         -- the sticky note's tilt: long notes tilted less, so they never grow more than a 300 px one
         check(Sticky.tilt(2.4, 264, 172, 300) == 2.4, "tilt: notes up to 300 px (the board before layouts) keep their angle")
@@ -7930,6 +8175,81 @@ print("Notes (Memos v0.31)")
             check(same_size and worst <= 2, "tilt: the same size and picture as before (" .. cases .. " cases, at most " .. worst .. " levels apart)")
         end)()
 
+        -- a big picture (a phone's photo) is shrunk once for a sticky note: its small copy is kept and read after that
+        ;(function()
+            local lfs = require("libs/libkoreader-lfs")
+            local dir = WORK .. "/small-pictures"
+            os.execute("rm -rf '" .. dir .. "' && mkdir -p '" .. dir .. "/kept'")
+            local function put(to, bytes) local out = io.open(to, "wb"); out:write(bytes); out:close() end
+            local decoded = {}
+            local function image(pw, ph)
+                return { getWidth = function() return pw end, getHeight = function() return ph end,
+                    writePNG = function(_s, to) put(to, "pic " .. pw .. " " .. ph) end, free = function() end }
+            end
+            local real_render = package.loaded["ui/renderimage"]
+            package.loaded["ui/renderimage"] = {
+                renderImageData = function(_s, raw)
+                    local pw, ph = raw:match("^pic (%d+) (%d+)")
+                    if not pw then error("not a picture") end
+                    decoded[#decoded + 1] = pw .. "x" .. ph
+                    return image(tonumber(pw), tonumber(ph))
+                end,
+                scaleBlitBuffer = function(_s, _bb, pw, ph) return image(pw, ph) end,
+            }
+            local real_dir, real_written = Sticky.small_dir, Sticky.small_written
+            Sticky.small_dir, Sticky.small_written = function() return dir .. "/kept" end, 0
+            local function kept()
+                local count = 0
+                for name in lfs.dir(dir .. "/kept") do if name:match("%.png$") then count = count + 1 end end
+                return count
+            end
+            put(dir .. "/photo.jpg", "pic 4000 3000")
+            local bb = Sticky.picture(dir .. "/photo.jpg", 400, 300)
+            check(bb and bb:getWidth() == 400 and bb:getHeight() == 300 and #decoded == 1 and kept() == 1,
+                "pictures: a photo shown much smaller is shrunk and its small copy kept")
+            bb = Sticky.picture(dir .. "/photo.jpg", 400, 300)
+            check(bb and bb:getWidth() == 400 and bb:getHeight() == 300 and #decoded == 2 and decoded[2] == "400x300",
+                "pictures: drawn again, only the small copy is read (" .. tostring(decoded[2]) .. ")")
+            Sticky.picture(dir .. "/photo.jpg", 200, 150)
+            check(decoded[3] == "4000x3000" and kept() == 2, "pictures: another size asked for is shrunk from the file, and kept too")
+            put(dir .. "/photo.jpg", "pic 3000 2000 edited")
+            bb = Sticky.picture(dir .. "/photo.jpg", 400, 300)
+            check(decoded[#decoded] == "3000x2000" and bb:getWidth() == 400 and bb:getHeight() == 266 and kept() == 3,
+                "pictures: a file that changed (a drawing edited) is read again, not its old small copy")
+            decoded = {}
+            put(dir .. "/small.png", "pic 500 400")
+            Sticky.picture(dir .. "/small.png", 400, 300); Sticky.picture(dir .. "/small.png", 400, 300)
+            put(dir .. "/drawing.png", "pic 100 80")
+            local grown = Sticky.picture(dir .. "/drawing.png", 400, 300, 3)
+            check(#decoded == 3 and kept() == 3 and grown:getWidth() == 300, "pictures: one shown about its own size, or enlarged, has no small copy")
+            Sticky.picture(dir .. "/photo.jpg", math.huge, math.huge)
+            check(Sticky.smallPath(dir .. "/photo.jpg", math.huge, math.huge) == nil and Sticky.smallPath(dir .. "/nothing.jpg", 400, 300) == nil
+                and kept() == 3, "pictures: the whole picture asked for (its size), or a file that isn't there: none")
+            put(Sticky.smallPath(dir .. "/photo.jpg", 400, 300), "not a picture any more")
+            bb = Sticky.picture(dir .. "/photo.jpg", 400, 300)
+            check(bb and bb:getWidth() == 400 and decoded[#decoded] == "3000x2000", "pictures: a small copy that can't be read is made again from the file")
+            Sticky.small_dir = nil
+            local so_far = #decoded
+            Sticky.picture(dir .. "/photo.jpg", 400, 300)
+            check(decoded[so_far + 1] == "3000x2000" and kept() == 3, "pictures: with no folder for them (outside the Notes tab), as before")
+            Sticky.small_dir = dir .. "/kept"
+            for i = 1, 6 do put(dir .. "/kept/old" .. i .. ".png", string.rep("x", 100)) end
+            local by_number = Sticky.pruneSmall(nil, 5, 1e9) == 4 and kept() == 5
+            Sticky.pruneSmall(nil, 100, 120)
+            local left = 0
+            for name in lfs.dir(dir .. "/kept") do
+                if name:match("%.png$") then left = left + lfs.attributes(dir .. "/kept/" .. name, "size") end
+            end
+            check(by_number and left <= 120 and kept() < 5, "pictures: the small copies are kept under a number of files and a size (" .. left .. ")")
+            check(Sticky.dropSmall() >= 1 and kept() == 0, "pictures: Free up space removes them all")
+            Sticky.small_dir, Sticky.small_written = real_dir, real_written
+            package.loaded["ui/renderimage"] = real_render
+            local src = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
+            local set = io.open(PLUGIN .. "/gzreader_notesettings.lua"):read("*a")
+            check(src:find("Sticky.small_dir = Notes.smallDir", 1, true) and src:find('Memos.filesDir() .. "-small"', 1, true)
+                and set:find('require("gzreader_sticky").dropSmall()', 1, true), "pictures: the Notes tab keeps them beside its attachments; Settings → Notes removes them")
+        end)()
+
         -- the board keeps each note's image: drawn again only when what it shows changes
         ;(function()
             local Scr = require("device").screen
@@ -7987,6 +8307,75 @@ print("Notes (Memos v0.31)")
                 { name = "attachments/bbb", type = "image/png" } } }
         local pa = Notes.pictureAttachments(pm)
         check(#pa == 2 and pa[1].name == "attachments/bbb" and pa[2].name == "attachments/aaa", "a note's pictures: the one in its text first, no PDFs")
+
+        -- a reload of the board (the tab opened again, a note closed, a sync) doesn't read every note's text again
+        ;(function()
+            local real_lines, real_preview = Sticky.lines, Sticky.preview
+            local parsed, plain = 0, 0
+            Sticky.lines = function(...) parsed = parsed + 1; return real_lines(...) end
+            Sticky.preview = function(...) plain = plain + 1; return real_preview(...) end
+            local with_pic = "x\n![b](/file/attachments/bbb/b.png)\ny ![not a line of its own](z.png) y\n![c](/file/attachments/ccc/c.png)"
+            check(#Sticky.imageLines("no pictures here\n- [ ] a box") == 0 and #Sticky.imageLines(nil) == 0 and parsed == 0,
+                "picture lines: a note without a picture isn't read at all")
+            local il = Sticky.imageLines(with_pic)
+            check(#il == 2 and il[1].src == "/file/attachments/bbb/b.png" and il[2].src == "/file/attachments/ccc/c.png" and parsed == 1,
+                "picture lines: a note's pictures, in order")
+            check(Sticky.imageLines(with_pic) == il and parsed == 1, "picture lines: asked again, the note isn't read again")
+            parsed = 0
+            for _i = 1, 3 do Notes.pictureAttachments(pm); Notes.drawings(pm) end
+            check(parsed <= 1 and #Notes.pictureAttachments(pm) == 2, "a note's pictures: its text read once, however often the board asks")
+
+            local keep = Sticky.keep(2)
+            keep.set("a", 1); keep.set("b", 2); keep.set("c", 3)
+            check(keep.get("a") == 1 and keep.get("b") == 2 and keep.get("c") == 3, "kept answers: more than the limit are still there…")
+            keep.set("d", 4); keep.set("e", 5)
+            check(keep.get("c") == 3, "…one asked for again stays…")
+            keep.set("f", 6); keep.set("g", 7); keep.set("h", 8)
+            check(keep.get("a") == nil and keep.get("b") == nil and keep.get("h") == 8, "…the ones not asked for while new ones came are let go")
+            keep.clear()
+            check(keep.get("e") == nil, "kept answers: cleared")
+
+            local saved_notes, saved_filter, saved_cache = Notes.notes, Notes.filter, Notes.from_cache
+            Notes.filter, Notes.from_cache = { kind = "all" }, false
+            Notes.notes = {}
+            for i = 1, 40 do Notes.notes[i] = { name = "memos/k" .. i, content = "# Note " .. i .. "\n**bold** text", created = "2026-11-10T10:00:00Z" } end
+            parsed, plain = 0, 0
+            local items = Notes._boardItems(plugin)
+            check(#items == 40 and parsed == 0 and plain == 0, "board: its notes listed without making each one plain (" .. parsed .. ", " .. plain .. ")")
+            check(items[1].memo ~= nil and items[1].text == real_preview(items[1].memo.content) and plain == 1,
+                "board: a note's plain text is still there when asked for…")
+            check(items[1].text == real_preview(items[1].memo.content) and plain == 1 and items[1].nothing == nil, "…worked out once")
+            Notes.notes = {}
+            local empty = Notes._boardItems(plugin)
+            check(#empty == 1 and empty[1].memo == nil and type(empty[1].text) == "string" and empty[1].text ~= "", "board: with no notes, the line that says so")
+            Notes.notes, Notes.filter, Notes.from_cache = saved_notes, saved_filter, saved_cache
+            Sticky.lines, Sticky.preview = real_lines, real_preview
+
+            -- the Full view: a note's measure is kept under its text (a sync brings the same notes as new tables)
+            local laid = 0
+            local function measure(m, w)
+                local c = Notes.measured[m]
+                if c and c.content == m.content and c.sig == w then return c end
+                laid = laid + 1
+                c = { content = m.content, sig = w }
+                Notes.measured[m] = c
+                return c
+            end
+            Notes.measured_text.clear()
+            local n1 = { content = "Buy milk" }
+            local c1 = Notes.measureKept(measure, n1, 300, 800)
+            local c2 = Notes.measureKept(measure, { content = "Buy milk" }, 300, 800)
+            check(laid == 1 and c1 == c2, "full view: the same note as a new table (a sync, a filter) isn't laid out again")
+            local c3 = Notes.measureKept(measure, { content = "Buy oat milk" }, 300, 800)
+            local c4 = Notes.measureKept(measure, { content = "Buy milk" }, 400, 800)
+            check(laid == 3 and c3 ~= c1 and c4 ~= c1 and c4.sig == 400, "full view: …a changed note, or another width, is")
+            check(Notes.measureKept(measure, { content = "Buy milk" }, 400, 800) == c4 and Notes.measureKept(measure, {}, 400, 800) ~= nil and laid == 4,
+                "full view: the newest measure is the one kept; a note without text is measured as before")
+            Notes.measured_text.clear()
+            local src = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
+            check(src:find("function Notes.measure(m, note_w, page_h) return Notes.measureKept(measure, m, note_w, page_h) end", 1, true)
+                and src:find("items[#items + 1] = setmetatable({ memo = m }, BoardEntry)", 1, true), "board: both are what the board uses")
+        end)()
 
         -- the layout is kept (Settings → Notes) and the board shows the page with its first note
         local saved_plugin_store = plugin.store.notes_prefs
@@ -8307,6 +8696,20 @@ print("Notes (Memos v0.31)")
         local qn_kept = qn_opts
         Notes.edit(plugin)
         check(qn_how == "page", "the Notes tab's New note: still the full page")
+        ;(function() -- a swipe down from the top of the editor: the quick panel
+            check(qn_opts.plugin == plugin and qn_kept.plugin == plugin, "the editor (page and window) is given GZreader: it can open the quick panel")
+            local PanelM = require("gzreader_panel")
+            local show_was = PanelM.show
+            local asked, aside
+            PanelM.show = function(pl) asked = pl; PanelM.open = { name = "a panel" }; return true end
+            local ed = { plugin = plugin, keyboardAside = function(_s, dlg) aside = dlg end }
+            local up = NEq.Editor.onPullPanel(ed, nil, { direction = "north" })
+            check(not up and asked == nil, "editor: a swipe up at the top does nothing")
+            local down = NEq.Editor.onPullPanel(ed, nil, { direction = "south" })
+            check(down and asked == plugin and aside ~= nil and aside == PanelM.open,
+                "editor: a swipe down opens the quick panel; the keyboard steps aside while it's open")
+            PanelM.show, PanelM.open = show_was, nil
+        end)()
         qn_opts = qn_kept
         local before_list = select(2, mctl("GET", "/__state"):gsub("GET /api/memos", ""))
         local shown_before = #UI.shown
@@ -8559,8 +8962,55 @@ print("Notes (Memos v0.31)")
             and nesrc:find("self.save_top and self:topTap(FrameContainer:new{", 1, true) ~= nil
             and nesrc:find("if not self.save_top then\n        bar[#bar + 1] = HorizontalSpan:new{ width = S(10) }", 1, true) ~= nil
             and nesrc:find("self.drawing_closed_at = Editor.now()", 1, true) ~= nil
-            and select(2, nesrc:gsub("self:topTap%(", "")) == 4,
+            and select(2, nesrc:gsub("self:topTap%(", "")) == 5,
             "editor (touch, full page): Save at the top right, not in the row under the title; Draw, space, visibility and Save guarded")
+        check(nesrc:find("self.title_slot[1] = self.save_top and self:notebookBar(sw) or OverlapGroup:new{", 1, true) ~= nil
+            and nesrc:find('tap = function(w, fn, guarded) return guarded and self:topTap(w, fn) or tapTarget(w, fn) end', 1, true) ~= nil
+            and nesrc:find('back = function() self:onCloseDialog() end', 1, true) ~= nil
+            and nesrc:find('action = { "done", _("Done"), function() self:save() end, true }', 1, true) ~= nil,
+            "editor (touch, full page): the drawing screen's top bar: ← (not guarded) … ✎ # ⋮ Done (guarded); Done saves")
+        ;(function() -- the same bar on an opened note (touch), and the bar's name for a note
+            local NoteBar = require("gzreader_notebar")
+            check(NoteBar.nameOf("# Weekend\n\nBike") == "Weekend" and NoteBar.nameOf("#plans #trip\n- [ ] milk") == "milk"
+                and NoteBar.nameOf("![](x.png)\n**Hi** there") == "Hi there" and NoteBar.nameOf("#a #b") == nil
+                and NoteBar.nameOf(string.rep("word ", 20)):sub(-3) == "…",
+                "the bar's name: a note's first line of words (marks off, not a picture or a line of tags, 48 characters at most)")
+            local vsrc = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
+            check(vsrc:find("Touch.on() and self:topBar(sw, title_h, space) or CenterContainer:new{", 1, true) ~= nil
+                and vsrc:find('{ "pin", m.pinned and "pinned" or "pin", function() self:onPin() end }', 1, true) ~= nil
+                and vsrc:find('{ "archive", "archive", function() self:onArchive(true) end }', 1, true) ~= nil
+                and vsrc:find('{ "delete", "trash", function() self:onDelete() end }', 1, true) ~= nil
+                and vsrc:find('action = { "restore", _("Restore"), function() self:onArchive(false) end }', 1, true) ~= nil
+                and vsrc:find('{ "options", "more", function() self:onOptions() end }', 1, true) ~= nil
+                and vsrc:find('{ "edit", _("Edit"), function() self:onEdit() end }', 1, true) ~= nil
+                and vsrc:find('back = function() self:onClose() end', 1, true) ~= nil
+                and not vsrc:find('{ _("More"), function() self:onOptions() end }', 1, true),
+                "an opened note (touch): the same top bar, ← name … pin, Archive, Delete, ⋮, Edit (archived: Delete, ⋮, Restore); no buttons along the bottom")
+            -- Archive note / Delete note… in the editor's ⋮ and the drawing screen's ⋮ (a note that's there)
+            local esrc3 = io.open(PLUGIN .. "/gzreader_noteeditor.lua"):read("*a")
+            local dsrc3 = io.open(PLUGIN .. "/gzreader_drawscreen.lua"):read("*a")
+            check(esrc3:find('{ { text = _("Archive note"), align = "left", callback = run(function() self:archiveNote() end) } }', 1, true) ~= nil
+                and esrc3:find('{ { text = _("Delete note…"), align = "left", callback = run(function() self:deleteNote() end) } }', 1, true) ~= nil
+                and esrc3:find("note_actions = self.memo and {", 1, true) ~= nil
+                and esrc3:find("screen:done() -- (what was drawn is saved first, then the note archived)", 1, true) ~= nil
+                and dsrc3:find('if self.note_actions then', 1, true) ~= nil
+                and dsrc3:find('rows[#rows + 1] = { id = "archive-note", row = true, label = _("Archive note") }', 1, true) ~= nil
+                and dsrc3:find('rows[#rows + 1] = { id = "delete-note", row = true, label = _("Delete note…") }', 1, true) ~= nil,
+                "the editor's ⋮ and the drawing screen's ⋮ (a note that's there): Archive note (saved first), Delete note…")
+            -- an opened note under the editor goes when its note is archived or deleted
+            local UIMq = require("ui/uimanager")
+            local shown_was = UIMq._window_stack
+            local closed = {}
+            local close_was = UIMq.close
+            local mv = { memo = { name = "memos/x1" }, scroller = {} }
+            local mv2 = { memo = { name = "memos/x2" }, scroller = {} }
+            UIMq._window_stack = { { widget = mv }, { widget = mv2 } }
+            UIMq.close = function(_s, w) closed[#closed + 1] = w end
+            Notes.closeViews({ name = "memos/x1" })
+            check(#closed == 1 and closed[1] == mv and mv.closed and not mv2.closed,
+                "a note archived or deleted from its editor: its opened screen under it closes too (only its own)")
+            UIMq._window_stack, UIMq.close = shown_was, close_was
+        end)()
         -- a new drawing's window: a title and tags, then Save
         local ND = require("gzreader_newdrawing")
         check(ND.content("Garden plan", { "home", "#garden", "home" }) == "# Garden plan\n\n#home #garden"
@@ -8733,6 +9183,19 @@ print("Notes (Memos v0.31)")
         local jm
         for _i, m in ipairs(mstate().memos) do if m.content == jq.content then jm = m end end
         check(jm and jm.space == "spaces/family" and jm.visibility == "PRIVATE", "Memos has the entry, in the journal space")
+        ;(function() -- a journal entry with a drawing (touch Kindles: ✎ in the corner of its words)
+            local dpath = WORK .. "/journal-drawing.canvas.png"
+            local df = io.open(dpath, "w"); df:write("png"); df:close()
+            local n_before = #plugin.store.memos.queue
+            jshown.on_save("A drawing day.\n", { { path = dpath, filename = "drawing-20261117-010000.canvas.png" } })
+            local dq = plugin.store.memos.queue[#plugin.store.memos.queue]
+            check(#plugin.store.memos.queue == n_before + 1 and dq.op == "create" and dq.drawings and dq.drawings[1].path == dpath
+                and dq.space == "spaces/family" and dq.visibility == "PRIVATE", "a journal entry with a drawing: queued with it (a note with a drawing)")
+            check(Notes.notes[1].local_id == dq.id and #Notes.notes[1].attachments == 1, "…on the board at once, with its drawing")
+            table.remove(plugin.store.memos.queue)
+            table.remove(Notes.notes, 1)
+            os.remove(dpath)
+        end)()
         plugin.store.memos.spaces = { { name = "spaces/book-club", title = "Book club" } }
         check(Notes.journalSpace(plugin) == nil, "a journal space that isn't one of yours any more: entries go to no space")
         -- not connected: Connect first
@@ -8754,6 +9217,86 @@ print("Notes (Memos v0.31)")
         local msrc = io.open(PLUGIN .. "/gzreader_memos.lua"):read("*a")
         check(msrc:find('self.store.server .. "/api/journal/settings"', 1, true) ~= nil and msrc:find("return require(\"gzreader_journal\").settings(data)", 1, true) ~= nil,
             "the settings route is beside the API (not under /api/v1), and only Journal.settings' fields are kept")
+    end)()
+
+    ;(function() -- archive, delete, and the archived notes
+        os.execute("kill $(cat " .. WORK .. "/memos.pid) 2>/dev/null")
+        socket.sleep(0.3)
+        os.execute("python3 -I " .. PLUGIN .. "/../../tools/gzreader/emulator/demo/mock_memos.py " .. MPORT .. " --sample > " .. WORK .. "/memos.log 2>&1 & echo $! > " .. WORK .. "/memos.pid")
+        runLoop(function() return mctl("GET", "/__state"):match("memos") ~= nil end, 10)
+        plugin.store.memos.prefix, plugin.store.memos.queue = "/api/v1", {}
+        local function arSync()
+            local res
+            Notes.refresh(plugin, function(ok2) res = ok2 end)
+            runLoop(function() return res ~= nil end, 20)
+            return res
+        end
+        local function stateOf(name)
+            for _i, m in ipairs(mstate().memos) do if m.name == name then return m.state end end
+            return "gone"
+        end
+        local function listed(name)
+            for _i, m in ipairs(Notes.notes or {}) do if m.name == name then return true end end
+            return false
+        end
+        Notes.notes, Notes.filter, Notes.board = nil, { kind = "all" }, nil
+        check(arSync() and #Notes.notes > 3, "the notes, from Memos")
+        local first, second = Notes.notes[2], Notes.notes[3]
+        local n_all = #Notes.notes
+        check(Memos.splitState(Memos.archived(nil)) == nil and select(2, Memos.splitState(Memos.archived('"a" in tags'))) == "ARCHIVED"
+            and Memos.splitState(Memos.archived('"a" in tags')) == '"a" in tags' and select(2, Memos.splitState("pinned == true")) == nil,
+            "the archived notes are asked for by Memos' state, beside any filter")
+        -- archive one: off the board at once, then in Memos
+        Notes.archive(plugin, first, true)
+        check(not listed(first.name) and #Notes.notes == n_all - 1 and plugin.store.memos.queue[1].op == "archive",
+            "Archive: off the board at once, queued")
+        check(arSync() and stateOf(first.name) == "ARCHIVED" and #plugin.store.memos.queue == 0 and not listed(first.name),
+            "…archived in Memos (state ARCHIVED); the board's list doesn't have it")
+        local ar_patched = false
+        for _i, l in ipairs(mstate().log) do if l:match("^PATCH /api/v1/" .. first.name .. "%?updateMask=state$") then ar_patched = true end end
+        check(ar_patched, "…PATCH with updateMask=state")
+        -- the archived notes
+        local before_cache = Memos.loadCache()
+        Notes.setFilter(plugin, { kind = "archived" })
+        runLoop(function() return listed(first.name) end, 20)
+        check(#Notes.notes == 1 and listed(first.name) and Notes.notes[1].archived and #Notes.visible() == 1,
+            "Archived notes: only the archived one, from Memos")
+        check(Notes.title():find("Archived", 1, true) ~= nil, "…the title says so")
+        local after_cache = Memos.loadCache()
+        check(before_cache and after_cache and #after_cache.notes == #before_cache.notes, "…the kept notes aren't replaced by the archive")
+        -- restore it
+        Notes.archive(plugin, Notes.notes[1], false)
+        check(#Notes.notes == 0, "Restore: off the archived list at once")
+        check(arSync() and stateOf(first.name) == "NORMAL", "…back with the others in Memos")
+        Notes.setFilter(plugin, { kind = "all" })
+        runLoop(function() return listed(first.name) end, 20)
+        check(listed(first.name), "All notes: it's back")
+        -- delete
+        Notes.delete(plugin, second)
+        check(not listed(second.name) and plugin.store.memos.queue[#plugin.store.memos.queue].op == "delete", "Delete: off the board, queued")
+        check(arSync() and stateOf(second.name) == "gone" and #plugin.store.memos.queue == 0, "…deleted in Memos")
+        -- a note not sent yet: only out of the queue
+        local nq = Notes.enqueue(plugin, { op = "create", content = "never mind" })
+        Notes.applyQueue(plugin)
+        local local_note
+        for _i, m in ipairs(Notes.notes) do if m.local_id == nq.id then local_note = m end end
+        Notes.delete(plugin, local_note or {})
+        check(local_note and #plugin.store.memos.queue == 0 and not Notes.notes[1].local_id, "deleting a note not sent yet: out of the queue, nothing sent")
+        -- archiving a note not sent yet: said, not done
+        local shown = #UI.shown
+        check(Notes.archive(plugin, { local_id = "q999", content = "x" }, true) == false and #UI.shown == shown + 1,
+            "archiving a note not sent yet: says to wait for it to be sent")
+        -- a note deleted elsewhere: the delete still counts as done
+        local c = Memos:new(plugin.store.memos)
+        check(c:deleteMemo(second.name) == true, "deleting a note that's gone already: done")
+        -- the Notes menu offers the archive; a note's More offers Archive and Delete (Restore when archived)
+        local nsrc = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
+        check(nsrc:find('row(_("Archived notes"), nil', 1, true) and nsrc:find('_("Restore from the archive")', 1, true)
+            and nsrc:find('{ text = _("Archive"), align = "left"', 1, true) and nsrc:find('_("Delete…")', 1, true),
+            "Notes menu: Archived notes; a note's options: Archive / Restore, Delete…")
+        -- the sync page's outbox carries them (Kindles syncing through a computer)
+        local gz = io.open(PLUGIN .. "/../../docs/sync/gzsync.js"):read("*a")
+        check(gz:find('q.op === "archive"', 1, true) and gz:find('q.op === "delete"', 1, true), "the sync page sends archive and delete too")
     end)()
 
     ;(function() -- the Notes tab's board: sorting, full screen, keys, its buttons
@@ -9046,8 +9589,8 @@ print("Notes (Memos v0.31)")
         TouchK4.keys = function() return false end
         local mtexts, _md, mcbs = texts(Notes.showMenu)
         TouchK4.keys = kept_k4_keys
-        check(mtexts:match("^New note|Journal entry|Search…|Tags…|Only notes with drawings|Filter…|Layout: [^|]+|Sort…|Full screen: no tab bar|Connection…$") ~= nil,
-            "Kindle 4's Menu: New note, Journal entry, Search, Tags, Only notes with drawings, Filter, Layout, Sort, Full screen, Connection (no New sheet: drawing needs a touch screen): " .. mtexts)
+        check(mtexts:match("^New note|Journal entry|Search…|Tags…|Only notes with drawings|Archived notes|Filter…|Layout: [^|]+|Sort…|Full screen: no tab bar|Connection…$") ~= nil,
+            "Kindle 4's Menu: New note, Journal entry, Search, Tags, Only notes with drawings, Archived notes, Filter, Layout, Sort, Full screen, Connection (no New sheet: drawing needs a touch screen): " .. mtexts)
         do
             -- a keyboard Kindle: the same list names each key; a touch Kindle that can draw would get New sheet
             local TouchM = require("gzreader_touch")
@@ -9057,7 +9600,7 @@ print("Notes (Memos v0.31)")
             Notes.canDraw = function() return true end
             local dtexts = texts(Notes.showMenu)
             TouchM.keys, Notes.canDraw = kept_keys, kept_can
-            check(ktexts:find("New note  (N)|Journal entry  (J)|Search…  (K)|Tags…  (G)|Only notes with drawings  (D)|Filter…  (F)|", 1, true) == 1
+            check(ktexts:find("New note  (N)|Journal entry  (J)|Search…  (K)|Tags…  (G)|Only notes with drawings  (D)|Archived notes|Filter…  (F)|", 1, true) == 1
                 and ktexts:find("|Sort…  (S)|", 1, true) and ktexts:find("|Connection…  (M)", 1, true) and not ktexts:find("|Draw|", 1, true),
                 "keyboard Kindles: H lists every key: " .. ktexts)
             check(dtexts:find("New note  (N)|Draw|Journal entry  (J)|", 1, true) == 1, "…Draw only where drawing is possible: " .. dtexts)
@@ -9161,7 +9704,22 @@ print("Notes (Memos v0.31)")
             b:onPan(nil, { direction = "south", distance = 790, relative = { x = 0, y = 790 } })
             b:onPan(nil, { direction = "south", distance = 800, relative = { x = 0, y = 800 } })
             local before_release = b._gz_y
+            local UIMs = require("ui/uimanager")
+            local real_dirty_s, settled = UIMs.setDirty, {}
+            UIMs.setDirty = function(_s, _w, refresh)
+                if type(refresh) == "function" then refresh = (refresh()) end
+                settled[#settled + 1] = tostring(refresh)
+            end
             b:onGzPanRelease()
+            UIMs.setDirty = real_dirty_s
+            check(settled[#settled] == "partial" and LiveScroll.SETTLE_REFRESH == "partial",
+                "scrolling: once the finger lifts after steps, the notes shown again with the page-turn refresh (no flash, no ghosts left; was \"ui\": lines stood twice) ("
+                    .. table.concat(settled, ",") .. ")")
+            local nsrcr = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
+            check(nsrcr:find('self._gz_region = self:notesRegion() -- (refreshed: the notes\' window only)', 1, true) ~= nil
+                and nsrcr:find('return "ui", only or (old_dimen and old_dimen:combine(m.dimen) or m.dimen)', 1, true) ~= nil
+                and nsrcr:find('settle(self.show_parent or self, self:notesRegion() or self.dimen)', 1, true) ~= nil,
+                "scrolling: the steps and the clean refresh at the end cover only the notes' window, not the buttons above or the tab bar (emulator/live_scroll.lua checks it on the screen)")
             check(live1 == 1540 and live2 == 1540 and live3 == 1335 and before_release == 1050 and b._gz_y == 1040,
                 "scrolling: a drag moves the notes with the finger, a step at a time (" .. live1 .. ", " .. live2 .. ", " .. live3 .. ", "
                     .. before_release .. "), settling where it lifts (" .. b._gz_y .. ")")
@@ -9193,6 +9751,24 @@ print("Notes (Memos v0.31)")
             check(table.concat(seenq, ",") == "fast,fast,ui" and patched ~= nil and not pcall(LiveScroll.quiet, function() error("x") end)
                 and UIMq.setDirty == real_dirty,
                 "live scrolling: a step's refreshes are \"fast\" (no flash), whatever was asked; ordinary ones after (" .. table.concat(seenq, ",") .. "); put back even after an error")
+            -- an opened note (a ScrollableContainer): the same once the finger lifts after steps
+            local sc_dirty = {}
+            UIMq.setDirty = function(_s, _w, refresh)
+                if type(refresh) == "function" then refresh = (refresh()) end
+                sc_dirty[#sc_dirty + 1] = tostring(refresh)
+            end
+            local fake = { _scroll_offset_x = 0, _scroll_offset_y = 0, _max_scroll_offset_x = 0, show_parent = {}, dimen = { x = 0, y = 0, w = 10, h = 10 },
+                onScrollablePan = function(self) self._scrolling = true; return true end,
+                onScrollablePanRelease = function(self) self._scrolling = false; return true end,
+                onScrollableSwipe = function() return true end,
+                _scrollBy = function(self, _dx, dy) self._scroll_offset_y = self._scroll_offset_y + dy; UIMq:setDirty(self.show_parent, "ui") end }
+            LiveScroll.on(fake)
+            clock = 300
+            fake:onScrollablePan(nil, { relative = { x = 0, y = -100 } })
+            fake:onScrollablePanRelease(nil, {})
+            UIMq.setDirty = real_dirty
+            check(table.concat(sc_dirty, ",") == "fast,partial", "an opened note: a step \"fast\", then once more with the page-turn refresh at the lift ("
+                .. table.concat(sc_dirty, ",") .. ")")
             LiveScroll.now = real_now
             local y4 = b._gz_y
             b:onSwipe(nil, { direction = "west", distance = 300 })
@@ -9261,13 +9837,48 @@ print("Notes (Memos v0.31)")
             local b = nsrc6:find("\nfunction ", a + 10, true)
             local page = nsrc6:sub(a, b)
             local cards = nsrc6:sub(nsrc6:find("function StickyItem:draw()", 1, true), nsrc6:find("local NoteView = InputContainer", 1, true))
-            check(not page:find("Sticky.hand(", 1, true) and select(2, page:gsub("Notes%.pageFace%(", "")) == 4
+            check(not page:find("Sticky.hand(", 1, true) and select(2, page:gsub("Notes%.pageFace%(", "")) == 6
                 and select(2, cards:gsub("Sticky%.hand%(", "")) >= 5,
                 "a note's page: the editor's font throughout; the Notes tab's sticky notes: still the handwriting font")
             check(resrc:find("RichEdit.TEXT_SIZE = " .. Notes.PAGE_TEXT, 1, true) ~= nil
                 and resrc:find("RichEdit.HEADING_SIZE = { " .. table.concat(Notes.PAGE_HEADING, ", ") .. " }", 1, true) ~= nil
                 and nsrc6:find('Font:getFace(bold and "NotoSans-Bold.ttf" or "cfont", size)', 1, true) ~= nil,
                 "…at the editor's sizes and faces (RichEdit.TEXT_SIZE, HEADING_SIZE, cfont / Noto Sans Bold)")
+        end
+        -- a note's page: a <details> section folded under its title, opened by a
+        -- tap (or its letter) where it is; the boxes after it still tick the
+        -- right line; a journal entry's tags at the top, other tag lines in place
+        do
+            local Journal = require("gzreader_journal")
+            check(Notes.isJournalTag("mood/neutral", Journal.settings(nil)) and Notes.isJournalTag("Felt/Drained", Journal.settings(nil))
+                and Notes.isJournalTag("did/work", Journal.settings(nil)) and Notes.isJournalTag("impact/family", Journal.settings(nil))
+                and not Notes.isJournalTag("trip", Journal.settings(nil)) and not Notes.isJournalTag("mood/", Journal.settings(nil))
+                and not Notes.isJournalTag("moody", Journal.settings(nil))
+                and Notes.isJournalTag("feel/x", Journal.settings({ feelingTagPrefix = "feel" })),
+                "journal tags: under the mood, feeling, cause or activity prefix (as set in Memos' journal settings)")
+            local real_save = Notes.saveContent
+            local saved
+            Notes.saveContent = function(_p, m) saved = m.content end
+            local memo = { name = "memos/details-1", attachments = {}, tags = { "mood/neutral", "trip" },
+                content = "## Tuesday\n\n#mood/neutral #felt/drained #trip\n\n<details>\n<summary>Text from a.png</summary>\n\n"
+                    .. "```text\n- [ ] in code\n```\n\n</details>\n\n- [ ] after\n" }
+            -- (the page itself is laid out in the emulator: tools/gzreader/emulator/notes_details.lua)
+            local refreshed = 0
+            local v = setmetatable({ memo = memo, plugin = plugin, opened = {}, focus = false, refresh = function() refreshed = refreshed + 1 end,
+                picks = { { details = ".5", open = false }, { check = 2 } } }, { __index = Notes._NoteView })
+            v:pickIndex(1)
+            local opened = v.opened[".5"] == true and refreshed == 1
+            v.picks[1].open = true
+            v:pickIndex(1)
+            local folded = v.opened[".5"] == false and refreshed == 2
+            v:pickIndex(2)
+            check(opened and folded and saved and saved:find("- [x] after", 1, true) and saved:find("- [ ] in code", 1, true),
+                "note page: a section's row opens and folds it (laid out again); the box after it, the note's second, ticks its own line")
+            Notes.saveContent = real_save
+            local nsrc7 = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
+            check(nsrc7:find('table.insert(page, page[1] and page[1].kind == "heading" and 2 or 1, { kind = "toptags" })', 1, true)
+                and not nsrc7:find("add(Notes.tagChips(m.tags", 1, true),
+                "note page: a journal entry's tags at the top under its heading; no list of every tag at the bottom")
         end
         -- S sorts (keyboard Kindles)
         local sorted_shown
@@ -9514,6 +10125,150 @@ print("Notes (Memos v0.31)")
                 and dsrcq:find('require("gzreader_penraw").close(self.penraw)', 1, true) ~= nil,
                 "drawing: the digitizer's pressure goes to the pen's slot when KOReader's event has none; read only on pen Kindles, closed with the screen")
         end)()
+        -- split view: the book in one half of a big screen, the notes in the other
+        ;(function()
+            local Split = require("gzreader_splitview")
+            -- while it's open, the book's refreshes (a page turn: no region, the whole screen) are kept to its part
+            local fake_ui = { dialog = nil }
+            fake_ui.dialog = fake_ui
+            Split.active = { reader = fake_ui, book = { x = 0, y = 0, w = 1860, h = 1240 }, pane = { x = 0, y = 1240, w = 1860, h = 1240 } }
+            local g1 = Split.bookRegion(fake_ui, nil)
+            local given = { x = 5, y = 5, w = 10, h = 10 }
+            -- (ui/geometry is a stub here: the region's size is checked on the screen by emulator/split_view.lua)
+            check(g1 ~= nil and g1 ~= given and Split.bookRegion(fake_ui, given) == given
+                and Split.bookRegion({}, nil) == nil and Split.bookRegion("all", nil) == nil,
+                "split view: a page turn's refresh (the book's, no region) only over the book's part; a region asked for, or another window's, as asked")
+            local UIMsp = require("ui/uimanager")
+            local real_sd, got = UIMsp.setDirty, {}
+            UIMsp.setDirty = function(_s, w, refresh, region)
+                if type(refresh) == "function" then local m, r = refresh(); refresh, region = m, r end
+                got[#got + 1] = { w = w, mode = refresh, region = region }
+            end
+            Split._hooked = nil
+            Split.hookRefresh()
+            UIMsp:setDirty(fake_ui, "partial")
+            UIMsp:setDirty(fake_ui, function() return "full" end)
+            UIMsp:setDirty("all", "full")
+            Split.active = nil
+            UIMsp:setDirty(fake_ui, "partial")
+            UIMsp.setDirty, Split._hooked = real_sd, nil
+            check(#got == 4 and got[1].region ~= nil and got[2].mode == "full" and got[2].region ~= nil
+                and got[3].region == nil and got[4].region == nil,
+                "split view: the book's page turns (and its every-few-pages flash) refresh only its part; closed, as before")
+            local psrc = io.open(PLUGIN .. "/gzreader_panel.lua"):read("*a")
+            local ssrc = io.open(PLUGIN .. "/gzreader_splitview.lua"):read("*a")
+            check(psrc:find('{ id = "split", label = _("Notes"),', 1, true) ~= nil and ssrc:find('label = _("Notes"), run = function() Split.open(plugin) end', 1, true) ~= nil,
+                "split view: its tile is just \"Notes\" (\"Notes beside the book\" was cut off)")
+            local b, n = Split.rects(1860, 2480)
+            local lb, ln = Split.rects(2480, 1860)
+            check(b.x == 0 and b.y == 0 and b.w == 1860 and b.h == 1240 and n.x == 0 and n.y == 1240 and n.w == 1860 and n.h == 1240
+                and lb.x == 0 and lb.y == 0 and lb.w == 1240 and lb.h == 1860 and ln.x == 1240 and ln.y == 0 and ln.w == 1240 and ln.h == 1860,
+                "split view: upright, the book above the notes; on its side, the book left of them; the book always from the screen's corner")
+            local b2, n2 = Split.rects(1860, 2480, 0.9)
+            check(b2.h == math.floor(2480 * 0.7) and n2.y == b2.h and n2.h == 2480 - b2.h, "split view: neither part under three tenths of the screen")
+            check(Split.fits(1860, 2480, 300, true) and Split.fits(2480, 1860, 300, true) and not Split.fits(1072, 1448, 300, true)
+                and not Split.fits(1860, 2480, 300, false) and not Split.fits(600, 800, 167, true) and not Split.fits(nil, nil, nil, true),
+                "split view: on the Scribe (6.2 inches across) either way up; not a Paperwhite or a Kindle Touch, nor without a touch screen")
+            -- the drawing screen in a pane: which input frames are its own
+            local DS = require("gzreader_drawscreen")
+            local d = setmetatable({ pane = { x = 0, y = 1240, w = 1860, h = 1240 }, _pane_slots = {} }, { __index = function(_t, k) return rawget(DS, k) end })
+            local function frame(list) return d:paneFrame(nil, list) end
+            local r1 = frame({ { slot = 0, id = 1, x = 900, y = 300 } })               -- a finger lands on the book
+            local r2 = frame({ { slot = 0, id = 1, x = 900, y = 1500 } })              -- and wanders into the notes
+            local r3 = frame({ { slot = 0, id = -1 } })                                -- lifts
+            local r4 = frame({ { slot = 4, id = 7, x = 500, y = 2000 } })              -- the pen lands in the notes
+            local r5 = frame({ { slot = 4, id = 7, x = 500, y = 900 } })               -- and wanders onto the book
+            local r6 = frame({ { slot = 4, id = 7, x = 500, y = 900 }, { slot = 0, id = 2, x = 300, y = 300 } }) -- a finger on the book meanwhile
+            local r7 = frame({ { slot = 4, id = -1 }, { slot = 0, id = 2, x = 300, y = 300 } })
+            local r8 = frame({ { slot = 0, id = 2, x = 310, y = 300 } })
+            check(r1 == false and r2 == false and r3 == false and r4 == true and r5 == true and r6 == true and r7 == true and r8 == false
+                and d._pane_slots[4] == nil,
+                "split view: a touch belongs where it began (the book's go to KOReader, the notes' to the drawing), wherever it moves after")
+            -- the pen up over the notes, hovering, then gone: the drawing's (it must know the pen left,
+            -- or fingers count as a resting hand for seconds); over the book: the book's
+            d.sketch, d._pane_slots = { pen_slot = 4 }, {}
+            local p1 = frame({ { slot = 4, id = 8, x = 500, y = 2000 } })
+            local p2 = frame({ { slot = 4, id = -1, x = 500, y = 2000 } })
+            local p3 = frame({ { slot = 4, id = -1, x = 520, y = 2010 } })              -- hovering over the notes
+            local p4 = frame({ { slot = 4, id = -1 } })                                -- gone out of range
+            local p5 = frame({ { slot = 4, id = -1, x = 520, y = 600 } })               -- back, hovering over the book
+            local p6 = frame({ { slot = 4, id = -1 } })                                -- gone from there
+            d.sketch = nil
+            check(p1 and p2 and p3 and p4 and not p5 and not p6,
+                "a pane: the pen hovering over the drawing, or leaving from there, is the drawing's (it went to KOReader: fingers were ignored for 5 s after writing); over the book, the book's")
+            local dsrcs = io.open(PLUGIN .. "/gzreader_drawscreen.lua"):read("*a")
+            -- (the sizes themselves are checked on the Scribe's screen by emulator/split_view.lua: every tool fits the pane)
+            check(dsrcs:find('if self.pane then self.tool_sz = DrawScreen.paneToolSize(sh, self.top_h, #DrawScreen.SIDE_TOOLS) end', 1, true) ~= nil,
+                "split view: the tools made smaller to fit a short pane")
+            check(dsrcs:find('if screen.pane and not screen:paneFrame(det, tevs) then return orig(det, tevs) end', 1, true) ~= nil
+                and dsrcs:find('if reader and UIManager:getTopmostVisibleWidget() == self then return reader:handleEvent(event) end', 1, true) ~= nil
+                and dsrcs:find('if self.pane and not self.journal then pcall(function() require("gzreader_splitview").closed(self) end) end', 1, true) ~= nil
+                and dsrcs:find('x, y = ges.pos.x - self.ox, ges.pos.y - self.oy', 1, true) ~= nil,
+                "split view: the drawing screen passes the book's touches on, works from its pane's corner, and gives the book its screen back when it closes")
+            -- the Scribe's pen mode and the partial repaint (penmode_test.lua and emulator/pen_mode.lua, partial_repaint.lua check them working)
+            check(dsrcs:find('self.pen_fast = self.pen_only and require("gzreader_penmode").supported(Device)', 1, true) ~= nil
+                and dsrcs:find('fast = PenMode.ink(Screen, rects)', 1, true) ~= nil
+                and dsrcs:find('if self.pen_fast and require("gzreader_penmode").on then', 1, true) ~= nil
+                and dsrcs:find('UIManager:scheduleIn(DrawScreen.SETTLE, self._settle_timer)', 1, true) ~= nil
+                and dsrcs:find('local st = PenMode.unhook()', 1, true) ~= nil,
+                "drawing: on the Scribe a stroke's ink goes out in the display's pen mode; what a stroke leaves to do waits for a pause; pen mode off when the screen closes")
+            check(dsrcs:find('if out.view or not self:repaintArea(out.area) then self:redrawAll() end', 1, true) ~= nil
+                and dsrcs:find('if self:repaintArea(area) then self:refreshBar() else self:redrawAll() end', 1, true) ~= nil
+                and dsrcs:find('if not area or sk.zoomed then return false end', 1, true) ~= nil,
+                "drawing: a rubbed-out stroke, an Undo, a Redo draw and refresh only their part of the page (all of it when zoomed in)")
+            -- the lasso (sketch_test.lua checks choosing, moving, growing, copying; emulator/lasso.lua checks it on the screen)
+            check(dsrcs:find('{ id = "lasso", icon = "lasso", label = _("Lasso") },', 1, true) ~= nil
+                and dsrcs:find('{ id = "sel-copy", icon = "copy", label = _("Copy") },', 1, true) ~= nil
+                and dsrcs:find('function DrawScreen:paintLasso(bb, x, y)', 1, true) ~= nil
+                and dsrcs:find('if at then changed, area = sk:lassoPaste(at.x, at.y) end', 1, true) ~= nil
+                and dsrcs:find('if self.paste_at and t.id ~= "paste" then', 1, true) ~= nil,
+                "drawing: a lasso among the tools; what it chooses gets a frame with Copy, Cut, Delete; a tap on an empty place offers Paste")
+            -- a journal entry's drawing: the same drawing screen, in a pane under the prompt
+            local jsrc = io.open(PLUGIN .. "/gzreader_journalscreen.lua"):read("*a")
+            check(jsrc:find('pane = { x = rect.x, y = rect.y, w = rect.w, h = rect.h },', 1, true) ~= nil
+                and jsrc:find('journal = { under = self },', 1, true) ~= nil and not jsrc:find('inline = { rect', 1, true)
+                and not dsrcs:find('INLINE_TOOLS', 1, true) and not dsrcs:find('function DrawScreen:passThrough', 1, true)
+                and dsrcs:find('local taken = split and not opts.journal and split.take()', 1, true) ~= nil
+                and dsrcs:find('if under and UIManager:getTopmostVisibleWidget() == self then return under:handleEvent(event) end', 1, true) ~= nil,
+                "journal: its drawing is the whole drawing screen (every tool, pinch, pan) in a pane under the prompt, not a box with a few tools; touches above go to the entry")
+            check(dsrcs:find('add({ id = "done", label = self.journal and _("Save") or _("Done") }', 1, true) ~= nil
+                and dsrcs:find('if self.journal then icons[#icons + 1] = { id = "typing", label = _("Aa") } end', 1, true) ~= nil
+                and dsrcs:find('self.flyout = nil; self.after = "entry"; self:done()', 1, true) ~= nil
+                and jsrc:find('if after == "save" then', 1, true) ~= nil
+                and dsrcs:find('if not (self.pane and page and page.w > 0) or self.journal then return end', 1, true) ~= nil,
+                "journal's drawing: ← back to the entry (kept), Aa to typing, Save saves the entry; the whole page shows (not fitted to the width)")
+        end)()
+        -- a long stroke keeps up with the pen: the ink shown at most 60 times a second, 8 while behind
+        ;(function()
+            local DS = require("gzreader_drawscreen")
+            local UIMi = require("ui/uimanager")
+            local real_dirty, real_sched = UIMi.setDirty, UIMi.scheduleIn
+            local shown, timers = {}, 0
+            UIMi.setDirty = function(_s, _w, _mode, region) shown[#shown + 1] = region end
+            UIMi.scheduleIn = function() timers = timers + 1 end
+            local d = setmetatable({ inkRefresh = function() return "a2" end, ox = 0, oy = 0 }, { __index = function(_t, k) return rawget(DS, k) end })
+            -- 240 points a second for a second, the handling keeping up
+            for i = 0, 239 do
+                d._now, d._lag = 10 + i / 240, 0.002
+                d:showInk(i, 100, i + 4, 104)
+            end
+            local keeping_up = #shown
+            d:flushInk(true)
+            local last = #shown > keeping_up -- (the rest of it, shown at the end)
+            -- the same, the handling 200 ms behind the pen
+            shown = {}
+            for i = 0, 239 do
+                d._now, d._lag = 20 + i / 240, 0.2
+                d:showInk(i, 100, i + 4, 104)
+            end
+            local behind = #shown
+            d:flushInk(true)
+            UIMi.setDirty, UIMi.scheduleIn = real_dirty, real_sched
+            check(keeping_up >= 50 and keeping_up <= 62 and behind >= 7 and behind <= 9 and timers >= 1
+                and last and d._ink_due == nil and DS.inkInterval(0.2) > DS.inkInterval(0),
+                "drawing: 240 pen points a second are shown " .. keeping_up .. " times (not 240), " .. behind
+                    .. " while 200 ms behind (so it catches up); what's due is shown when the stroke ends")
+        end)()
         local dsrcp = io.open(PLUGIN .. "/gzreader_drawscreen.lua"):read("*a")
         -- the drawing screen as the Kindle Scribe's notebook (walked through by emulator/notebook_ui.lua)
         check(dsrcp:find('self.canvas = { x = 0, y = 0, w = sw, h = sh }', 1, true) ~= nil
@@ -9525,7 +10280,7 @@ print("Notes (Memos v0.31)")
             "drawing: the page is the whole screen, the top bar and the tools fold away; a new drawing's name and tags come from the top bar and Done saves it")
         local ids = {}
         for _i, t in ipairs(require("gzreader_drawscreen").SIDE_TOOLS) do ids[#ids + 1] = t.id end
-        check(table.concat(ids, ",") == "pen,highlighter,shape,eraser,sep,undo,redo,more",
+        check(table.concat(ids, ",") == "pen,highlighter,shape,text,eraser,lasso,hand,sep,undo,redo,more",
             "drawing: the tools down the side, as the Scribe's: " .. table.concat(ids, ","))
         check(dsrcp:find("if opts.choose_paper and DrawScreen.asksPaper(opts.pages) then", 1, true) ~= nil
             and dsrcp:find("on_back = function() if opts.on_cancel then opts.on_cancel() end end", 1, true) ~= nil
@@ -9535,17 +10290,24 @@ print("Notes (Memos v0.31)")
         local dsrc = io.open(PLUGIN .. "/gzreader_drawscreen.lua"):read("*a")
         check(dsrc:find("if not p.modified then", 1, true) ~= nil and esrc2:find("elseif p.changed and p.path then", 1, true) ~= nil,
             "a drawing opened and left as it was: nothing sent")
-        check(dsrc:find('self:inkRefresh(), Geom:new{ x = x0, y = y0', 1, true) ~= nil
+        check(dsrc:find('self:inkRefresh(), Geom:new{ x = d.x0 + self.ox, y = d.y0 + self.oy', 1, true) ~= nil
             and dsrc:find('if el.type == "image" then return "fast" end', 1, true) ~= nil
             and not dsrc:find('setDirty(nil, "a2"', 1, true)
-            and dsrc:find('local area = Geom:new{ x = d.x0, y = d.y0, w = d.x1 - d.x0, h = d.y1 - d.y0 }', 1, true) ~= nil
+            and dsrc:find('local area = Geom:new{ x = d.x0 + self.ox, y = d.y0 + self.oy, w = d.x1 - d.x0, h = d.y1 - d.y0 }', 1, true) ~= nil
             and dsrc:find('UIManager:setDirty(nil, "ui", area)', 1, true) ~= nil,
             "drawing: ink over a paper or picture goes on with DU (not A2: gaps at its lines), its area cleaned up after")
-        check(dsrc:find('UIManager:setDirty(nil, self:inkRefresh(), Geom:new{ x = x0, y = y0, w = x1 - x0, h = y1 - y0 })', 1, true) ~= nil
+        check(dsrc:find('UIManager:setDirty(nil, self:inkRefresh(), Geom:new{ x = d.x0 + self.ox, y = d.y0 + self.oy, w = d.x1 - d.x0, h = d.y1 - d.y0 })', 1, true) ~= nil
+            and dsrc:find('self:showInk(x0, y0, x1, y1)', 1, true) ~= nil
             and not dsrc:find('grey and "ui"', 1, true)
-            and dsrc:find('(gray < 0x80 or (sx + 2 * sy) % 4 == 0)', 1, true) ~= nil
+            and dsrc:find('(grain or gray < 0x80 or (sx + 2 * sy) % 4 == 0)', 1, true) ~= nil
+            and dsrc:find('if ink[i] > gray then', 1, true) ~= nil and dsrc:find('if page[i] > gray then page[i] = gray end', 1, true) ~= nil
+            and dsrc:find('if scr[i] > gray then scr[i] = 0 end', 1, true) ~= nil
+            and dsrc:find('if not bb or bb:getType() ~= Blitbuffer.TYPE_BB8 or bb:getRotation() ~= 0 or bb:getInverse() ~= 0 then return nil end', 1, true) ~= nil
             and dsrc:find('UIManager:setDirty(self, function() return "ui", area end)', 1, true) ~= nil,
             "drawing: a grey tool's ink (pencil, highlighter) shows as black points with the pen's fast refresh while drawing, its real grey when the stroke ends")
+        check(dsrc:find('if seg[7] and not seg[8] then grey = true end', 1, true) ~= nil
+            and not dsrc:find('addPencilLayer', 1, true) and not dsrc:find('gzLayer', 1, true),
+            "drawing: no refresh after a pencil stroke (it flashed the page); a saved drawing's pencil strokes stay strokes (editable in Memos), no picture of them")
 
         -- several drawings: a new note with two pages, both sent onto it
         local m1, m2 = drawingFile("drawing-20261113-090000.canvas.png"), drawingFile("drawing-20261113-090000-2.canvas.png")
@@ -9687,8 +10449,18 @@ print("Notes (Memos v0.31)")
             "a picture already coming: the board and the page are told when it's here (one download)")
         local nsrc2 = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
         check(nsrc2:find("if Notes.isDrawing(drawing) then", 1, true) and nsrc2:find("local sheets = Notes.drawings(m)\n    for i, a in ipairs(sheets) do", 1, true)
-            and nsrc2:find("if not shown[a] then listed[#listed + 1] = a end", 1, true),
-            "drawings: on the board's cards and the note's page, not repeated under Attachments")
+            and nsrc2:find("if Notes.isGalleryPhoto(a) then gallery[#gallery + 1] = a else listed[#listed + 1] = a end", 1, true)
+            and nsrc2:find("for _i, a in ipairs(Notes.attachmentsBelow(m)) do -- (the ones in the text are shown there)", 1, true),
+            "drawings: on the board's cards and the note's page, not repeated under Attachments; nor the pictures in the text")
+        -- a note's attachments under its text: not the ones its text shows (as Memos' web app)
+        local inl = { content = "Christmas List:\n\n- iFish\n\n![fish](/file/attachments/u1/fish.jpg)\n\n- speaker\n\n![s|200](/file/attachments/u3/s.png)",
+            attachments = { { name = "attachments/u1", type = "image/jpeg", filename = "fish.jpg" }, { name = "attachments/u2", type = "image/png", filename = "other.png" },
+                { name = "attachments/u3", type = "image/png", filename = "s.png" }, { name = "attachments/u4", type = "application/pdf", filename = "list.pdf" } } }
+        local below = {}
+        for _i, a in ipairs(Notes.attachmentsBelow(inl)) do below[#below + 1] = a.filename end
+        check(table.concat(below, ",") == "other.png,list.pdf" and #Notes.attachmentsBelow({ content = "x" }) == 0
+            and #Notes.attachmentsBelow({ content = "no pictures", attachments = inl.attachments }) == 4,
+            "under a note: only the attachments its text doesn't show (" .. table.concat(below, ",") .. "); the pictures in the text not again")
 
         -- the editor: Draw for new notes on touch Kindles, a note can be just a drawing
         local esrc = io.open(PLUGIN .. "/gzreader_noteeditor.lua"):read("*a")
@@ -9786,10 +10558,10 @@ print("Calendar tab")
     check(Cal.periodLabel(plugin):match("%d%d%d%d$"), "month label: " .. Cal.periodLabel(plugin))
     ;(function()
         local ci = Cal.settingsItems(plugin)
-        check(#ci == 7 and ci[1].text_func():match("^CalDAV account") and ci[2].text_func():match("^Calendar links")
-                and ci[7].text_func():match("^Storage used") and type(ci[7].callback) == "function" and not ci[7].sub_item_table_func
-                and ci[6].separator == true,
-            "Settings → Accounts and services → Calendar: the CalDAV account first, links, calendars, layout, week start, range, then storage (a link)")
+        check(#ci == 8 and ci[1].text_func():match("^CalDAV account") and ci[2].text_func():match("^Calendar links")
+                and ci[4].text_func():match("^Holidays") and ci[8].text_func():match("^Storage used") and type(ci[8].callback) == "function" and not ci[8].sub_item_table_func
+                and ci[7].separator == true,
+            "Settings → Accounts and services → Calendar: the CalDAV account first, links, calendars, holidays, layout, week start, range, then storage (a link)")
         local sr = Cal.storageItems(plugin)
         check(#sr == 3 and sr[3].text == "Free up space: remove kept events", "Calendar's storage rows (General → Storage → Calendar): events kept, last synced, Free up space")
     end)()
@@ -9843,6 +10615,61 @@ print("Calendar tab")
     local b1, b2 = by["Call with Berlin office"], by["Call with Berlin office (after the US change)"]
     check(b1 and os.date("!%H:%M", b1[1].start) == "15:00" and b2 and os.date("!%H:%M", b2[1].start) == "15:00",
         "Europe/Berlin 16:00 in CET is 15:00 UTC (its own time zone rules)")
+    -- any year: a Kindle's clock reaches only 1901-2038 (32-bit), and an iCloud link's
+    -- time zone starts in 1883: os.time gave nil, "attempt to perform arithmetic on local 't'"
+    ;(function()
+        local ok_all = true
+        for _i, t in ipairs({ 0, 1794034621, -11676096000, -2717640000, 4102444800, 951782400, 1709208000 }) do
+            local f = CalDAV.utcFields(t)
+            if CalDAV.timegm(f) ~= t then ok_all = false end
+            if t >= -2^31 and t < 2^31 then
+                local g = os.date("!*t", t)
+                if g.year ~= f.year or g.month ~= f.month or g.day ~= f.day or g.hour ~= f.hour or g.wday ~= f.wday or g.yday ~= f.yday then ok_all = false end
+            end
+        end
+        check(ok_all and CalDAV.timegm{ year = 1601, month = 1, day = 1, hour = 0 } == -11644473600
+            and CalDAV.timegm{ year = 2026, month = 13, day = 1, hour = 0 } == CalDAV.timegm{ year = 2027, month = 1, day = 1, hour = 0 }
+            and CalDAV.timegm{ year = 2026, month = 2, day = 29, hour = 0 } == CalDAV.timegm{ year = 2026, month = 3, day = 1, hour = 0 },
+            "dates by arithmetic: 1601 to 2100, leap days, months past their end")
+        -- the Kindle's clock: os.time gives nil outside 1901-2038
+        local real_time = os.time
+        os.time = function(f)
+            if f and (f.year < 1902 or f.year > 2037) then return nil end
+            return real_time(f)
+        end
+        local ics = table.concat({ "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Apple Inc.//iCloud//EN",
+            "BEGIN:VTIMEZONE", "TZID:America/New_York",
+            "BEGIN:STANDARD", "DTSTART:18831118T120358", "TZOFFSETFROM:-045602", "TZOFFSETTO:-0500", "TZNAME:EST", "END:STANDARD",
+            "BEGIN:DAYLIGHT", "DTSTART:20070311T020000", "RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SU", "TZOFFSETFROM:-0500", "TZOFFSETTO:-0400", "TZNAME:EDT", "END:DAYLIGHT",
+            "BEGIN:STANDARD", "DTSTART:20071104T020000", "RRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SU", "TZOFFSETFROM:-0400", "TZOFFSETTO:-0500", "TZNAME:EST", "END:STANDARD",
+            "END:VTIMEZONE",
+            "BEGIN:VEVENT", "UID:a@example.com", "SUMMARY:Dentist", "DTSTART;TZID=America/New_York:20260714T093000",
+            "DTEND;TZID=America/New_York:20260714T103000", "END:VEVENT",
+            "BEGIN:VEVENT", "UID:b@example.com", "SUMMARY:Birthday", "DTSTART;VALUE=DATE:18990101", "DTEND;VALUE=DATE:18990102",
+            "RRULE:FREQ=YEARLY", "END:VEVENT",
+            "BEGIN:VEVENT", "UID:c@example.com", "SUMMARY:Standup", "DTSTART;TZID=America/New_York:20260105T090000",
+            "DTEND;TZID=America/New_York:20260105T091500", "RRULE:FREQ=WEEKLY;BYDAY=MO;UNTIL=20991231T235959Z", "END:VEVENT",
+            "END:VCALENDAR" }, "\r\n")
+        local okp, evs = pcall(CalDAV.parseEvents, ics)
+        local occ, occ2 = {}, {}
+        if okp then
+            local from = real_time{ year = 2026, month = 7, day = 1, hour = 0 }
+            okp, occ = pcall(CalDAV.occurrences, evs, from, from + 31 * 86400)
+            local jan = real_time{ year = 2027, month = 1, day = 1, hour = 0 }
+            if okp then okp, occ2 = pcall(CalDAV.occurrences, evs, jan - 86400, jan + 2 * 86400) end
+        end
+        os.time = real_time
+        local dentist, standups, birthday
+        for _i, ev in ipairs(okp and occ2 or {}) do if ev.title == "Birthday" then birthday = ev end end
+        for _i, ev in ipairs(okp and occ or {}) do
+            if ev.title == "Dentist" then dentist = ev end
+            if ev.title == "Standup" then standups = (standups or 0) + 1 end
+        end
+        check(okp and dentist and dentist.start == 1784035800 and standups == 4 and birthday
+            and os.date("*t", birthday.start).month == 1 and os.date("*t", birthday.start).year == 2027,
+            "an iCloud link with a time zone from 1883, on a Kindle's clock: read (the dentist at 9:30 EDT, Mondays to 2099, a birthday from 1899) "
+            .. tostring(not okp and occ or (dentist and dentist.start)))
+    end)()
     local summer = CalDAV.parseEvents(io.open(PLUGIN .. "/../../tools/gzreader/emulator/demo/proton_sample.ics"):read("*a"))
     local sc
     for _i, e in ipairs(summer) do if e.title == "Summer call (Berlin CEST)" then sc = e end end
@@ -9899,6 +10726,56 @@ print("Calendar tab")
     for _i, ev in ipairs(Cal.events or {}) do if ev.cal ~= 1 then only_links = false end end
     check(done and only_links, "links alone: the Calendar tab works without a CalDAV account")
 
+    print("Holidays: a calendar of their own, worked out on the Kindle")
+    do
+        local Hol = require("gzreader_holidays")
+        local function on(id, y, m, d)
+            local list = Hol.year(id, y)[m .. "-" .. d] or {}
+            return table.concat(list, ", ")
+        end
+        check(select(1, Hol.easter(2026)) == 4 and select(2, Hol.easter(2026)) == 5 and select(2, Hol.easter(2025)) == 20
+            and select(1, Hol.easter(2027)) == 3 and select(2, Hol.easter(2027)) == 28 and select(2, Hol.easter(2038)) == 25,
+            "Easter: 5 Apr 2026, 20 Apr 2025, 28 Mar 2027, 25 Apr 2038")
+        check(on("US", 2026, 11, 26) == "Thanksgiving" and on("US", 2026, 1, 19) == "Martin Luther King Jr. Day"
+            and on("US", 2026, 5, 25) == "Memorial Day" and on("US", 2026, 9, 7) == "Labor Day" and on("US", 2026, 5, 10) == "Mother's Day"
+            and on("US", 2026, 7, 4) == "Independence Day" and on("US", 2026, 4, 5) == "Easter" and on("US", 2025, 11, 27) == "Thanksgiving"
+            and on("US", 2026, 11, 25) == "", "United States: fixed dates, nth and last weekdays, Easter (2025 and 2026)")
+        check(on("CA", 2026, 5, 18) == "Victoria Day" and on("CA", 2026, 10, 12) == "Thanksgiving" and on("CA", 2026, 4, 3) == "Good Friday"
+            and on("CA", 2026, 12, 26) == "Boxing Day", "Canada: Victoria Day (the Monday before May 25), Thanksgiving, Good Friday")
+        check(on("GB", 2026, 3, 15) == "Mothering Sunday" and on("GB", 2026, 8, 31) == "Summer bank holiday"
+            and on("GB", 2026, 5, 4) == "Early May bank holiday" and on("GB", 2026, 4, 6) == "Easter Monday",
+            "United Kingdom: Mothering Sunday, bank holidays, Easter Monday")
+        -- off until turned on; then a calendar of its own in the tab, with no Wi-Fi
+        local hp = { store = {}, save = function() end }
+        check(not Hol.enabled(hp) and Hol.conf(hp).country == "US" and #Hol.on(hp, os.time{ year = 2026, month = 11, day = 26, hour = 9 }) == 0,
+            "off until turned on (the United States chosen)")
+        hp.store.caldav = {}
+        Cal.plugin = hp
+        check(not Cal.hasSources(hp), "nothing at all: the tab's first screen")
+        local rows = Cal.connectItems(hp)
+        local hol_row
+        for _i, r in ipairs(rows) do if (r.text or ""):match("^Show holidays") then hol_row = r end end
+        check(hol_row and hol_row.text == "Show holidays (United States)", "the tab's first screen offers the holidays")
+        Hol.set(hp, { enabled = true })
+        check(Cal.hasSources(hp) and not Cal.hasNetSources(hp) and Cal.calendars(hp)[1].kind == "holidays"
+            and Cal.calendars(hp)[1].name == "Holidays (United States)", "holidays on: something to show, nothing to sync, a calendar of its own")
+        local day = Cal.dayStart(os.time{ year = 2026, month = 11, day = 26, hour = 15 })
+        Cal.events = {}
+        local evs = Cal.eventsOn(day)
+        check(#evs == 1 and evs[1].title == "Thanksgiving" and evs[1].all_day and evs[1].cal == 1 and evs[1].start == day
+            and evs[1].finish == Cal.dayStart(day + 30 * 3600), "the Calendar tab: Thanksgiving all day on 26 Nov 2026, in the holidays' calendar")
+        local fetched
+        Cal.refresh(hp, function(ok, err) fetched = { ok, err } end)
+        check(fetched and fetched[1] == false and fetched[2] == "not_connected" and not Cal.refreshing, "only holidays: no sync (and no Wi-Fi)")
+        Hol.set(hp, { country = "GB" })
+        check(Cal.eventsOn(Cal.dayStart(os.time{ year = 2026, month = 8, day = 31, hour = 12 }))[1].title == "Summer bank holiday"
+            and #Cal.eventsOn(day) == 0 and Cal.calendars(hp)[1].name == "Holidays (United Kingdom)", "another country: its holidays instead")
+        Hol.set(hp, { enabled = false })
+        check(#Cal.eventsOn(Cal.dayStart(os.time{ year = 2026, month = 8, day = 31, hour = 12 })) == 0 and #Cal.calendars(hp) == 0,
+            "turned off: gone from the tab")
+        Cal.plugin, Cal.events = nil, nil
+    end
+
     print("The phone page: Notes, Calendar (account, links, editing), books")
     for _i, f in ipairs(Cal.feeds(plugin)) do f.id = nil end
     while #Cal.feeds(plugin) > 0 do Cal.removeFeed(plugin, 1) end
@@ -9930,8 +10807,20 @@ print("Calendar tab")
     local href = plugin.store.caldav.calendars[1].href
     c, b = post("/calendar/show", { "href=" .. href })
     check(c == 200 and plugin.store.caldav.calendars[1].enabled == false and b:match("is hidden"), "Calendar: one of the account's calendars hidden from the phone")
-    c, b = post("/links", { "links=Family | " .. link .. "\nnonsense" })
-    check(c == 200 and b:match("✓ Family") and b:match("✗") and #Cal.feeds(plugin) == 1, "Calendar: links added from the phone, each checked")
+    c, b = phone("'" .. P .. "'")
+    check(b:find('name="name_1"', 1, true) and b:find('name="url_1"', 1, true) and b:find('name="url_3"', 1, true)
+        and not b:find('name="links"', 1, true) and b:find('id="more_links"', 1, true),
+        "Calendar: a name field and a link field for each link (three, and Add another link)")
+    check(b:find('action="' .. scr.url:match("(/phone/%x+)") .. '/calendar/holidays"', 1, true) and b:find('<option value="GB">United Kingdom</option>', 1, true),
+        "Calendar: a Holidays box (show them, which country)")
+    c, b = post("/calendar/holidays", { "shown=1", "country=CA" })
+    check(c == 200 and plugin.store.calendar_holidays.enabled == true and plugin.store.calendar_holidays.country == "CA"
+        and b:match("Holidays %(Canada%) are shown"), "Calendar: holidays turned on from the phone, for Canada")
+    c, b = post("/calendar/holidays", { "country=CA" })
+    check(c == 200 and plugin.store.calendar_holidays.enabled == false and b:match("Holidays are hidden"), "…and off again")
+    c, b = post("/links", { "name_1=Family", "url_1=" .. link, "name_2=", "url_2=nonsense", "name_3=Empty row", "url_3=" })
+    check(c == 200 and b:match("✓ Family") and b:match("✗") and #Cal.feeds(plugin) == 1 and Cal.feeds(plugin)[1].name == "Family",
+        "Calendar: links added from the phone (a name and a link each; a row without a link skipped), each checked")
     local fid = Cal.feeds(plugin)[1].id
     check(fid and b:find('name="id" value="' .. fid .. '"', 1, true), "each link has its own form on the page")
     c, b = post("/link", { "id=" .. fid, "name=Kids", "url=", "action=save" })
@@ -13433,6 +14322,172 @@ print("Immich: an album's pictures for the sleep screen and the Home wallpaper")
     SleepMode.IMMICH_DIR = nil
     Device.screen = real_screen
     plugin.store.immich = nil
+end)()
+
+print("Immich photos for notes and drawings (gzreader_immichpick.lua): the Memos fork's connection, or GZreader's")
+;(function()
+    local Pick = require("gzreader_immichpick")
+    local Memos = require("gzreader_memos")
+    local Notes = require("gzreader_notes")
+    local lfs = require("libs/libkoreader-lfs")
+    local MP, IP = PORT + 86, PORT + 87
+    local function start(script, port, flags, name)
+        os.execute("python3 -I " .. PLUGIN .. "/../../tools/gzreader/emulator/demo/" .. script .. " " .. port .. " " .. flags
+            .. " > " .. WORK .. "/" .. name .. ".log 2>&1 & echo $! > " .. WORK .. "/" .. name .. ".pid")
+        for _try = 1, 50 do
+            local pp = io.popen("curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:" .. port .. "/__state"); local cc = pp:read("*a"); pp:close()
+            if cc == "200" then break end
+            socket.sleep(0.2)
+        end
+    end
+    local function stop(name) os.execute("kill $(cat " .. WORK .. "/" .. name .. ".pid) 2>/dev/null") end
+    local function uid(n, kind) return string.format("%08x-0000-4000-8000-%s%011x", n, kind or "a", n) end
+
+    -- the pure parts
+    check(Pick.fileName("IMG_0001.HEIC", uid(1)) == "IMG_0001.jpg" and Pick.fileName("a/b:c.png") == "a_b_c.jpg"
+        and Pick.fileName("", uid(7)) == "photo-00000007.jpg" and Pick.fileName("notes") == "notes.jpg",
+        "a picked photo's name: its own, as a JPEG (the preview is one), safe as a file name")
+    local mp = Pick.parseMemosPage({ photos = { { id = uid(1), fileName = "A.jpg", width = 40, height = 30 }, { id = "../x" } }, next = "c:abc" })
+    check(#mp.photos == 1 and mp.photos[1].filename == "A.jpg" and mp.photos[1].w == 40 and mp.next == "c:abc"
+        and Pick.parseMemosPage({ photos = {}, next = "" }).next == nil, "the fork's page: photos (not an id: left out), next; empty next: the end")
+    local ip = Pick.parseImmichPage({ assets = { items = { { id = uid(2), type = "IMAGE", originalFileName = "B.HEIC", exifInfo = { exifImageWidth = 9, exifImageHeight = 6 } },
+        { id = uid(3), type = "VIDEO" }, { id = uid(4), type = "IMAGE", isTrashed = true } }, nextPage = "2" } })
+    check(#ip.photos == 1 and ip.photos[1].w == 9 and ip.next == "p:2" and Pick.parseImmichPage({ assets = { items = {}, nextCursor = "zz" } }).next == "c:zz"
+        and Pick.parseImmichPage({ assets = { items = {}, nextPage = json.null } }).next == nil,
+        "Immich's own search: photos only, not in the bin; its next page or cursor, as the fork pages")
+    local cols, rows = Pick.grid(1072, 1300)
+    local cols2 = Pick.grid(600, 700)
+    check(cols == 4 and rows >= 4 and cols2 == 3, "the grid: 4 across on a big screen, 3 on a small one")
+
+    -- which ways in
+    local saved = { memos = plugin.store.memos, immich = plugin.store.immich }
+    plugin.store.memos, plugin.store.immich = nil, nil
+    check(#Pick.sources(plugin) == 0, "no Memos, no Immich: no way in (the Photos chip isn't offered)")
+    plugin.store.memos = { server = "http://127.0.0.1:" .. MP, token = "memos-test-token", prefix = "/api/v1" }
+    plugin.store.immich = { server = "http://127.0.0.1:" .. IP, key = "immich-test-key" }
+    local srcs = Pick.sources(plugin)
+    check(#srcs == 2 and srcs[1].kind == "memos" and srcs[2].kind == "immich", "both: Memos' connection first, then GZreader's")
+
+    -- the fork's connection, through its /api/immich (the Memos sign-in; the Immich key stays on the server)
+    start("mock_memos.py", MP, "--immich", "pm")
+    local m = srcs[1]
+    check(m.connected() == true, "the fork: Immich is connected there")
+    local albums = m.albums()
+    check(albums and #albums == 2 and albums[1].name == "Garden" and albums[1].count == 70, "…its albums, by name, with their counts")
+    local p1 = m.photos(albums[1].id)
+    local p2 = p1 and m.photos(albums[1].id, p1.next)
+    check(p1 and #p1.photos == 60 and p1.next == "p:2" and p2 and #p2.photos == 10 and p2.next == nil and p1.photos[1].filename == "IMG_0001.HEIC",
+        "…an album's photos a page at a time (60, then the last 10)")
+    local all = m.photos(nil)
+    check(all and #all.photos == 60 and all.next, "…All photos")
+    local _dir, thumbs = Pick.dir()
+    local tpath = thumbs .. "/" .. p1.photos[1].id
+    check(m.thumbnail(p1.photos[1].id, tpath) and lfs.attributes(tpath, "size") > 100, "…a thumbnail")
+    os.remove(tpath)
+    local files = Pick.fetchPreviews(m, { p1.photos[2], p1.photos[1] })
+    check(files and #files == 2 and files[1].filename == "IMG_0002.jpg" and files[1].type == "image/jpeg" and files[1].w == 96 and files[1].h == 64
+        and lfs.attributes(files[1].path, "size") > 100 and files[2].id == p1.photos[1].id,
+        "Add: the previews fetched in the order picked, as JPEGs, their size read")
+    local st = json.decode(io.popen("curl -s http://127.0.0.1:" .. MP .. "/__state"):read("*a"))
+    local fetched = table.concat(st.immich_fetched or {}, ",")
+    check(fetched:find("preview " .. p1.photos[2].id, 1, true) and not fetched:find("original", 1, true),
+        "…Immich's preview, not the original (a Kindle's size; quick on its Wi-Fi)")
+    -- the photos go with a note: queued as its attachments, sent as JPEGs
+    local c = Memos:new(plugin.store.memos)
+    local note = c:create("Garden visit", "PRIVATE")
+    local q = { op = "attach", name = note.name, drawings = { { path = files[1].path, filename = files[1].filename, type = files[1].type } } }
+    check(Notes.queuedAttachments(q)[1].type == "image/jpeg" and Notes.queuedAttachments(q)[1].filename == "IMG_0002.jpg",
+        "a queued photo shows as a JPEG attachment at once")
+    check(c:uploadDrawings(q, note.name), "…sent")
+    local got = c:get(note.name)
+    check(got and got.attachments and got.attachments[1] and got.attachments[1].filename == "IMG_0002.jpg" and got.attachments[1].type == "image/jpeg"
+        and not Notes.isDrawing(got.attachments[1]), "…in Memos: the note's attachment, a JPEG, not taken for a drawing")
+    local held = { name = note.name, attachments = {}, content = "Garden visit" }
+    local queue_before = #(plugin.store.memos.queue or {})
+    local real_send = Notes.sendSoon
+    Notes.sendSoon = function() end
+    Notes.addPhotos(plugin, held, { files[2] })
+    Notes.sendSoon = real_send
+    local lq = plugin.store.memos.queue[#plugin.store.memos.queue]
+    check(#plugin.store.memos.queue == queue_before + 1 and lq.op == "attach" and lq.name == note.name and lq.drawings[1].type == "image/jpeg"
+        and #held.attachments == 1 and held.attachments[1].type == "image/jpeg", "a photo added in the editor: queued for the note, shown with it at once")
+    table.remove(plugin.store.memos.queue)
+
+    -- photos in the text (asked each time, in the editor): sent when picked, the note made with them
+    local NoteEditor = { pictureLine = require("gzreader_sticky").pictureLine }
+    check(NoteEditor.pictureLine({ name = "attachments/att9", filename = "IMG 0002.jpg" }) == "![IMG 0002](/file/attachments/att9/IMG%200002.jpg)",
+        "a photo's line in the text, as Memos' editor writes it")
+    local loose = c:uploadAttachment(files[1].path, files[1].filename, nil, files[1].type)
+    local luid = loose and tostring(loose.name):match("attachments/(.+)$")
+    local line = loose and NoteEditor.pictureLine(loose)
+    local refused, rerr = c:create("Text first\n" .. tostring(line), "PRIVATE")
+    check(loose and refused == nil and rerr == "http_400", "the fork: a note whose text shows a picture it doesn't have is refused (" .. tostring(rerr) .. ")")
+    local made = c:create("Text first\n" .. line, "PRIVATE", nil, { loose.name })
+    local mm = made and c:get(made.name)
+    check(mm and mm.attachments[1] and mm.attachments[1].name == loose.name and mm.content:find("/file/attachments/" .. luid, 1, true),
+        "…made with it: the photo is the note's, shown in its text")
+    local q2 = { op = "create", content = "Queued with a photo\n" .. line:gsub(luid, "x"), visibility = "PRIVATE" }
+    local loose2 = c:uploadAttachment(files[2].path, files[2].filename, nil, files[2].type)
+    q2.content = "Queued with a photo\n" .. NoteEditor.pictureLine(loose2)
+    q2.attachments = { loose2.name }
+    q2.id = 999001
+    local res = c:flush({ q2 })
+    local qm
+    for _i, m in ipairs(c:list().memos or {}) do if (m.content or ""):find("Queued with a photo", 1, true) then qm = m end end
+    check(res and #res.done == 1 and qm and qm.attachments[1] and qm.attachments[1].name == loose2.name, "…from the queue too (a new note: its photos sent already)")
+    -- in a note already in Memos: sent onto it, its text can show it at once
+    local onto = c:uploadAttachment(files[1].path, files[1].filename, made.name, files[1].type)
+    local upd, uerr = c:update(made.name, mm.content .. "\n" .. NoteEditor.pictureLine(onto))
+    check(upd and onto, "a note in Memos: the photo sent onto it, its text shows it (" .. tostring(uerr) .. ")")
+    -- the note's photos, the gallery's, and taking one off
+    local held2 = { name = made.name, attachments = {
+        { name = loose.name, filename = "IMG_0002.jpg", type = "image/jpeg" },
+        { name = "attachments/d1", filename = "drawing-20261117-100000.canvas.png", type = "image/png" },
+        { name = "attachments/local-5", filename = "IMG_9.jpg", type = "image/jpeg" },
+        { name = "attachments/pdf", filename = "Map.pdf", type = "application/pdf" },
+        { name = onto.name, filename = "IMG_0001.jpg", type = "image/jpeg" } } }
+    local ph = Notes.photos(held2)
+    check(#ph == 2 and ph[1].name == loose.name and ph[2].name == onto.name, "a note's photos: pictures, not drawings, not ones still to be sent, not a PDF")
+    check(Notes.isGalleryPhoto(held2.attachments[1]) and not Notes.isGalleryPhoto(held2.attachments[2]) and not Notes.isGalleryPhoto(held2.attachments[4])
+        and not Notes.isGalleryPhoto({ type = "image/png", filename = "x.png", link = "https://example.com/x.png" }),
+        "the note's page shows photos as pictures (not drawings, PDFs or links)")
+    Notes.sendSoon = function() end
+    Notes.dropAttachments(plugin, held2, { onto.name })
+    Notes.sendSoon = real_send
+    local dq = plugin.store.memos.queue[#plugin.store.memos.queue]
+    check(dq and dq.op == "undraw" and dq.attachment == onto.name and #held2.attachments == 4, "a photo taken off in the editor: queued to be deleted, gone here at once")
+    local dres = c:flush({ dq })
+    local after = c:get(made.name)
+    local still = false
+    for _i, a in ipairs(after and after.attachments or {}) do if a.name == onto.name then still = true end end
+    check(dres and #dres.done == 1 and not still, "…deleted in Memos")
+    table.remove(plugin.store.memos.queue)
+    for _i, f in ipairs(files) do os.remove(f.path) end
+    stop("pm")
+
+    -- a fork without Immich set up, and stock Memos: GZreader's own connection
+    start("mock_memos.py", MP, "--journal", "pm")
+    check(srcs[1].connected() == false, "the fork, Immich not set up there: not a way in")
+    stop("pm")
+    start("mock_memos.py", MP, "", "pm")
+    check(srcs[1].connected() == false, "stock Memos (no /api/immich): not a way in")
+    stop("pm")
+    start("mock_immich.py", IP, "", "pi")
+    local im = srcs[2]
+    check(im.connected(), "GZreader's Immich connection")
+    local ia = im.albums()
+    check(ia and #ia == 3 and ia[1].name == "Family", "…its albums (shared ones too)")
+    local ipg = im.photos(nil)
+    check(ipg and #ipg.photos == 33 and ipg.next == nil, "…All photos: the timeline (the Kindle album's 30 and the trip's 3)")
+    local kin
+    for _i, a in ipairs(ia) do if a.name == "Kindle" then kin = a end end
+    local kp = im.photos(kin.id)
+    check(kp and #kp.photos == 30 and kp.photos[1].filename == "IMG_0001.JPG" and kp.photos[1].w == 4000, "…an album's photos, with their names and sizes")
+    local ifiles = Pick.fetchPreviews(im, { kp.photos[1] })
+    check(ifiles and ifiles[1].filename == "IMG_0001.jpg" and ifiles[1].w and ifiles[1].w > 300, "…a preview fetched")
+    for _i, f in ipairs(ifiles or {}) do os.remove(f.path) end
+    stop("pi")
+    plugin.store.memos, plugin.store.immich = saved.memos, saved.immich
 end)()
 
 print(string.format("\n%d passed, %d failed", pass, fail))

@@ -35,6 +35,7 @@ local Device = require("device")
 local Font = require("ui/font")
 local FrameContainer = require("ui/widget/container/framecontainer")
 local Geom = require("ui/geometry")
+local lfs = require("libs/libkoreader-lfs")
 local GestureRange = require("ui/gesturerange")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
@@ -311,14 +312,22 @@ function Editor:init()
     end
     -- touch, the full page: Save at the top right (beside Space and Private, where the drawing screen's Done is)
     self.save_top = self.touch and not self.floating or nil
+    -- (and its top row is the drawing screen's bar: ←, the note's name, ✎ # ⋮ Done; Editor:notebookBar)
+    if self.save_top then self.title_h = S(52) end
     if self.rich then self.tool_h = S(50) end -- (the row under the title: the note's sheets, and Save off touch)
     local function box(h)
         -- (the formatted page: made once, its own height above its keyboard)
         if self.rich then
+            if not self.rich_input and self.pictures and not self.picture_source then
+                self.picture_source = self.pictures(function()
+                    if not self.closed and self.rich_input then self.rich_input:relayoutPictures() end
+                end)
+            end
             self.rich_input = self.rich_input or require("gzreader_richedit"):new{
                 width = self.inner, max_height = sh - self.title_h - self.tool_h - S(16),
                 doc = self.doc, editor = self, at_start = self.memo == nil,
                 hint = _("Write a note. #words become tags."),
+                pictures = self.picture_source,
             }
             return self.rich_input
         end
@@ -328,6 +337,7 @@ function Editor:init()
             padding = S(8), margin = 0, bordersize = Size.border.thin,
             hint = _("Write a note. #words become tags."),
             gz_multiline = true, -- (the on-screen keyboard keeps Enter and ← →)
+            gz_hash_key = true, -- (and has a # key: gzreader_hashkey.lua)
         })
     end
     if self.floating and not self.vk then
@@ -387,7 +397,34 @@ function Editor:init()
             column,
         }
     end
+    -- touch: a swipe down from the top opens the quick panel, as at Home and in a book
+    if Touch.on() and self.plugin then
+        self.ges_events = self.ges_events or {}
+        self.ges_events.PullPanel = { GestureRange:new{ ges = "swipe", range = function() return self:pullZone() end } }
+    end
     self:drawChrome()
+end
+
+--- Where a swipe down opens the quick panel: the title row (and a little
+--- under it) of the page; above a quick note's window, the top of the screen.
+function Editor:pullZone()
+    local sw = Screen:getWidth()
+    if self.floating and self.box then
+        return Geom:new{ x = 0, y = 0, w = sw, h = math.max(S(60), self.box.y) }
+    end
+    return Geom:new{ x = 0, y = 0, w = sw, h = self.title_h + S(16) }
+end
+
+--- A swipe down from the top: the quick panel over the note, as at Home and
+--- in a book. The note stays as written under it; the on-screen keyboard
+--- steps aside while the panel is open and comes back after.
+function Editor:onPullPanel(_arg, ges)
+    if not (ges and ges.direction == "south") then return false end
+    local Panel = require("gzreader_panel")
+    Log.info("notes: the quick panel pulled down over the editor")
+    Panel.show(self.plugin)
+    if Panel.open then self:keyboardAside(Panel.open) end
+    return true
 end
 
 --- A quick note's window without its text box: title, toolbar, key hints,
@@ -471,6 +508,7 @@ end
 
 function Editor:onCloseWidget()
     self.closed = true
+    if self.picture_source and self.picture_source.free then self.picture_source.free() end
     if self.input and self.input.onCloseKeyboard then pcall(self.input.onCloseKeyboard, self.input) end
 end
 
@@ -497,7 +535,7 @@ function Editor:drawChrome()
     local sw = self.win_w
     local margin = self.margin
     self.title_slot:clear()
-    self.title_slot[1] = OverlapGroup:new{
+    self.title_slot[1] = self.save_top and self:notebookBar(sw) or OverlapGroup:new{
         dimen = Geom:new{ w = sw, h = self.title_h },
         LeftContainer:new{ dimen = Geom:new{ w = sw, h = self.title_h },
             HorizontalGroup:new{ HorizontalSpan:new{ width = margin },
@@ -601,6 +639,94 @@ function Editor:drawChrome()
         TextWidget:new{ text = hint, face = Font:getFace("cfont", 13), fgcolor = Blitbuffer.COLOR_DARK_GRAY, max_width = self.inner } }
 end
 
+--- The touch editor's top bar, as the drawing screen's (gzreader_drawscreen.lua):
+---   ←  The note's name                       ✎  #  ⋮  [Done]
+---      Private · its space · #tags
+--- ← leaves (asks to save when something changed); ✎ draws (its sheets);
+--- # adds a tag; ⋮ has who can see it, its space, Draw and Close; Done saves.
+function Editor:notebookBar(sw)
+    local hint = { NoteEditor.VIS_LABEL[self.visibility] or "" }
+    if self.has_spaces then hint[#hint + 1] = self:spaceLabel() end
+    local tags = {}
+    for tag in (" " .. self:text()):gmatch("%s#([^%s#]+)") do
+        if #tags < 4 then tags[#tags + 1] = "#" .. tag end
+    end
+    if #tags > 0 then hint[#hint + 1] = table.concat(tags, " ") end
+    self.bar_title = self:heading() or (self.memo and _("Edit note") or _("New note"))
+    local icons = {}
+    if self:canDraw() then icons[#icons + 1] = { "draw", "pen", function() self:openDrawing() end, true } end
+    icons[#icons + 1] = { "tag", "tag", function() self:pickTag() end, true }
+    icons[#icons + 1] = { "options", "more", function() self:barOptions() end, true }
+    local bar, buttons = require("gzreader_notebar").build{
+        width = sw, height = self.title_h, title = self.bar_title, hint = table.concat(hint, " \u{00B7} "),
+        back = function() self:onCloseDialog() end,
+        icons = icons,
+        action = { "done", _("Done"), function() self:save() end, true },
+        -- (← isn't guarded; the rest wait out a slow tap on the drawing screen's Done)
+        tap = function(w, fn, guarded) return guarded and self:topTap(w, fn) or tapTarget(w, fn) end,
+    }
+    self.bar_buttons = buttons
+    return bar
+end
+
+--- Whether the editor is still open (saving closes it).
+function Editor:isShown()
+    for _i, w in ipairs(UIManager._window_stack or {}) do if w.widget == self then return true end end
+    return false
+end
+
+--- Archive this note (the ⋮ menus here and on the drawing screen): changes
+--- saved first (queued before the archive), the editor closed, the note
+--- off the board. A note not sent yet can't be archived (it says so).
+function Editor:archiveNote()
+    local Notes = require("gzreader_notes")
+    local m = self.memo
+    if not (m and m.name) then return Notes.archive(self.plugin, m or {}, true) end
+    if self:isShown() and self:changed() then self:save() end
+    if self:isShown() then UIManager:close(self, "full") end
+    Log.info("notes: a note archived from its editor")
+    return Notes.archive(self.plugin, m, true)
+end
+
+--- Delete this note (asked first): what wasn't saved is dropped, the
+--- drawing screen (`screen`, when it's open) and the editor closed.
+function Editor:deleteNote(screen)
+    local Notes = require("gzreader_notes")
+    return Notes.confirmDelete(self.plugin, self.memo, function()
+        if screen then screen:close() end
+        self:dropDrawing()
+        if self:isShown() then UIManager:close(self, "full") end
+        UIManager:setDirty("all", "full")
+        Log.info("notes: a note deleted from its editor")
+    end)
+end
+
+--- The top bar's ⋮: who can see the note, its space, Draw, Archive, Delete, Close.
+function Editor:barOptions()
+    local dialog
+    local function run(fn) return function() UIManager:close(dialog); fn() end end
+    local rows = {
+        { { text = T(_("Who can see it: %1"), NoteEditor.VIS_LABEL[self.visibility] or ""), align = "left",
+            callback = run(function() self:onShortcut("V") end) } },
+    }
+    if self.has_spaces then
+        rows[#rows + 1] = { { text = T(_("Space: %1"), self:spaceLabel()), align = "left", callback = run(function() self:pickSpace() end) } }
+    end
+    if self:canDraw() then
+        rows[#rows + 1] = { { text = self:hasDrawing() and self:drawingLabel() or _("Draw"), align = "left", callback = run(function() self:openDrawing() end) } }
+    end
+    if self.memo then
+        rows[#rows + 1] = { { text = _("Archive note"), align = "left", callback = run(function() self:archiveNote() end) } }
+        rows[#rows + 1] = { { text = _("Delete note…"), align = "left", callback = run(function() self:deleteNote() end) } }
+    end
+    rows[#rows + 1] = { { text = _("Close"), align = "left", callback = run(function() self:onCloseDialog() end) } }
+    dialog = ButtonDialog:new{ title = _("Note"), buttons = rows }
+    self.options_dialog = dialog
+    self:keyboardAside(dialog)
+    UIManager:show(dialog)
+    return dialog
+end
+
 function Editor:redraw()
     self:drawChrome()
     UIManager:setDirty(self, function() return "ui", self:area() end)
@@ -625,6 +751,7 @@ function Editor:sheets()
 end
 
 NoteEditor.STRIP_THUMBS = 3 -- sheets pictured in the editor's strip (the rest: "… of n")
+NoteEditor.STRIP_PHOTOS = 3 -- photos pictured there (the rest: "+n", a list)
 
 --- The formatted page's row under the title: the note's sheets as small pictures (a tap
 --- opens that page to draw on), their count, and "New sheet" for a note without any.
@@ -666,7 +793,44 @@ function Editor:sheetStrip(width)
     local chip = FrameContainer:new{ padding = S(6), radius = S(6), bordersize = self:canDraw() and Size.border.thick or 0,
         label(text, true) }
     row[#row + 1] = self:canDraw() and tapTarget(chip, function() self:openDrawing() end) or chip
-    if #sheets == 0 then
+    -- the note's photos (attached, put in the text here, or to be attached): small pictures,
+    -- a tap for what to do with one; then + Photos (Immich)
+    local photos = self:photoList()
+    self.strip.photo_thumbs = 0
+    if #photos > 0 then
+        local Sticky = require("gzreader_sticky")
+        local ImageWidget = require("ui/widget/imagewidget")
+        row[#row + 1] = HorizontalSpan:new{ width = S(8) }
+        for i, ph in ipairs(photos) do
+            if i > NoteEditor.STRIP_PHOTOS then break end
+            local here = ph.path and lfs.attributes(ph.path, "mode") == "file"
+            if not here and ph.att and self.immich then
+                -- (not on the Kindle yet: fetched, then drawn)
+                require("gzreader_notes").fetchFile(self.immich, ph.att, function() if not self.closed then self:redraw() end end)
+            end
+            local bb = here and Sticky.picture(ph.path, th - 2, th - 2)
+            local inside = bb and ImageWidget:new{ image = bb, image_disposable = true }
+                or TextWidget:new{ text = "\u{2026}", face = Font:getFace("cfont", 14), fgcolor = Blitbuffer.COLOR_DARK_GRAY }
+            local cell = FrameContainer:new{ width = th, height = th, padding = 0, margin = 0,
+                bordersize = ph.in_text and Size.border.thick or Size.border.thin,
+                background = Blitbuffer.COLOR_WHITE, CenterContainer:new{ dimen = Geom:new{ w = th - 2, h = th - 2 }, inside } }
+            row[#row + 1] = tapTarget(cell, function() self:photoActions(ph) end)
+            row[#row + 1] = HorizontalSpan:new{ width = S(6) }
+            self.strip.photo_thumbs = self.strip.photo_thumbs + 1
+        end
+        if #photos > NoteEditor.STRIP_PHOTOS then
+            row[#row + 1] = tapTarget(label("+" .. (#photos - NoteEditor.STRIP_PHOTOS), true, true), function() self:photosMenu() end)
+        end
+    end
+    if self.immich then
+        -- photos from Immich (as the Memos fork's Insert image → From Immich): in the text or attached, asked each time
+        local ptext = "+ " .. _("Photos")
+        self.strip.photos = ptext
+        row[#row + 1] = HorizontalSpan:new{ width = S(8) }
+        row[#row + 1] = tapTarget(FrameContainer:new{ padding = S(6), radius = S(6), bordersize = Size.border.thick, label(ptext, true) },
+            function() self:addPhotos() end)
+    end
+    if #sheets == 0 and not self.immich and #photos == 0 then
         row[#row + 1] = HorizontalSpan:new{ width = S(10) }
         row[#row + 1] = TextWidget:new{ text = _("Hold a word to format it"), face = Font:getFace("cfont", 13),
             fgcolor = Blitbuffer.COLOR_DARK_GRAY, max_width = math.max(S(40), width - chip:getSize().w - S(14)) }
@@ -842,7 +1006,249 @@ end
 
 function Editor:changed()
     return self:text() ~= self.original or self.visibility ~= self.original_vis or self.space ~= self.original_space
-        or #self:drawingChanges() > 0 or self.pages_reordered == true
+        or #self:drawingChanges() > 0 or self.pages_reordered == true or #(self.photos or {}) > 0
+        or #(self.sent or {}) > 0 or #(self.dropped or {}) > 0 or #(self.unsent or {}) > 0
+end
+
+-- ------------------------------------------------------------------ photos
+
+--- The note's photos as the editor shows them: { kind = "att" (the note's, in Memos),
+--- "sent" (put in the text here: sent already) or "new" (to be attached at Save),
+--- att, path (its file here), filename, in_text }.
+function Editor:photoList()
+    local Memos = require("gzreader_memos")
+    local text = self:text()
+    local out = {}
+    local dropped = {}
+    for _i, n in ipairs(self.dropped or {}) do dropped[n] = true end
+    local function inText(att)
+        local uid = tostring(att.name):match("attachments/(.+)$")
+        return uid ~= nil and text:find("/file/attachments/" .. uid, 1, true) ~= nil
+    end
+    for _i, a in ipairs(self.photo_atts or {}) do
+        if not dropped[a.name] then
+            out[#out + 1] = { kind = "att", att = a, path = Memos.filePath(a), filename = a.filename, in_text = inText(a) }
+        end
+    end
+    for _i, a in ipairs(self.sent or {}) do
+        out[#out + 1] = { kind = "sent", att = a, path = Memos.filePath(a), filename = a.filename, in_text = inText(a) }
+    end
+    for _i, f in ipairs(self.photos or {}) do
+        out[#out + 1] = { kind = "new", file = f, path = f.path, filename = f.filename, in_text = false }
+    end
+    return out
+end
+
+--- Photos from Immich (gzreader_immichpick.lua): asked each time whether they
+--- go in the text, at the cursor (as Insert image does in Memos), or with
+--- the note as attachments (as Insert image → From Immich does).
+function Editor:addPhotos()
+    if self.vk and self.input and self.input.onCloseKeyboard then self.input:onCloseKeyboard() end
+    require("gzreader_immichpick").show(self.immich, { on_pick = function(files)
+        if self.closed then for _i, f in ipairs(files) do os.remove(f.path) end; return end
+        local dialog
+        local function attach()
+            UIManager:close(dialog)
+            self.photos = self.photos or {}
+            for _i, f in ipairs(files) do self.photos[#self.photos + 1] = f end
+            Log.info("notes: editor:", #files, "photo(s) from Immich to go with the note")
+            self:redraw()
+        end
+        dialog = ButtonDialog:new{
+            title = #files == 1 and _("Where does the photo go?") or T(_("Where do the %1 photos go?"), #files),
+            buttons = {
+                { { text = _("In the text, at the cursor"), align = "left", callback = function()
+                    UIManager:close(dialog)
+                    self:putInText(files)
+                end } },
+                { { text = _("With the note, as attachments"), align = "left", callback = attach } },
+            },
+            tap_close_callback = attach, -- (closed without a choice: kept, as attachments)
+        }
+        UIManager:show(dialog)
+    end })
+end
+
+--- Photos (picked files) put in the text at the cursor: each is sent to
+--- Memos now (Memos wants a picture in a note's text to be one of its
+--- attachments: a note in Memos gets them at once, a new one is made with
+--- them), then its line goes in. One that can't be sent stays to be attached.
+function Editor:putInText(files)
+    local Memos = require("gzreader_memos")
+    local Notes = require("gzreader_notes")
+    local InfoMessage = require("ui/widget/infomessage")
+    local c = Notes.client(self.immich)
+    local busy = InfoMessage:new{ text = T(_("Sending %1 photo(s)…"), #files), timeout = 0 }
+    UIManager:show(busy)
+    UIManager:forceRePaint()
+    local lines, failed = {}, {}
+    for _i, f in ipairs(files) do
+        local att, err = c:uploadAttachment(f.path, f.filename, self.memo and self.memo.name or nil, f.type)
+        if att then
+            att.type = att.type or f.type
+            -- (shown here at once, and on the note's page without fetching it again)
+            local src = io.open(f.path, "rb")
+            local data = src and src:read("*a")
+            if src then src:close() end
+            local dst = data and io.open(Memos.filePath(att), "wb")
+            if dst then dst:write(data); dst:close() end
+            os.remove(f.path)
+            self.sent = self.sent or {}
+            self.sent[#self.sent + 1] = att
+            lines[#lines + 1] = require("gzreader_sticky").pictureLine(att)
+        else
+            Log.warn("notes: a photo for the text not sent:", tostring(err))
+            failed[#failed + 1] = f
+        end
+    end
+    UIManager:close(busy)
+    if #lines > 0 then self:insertLines(lines) end
+    if #failed > 0 then
+        self.photos = self.photos or {}
+        for _i, f in ipairs(failed) do self.photos[#self.photos + 1] = f end
+        UIManager:show(InfoMessage:new{ text = _("Couldn't send the photo to Memos now: it goes with the note as an attachment instead."), timeout = 4 })
+    end
+    Log.info("notes: editor:", #lines, "photo(s) put in the text")
+    self:redraw()
+end
+
+--- Lines put in the text at the cursor: after the paragraph the cursor is
+--- in (the formatted page: each a picture of its own), or where the cursor is.
+function Editor:insertLines(lines)
+    if self.rich and self.rich_input and self.doc then
+        local Blocks = require("gzreader_blocks")
+        local ri = self.rich_input
+        local cur = ri.cur and ri.cur.b
+        local idx = #self.doc.blocks
+        for k, b in ipairs(self.doc.blocks) do if b == cur then idx = k end end
+        local last
+        for k, line in ipairs(lines) do
+            last = { kind = "image", chars = Blocks.chars(line), marks = {}, dirty = true }
+            table.insert(self.doc.blocks, idx + k, last)
+        end
+        ri.cur = { b = last, i = #last.chars + 1 }
+        ri.anchor = nil
+        ri:update("structure")
+    elseif self.input then
+        self.input:addChars("\n" .. table.concat(lines, "\n") .. "\n")
+    end
+end
+
+--- Takes the lines showing attachment `att` out of the text.
+function Editor:removeFromText(att)
+    local uid = tostring(att.name):match("attachments/(.+)$")
+    if not uid then return end
+    local needle = "/file/attachments/" .. uid
+    if self.rich and self.rich_input and self.doc then
+        local kept = {}
+        for _i, b in ipairs(self.doc.blocks) do
+            if not (b.kind == "image" and table.concat(b.chars):find(needle, 1, true)) then kept[#kept + 1] = b end
+        end
+        if #kept == 0 then kept[1] = require("gzreader_blocks").new("paragraph") end
+        self.doc.blocks = kept
+        local still = false
+        for _i, b in ipairs(kept) do if b == (self.rich_input.cur and self.rich_input.cur.b) then still = true end end
+        if not still then self.rich_input.cur = { b = kept[#kept], i = #kept[#kept].chars + 1 } end
+        self.rich_input.anchor = nil
+        self.rich_input:update("structure")
+    elseif self.input then
+        local out = {}
+        for line in ((self:text() or "") .. "\n"):gmatch("(.-)\n") do
+            if not line:find(needle, 1, true) then out[#out + 1] = line end
+        end
+        if out[#out] == "" then table.remove(out) end
+        self.input:setText(table.concat(out, "\n"), true)
+        self.input.is_text_edited = true
+    end
+end
+
+--- A tap on one of the note's photos: what to do with it.
+function Editor:photoActions(ph)
+    local dialog
+    local rows = {}
+    local function close() UIManager:close(dialog) end
+    if ph.kind == "new" then
+        rows[#rows + 1] = { { text = _("Put it in the text, at the cursor"), align = "left", callback = function()
+            close()
+            for i, f in ipairs(self.photos or {}) do if f == ph.file then table.remove(self.photos, i); break end end
+            self:putInText({ ph.file })
+        end } }
+        rows[#rows + 1] = { { text = _("Take it off (not attached)"), align = "left", callback = function()
+            close()
+            for i, f in ipairs(self.photos or {}) do if f == ph.file then table.remove(self.photos, i); break end end
+            os.remove(ph.file.path)
+            self:redraw()
+        end } }
+    else
+        if ph.in_text then
+            rows[#rows + 1] = { { text = _("Take it out of the text (keep it attached)"), align = "left", callback = function()
+                close(); self:removeFromText(ph.att); self:redraw()
+            end } }
+        else
+            rows[#rows + 1] = { { text = _("Put it in the text, at the cursor"), align = "left", callback = function()
+                close(); self:insertLines({ require("gzreader_sticky").pictureLine(ph.att) }); self:redraw()
+            end } }
+        end
+        rows[#rows + 1] = { { text = _("Remove it from the note…"), align = "left", callback = function()
+            close()
+            local ConfirmBox = require("ui/widget/confirmbox")
+            UIManager:show(ConfirmBox:new{
+                text = T(_("Take %1 off the note? It's deleted in Memos when you save."), ph.filename or _("this photo")),
+                ok_text = _("Remove"),
+                ok_callback = function() self:removePhoto(ph) end,
+            })
+        end } }
+    end
+    rows[#rows + 1] = { { text = _("Show it"), align = "left", callback = function()
+        close()
+        local RenderImage = require("ui/renderimage")
+        local ok, bb = pcall(RenderImage.renderImageFile, RenderImage, ph.path, false)
+        if ok and bb then
+            UIManager:show(require("ui/widget/imageviewer"):new{ image = bb, image_disposable = true, with_title_bar = false, fullscreen = true })
+        end
+    end } }
+    dialog = ButtonDialog:new{ title = ph.filename or _("Photo"), buttons = rows }
+    self:keyboardAside(dialog)
+    UIManager:show(dialog)
+end
+
+--- Removes a photo of the note (its line in the text too); deleted in Memos at Save.
+function Editor:removePhoto(ph)
+    self:removeFromText(ph.att)
+    if ph.kind == "att" then
+        self.dropped = self.dropped or {}
+        self.dropped[#self.dropped + 1] = ph.att.name
+    else
+        for i, a in ipairs(self.sent or {}) do if a == ph.att then table.remove(self.sent, i); break end end
+        self.unsent = self.unsent or {} -- (sent when picked: deleted at Save, or when the edit is left)
+        self.unsent[#self.unsent + 1] = ph.att.name
+    end
+    Log.info("notes: editor: a photo removed from the note")
+    self:redraw()
+end
+
+--- "+n": all of the note's photos, a tap for what to do with one.
+function Editor:photosMenu()
+    local dialog
+    local rows = {}
+    for _i, ph in ipairs(self:photoList()) do
+        rows[#rows + 1] = { { text = (ph.in_text and "\u{25A3}  " or "\u{25A1}  ") .. tostring(ph.filename), align = "left", callback = function()
+            UIManager:close(dialog); self:photoActions(ph)
+        end } }
+    end
+    dialog = ButtonDialog:new{ title = _("The note's photos (\u{25A3} in the text)"), buttons = rows }
+    self:keyboardAside(dialog)
+    UIManager:show(dialog)
+end
+
+--- What Save does with the photos: { added = { att } (sent here, kept with the note),
+--- drop = { names } (to delete in Memos: removed here, or sent here and taken out) }.
+function Editor:photoChanges()
+    local out = { added = {}, drop = {} }
+    for _i, a in ipairs(self.sent or {}) do out.added[#out.added + 1] = a end
+    for _i, n in ipairs(self.dropped or {}) do out.drop[#out.drop + 1] = n end
+    for _i, n in ipairs(self.unsent or {}) do out.drop[#out.drop + 1] = n end
+    return out
 end
 
 --- The screen turned (a Kindle with auto-rotate, gzreader_rotation.lua): the
@@ -850,7 +1256,7 @@ end
 --- what was written, who can see it, its space and its drawings.
 function Editor:gzRelayout()
     local keep = {}
-    for _i, k in ipairs({ "visibility", "space", "original", "original_vis", "original_space", "pages", "pages_reordered", "saved" }) do
+    for _i, k in ipairs({ "visibility", "space", "original", "original_vis", "original_space", "pages", "pages_reordered", "saved", "photos", "sent", "dropped", "unsent" }) do
         keep[k] = self[k]
     end
     local text = not self.rich and self:text() or nil
@@ -960,12 +1366,22 @@ function Editor:openDrawing(page)
         for _i, p in ipairs(extra) do list[#list + 1] = p end
     end
     DrawScreen.show{
+        plugin = self.plugin, -- (the quick panel, pulled down from the top)
         pages = list,
         choose_paper = true, -- (a new drawing: which paper first)
         start = page,
         title = self:heading(),
         -- (a new drawing: named and tagged from the drawing screen's top bar, as the Kindle Scribe's notebooks)
         meta = self.popup_only and { title = self.draw_title or "", tags = self.draw_tags or {}, offered = self.tags } or nil,
+        immich = self.immich,
+        -- (an existing note: Archive note and Delete note… in the drawing screen's ⋮ too)
+        note_actions = self.memo and {
+            archive = function(screen)
+                screen:done() -- (what was drawn is saved first, then the note archived)
+                self:archiveNote()
+            end,
+            delete = function(screen) self:deleteNote(screen) end,
+        } or nil,
         on_done = function(res)
             if res.reordered then self.pages_reordered = true end
             res.reordered = nil
@@ -996,6 +1412,14 @@ function Editor:dropDrawing()
         if p.path and p.changed then os.remove(p.path) end
     end
     self.pages = nil
+    for _i, f in ipairs(self.photos or {}) do os.remove(f.path) end
+    self.photos = nil
+    -- photos sent when they were put in the text, and the edit left: deleted in Memos again
+    local gone = {}
+    for _i, a in ipairs(self.sent or {}) do gone[#gone + 1] = a.name end
+    for _i, n in ipairs(self.unsent or {}) do gone[#gone + 1] = n end
+    if #gone > 0 and self.immich then require("gzreader_notes").dropAttachments(self.immich, nil, gone) end
+    self.sent, self.unsent, self.dropped = nil, nil, nil
 end
 
 --- The space chip's text: the note's space, or "No space".
@@ -1037,9 +1461,12 @@ end
 
 function Editor:save()
     local text = self:text():gsub("%s+$", "")
+    local has_photos = #(self.photos or {}) > 0 or #(self.sent or {}) > 0 -- (a note can be just photos from Immich, too)
     if text == "" and not self:hasDrawing() then
-        UIManager:show(require("ui/widget/infomessage"):new{ text = _("The note is empty."), timeout = 2 })
-        return
+        if not has_photos then
+            UIManager:show(require("ui/widget/infomessage"):new{ text = _("The note is empty."), timeout = 2 })
+            return
+        end
     end
     return self:saveText(text)
 end
@@ -1102,7 +1529,7 @@ function Editor:saveText(text)
     if self.on_save then
         local drawings = self:drawingChanges()
         self.on_save(text, self.visibility, self.visibility ~= self.original_vis, self.space, self.space ~= self.original_space,
-            (#drawings > 0 or drawings.order) and drawings or nil)
+            (#drawings > 0 or drawings.order) and drawings or nil, #(self.photos or {}) > 0 and self.photos or nil, self:photoChanges())
     end
 end
 
@@ -1130,14 +1557,17 @@ end
 --- can_draw (drawings: touch Kindles), drawing_atts (the note's drawings
 --- in Memos), extra_pages (new pages ready to draw on, after them: a PDF's
 --- pages to mark up), open_drawing (open them, or a new page, at once),
---- on_save(text, visibility, vis_changed, space, space_changed, drawings):
+--- immich (the plugin, when a way to Immich is set up: the Photos chip),
+--- on_save(text, visibility, vis_changed, space, space_changed, drawings, photos):
+--- photos = { { path, filename, type } } picked from Immich (to go with the note), or nil;
 --- drawings = { { att, path, filename } (drawn or edited: waiting to be
 --- sent), { att, removed = true } } or nil when they're as they were.
 function NoteEditor.show(opts)
     local atts = opts.drawing_atts or (opts.drawing_att and { opts.drawing_att }) or {}
-    local e = Editor:new{ memo = opts.memo, tags = opts.tags, on_save = opts.on_save,
+    local e = Editor:new{ memo = opts.memo, tags = opts.tags, on_save = opts.on_save, plugin = opts.plugin,
         spaces = opts.spaces, space = opts.space, space_title = opts.space_title, can_draw = opts.can_draw,
-        drawing_atts = atts, extra_pages = opts.extra_pages }
+        immich = opts.immich, photo_atts = opts.photo_atts, -- (the Photos chip; the note's photos)
+        drawing_atts = atts, extra_pages = opts.extra_pages, pictures = opts.pictures }
     -- (Draw, Edit on drawings: the drawing screen goes up with the editor, so
     -- only it is drawn; the text page shows when Done or Cancel goes back to it)
     e.drawing_first = opts.open_drawing and e:canDraw() or nil

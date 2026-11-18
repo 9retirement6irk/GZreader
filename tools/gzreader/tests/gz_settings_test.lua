@@ -170,7 +170,15 @@ if okb then
     local advanced = find(privacy, "Advanced")
     local adv = texts(advanced and advanced.sub_item_table)
     print("    Advanced: " .. adv)
-    check(adv == "|KOReader settings|", "Privacy and diagnostics → Advanced: KOReader settings " .. adv)
+    check(adv == "|KOReader settings|Reset GZreader|", "Privacy and diagnostics → Advanced: KOReader settings, then Reset GZreader " .. adv)
+    -- Reset GZreader: last, under a line, asks GZreader's reset (gzreader_reset.lua)
+    local reset = advanced.sub_item_table[2]
+    local asked_reset, menu_closed
+    package.loaded["gzreader_reset"] = { confirm = function(g) asked_reset = g end }
+    pcall(reset.callback, { closeMenu = function() menu_closed = true end })
+    package.loaded["gzreader_reset"] = nil
+    check(advanced.sub_item_table[1].separator == true and reset.icon_glyph ~= nil and asked_reset == gz and menu_closed,
+        "Reset GZreader: last, under a line, with an icon; it closes Settings and asks first (gzreader_reset.confirm)")
     check(find(items, "About") == nil, "no About on the first page (General → About)")
     local about_rows = find(general, "About").sub_item_table
     check(not texts(about_rows):find("Advanced", 1, true) and not texts(about_rows):find("Report a bug", 1, true)

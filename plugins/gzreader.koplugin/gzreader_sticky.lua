@@ -272,19 +272,111 @@ function Sticky.fitSize(w, h, max_w, max_h, grow)
     return math.max(1, math.floor(w * sc)), math.max(1, math.floor(h * sc))
 end
 
---- A picture file shrunk to fit max_w x max_h (a new image), or nil.
---- `grow`: enlarged to fit too, at most that many times (Sticky.fitSize).
-function Sticky.picture(path, max_w, max_h, grow)
+-- Small copies. A photo from a phone is 12 megapixels: to show it a few
+-- hundred pixels wide on a sticky note the whole file was decoded (the whole
+-- picture in memory; 0.4 s on an emulated Paperwhite 3) and shrunk, each
+-- time its note was drawn again. A picture shown much smaller
+-- than its file is now shrunk once: the small picture is kept as a PNG
+-- (exactly what was shown) under the file's place, size and date and the
+-- size asked for, and read back in a few milliseconds.
+Sticky.small_dir = nil               -- where they're kept: a folder, or a function giving it (the Notes tab's); nil: none kept
+Sticky.SMALL_MIN = 4                 -- kept when the file has at least this many times the pixels shown
+Sticky.SMALL_FILES = 240             -- at most this many, and
+Sticky.SMALL_BYTES = 12 * 1024 * 1024 -- this much: the oldest go first
+Sticky.small_written = 0
+
+local function lfs() return require("libs/libkoreader-lfs") end
+
+local function smallDir()
+    local dir = Sticky.small_dir
+    if type(dir) == "function" then dir = dir() end
+    return type(dir) == "string" and dir or nil
+end
+
+--- Where the small copy of picture file `path` for max_w x max_h (and
+--- `grow`) is kept, or nil: no folder set, no such file, or no size to fit
+--- (Notes.picSize asks for the whole picture).
+function Sticky.smallPath(path, max_w, max_h, grow)
+    local dir = smallDir()
+    if not dir or type(max_w) ~= "number" or type(max_h) ~= "number" then return nil end
+    if not (max_w >= 1 and max_w < 1e5 and max_h >= 1 and max_h < 1e5) then return nil end
+    local a = lfs().attributes(path)
+    if type(a) ~= "table" or a.mode ~= "file" then return nil end
+    local h = 5381
+    for i = 1, #path do h = (h * 33 + path:byte(i)) % 4294967296 end
+    return string.format("%s/%08x-%d-%d-%dx%d%s.png", dir, h, a.size or 0, a.modification or 0, math.floor(max_w),
+        math.floor(max_h), (grow and grow > 1) and ("-g" .. tostring(grow)) or "")
+end
+
+--- Keeps image `bb` as the small copy `small`; every so often the oldest
+--- are let go (Sticky.pruneSmall). True when it's written.
+function Sticky.keepSmall(bb, small)
+    local dir = small:match("^(.*)/[^/]+$")
+    local tmp = small .. ".tmp"
+    local ok = pcall(function() bb:writePNG(tmp) end)
+    if not (ok and (lfs().attributes(tmp, "size") or 0) > 0 and os.rename(tmp, small)) then
+        os.remove(tmp)
+        return false
+    end
+    Sticky.small_written = Sticky.small_written + 1
+    if Sticky.small_written % 16 == 1 then Sticky.pruneSmall(dir) end
+    return true
+end
+
+--- The small copies in `dir` kept under SMALL_FILES and SMALL_BYTES (the
+--- oldest removed first). Returns how many were removed.
+function Sticky.pruneSmall(dir, max_files, max_bytes)
+    dir = dir or smallDir()
+    if not dir or lfs().attributes(dir, "mode") ~= "directory" then return 0 end
+    max_files, max_bytes = max_files or Sticky.SMALL_FILES, max_bytes or Sticky.SMALL_BYTES
+    local list, total = {}, 0
+    for name in lfs().dir(dir) do
+        local a = name:sub(1, 1) ~= "." and lfs().attributes(dir .. "/" .. name)
+        if type(a) == "table" and a.mode == "file" then
+            list[#list + 1] = { path = dir .. "/" .. name, size = a.size or 0, t = a.modification or 0 }
+            total = total + (a.size or 0)
+        end
+    end
+    table.sort(list, function(x, y) return x.t < y.t end)
+    local removed = 0
+    for i, f in ipairs(list) do
+        if #list - i + 1 <= max_files and total <= max_bytes then break end
+        if os.remove(f.path) then removed = removed + 1 end
+        total = total - f.size
+    end
+    return removed
+end
+
+--- Every small copy removed (Settings → Notes → Free up space). Returns how many.
+function Sticky.dropSmall()
+    return Sticky.pruneSmall(nil, 0, 0)
+end
+
+local function decodeFile(path)
     local f = io.open(path, "rb")
     if not f then return nil end
     local data = f:read("*a")
     f:close()
     local RenderImage = require("ui/renderimage")
     local ok, bb = pcall(RenderImage.renderImageData, RenderImage, data, #data, false)
-    if not ok or not bb then return nil end
-    local w, h = Sticky.fitSize(bb:getWidth(), bb:getHeight(), max_w, max_h, grow)
-    if w ~= bb:getWidth() or h ~= bb:getHeight() then
-        bb = RenderImage:scaleBlitBuffer(bb, w, h, true)
+    return ok and bb or nil
+end
+
+--- A picture file shrunk to fit max_w x max_h (a new image), or nil.
+--- `grow`: enlarged to fit too, at most that many times (Sticky.fitSize).
+--- A picture much bigger than that is shrunk once: its small copy is kept
+--- and read the next time (Sticky.smallPath).
+function Sticky.picture(path, max_w, max_h, grow)
+    local small = Sticky.smallPath(path, max_w, max_h, grow)
+    local bb = small and decodeFile(small)
+    if bb then return bb end
+    bb = decodeFile(path)
+    if not bb then return nil end
+    local bw, bh = bb:getWidth(), bb:getHeight()
+    local w, h = Sticky.fitSize(bw, bh, max_w, max_h, grow)
+    if w ~= bw or h ~= bh then
+        bb = require("ui/renderimage"):scaleBlitBuffer(bb, w, h, true)
+        if small and bb and w * h * Sticky.SMALL_MIN <= bw * bh then Sticky.keepSmall(bb, small) end
     end
     return bb
 end
@@ -307,18 +399,76 @@ function Sticky.blankLine(line)
     return rest:match("^%s*$") ~= nil
 end
 
+--- A picture's size and place, as Memos' editor (@usememos/editor, the
+--- owner's fork's web UI) writes them at the end of its alt text:
+--- `![alt|320](…)`, `![alt|320x200](…)`, `![alt|center](…)`,
+--- `![alt|right|320](…)` (CSS pixels; left, center or right).
+--- Returns { alt, width, height, align } (width etc. nil when not given).
+function Sticky.altSize(alt)
+    alt = alt or ""
+    local function num(v)
+        v = v and tonumber(v)
+        if v and v >= 1 and v <= 99999 then return math.floor(v) end
+    end
+    local function escaped(before) return (before:match("\\+$") or ""):len() % 2 == 1 end
+    -- (Lua patterns have no alternation: try each place)
+    for _i, place in ipairs({ "left", "center", "right" }) do
+        local pre, w, h = alt:match("^(.-)|" .. place .. "|([1-9]%d?%d?%d?%d?)x([1-9]%d?%d?%d?%d?)$")
+        if not pre then pre, w = alt:match("^(.-)|" .. place .. "|([1-9]%d?%d?%d?%d?)$") end
+        if not pre then pre = alt:match("^(.-)|" .. place .. "$") end
+        if pre and not escaped(pre) then
+            return { alt = pre, align = place, width = num(w), height = w and num(h) or nil }
+        end
+    end
+    local pre, w, h = alt:match("^(.-)|([1-9]%d?%d?%d?%d?)x([1-9]%d?%d?%d?%d?)$")
+    if not pre then pre, w = alt:match("^(.-)|([1-9]%d?%d?%d?%d?)$") end
+    if pre and not escaped(pre) then return { alt = pre, width = num(w), height = num(h) } end
+    return { alt = alt }
+end
+
+--- Memos' web UI shows a note's words in a column this many CSS pixels wide
+--- (max-w-2xl less its padding): a picture sized there takes the same share
+--- of the Kindle's page.
+Sticky.WEB_COLUMN = 640
+
+--- How wide (Kindle pixels) a picture `width` CSS pixels wide shows on a
+--- page `inner` wide: its share of Memos' column, never wider than the page.
+function Sticky.pictureWidth(width, inner)
+    width = width and tonumber(width)
+    if not width then return nil end
+    return math.max(1, math.min(inner, math.floor(width * inner / Sticky.WEB_COLUMN + 0.5)))
+end
+
+--- The end of a picture's alt text for `size` ({ width, height, align }):
+--- "|center|320", "|320", "" (as the web editor writes it).
+function Sticky.imageSuffix(size)
+    size = size or {}
+    local w = tonumber(size.width)
+    local tail = w and ("|" .. math.floor(w) .. (tonumber(size.height) and ("x" .. math.floor(size.height)) or "")) or ""
+    return (size.align and ("|" .. size.align) or "") .. tail
+end
+
+-- (a line that's only a picture: its start, alt text, and the rest; as Sticky.lines reads it)
+local IMAGE_LINE = "^(%s*!%[)([^%]]*)(%]%([^%)%s]+[^%)]*%)%s*)$"
+
 --- The note's lines: { kind = "text"|"check"|"heading"|"image", text, done, level, src }
+--- (a picture also: n, its number among the note's pictures; alt; width,
+--- height, align: Sticky.altSize).
 function Sticky.lines(content)
     local out = {}
+    local pictures = 0
     for line in ((content or "") .. "\n"):gmatch("(.-)\r?\n") do
         if line ~= "" and Sticky.blankLine(line) then line = "" end
         local mark, rest = line:match("^%s*[%-%*] %[([ xX])%]%s*(.*)$")
         local hashes, head = line:match("^(#+)%s+(.*)$")
-        local src = line:match("^%s*!%[[^%]]*%]%(([^%)%s]+)[^%)]*%)%s*$")
+        local alt, src = line:match("^%s*!%[([^%]]*)%]%(([^%)%s]+)[^%)]*%)%s*$")
         if mark then
             out[#out + 1] = { kind = "check", done = mark ~= " ", text = rest }
         elseif src then
-            out[#out + 1] = { kind = "image", src = src }
+            pictures = pictures + 1
+            local size = Sticky.altSize(alt)
+            out[#out + 1] = { kind = "image", src = src, n = pictures, alt = size.alt,
+                width = size.width, height = size.height, align = size.align }
         elseif hashes and #hashes <= 6 then
             out[#out + 1] = { kind = "heading", level = #hashes, text = head }
         else
@@ -394,6 +544,51 @@ function Sticky.plain(s)
     return unhold(s)
 end
 
+--- A small keep of what's worked out from a note's text, under that text:
+--- `get(key)`, `set(key, value)`, `clear()`. At most 2 x `limit` values: when
+--- `limit` new ones are in, the ones not asked for since are let go.
+function Sticky.keep(limit)
+    local now, before, n = {}, {}, 0
+    local K = {}
+    function K.set(key, value)
+        if now[key] == nil then
+            if n >= limit then before, now, n = now, {}, 0 end
+            n = n + 1
+        end
+        now[key] = value
+    end
+    function K.get(key)
+        local value = now[key]
+        if value == nil then
+            value = before[key]
+            if value ~= nil then K.set(key, value) end
+        end
+        return value
+    end
+    function K.clear() now, before, n = {}, {}, 0 end
+    return K
+end
+
+local NO_LINES = {}
+local image_lines = Sticky.keep(600)
+
+--- The note's picture lines (Sticky.lines' "image" ones), in order. The
+--- board asks this of every note each time it's drawn (which pictures a
+--- note has decides what it shows), so a note without "![" isn't read at
+--- all, and the others' answers are kept. Not to be changed by the caller.
+function Sticky.imageLines(content)
+    if type(content) ~= "string" or not content:find("![", 1, true) then return NO_LINES end
+    local out = image_lines.get(content)
+    if not out then
+        out = {}
+        for _i, l in ipairs(Sticky.lines(content)) do
+            if l.kind == "image" then out[#out + 1] = l end
+        end
+        image_lines.set(content, out)
+    end
+    return out
+end
+
 --- A line with nothing but #tags (shown on their own row instead).
 function Sticky.tagsOnly(text)
     local n = 0
@@ -421,6 +616,39 @@ function Sticky.firstImage(content)
     for _i, l in ipairs(Sticky.lines(content)) do
         if l.kind == "image" then return l.src end
     end
+end
+
+--- A picture's line in a note, as Memos' editor writes it, for attachment
+--- `att` ({ name = "attachments/<uid>", filename }): ![name](/file/attachments/<uid>/<file>).
+function Sticky.pictureLine(att)
+    local uid = tostring(att.name):match("attachments/(.+)$") or ""
+    local fname = tostring(att.filename or "photo")
+    local alt = fname:gsub("%.[%w]+$", ""):gsub("[%[%]]", "")
+    return "![" .. alt .. "](/file/attachments/" .. uid .. "/" .. fname:gsub(" ", "%%20") .. ")"
+end
+
+--- Set the n-th picture's size and place ({ width, align }; nil width: as
+--- it comes; nil align: on the left), as the web editor writes them (a new
+--- width drops a height, as it does). Returns the new content.
+function Sticky.setImageSize(content, n, size)
+    local k = 0
+    local out = {}
+    for line in ((content or "") .. "\n"):gmatch("(.-)\n") do
+        local cr = line:match("\r$") and "\r" or ""
+        local body = cr ~= "" and line:sub(1, -2) or line
+        local open, alt, close = body:match(IMAGE_LINE)
+        if open then
+            k = k + 1
+            if k == n then
+                local old = Sticky.altSize(alt)
+                local height = (tonumber(size.width) == old.width) and old.height or nil
+                line = open .. old.alt .. Sticky.imageSuffix{ width = size.width, height = height, align = size.align } .. close .. cr
+            end
+        end
+        out[#out + 1] = line
+    end
+    if out[#out] == "" then table.remove(out) end
+    return table.concat(out, "\n")
 end
 
 --- Tick or untick the n-th checklist item. Returns the new content.
@@ -462,6 +690,89 @@ function Sticky.when(iso, now)
     if dt.year == dn.year and dt.yday == dn.yday - 1 then return "Yesterday" end
     if dt.year == dn.year then return months[dt.month] .. " " .. dt.day end
     return months[dt.month] .. " " .. dt.day .. ", " .. dt.year
+end
+
+--- A note laid out for its page, as Memos' web app shows it: Sticky.lines,
+--- with three more kinds of item:
+---   { kind = "details", summary, open, items }: a `<details>` section
+---     (`<summary>` its title, `open` when written open), folded on the web
+---     until tapped; `items` what's inside it, laid out alike.
+---   { kind = "code", text, lang, checks }: a fenced code block (the text as
+---     written; `checks` how many lines in it look like a checklist item, so
+---     the page still counts the note's checklist items as Sticky.toggle does).
+---   { kind = "tags", tags }: a line of only #tags (shown as chips there).
+--- A `<details>` without its `</details>` runs to the note's end.
+function Sticky.page(content)
+    local raw = {}
+    for line in ((content or "") .. "\n"):gmatch("(.-)\r?\n") do raw[#raw + 1] = line end
+    local items = Sticky.lines(content) -- (one item per line, in order)
+    local top = {}
+    local cur, stack = top, {}
+    local fence -- the open code block: { mark, item }
+    for i, l in ipairs(items) do
+        local r = raw[i] or ""
+        if fence then
+            if r:match("^%s*" .. fence.mark:gsub("%p", "%%%0") .. "%s*$") then
+                fence = nil
+            else
+                local f = fence.item
+                f.text = f.text and (f.text .. "\n" .. r) or r
+                if l.kind == "check" then f.checks = f.checks + 1 end
+            end
+        else
+            local mark, lang = r:match("^%s*(```+)%s*([^`]*)$")
+            if not mark then mark, lang = r:match("^%s*(~~~+)%s*(.*)$") end
+            local open_attr, after = r:match("^%s*<details(%s*[^>]*)>%s*(.*)$")
+            local summary = r:match("^%s*<summary>(.-)</summary>%s*$")
+            if mark then
+                local item = { kind = "code", lang = lang:match("^(%S*)"), checks = 0 }
+                cur[#cur + 1] = item
+                fence = { mark = mark, item = item }
+            elseif open_attr then
+                local d = { kind = "details", summary = after:match("^<summary>(.-)</summary>"), items = {},
+                    open = open_attr:match("%f[%w]open%f[^%w]") ~= nil }
+                cur[#cur + 1] = d
+                stack[#stack + 1] = cur
+                cur = d.items
+            elseif summary and #stack > 0 and #cur == 0 then
+                -- (the title, on the line after <details>)
+                local d = stack[#stack][#stack[#stack]]
+                if d.summary == nil then d.summary = summary else cur[#cur + 1] = l end
+            elseif r:match("^%s*</details>%s*$") and #stack > 0 then
+                while #cur > 0 and cur[#cur].kind == "text" and cur[#cur].text == "" do table.remove(cur) end
+                cur = table.remove(stack)
+            elseif l.kind == "text" and Sticky.tagsOnly(l.text) then
+                local tags = {}
+                for t in l.text:gmatch("#([%w_%-/]+)") do tags[#tags + 1] = t end
+                cur[#cur + 1] = { kind = "tags", tags = tags }
+            elseif not (l.kind == "text" and l.text == "" and #cur == 0 and #stack > 0) then
+                cur[#cur + 1] = l
+            end
+        end
+    end
+    local function titles(list)
+        for _i, d in ipairs(list) do
+            if d.kind == "details" then
+                if d.summary then d.summary = Sticky.plain(d.summary) end
+                titles(d.items)
+            end
+        end
+    end
+    titles(top)
+    while #top > 0 and top[#top].kind == "text" and top[#top].text == "" do table.remove(top) end
+    return top
+end
+
+--- How many checklist items Sticky.toggle counts in page items (Sticky.page),
+--- inside folded sections and code blocks too.
+function Sticky.pageChecks(items)
+    local n = 0
+    for _i, l in ipairs(items or {}) do
+        if l.kind == "check" then n = n + 1
+        elseif l.kind == "code" then n = n + (l.checks or 0)
+        elseif l.kind == "details" then n = n + Sticky.pageChecks(l.items) end
+    end
+    return n
 end
 
 return Sticky

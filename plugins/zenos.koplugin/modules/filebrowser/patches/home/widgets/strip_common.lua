@@ -950,6 +950,7 @@ function M.build_strip(ctx, source_key)
         local content, shelf_targets, shelf_jobs, shelf_cw, shelf_ch = Shelf.build(books, {
             ctx = ctx, width = width, height = shelf_h, rows = num_rows, per_row = per_row, pitch = pitch,
             interactive = interactive, source_name = source_name,
+            gz_home = true, -- GZreader: Home's shelf (the daily paper stands on it)
             empty_text = source_name == "recently_read" and _("Start reading books to fill this shelf.")
                 or ctx.empty_message or cover_common.get_empty_message(source_name),
         })

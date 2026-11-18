@@ -12,19 +12,20 @@ GZreader runs on the Kindles KOReader supports and on two Nooks. Each kind of de
 | **Kindle 4** (2011) | `kindle` | 5-way and Menu | real device, emulator |
 | **Kindle Touch** (2011) | `kindle` | touch | real device, emulator |
 | **Paperwhite 3** (2015) | `kindlepw2` or `kindlehf` (by firmware) | touch | real device, emulator |
+| **Kindle Scribe** | `kindlehf` | touch and pen | real device (firmware 5.20.2), emulator |
 | **Nook 1st Edition** (2009) — *test build* | `nook-1st-edition` | the colour touchscreen | real device (firmware 1.0.0, Softroot 2.5.1), emulator |
 | **Nook Simple Touch**, with GlowLight (2011–2012) — *test build* | `nook` | touch | emulator only |
 
 ## Untested Kindles
 
-These run the touch packages with the same KOReader device support as the Paperwhite 3, so they should work, but their screens and buttons haven't been tried. Reports are welcome ([open an issue](https://github.com/9retirement6irk/GZreader/issues)).
+These run the touch packages with the same KOReader device support as the Paperwhite 3 and the Scribe, so they should work, but their screens and buttons haven't been tried. Reports are welcome ([open an issue](https://github.com/9retirement6irk/GZreader/issues)).
 
 | Kindle | Package |
 | --- | --- |
 | Paperwhite 1 (2012) | `kindle` |
 | Paperwhite 2 (2013), Voyage, Oasis 1–3, Kindle 2014, 2016 | `kindlepw2` (firmware 5.16.2.x or older) |
 | Paperwhite 4 (2018), Paperwhite 5 and Signature Edition (2021), Kindle 2019, 2022 | `kindlepw2` (firmware ≤ 5.16.2.x) or `kindlehf` (5.16.3 or newer) |
-| Paperwhite 6 and Signature Edition (2024), Kindle 2024, Scribe (2022, 2024), Colorsoft and Scribe Colorsoft (in colour: covers as KOReader shows them, the shelf ornaments and the players) | `kindlehf` |
+| Paperwhite 6 and Signature Edition (2024), Kindle 2024, Colorsoft and Scribe Colorsoft (in colour: covers as KOReader shows them, the shelf ornaments and the players) | `kindlehf` |
 
 The firmware version is in the Kindle's Settings → Device Options → Device Info. Packages for another Kindle or firmware don't start (the Kindle flashes and goes back to its home screen; `koreader/crash.log` says why).
 
@@ -32,18 +33,18 @@ The firmware version is in the Kindle's Settings → Device Options → Device I
 
 ## What each device does
 
-| | Kindle 2, 3, DX | Kindle 4 | Kindle Touch | Paperwhite 3 | Nook 1st Edition (test) | Nook Simple Touch (test) |
-| --- | --- | --- | --- | --- | --- | --- |
-| Use | keyboard, 5-way | 5-way, Menu | touch | touch | the colour touchscreen's buttons and keyboard | touch |
-| Wi‑Fi | Kindle 3; the Kindle 2 and DX have none: [sync with a computer](Sync-with-a-Computer) | yes | yes | yes | yes | yes |
-| Screen | 600 × 800 (DX 824 × 1200), 16 greys | 600 × 800, 16 greys | 600 × 800 | 1072 × 1448, 300 dpi | 600 × 800 + a 480 × 144 colour touchscreen | 600 × 800 (GlowLight: frontlight) |
-| Faster drawing (shadow screen) | yes | yes | (not needed) | (not needed) | (not needed) | (not needed) |
-| Audiobooks, music | yes | — (no audio) | yes (player buttons) | — (no audio) | — (not yet) | — (no audio) |
-| Read aloud (Kindle voice) | yes (Shift + Sym) | — | yes (Listen in the quick panel) | — | — | — |
-| Volume buttons | yes | — | — | — | — | — |
-| Clock | UTC: set Settings → General → Time and date → Time zone | same | the Kindle's own | the Kindle's own | the Nook's own | the Nook's own |
-| Flash on every page turn (default) | on | on | off | off | off | off |
-| Start from | KUAL, Shift G G | KUAL | KUAL or the home screen item | the home screen item | its app icon | adb or a terminal app |
+| | Kindle 2, 3, DX | Kindle 4 | Kindle Touch | Paperwhite 3 | Kindle Scribe | Nook 1st Edition (test) | Nook Simple Touch (test) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Use | keyboard, 5-way | 5-way, Menu | touch | touch | touch and pen (pressure; the side button erases; your hand can rest on the screen) | the colour touchscreen's buttons and keyboard | touch |
+| Wi‑Fi | Kindle 3; the Kindle 2 and DX have none: [sync with a computer](Sync-with-a-Computer) | yes | yes | yes | yes | yes | yes |
+| Screen | 600 × 800 (DX 824 × 1200), 16 greys | 600 × 800, 16 greys | 600 × 800 | 1072 × 1448, 300 dpi | 1860 × 2480, 300 dpi | 600 × 800 + a 480 × 144 colour touchscreen | 600 × 800 (GlowLight: frontlight) |
+| Faster drawing (shadow screen) | yes | yes | (not needed) | (not needed) | (not needed) | (not needed) | (not needed) |
+| Audiobooks, music | yes | — (no audio) | yes (player buttons) | — (no audio) | yes, through Bluetooth headphones or a speaker ([Bluetooth](Bluetooth)) | — (not yet) | — (no audio) |
+| Read aloud (Kindle voice) | yes (Shift + Sym) | — | yes (Listen in the quick panel) | — | yes, Amazon's voice through Bluetooth (Read aloud in the quick panel) | — | — |
+| Volume buttons | yes | — | — | — | — (the Bluetooth volume: the quick panel's slider) | — | — |
+| Clock | UTC: set Settings → General → Time and date → Time zone | same | the Kindle's own | the Kindle's own | the Kindle's own | the Nook's own | the Nook's own |
+| Flash on every page turn (default) | on | on | off | off | off | off | off |
+| Start from | KUAL, Shift G G | KUAL | KUAL or the home screen item | the home screen item | the home screen item | its app icon | adb or a terminal app |
 
 **Ghosting** (a grey trace of the last pages): the Kindle 2, 3, DX and 4 have no REAGL, so a page turn without a flash leaves a trace that adds up. Settings → Display and light → Screen → E-ink settings → **Flash on every page turn** flashes the screen clean at every turn, as the Kindle's own reader does; it's on by default on those Kindles and can be turned on on any device. Off: a flash every 6 pages (quicker turns).
 

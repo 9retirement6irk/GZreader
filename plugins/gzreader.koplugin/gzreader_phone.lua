@@ -142,6 +142,13 @@ local function state(S, flash)
             own_name = f.own_name, host = host(f.url), shown = f.enabled ~= false }
     end
     st.links = { list = links, error = sec == "links" and flash.error or nil, results = flash.links_html }
+    do
+        local Holidays = require("gzreader_holidays")
+        local hc = Holidays.conf(plugin)
+        local countries = {}
+        for _i, c in ipairs(Holidays.COUNTRIES) do countries[#countries + 1] = { id = c.id, name = c.name } end
+        st.holidays = { enabled = hc.enabled, country = hc.country, countries = countries }
+    end
     -- music (Plex): Kindles with audio
     if require("gzreader_touch").player() then
         local ps = store.plex or {}
@@ -183,6 +190,9 @@ local function state(S, flash)
         st.house = { connected = hs.server ~= nil and hs.token ~= nil, name = hs.name, host = host(hs.server),
             form = sec == "house" and flash.form or { server = hs.server }, error = sec == "house" and flash.error or nil }
     end
+    -- the daily paper (gzreader_daily.lua): not on the Kindles without Wi-Fi
+    st.paper = require("gzreader_daily").pageState(plugin)
+    if st.paper and sec == "paper" then st.paper.error = flash.error end
     st.start = S.opts.section or "grimmory"
     -- diagnostics: the log, while diagnostic logging is on
     if store.logging_disabled ~= true then st.diagnostics = { level = store.log_level } end
@@ -565,6 +575,48 @@ function Phone.open(plugin, opts)
         toast(_("House: disconnected from Home Assistant."))
         return back({ ok = true, text = _("Disconnected from Home Assistant."), section = "house" })
     end
+    -- the daily paper: its switches and feeds (addresses are never logged)
+    routes["/paper"] = function(form)
+        require("gzreader_daily").pageSave(plugin, form)
+        -- (a town typed for the weather: looked up now; neither it nor where it is gets logged)
+        local town = (form.town or ""):gsub("^%s+", ""):gsub("%s+$", "")
+        local town_error
+        if town ~= "" then
+            local W = require("gzreader_weather")
+            local found, err = W.geocode(town)
+            if found then
+                local w = W.store(plugin)
+                w.lat, w.lon, w.place = found.lat, found.lon, found.place
+                w.unit = w.unit or found.unit
+            else
+                town_error = err == "not found" and _("Saved, but no town of that name was found for the weather: try it with its country, or a bigger town nearby.")
+                    or _("Saved, but the town couldn't be looked up for the weather just now.")
+            end
+        end
+        plugin:save()
+        S.changes.paper = true
+        if town_error then return back({ section = "paper", error = town_error }) end
+        return back({ ok = true, text = _("Saved. The paper is made again the next time Home is shown."), section = "paper" })
+    end
+    routes["/paper/add"] = function(form)
+        local added, skipped = require("gzreader_daily").pageAdd(plugin, form.feeds)
+        if added == 0 then
+            return back({ section = "paper", error = _("No feed was added: each line needs a feed's address (https://…), one that isn't in the paper already.") })
+        end
+        plugin:save()
+        S.changes.paper = true
+        Log.info("daily paper:", added, "feeds added from the setup page")
+        return back({ ok = true, section = "paper", text = skipped > 0
+            and T(_("%1 feeds added; %2 lines weren't feeds, or were there already."), added, skipped) or T(_("%1 feeds added."), added) })
+    end
+    routes["/paper/remove"] = function(form)
+        if not require("gzreader_daily").pageRemove(plugin, form.n, form.count) then
+            return back({ section = "paper", error = _("The list changed meanwhile: look again and remove the one you meant.") })
+        end
+        plugin:save()
+        S.changes.paper = true
+        return back({ ok = true, text = _("Removed."), section = "paper" })
+    end
     routes["/memos"] = function(form)
         local ok, err = Notes().connect(plugin, form.server, form.token)
         if not ok then
@@ -696,8 +748,23 @@ function Phone.open(plugin, opts)
         end
         return back({ section = "links", error = _("That calendar isn't on the Kindle any more.") }, "calendar")
     end
+    routes["/calendar/holidays"] = function(form)
+        local c = require("gzreader_holidays").set(plugin, { enabled = form.shown == "1", country = form.country })
+        Log.info("calendar: holidays", c.enabled and ("on, " .. c.country) or "off", "(phone page)")
+        S.changes.calendar = true
+        local name = require("gzreader_holidays").country(c.country).name
+        return back({ ok = true, section = "calendar",
+            text = c.enabled and T(_("Holidays (%1) are shown."), name) or _("Holidays are hidden.") })
+    end
     routes["/links"] = function(form)
-        local entries = Calendar().parseLinkLines(form.links)
+        -- a name and a link per row (name_1/url_1, …); an older page's "Name | link" lines too
+        local entries = {}
+        for i = 1, 20 do
+            local url = (form["url_" .. i] or ""):gsub("^%s+", ""):gsub("%s+$", "")
+            local name = (form["name_" .. i] or ""):gsub("^%s+", ""):gsub("%s+$", "")
+            if url ~= "" then entries[#entries + 1] = { url = url, name = name ~= "" and name or nil } end
+        end
+        for _i, e in ipairs(Calendar().parseLinkLines(form.links)) do entries[#entries + 1] = e end
         if #entries == 0 then return back({ section = "links", error = _("Paste at least one calendar link.") }, "calendar") end
         local results = Calendar().addFeeds(plugin, entries)
         local added = 0
@@ -916,6 +983,10 @@ function Phone.afterClose(S)
     if ch.music then
         local ps = plugin.store.plex or {}
         lines[#lines + 1] = ps.token and T(_("Music: signed in to Plex as %1."), ps.username or "?") or _("Music: signed out of Plex.")
+    end
+    if ch.paper then
+        lines[#lines + 1] = require("gzreader_daily").enabled(plugin) and _("Daily paper: on, its feeds as you set them.") or _("Daily paper: off.")
+        pcall(function() require("common/gz_view").redrawHome() end)
     end
     if ch.house then
         local hs = plugin.store.homeassistant or {}

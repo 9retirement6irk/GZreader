@@ -164,9 +164,10 @@ end
 --- The whole first page. `p`: the rows ZenOS's sections built —
 ---   general, interface (Interface's rows), about, reader (lists),
 ---   home (Home's item), library (the Downloads tab's rows),
----   gz = { general = { wifi, diagnostics }, reader, interface, performance },
+---   gz = { general = { wifi, diagnostics }, reader, interface, performance, home },
 ---   gzreader (a function: GZreader's plugin or nil), updater, plugin_root,
----   koreader_item (About → Advanced → KOReader settings), audio, wifi.
+---   koreader_item (About → Advanced → KOReader settings), reset_item (last in
+---   Advanced), audio, wifi.
 function M.build(p)
     local _ = gettext()
     local GzS = require("common/gz_settings")
@@ -224,6 +225,8 @@ function M.build(p)
     ---------------------------------------------------------------- Home and tabs
     local home = p.home
     local home_rows = type(home) == "table" and home.sub_item_table or nil
+    -- (GZreader's rows for Home, the daily paper: after Home's own)
+    if home_rows then for _i, item in ipairs(gz.home or {}) do home_rows[#home_rows + 1] = item end end
     local home_status = M.take(home_rows, _("Show top status bar"))
     noTrailingLine(home_rows)
     local status = M.take(interface, _("Status bar"))
@@ -316,6 +319,12 @@ function M.build(p)
     if advanced then
         if type(advanced.sub_item_table) == "table" and p.koreader_item then
             table.insert(advanced.sub_item_table, p.koreader_item)
+        end
+        -- (and last, Reset GZreader: gzreader_reset.lua)
+        if type(advanced.sub_item_table) == "table" and p.reset_item then
+            local list = advanced.sub_item_table
+            if list[#list] then list[#list].separator = true end
+            list[#list + 1] = p.reset_item
         end
         endGroup(privacy)
         privacy[#privacy + 1] = advanced

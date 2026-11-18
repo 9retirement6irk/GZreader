@@ -105,6 +105,8 @@ form{background:none;border:0;padding:0;margin:0}
 .check{display:flex;align-items:center;gap:8px;font-size:14px;margin:0 0 12px;font-weight:400}
 .check input{width:auto;margin:0}
 .two{display:flex;gap:8px}.two button{flex:1}
+.pair{border-left:3px solid var(--line);padding-left:10px;margin:0 0 12px}
+.js-only{display:none}.js .js-only{display:block}
 button.danger{background:transparent;color:var(--bad);border:1px solid var(--line)}
 button.small{width:auto;padding:8px 14px;font-size:14px}
 textarea{width:100%;font:inherit;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:transparent;color:inherit;margin:0 0 14px}
@@ -246,6 +248,72 @@ local function houseSection(st, base)
     return table.concat(parts)
 end
 
+-- The daily paper (gzreader_daily.lua): on/off, on the shelf, which feeds.
+local function paperSection(st, base)
+    local p = st.paper
+    if not p then return "" end
+    local function tick(name, on, label)
+        return '<label class="check"><input type="checkbox" name="' .. esc(name) .. '" value="1"' .. (on and " checked" or "") .. "> " .. label .. "</label>"
+    end
+    local parts = { '<section id="paper" class="tab"><h2>Daily paper</h2>',
+        '<p class="what">A newspaper on Home\'s bookshelf, put together once a day from the news feeds you tick (a feed is a site\'s list of its newest stories: RSS or Atom). The Kindle fetches them itself over Wi‑Fi, from 5 in the morning, and keeps the paper to read with Wi‑Fi off.</p>' }
+    parts[#parts + 1] = status(p.enabled, p.enabled and (p.stories and ("On · the last paper has " .. esc(p.stories) .. " stories") or "On · no paper fetched yet") or "Off")
+    if p.error then parts[#parts + 1] = '<p class="err">' .. esc(p.error) .. "</p>" end
+    local rows = { tick("enabled", p.enabled, "<b>Daily paper</b>"), tick("shelf", p.shelf, "Show it on Home's bookshelf"),
+        tick("pictures", p.pictures, "With pictures (the lead story's and a few more)"),
+        tick("calendar", p.calendar, "Today's calendar events on the front page") }
+    local wx = p.weather or {}
+    rows[#rows + 1] = tick("weather", wx.on, "Weather on the front page")
+    if wx.source == "ha" then
+        rows[#rows + 1] = '<p class="note" style="margin:-4px 0 10px">The weather comes from your Home Assistant.</p>'
+    else
+        rows[#rows + 1] = input("p_town", "town", "Town for the weather" .. (wx.place and (" (now: " .. esc(wx.place) .. "; leave empty to keep it)") or ""), "",
+                'placeholder="Springfield, Illinois" ' .. NAME_ATTRS)
+            .. '<label for="p_unit">Degrees</label><select id="p_unit" name="unit" class="sel"><option value=""' .. (not wx.unit and " selected" or "")
+            .. '>As the town\'s country uses</option><option value="C"' .. (wx.unit == "C" and " selected" or "") .. '>Celsius</option><option value="F"' .. (wx.unit == "F" and " selected" or "") .. ">Fahrenheit</option></select>"
+            .. '<p class="note" style="margin:-4px 0 10px">From Open-Meteo (open-meteo.com), which is sent the town\'s name once and then its rounded coordinates.</p>'
+    end
+    local topic
+    for _i, f in ipairs(p.defaults or {}) do
+        if f.topic ~= topic then
+            topic = f.topic
+            rows[#rows + 1] = '<p style="font-size:14px;margin:12px 0 4px"><b>' .. esc(topic) .. "</b></p>"
+        end
+        rows[#rows + 1] = tick("d_" .. f.id, f.on, esc(f.name) .. ' <span style="font-size:13px;color:var(--muted)">' .. esc(f.site) .. "</span>")
+    end
+    if #(p.own or {}) > 0 then
+        rows[#rows + 1] = '<p style="font-size:14px;margin:12px 0 4px"><b>Your feeds</b></p>'
+        for _i, f in ipairs(p.own) do
+            rows[#rows + 1] = tick("f_" .. f.n, f.on, esc(f.name or f.site) .. ' <span style="font-size:13px;color:var(--muted)">' .. esc(f.site)
+                .. (f.topic and (" · " .. esc(f.topic)) or "") .. "</span>")
+        end
+    end
+    rows[#rows + 1] = '<input type="hidden" name="count" value="' .. #(p.own or {}) .. '">'
+    rows[#rows + 1] = '<button type="submit" style="margin-top:12px">Save</button>'
+    parts[#parts + 1] = form(base .. "/paper", table.concat(rows), "Saving…")
+    parts[#parts + 1] = '<details class="box"' .. (#(p.own or {}) == 0 and " open" or "") .. "><summary>Add feeds</summary>"
+        .. form(base .. "/paper/add",
+            '<label for="p_feeds">One feed per line: its address, or <code>Name | address</code>, or <code>Section | Name | address</code></label>'
+            .. '<textarea id="p_feeds" name="feeds" rows="4" autocapitalize="off" autocorrect="off" spellcheck="false" required placeholder="https://blog.example.com/feed&#10;Knitting weekly | https://knitting.example.com/rss"></textarea>'
+            .. '<button type="submit">Add</button>'
+            .. '<p class="note">Most news sites and blogs have a feed; look for “RSS” at the foot of the site, or try its address with <code>/feed</code> or <code>/rss</code> after it. Up to ' .. esc(p.max or "") .. " feeds of your own. Addresses are kept on the Kindle and never written to its log.</p>",
+            "Adding…")
+        .. "</details>"
+    if #(p.own or {}) > 0 then
+        local list = { '<details class="box"><summary>Remove a feed</summary>' }
+        for _i, f in ipairs(p.own) do
+            list[#list + 1] = form(base .. "/paper/remove",
+                '<input type="hidden" name="n" value="' .. f.n .. '"><input type="hidden" name="count" value="' .. #p.own .. '">'
+                .. '<button class="danger" type="submit"' .. confirmJs("Remove this feed from the paper?") .. ">Remove " .. esc(f.name or f.site)
+                .. (f.name and (" (" .. esc(f.site) .. ")") or "") .. "</button>", "Removing…")
+        end
+        list[#list + 1] = "</details>"
+        parts[#parts + 1] = table.concat(list)
+    end
+    parts[#parts + 1] = '<p class="note">Fetching a feed tells its site this Kindle\'s internet address, as opening the site in a browser would; nothing else is sent.</p></section>'
+    return table.concat(parts)
+end
+
 local function calendarSection(st, base)
     local c = st.caldav or {}
     local links = st.links or {}
@@ -276,15 +344,44 @@ local function calendarSection(st, base)
     if #cals > 0 then
         parts[#parts + 1] = "<h3 style=\"font-size:15px;margin:4px 0 10px\">Your calendars</h3>" .. table.concat(cals)
     end
-    -- calendar links
+    -- holidays (gzreader_holidays.lua): worked out on the Kindle
+    local h = st.holidays
+    if h then
+        local opts = {}
+        for _i, k in ipairs(h.countries or {}) do
+            opts[#opts + 1] = '<option value="' .. esc(k.id) .. '"' .. (k.id == h.country and " selected" or "") .. ">" .. esc(k.name) .. "</option>"
+        end
+        parts[#parts + 1] = '<details class="box"' .. (h.enabled and " open" or "") .. '><summary>Holidays</summary><div style="margin-top:10px">'
+            .. form(base .. "/calendar/holidays",
+                '<label class="check"><input type="checkbox" name="shown" value="1"' .. (h.enabled and " checked" or "") .. "> Show holidays</label>"
+                .. '<label for="h_country">Country</label><select id="h_country" name="country" class="sel">' .. table.concat(opts) .. "</select>"
+                .. '<button class="alt small" type="submit">Save</button>'
+                .. '<p class="note">A calendar of their own, worked out on the Kindle: no link, account or Wi-Fi needed.</p>', "Saving…")
+            .. "</div></details>"
+    end
+    -- calendar links: a name and a link for each (more with "Add another link")
+    local rows = {}
+    for i = 1, 3 do
+        rows[#rows + 1] = '<div class="pair">'
+            .. input("ln_" .. i, "name_" .. i, "Name (optional)", "", 'placeholder="' .. (i == 1 and "Family" or i == 2 and "Work" or "School") .. '" ' .. NAME_ATTRS)
+            .. input("lu_" .. i, "url_" .. i, "Calendar link", "", 'placeholder="webcal://calendar.example.com/…" ' .. URL_ATTRS .. (i == 1 and " required" or ""))
+            .. "</div>"
+    end
     parts[#parts + 1] = '<details class="box"' .. ((#cals == 0 or links.error) and " open" or "") .. '><summary>Add calendar links</summary><div style="margin-top:10px">'
     parts[#parts + 1] = form(base .. "/links",
-        '<textarea name="links" rows="4" autocapitalize="off" autocorrect="off" spellcheck="false" required placeholder="webcal://calendar.example.com/…&#10;Work | https://…/calendar.ics"></textarea>'
+        '<div id="pairs">' .. table.concat(rows) .. "</div>"
+        .. '<p class="js-only"><button class="alt small" type="button" id="more_links">Add another link</button></p>'
         .. '<button type="submit">Add links</button>'
-        .. '<p class="note">One per line. To name one, write the name first: <code>Work | webcal://…</code>. Links are secret: the Kindle keeps them to sync and never writes them to its log.</p>'
+        .. '<p class="note">A name and a link for each calendar (webcal:// or https://….ics); empty rows are skipped. Links are secret: the Kindle keeps them to sync and never writes them to its log.</p>'
         .. '<details><summary>Proton Calendar</summary><p class="note">Proton Calendar on the web: Settings → Calendars → a calendar → Share → Share with anyone → Create link (Full view shows event details). Do this for each calendar.</p></details>'
         .. '<details><summary>Google, Outlook, iCloud</summary><p class="note">Google: Settings → your calendar → Secret address in iCal format. Outlook: Settings → Calendar → Shared calendars → Publish → ICS. iCloud: share a calendar as a Public Calendar.</p></details>',
         "Checking…")
+    -- (another name + link row, up to 20; without JavaScript there are three)
+    parts[#parts + 1] = '<script>(function(){var b=document.getElementById("more_links"),p=document.getElementById("pairs");if(!b||!p)return;'
+        .. 'b.onclick=function(){var n=p.children.length+1;if(n>20)return;var r=p.children[0].cloneNode(true);'
+        .. 'r.querySelectorAll("label,input").forEach(function(e){var i=e.getAttribute("id"),f=e.getAttribute("for"),m=e.getAttribute("name");'
+        .. 'if(i)e.id=i.replace(/_\\d+$/,"_"+n);if(f)e.setAttribute("for",f.replace(/_\\d+$/,"_"+n));if(m)e.name=m.replace(/_\\d+$/,"_"+n);'
+        .. 'if(e.tagName=="INPUT"){e.value="";e.required=false;e.placeholder=/^name/.test(e.name)?"":e.placeholder}});p.appendChild(r);r.querySelector("input").focus()}})()</script>'
     parts[#parts + 1] = "</div></details>"
     -- CalDAV account
     parts[#parts + 1] = '<details class="box"' .. ((not c.connected and #cals == 0 or c.error) and " open" or "") .. '><summary>CalDAV account</summary><div style="margin-top:10px">'
@@ -534,8 +631,9 @@ function PairPage.hub(st)
     end
     -- one tab at a time (all of them, one under the other, without JavaScript)
     local tabs = { { "grimmory", "Grimmory", (st.grimmory or {}).connected }, { "notes", "Notes", (st.memos or {}).connected },
-        { "calendar", "Calendar", (st.caldav or {}).connected or #((st.links or {}).list or {}) > 0 } }
+        { "calendar", "Calendar", (st.caldav or {}).connected or #((st.links or {}).list or {}) > 0 or (st.holidays or {}).enabled } }
     if st.house then tabs[#tabs + 1] = { "house", "House", st.house.connected } end
+    if st.paper then tabs[#tabs + 1] = { "paper", "Daily paper", st.paper.enabled } end
     if st.plex then tabs[#tabs + 1] = { "music", "Music", st.plex.connected } end
     tabs[#tabs + 1] = { "immich", "Immich", (st.immich or {}).connected }
     tabs[#tabs + 1] = { "books", "Send books" }
@@ -558,6 +656,7 @@ function PairPage.hub(st)
         immichSection(st, base), booksSection(st, base), sleepSection(st, base), accessSection(st, base), diagnosticsSection(st, base),
         '<p class="note">This page works while setup is open on the Kindle\'s screen; press Back (or Done) there when you\'re done.</p>',
         houseSection(st, base), -- (after the note: one tab at a time with JavaScript; below the rest without)
+        paperSection(st, base),
         "</div></div>",
         '<script>(function(){var A=', alias, ';function show(id){id=A[id]||id;var s=document.getElementById(id);if(!s||!/\\btab\\b/.test(s.className))id="', st.start or "grimmory", '";',
         '[].forEach.call(document.querySelectorAll("section.tab"),function(e){e.className=e.id==id?"tab on":"tab"});',

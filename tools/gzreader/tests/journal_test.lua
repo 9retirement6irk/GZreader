@@ -81,8 +81,8 @@ local s = Journal.settings{ space = "spaces/journal", moodTagPrefix = "m/", acti
 check(s.space == "spaces/journal" and s.moodTagPrefix == "m/" and s.feelingTagPrefix == "felt/" and #s.activities == 2 and s.activities[1].label == "A walk"
     and s.activities[2].label == "Nap" and #s.goals == 1 and s.goals[1] == "Read" and s.showPrompt == false and s.dateHeading == true,
     "the server's settings: the space, prefixes, activities (a label from the id when it has none), goals, prompt and heading switches")
-check(s.reminderToken == nil and s.view == nil and s.defaultCity == nil and s.activities[1].icon == nil,
-    "…and nothing else kept (no tokens, no place)")
+check(s.reminderToken == nil and s.view == nil and s.defaultCity == nil and s.activities[1].icon == "tree" and s.activities[2].icon == "star",
+    "…and nothing else kept (no tokens, no place); each activity its icon (a star for none)")
 check(Journal.settings{ space = "spaces/a b\" || true" }.space == "" and Journal.settings{ space = 5 }.space == "", "a space name that isn't one: none")
 local imp = Journal.impacts(s)
 check(#imp == 16 and imp[1] == "community" and not table.concat(imp, ","):find("dating") and not table.concat(imp, ","):find("money"),
@@ -108,6 +108,39 @@ check(Journal.entry(st, Journal.settings(nil), t) == "> What made you smile?\n\n
     "with the defaults: the prompt quoted above the words, no heading: " .. show(Journal.entry(st, Journal.settings(nil), t)))
 check(Journal.heading(t) == "Thursday, November 5, 2026", "the date heading: " .. Journal.heading(t))
 check(Journal.words("current-events") == "Current events" and Journal.words("self-care") == "Self care", "ids read as words")
+
+-- the web's look: activities' icons, the mood read from a note's tags, the faces
+local d = Journal.settings(nil)
+check(d.activities[1].icon == "briefcase" and d.activities[4].icon == "book-open" and d.activities[9].icon == "palette",
+    "the default activities with the fork's icons")
+local mine = Journal.settings({ activities = { { id = "walk", label = "Walk", icon = "tree" }, { id = "x", icon = "rocket" }, { id = "y" } } })
+check(mine.activities[1].icon == "tree" and mine.activities[2].icon == "star" and mine.activities[3].icon == "star",
+    "your activities' icons; one GZreader doesn't have, or none: a star (as the web)")
+check(Journal.valenceFromTags({ "journal", "mood/pleasant", "mood/today" }) == "pleasant"
+    and Journal.valenceFromTags({ "Mood/Very-Unpleasant" }) == "very-unpleasant"
+    and Journal.valenceFromTags({ "m/now", "m/great" }, "m") == "very-pleasant"
+    and Journal.valenceFromTags({ "mood/okay" }) == "neutral"
+    and Journal.valenceFromTags({ "moody/pleasant", "mood/today" }) == nil and Journal.valenceFromTags(nil) == nil,
+    "the mood from a note's tags, as the web reads it (your prefix, any case, the five old faces)")
+package.preload["ffi/blitbuffer"] = function() return { Color8 = function(v) return v end } end
+package.preload["ui/geometry"] = function() return { new = function(_s, o) return o end } end
+package.preload["ui/widget/widget"] = function() local c = {}; function c:extend(o) o = o or {}; o.__index = o; function o:new(x) return setmetatable(x or {}, o) end; return o end; return c end
+local MF = require("gzreader_moodface")
+check(MF.grey("#ffffff") == 255 and MF.grey("#000000") == 0 and MF.grey("#363a8a") == 66, "a web colour as a grey of its lightness")
+local light = {}
+for i, v in ipairs(MF.VALENCES) do light[i] = MF.greys(v).fill end
+check(light[1] < light[2] and light[2] < light[3] and light[3] < light[4] and light[7] < light[6],
+    "neighbouring steps differ in lightness (darkest at the ends, as the web's colours)")
+local c1, m1 = MF.mouth("very-unpleasant")
+local c7, m7 = MF.mouth("very-pleasant")
+local c4, m4 = MF.mouth("neutral")
+check(m1 < c1 and m7 > c7 and c4 == m4, "the mouth: a frown, a smile, straight in the middle")
+check(MF.pixel(20, 20, "neutral") ~= nil and MF.pixel(1, 1, "neutral") == nil and MF.pixel(14, 18, "neutral") == MF.greys("neutral").ink,
+    "a round face; its eyes in ink")
+check(MF.pixel(20, 32, "neutral", nil, true) > MF.pixel(20, 32, "neutral"), "a face not chosen yet: faded")
+local painted = 0
+MF.paint({ setPixel = function() painted = painted + 1 end }, 0, 0, 20, "pleasant")
+check(painted > 200 and painted < 400, "painted pixel by pixel, the round part only (" .. painted .. " of 400)")
 
 print(("journal: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

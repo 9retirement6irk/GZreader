@@ -22,6 +22,7 @@ Coordinates are screen pixels; strokes are kept relative to the canvas.
 
 local Drawing = require("gzreader_drawing")
 
+local bit = require("bit")
 local Sketch = {
     TOOL_FINGER = 0,
     TOOL_PEN = 1,
@@ -66,7 +67,11 @@ function Sketch.new(opts)
     self.zoomed = false -- (pinched bigger than the page's fit: `fit` keeps the fitted view)
     -- the scene point at the canvas's top left (an opened drawing is moved and scaled to fit)
     self.ox, self.oy = 0, 0
-    self.locked = {} -- an opened drawing's shapes and text: kept as they are, shown, not changed here
+    self.layer_files = {} -- (the files of the pencil's layer in an opened drawing: dropped, made again)
+    self.locked = {} -- an opened drawing's shapes and pictures: kept as they are, shown, not changed here
+    self.texts = {} -- text boxes (memos' text elements, gzreader_drawtext.lua): moved, resized, typed in here
+    self.text_gone = {} -- [box] = true: taken off (deleted, undone, cleared)
+    self.base_texts = {} -- [box] = true: the opened drawing's own (written back in their place)
     self.tap_slop = opts.tap_slop or Sketch.TAP_SLOP
     self.width = opts.width or 2
     self.color = Sketch.inkColor(opts.color) -- nil: memos' ink
@@ -158,6 +163,63 @@ function Sketch.weightRadius(r, w)
     return math.max(1, math.floor(r * (0.4 + 1.2 * w) + 0.5))
 end
 
+-- ---------------------------------------------------------------- the pencil
+
+--- The paper's tooth at pixel (x, y), 0 to 1: the same for the same pixel
+--- every time (a page drawn again looks the same), uneven from one pixel
+--- to the next and in small clumps, as graphite catches on paper.
+local bxor, tobit, rshift, band, floor = bit.bxor, bit.tobit, bit.rshift, bit.band, math.floor
+local function grainHash(a, b)
+    local h = bxor(tobit(a * 374761393), tobit(b * 668265263))
+    h = bxor(h, rshift(h, 15))
+    h = tobit(band(h, 0xFFFF) * 40503 + rshift(h, 16) * 30011)
+    h = bxor(h, rshift(h, 13))
+    return band(h, 0xFFFF) / 65536
+end
+-- (worked out once for a 256 x 256 patch that repeats over the page: a pencil
+-- line asks for every pixel under it, several times over)
+local GRAIN_SIDE = 256
+local grain_patch
+local function grainPatch()
+    if not grain_patch then
+        grain_patch = {}
+        for y = 0, GRAIN_SIDE - 1 do
+            for x = 0, GRAIN_SIDE - 1 do
+                grain_patch[y * GRAIN_SIDE + x] = 0.65 * grainHash(x, y) + 0.35 * grainHash(floor(x / 2), floor(y / 2) + 7919)
+            end
+        end
+    end
+    return grain_patch
+end
+function Sketch.grain(x, y)
+    return (grain_patch or grainPatch())[band(y, GRAIN_SIDE - 1) * GRAIN_SIDE + band(x, GRAIN_SIDE - 1)]
+end
+
+--- How much of the paper a tool with a grain covers, 0 to 1, at weight `w`
+--- (the pen's pressure; none: as 0.5): light is sparse, pressed is nearly
+--- solid. nil for a tool without a grain.
+function Sketch.grainDensity(kind, w)
+    if not Sketch.toolStyle(kind).grain then return nil end
+    return 0.38 + 0.47 * math.max(0, math.min(1, w or 0.5))
+end
+
+--- True when a grained tool marks pixel (x, y), `d2` the square of its
+--- distance from the middle of a line of radius `r` (thinner at its edges).
+function Sketch.grainHit(x, y, density, d2, r)
+    local edge = r > 0 and (1 - 0.45 * math.min(1, d2 / (r * r))) or 1
+    return Sketch.grain(x, y) < density * edge
+end
+
+-- ------------------------------------------------- the pencil, for Memos
+
+--- (The pencil's ink is ordinary see-through strokes in a saved drawing, as
+--- the highlighter's: Memos' editor can move and erase them. For a few beta
+--- builds it was carried as one picture with the strokes hidden under it
+--- (customData.gzLayer); `fromScene` still leaves such a picture out and the
+--- strokes come back shown at the next save. The owner, 2026-11-17: Memos'
+--- note view shows the saved picture, texture and all; only its editor
+--- draws from the strokes, and there they must stay editable.)
+
 -- ------------------------------------------------------------ writing tools
 
 --- The writing tools (as on the Kindle Scribe): how each draws. `scale`:
@@ -172,7 +234,11 @@ Sketch.TOOL_IDS = { "pen", "fountain", "marker", "pencil", "highlighter" }
 Sketch.PEN_IDS = { "pen", "fountain", "marker", "pencil" }
 Sketch.TOOL_STYLE = {
     pen = { icon = "pen", scale = 1, lo = 0.4, hi = 1.6 },
-    pencil = { icon = "pencil", scale = 0.7, lo = 0.7, hi = 1.15, gray = 0x60, opacity = 70 },
+    -- (grain: drawn as graphite on the paper's tooth, see Sketch.grain; `gray` is the tone it reads as)
+    -- (scale: wider than the pen's line. At 0.7 a pencil line at Fine to Medium was two or three
+    -- pixels across: too thin for its grain to show, a faint hairline once the picture was
+    -- shown smaller than the Kindle's screen, as in Memos; the owner, 2026-11-17)
+    pencil = { icon = "pencil", scale = 1.3, lo = 0.75, hi = 1.2, gray = 0x60, opacity = 70, grain = true },
     fountain = { icon = "fountain", scale = 1, lo = 0.15, hi = 2.8, curve = 1.6 },
     marker = { icon = "marker", scale = 1.9, flat = true }, -- (a felt tip: black, as wide all along)
     highlighter = { icon = "highlighter", scale = 3.5, flat = true, gray = 0xC8, opacity = 35 },
@@ -245,9 +311,56 @@ function Sketch:live()
     return out
 end
 
+--- The text boxes on the page (not taken off).
+function Sketch:liveTexts()
+    local out = {}
+    for _i, el in ipairs(self.texts) do if not self.text_gone[el] then out[#out + 1] = el end end
+    return out
+end
+
+--- The text box at canvas point (x, y), top one first, and which part:
+--- "resize" (its corner handle) or "move". nil when there's none.
+function Sketch:textAt(x, y)
+    local DrawText = require("gzreader_drawtext")
+    local live = self:liveTexts()
+    local function toCanvas(sx, sy) return self:toCanvas(sx, sy) end
+    for i = #live, 1, -1 do
+        local part = DrawText.partAt(DrawText.rect(live[i], toCanvas), x, y, self.text_handle)
+        if part then return live[i], part end
+    end
+end
+
+local function textChanged(self, el, before)
+    local DrawText = require("gzreader_drawtext")
+    self.history[#self.history + 1] = { kind = "text", el = el, before = before, after = DrawText.snap(el, self.text_gone[el]) }
+    self.redone = {}
+end
+
+--- A new text box (gzreader_drawtext.lua's element) on the page; Undo takes it off.
+function Sketch:addText(el)
+    self.texts[#self.texts + 1] = el
+    self.text_gone[el] = nil
+    textChanged(self, el, { gone = true, x = el.x, y = el.y, width = el.width, height = el.height, text = el.text })
+end
+
+--- A box's `fields` (text, x, y, width, height) changed; Undo puts them back.
+function Sketch:changeText(el, fields)
+    local before = require("gzreader_drawtext").snap(el, self.text_gone[el])
+    for k, v in pairs(fields) do el[k] = v end
+    textChanged(self, el, before)
+end
+
+--- A box taken off the page; Undo brings it back.
+function Sketch:removeText(el)
+    local before = require("gzreader_drawtext").snap(el, self.text_gone[el])
+    self.text_gone[el] = true
+    textChanged(self, el, before)
+end
+
 --- Nothing on the page: no strokes, no shapes or text (its paper doesn't count).
 function Sketch:isEmpty()
     if #self:live() > 0 then return false end
+    if #self:liveTexts() > 0 then return false end
     for _i, el in ipairs(self.locked) do
         if not (self.base and require("gzreader_notepaper").isBackground(self.base, el)) then return false end
     end
@@ -386,6 +499,62 @@ function Sketch:setPaper(id)
     return true
 end
 
+--- Puts a picture on the page, as memos' drawing sheet places one: an
+--- `image` element `w` x `h` (scene units) centred on scene point (cx, cy),
+--- its pixels a file of the scene (`data_url`, `mime`). It's kept like
+--- memos' own pictures (shown, under the ink, not changed here); undo takes
+--- it off. Returns the element.
+function Sketch:addPicture(data_url, mime, w, h, cx, cy, now)
+    if not self.base then self.base = Drawing.newScene() end
+    local base = self.base
+    base.files = type(base.files) == "table" and base.files or {}
+    local file_id = Drawing.randomId()
+    base.files[file_id] = { mimeType = mime or "image/jpeg", id = file_id, dataURL = data_url, created = now or (os.time() * 1000) }
+    local el = {
+        id = Drawing.randomId(), type = "image", x = cx - w / 2, y = cy - h / 2, width = w, height = h,
+        angle = 0, strokeColor = "transparent", backgroundColor = "transparent", strokeWidth = 1, opacity = 100,
+        isDeleted = false, groupIds = Drawing.list(), boundElements = Drawing.list(), seed = Drawing.randomSeed(),
+        locked = false, fileId = file_id, status = "saved", scale = Drawing.list({ 1, 1 }),
+        version = 1, versionNonce = Drawing.randomSeed(), updated = now or (os.time() * 1000),
+    }
+    base.elements = base.elements or Drawing.list()
+    base.elements[#base.elements + 1] = el
+    self.locked[#self.locked + 1] = el
+    self.history[#self.history + 1] = { kind = "picture", el = el, strokes = {} }
+    self.redone = {}
+    return el
+end
+
+Sketch.PICTURE_SHARE = 0.6 -- a picture placed at most this share of the page shown, across and down
+Sketch.PICTURE_STEP = 24 -- several pictures fan out by this (scene units), as memos' drawing sheet does
+
+--- Where pictures go and how big (scene units): `n` pictures, each { w, h }
+--- pixels, centred on the middle of what's shown (fanned out a step down and
+--- to the right each, as memos' drawing sheet places several), each at most
+--- PICTURE_SHARE of the page shown and never bigger than its own pixels.
+--- Returns { { cx, cy, w, h } }.
+function Sketch.placePictures(sizes, view)
+    local out = {}
+    local n = #sizes
+    for i, sz in ipairs(sizes) do
+        local pw, ph = math.max(1, sz.w or 1), math.max(1, sz.h or 1)
+        local fit = math.min(1, view.w * Sketch.PICTURE_SHARE / pw, view.h * Sketch.PICTURE_SHARE / ph)
+        local off = (i - (n + 1) / 2) * Sketch.PICTURE_STEP
+        out[i] = { cx = view.cx + off, cy = view.cy + off, w = pw * fit, h = ph * fit }
+    end
+    return out
+end
+
+local function dropPicture(self, el)
+    for i, x in ipairs(self.base and self.base.elements or {}) do if x == el then table.remove(self.base.elements, i); break end end
+    for i, x in ipairs(self.locked) do if x == el then table.remove(self.locked, i); break end end
+end
+
+local function putPicture(self, el)
+    self.base.elements[#self.base.elements + 1] = el
+    self.locked[#self.locked + 1] = el
+end
+
 --- A scene point in canvas pixels, and back.
 function Sketch:toCanvas(sx, sy) return (sx - self.ox) * self.per_unit, (sy - self.oy) * self.per_unit end
 function Sketch:toScene(cx, cy) return cx / self.per_unit + self.ox, cy / self.per_unit + self.oy end
@@ -418,6 +587,11 @@ function Sketch.fromScene(scene, opts)
         self.per_unit = math.max(0.05, math.min(self.per_unit, fit))
         -- (in the middle across, at the top)
         self.ox, self.oy = b.x - (c.w / self.per_unit - b.w) / 2, b.y - margin / self.per_unit
+        -- (and this is the view to come back to: a pinch is measured from it, and
+        -- never smaller than it; without it, a page that didn't fit at full size
+        -- (a journal's drawing under its prompt) was taken for zoomed out, and
+        -- couldn't be pinched bigger or moved with a finger)
+        self.fit = { per_unit = self.per_unit, ox = self.ox, oy = self.oy }
     end
     for _i, el in ipairs(Drawing.liveElements(scene)) do
         if el.type == "freedraw" and type(el.points) == "table" and #el.points > 0 then
@@ -428,9 +602,21 @@ function Sketch.fromScene(scene, opts)
                 pts[#pts + 1] = { cx, cy, el.simulatePressure == false and tonumber(p[3]) or nil }
             end
             local kind = Sketch.toolOf(el)
+            if Sketch.toolStyle(kind).grain and tonumber(el.opacity) == 0 then
+                -- (hidden under a picture of the pencil's ink by a few beta builds: shown again)
+                el.opacity = Sketch.toolStyle(kind).opacity
+            end
             -- (Memos is given the tool's own width: the thickness chosen is that over its scale)
             local width = snapWidth((tonumber(el.strokeWidth) or 2) / Sketch.toolStyle(kind).scale)
             self.strokes[#self.strokes + 1] = { points = pts, width = width, color = Sketch.inkColor(el.strokeColor), el = el, kind = kind }
+        elseif el.type == "image" and type(el.customData) == "table" and el.customData.gzLayer then
+            -- (the picture of the pencil's ink made for Memos at the last save: made again
+            -- from the strokes at the next, so neither shown nor kept; no longer made, see above)
+            self.layer_files[el.fileId or ""] = true
+        elseif el.type == "text" and type(el.text) == "string" then
+            -- (a text box, here or from memos: moved, resized and typed in like a new one)
+            self.texts[#self.texts + 1] = el
+            self.base_texts[el] = true
         else
             self.locked[#self.locked + 1] = el
         end
@@ -486,7 +672,7 @@ local function appendPoint(self, contact, cx, cy, out)
     local r = Sketch.toolRadius(kind, self:radius(contact.stroke.width), w and (last and last[3] and (last[3] + w) / 2 or w) or nil)
     local from = last or { cx, cy }
     out.segments[#out.segments + 1] = { from[1] + self.canvas.x, from[2] + self.canvas.y, cx + self.canvas.x, cy + self.canvas.y, r,
-        contact.stroke.color, Sketch.toolStyle(kind).gray }
+        contact.stroke.color, Sketch.toolStyle(kind).gray, Sketch.grainDensity(kind, w) }
 end
 
 --- A drawing contact at screen (x, y). On paper, the stroke stays on it: it
@@ -533,6 +719,33 @@ end
 Sketch.distToSegment = distToSegment
 
 --- The live stroke under canvas point (x, y) within `reach` pixels, or nil.
+--- The canvas rectangle stroke `st` is drawn in ({ x0, y0, x1, y1 }, a little over: as wide as its tool can make it).
+function Sketch:strokeBox(st)
+    local r = Sketch.toolRadius(st.kind, self:radius(st.width), 1) + 2
+    local x0, y0, x1, y1
+    for _i, p in ipairs(st.points) do
+        x0, y0 = math.min(x0 or p[1], p[1]), math.min(y0 or p[2], p[2])
+        x1, y1 = math.max(x1 or p[1], p[1]), math.max(y1 or p[2], p[2])
+    end
+    if not x0 then return nil end
+    return { x0 = math.floor(x0 - r), y0 = math.floor(y0 - r), x1 = math.ceil(x1 + r), y1 = math.ceil(y1 + r) }
+end
+
+--- The rectangle around `strokes` (and `area`, when given): what changes on the page when they come or go.
+function Sketch:strokesArea(strokes, area)
+    for _i, st in ipairs(strokes or {}) do
+        local b = self:strokeBox(st)
+        if b then
+            if area then
+                area.x0, area.y0, area.x1, area.y1 = math.min(area.x0, b.x0), math.min(area.y0, b.y0), math.max(area.x1, b.x1), math.max(area.y1, b.y1)
+            else
+                area = b
+            end
+        end
+    end
+    return area
+end
+
 function Sketch:strokeAt(x, y, reach)
     for i = #self.strokes, 1, -1 do
         local st = self.strokes[i]
@@ -562,7 +775,10 @@ local function erase(self, contact, x, y, out)
         while st do
             st.gone = true
             contact.erased[#contact.erased + 1] = st
+            if self.selection then self.selection = nil; out.sel_changed = true end
             out.redraw = true
+            -- (what changed: only this much of the page needs drawing again)
+            out.area = self:strokesArea({ st }, out.area)
             st = self:strokeAt(px, py, reach)
         end
     end
@@ -615,11 +831,26 @@ local function startContact(self, s, now, out)
         self.contacts[s.slot] = c
         return c
     end
-    if not inside then
+    if self.pull_zone and s.y < self.pull_zone and not (pen and inside) then
+        -- from the top edge (or the top bar): a tap there, or a pull down that opens the quick panel
+        c.kind, c.pull = "tap", true
+    elseif not inside then
         c.kind = "tap"
-    elseif self.pen_only and not pen and self.zoomed and next(self.contacts) == nil then
-        -- a pen Kindle, zoomed in: one finger moves the page (a second, at once: a pinch)
-        c.kind = "pan"
+    elseif self.tool == "hand" then
+        -- the hand: the pen (or a finger) takes hold of the page and moves it
+        c.kind, c.slot = "pan", s.slot
+        c.px, c.py, c.at = s.x, s.y, now
+    elseif self.tool == "text" then
+        -- the text tool: a box under the finger or pen moves (its corner: resizes); a tap elsewhere adds one
+        local el, part = self:textAt(s.x - self.canvas.x, s.y - self.canvas.y)
+        c.kind, c.el, c.part, c.at = "text", el, part, now
+        if el then c.orig = { x = el.x, y = el.y, width = el.width, height = el.height } end
+    elseif self.pen_only and not pen and self.zoomed then
+        -- A pen Kindle, zoomed in: a finger moves the page (a second, at once: a pinch).
+        -- Whatever else rests on the screen: only "the first finger down, nothing else
+        -- there" could move it before, and a thumb holding the Kindle by its edge was
+        -- enough for no finger to (the owner, 2026-11-17).
+        c.kind, c.slot = "pan", s.slot
         c.px, c.py, c.at = s.x, s.y, now
     elseif self.pen_only and not pen then
         c.kind = "ignore" -- fingers don't draw on a pen Kindle
@@ -627,6 +858,20 @@ local function startContact(self, s, now, out)
     elseif self.drawing_slot ~= nil and self.drawing_slot ~= s.slot then
         c.kind = "ignore" -- one stroke at a time
         self.stats.ignored = self.stats.ignored + 1
+    elseif self.tool == "lasso" and s.tool ~= Sketch.TOOL_ERASER and not (pen and self.side_button and Sketch.shortcutTool(self) == "eraser") then
+        -- the lasso: on what's chosen, it's moved (a corner: resized); elsewhere, a loop is drawn (a tap: lets go, or Paste)
+        local Lasso = require("gzreader_lasso")
+        local cx, cy = s.x - self.canvas.x, s.y - self.canvas.y
+        c.kind = "lasso"
+        self.drawing_slot = s.slot
+        local box = self:selectionBox()
+        c.part = box and Lasso.hit(box, cx, cy, self.lasso_handle or 24) or nil
+        if c.part then
+            -- (the strokes' own box is what moves and grows; the frame is that with a little room around it)
+            c.box0, c.pad, c.snap, c.at = self:strokesArea(self.selection.strokes), self.lasso_pad or 0, Lasso.snapshot(self.selection.strokes), now
+        else
+            c.loop = { { cx, cy } }
+        end
     elseif s.tool == Sketch.TOOL_ERASER or self.tool == "eraser" or (pen and self.side_button and Sketch.shortcutTool(self) == "eraser") then
         c.kind = "erase"
         c.erased = {}
@@ -708,6 +953,13 @@ local function applyPan(self, c, out)
     local dx, dy = c.x - c.px, c.y - c.py
     if not c.panning and math.abs(dx) < Sketch.PAN_MIN and math.abs(dy) < Sketch.PAN_MIN then return false end
     if dx == 0 and dy == 0 then return false end
+    -- (the first to move is the one that moves the page: a thumb resting at the
+    -- screen's edge, or the side of a hand, is another contact and stays still)
+    local holder = self.pan_slot ~= nil and self.contacts[self.pan_slot]
+    if not (holder and holder.kind == "pan") then self.pan_slot = nil end -- (lifted, or dropped when the pen came)
+    if self.pan_slot ~= nil and self.pan_slot ~= c.slot then return false end
+    if not c.panning then self.stats.panned = (self.stats.panned or 0) + 1 end
+    self.pan_slot = c.slot
     c.panning = true
     local cv = self.canvas
     self:zoomBy(1, c.px - cv.x, c.py - cv.y, c.x - cv.x, c.y - cv.y)
@@ -716,13 +968,102 @@ local function applyPan(self, c, out)
     return true
 end
 
+--- The lasso's frame as the drag of contact `c` has it now (and, for a corner, the scale and the corner that stays).
+local function lassoDrag(c)
+    local Lasso = require("gzreader_lasso")
+    local pad = c.pad or 0
+    local function framed(b) return { x0 = b.x0 - pad, y0 = b.y0 - pad, x1 = b.x1 + pad, y1 = b.y1 + pad } end
+    if c.part == "inside" then return framed(Lasso.boxAfter(c.box0, "inside", c.x - c.x0, c.y - c.y0)) end
+    local f, ax, ay = Lasso.scaleFor(c.box0, c.part, c.x0, c.y0, c.x, c.y)
+    return framed(Lasso.boxAfter(c.box0, c.part, 0, 0, f, ax, ay)), f, ax, ay
+end
+
+--- The lasso's contact moved: the loop grows (`out.loop`: its new bits, in
+--- screen pixels, to draw), or the chosen strokes' frame follows, a step at
+--- a time (`out.sel_preview`; the strokes themselves move when it lifts).
+local function lassoMove(self, c, s, now, out)
+    if c.part then
+        if self.selection and c.moved > self.tap_slop and now - c.at >= Sketch.LIVE_INTERVAL then
+            self.selection.preview = lassoDrag(c)
+            out.sel_preview = true
+            c.at = now
+        end
+        return
+    end
+    local cx, cy = s.x - self.canvas.x, s.y - self.canvas.y
+    local last = c.loop[#c.loop]
+    if math.abs(cx - last[1]) + math.abs(cy - last[2]) >= 3 then
+        c.loop[#c.loop + 1] = { cx, cy }
+        out.loop = out.loop or {}
+        out.loop[#out.loop + 1] = { last[1] + self.canvas.x, last[2] + self.canvas.y, s.x, s.y }
+    end
+end
+
+--- The lasso's contact lifted.
+local function lassoEnd(self, c, out)
+    local Lasso = require("gzreader_lasso")
+    local sel = self.selection
+    if c.part then
+        if not sel then return end
+        local shown = sel.preview ~= nil
+        sel.preview = nil
+        if c.moved <= self.tap_slop then
+            if shown then out.sel_changed = true end
+            return
+        end
+        if c.part == "inside" then
+            Lasso.move(sel.strokes, c.snap, c.x - c.x0, c.y - c.y0)
+        else
+            local f, ax, ay = select(2, lassoDrag(c))
+            Lasso.scale(sel.strokes, c.snap, f, ax, ay)
+        end
+        -- (strokes of an opened drawing: written again where they are now, not as they came)
+        for _i, st in ipairs(sel.strokes) do st.el = nil end
+        self.history[#self.history + 1] = { kind = "move", strokes = sel.strokes, before = c.snap, after = Lasso.snapshot(sel.strokes) }
+        self.redone = {}
+        local b = c.box0
+        out.area = self:strokesArea(sel.strokes, { x0 = b.x0, y0 = b.y0, x1 = b.x1, y1 = b.y1 })
+        out.redraw, out.stroke_done, out.sel_changed = true, true, true
+        return
+    end
+    if c.moved <= self.tap_slop then
+        -- a tap: lets go of what's chosen; with nothing chosen and something copied, Paste here
+        if sel then
+            self.selection = nil
+            out.sel_changed = true
+        elseif Lasso.clipboard then
+            out.paste_at = { x = c.x0, y = c.y0 }
+        end
+        return
+    end
+    local picked = Lasso.pick(self.strokes, c.loop)
+    self.selection = #picked > 0 and { strokes = picked } or nil
+    out.sel_changed = true
+end
+
 local function endContact(self, slot, out)
     local c = self.contacts[slot]
     if not c then return end
     self.contacts[slot] = nil
     if self.drawing_slot == slot then self.drawing_slot = nil end
+    if c.kind == "lasso" then return lassoEnd(self, c, out) end
     if c.kind == "pinch" and self.pinch then return endPinch(self, out) end
-    if c.kind == "pan" then applyPan(self, c, out); return end
+    if c.kind == "pan" then
+        applyPan(self, c, out)
+        if self.pan_slot == slot then self.pan_slot = nil end
+        return
+    end
+    if c.kind == "text" then
+        if c.moved <= self.tap_slop then
+            out.text_tap = { el = c.el, x = c.x0 - self.canvas.x, y = c.y0 - self.canvas.y }
+        elseif c.el then
+            Sketch.dragText(self, c)
+            local o = c.orig
+            textChanged(self, c.el, { x = o.x, y = o.y, width = o.width, height = o.height, text = c.el.text })
+            out.redraw, out.stroke_done = true, true
+        end
+        return
+    end
     if c.kind == "draw" and c.shape then
         local pts = c.moved > self.tap_slop and self:shapePoints(c.shape, c.x0, c.y0, c.x, c.y) or {}
         for _i, p in ipairs(pts) do c.stroke.points[#c.stroke.points + 1] = p end
@@ -741,6 +1082,8 @@ local function endContact(self, slot, out)
         self.history[#self.history + 1] = { kind = "erase", strokes = c.erased }
         self.redone = {}
         out.stroke_done = true
+    elseif c.kind == "tap" and c.pull and Sketch.pulledDown(c.x0, c.y0, c.x, c.y, self.pull_distance or Sketch.PULL_DISTANCE) then
+        out.pull = true
     elseif c.kind == "tap" and c.moved <= self.tap_slop then
         out.taps[#out.taps + 1] = { x = c.x0, y = c.y0, pen = c.pen }
     end
@@ -807,8 +1150,16 @@ function Sketch:frame(slots, now)
                     if not p.cancel and now - p.at >= Sketch.LIVE_INTERVAL and applyPinch(self, out, false) then p.at = now end
                 elseif c.kind == "pan" then
                     if now - c.at >= Sketch.LIVE_INTERVAL and applyPan(self, c, out) then c.at = now end
+                elseif c.kind == "text" then
+                    -- (the box follows, a step at a time: e-ink can't redraw at every sample)
+                    if c.el and c.moved > self.tap_slop and now - c.at >= Sketch.LIVE_INTERVAL then
+                        Sketch.dragText(self, c)
+                        out.redraw = true
+                        c.at = now
+                    end
                 elseif c.kind == "draw" then
                     if not c.shape then addPoint(self, c, s.x, s.y, out) end -- (a shape: drawn when the pen lifts)
+                elseif c.kind == "lasso" then lassoMove(self, c, s, now, out)
                 elseif c.kind == "erase" then erase(self, c, s.x, s.y, out) end
             end
         elseif c then
@@ -823,6 +1174,17 @@ end
 --- The shapes (the Kindle Scribe's): drawn corner to corner, kept as a
 --- stroke along the shape's outline (Memos' drawings have no triangle, and
 --- a stroke is undone, rubbed out and sent like any other).
+--- A pull down from the top edge: the quick panel, as at Home and in a book.
+--- `pull_zone` (screen pixels from the top; set by the drawing screen: its top
+--- bar, or a strip when it's folded away) is where one may start.
+Sketch.PULL_DISTANCE = 60
+
+--- True when a contact from (x0, y0) to (x1, y1) went down far enough, more down than across.
+function Sketch.pulledDown(x0, y0, x1, y1, distance)
+    local dy = (y1 or y0) - y0
+    return dy >= (distance or Sketch.PULL_DISTANCE) and math.abs((x1 or x0) - x0) < dy
+end
+
 Sketch.SHAPES = { "square", "circle", "triangle", "line", "arrow" }
 Sketch.SHAPE_SET = { square = true, circle = true, triangle = true, line = true, arrow = true }
 Sketch.ERASER_WIDTHS = { 1, 2, 4, 7, 12 } -- how near a stroke the eraser takes it (the pen's widths, and a wider one)
@@ -901,7 +1263,71 @@ function Sketch.inkColor(c)
 end
 
 function Sketch:setColor(c) self.color = Sketch.inkColor(c); self.tool = "pen" end
-function Sketch:setTool(tool) self.tool = tool end
+function Sketch:setTool(tool)
+    self.tool = tool
+    if tool ~= "lasso" then self.selection = nil end
+end
+
+-- ------------------------------------------------------------------ the lasso
+
+--- The frame around the chosen strokes ({ x0, y0, x1, y1 }, canvas pixels), or nil.
+function Sketch:selectionBox()
+    local sel = self.selection
+    if not sel then return nil end
+    local b = self:strokesArea(sel.strokes)
+    -- (a little room around them: the frame's lines aren't on the strokes' own)
+    local pad = self.lasso_pad or 0
+    if b and pad > 0 then b.x0, b.y0, b.x1, b.y1 = b.x0 - pad, b.y0 - pad, b.x1 + pad, b.y1 + pad end
+    return b
+end
+
+--- Lets go of the chosen strokes. True when some were chosen.
+function Sketch:clearSelection()
+    if not self.selection then return false end
+    self.selection = nil
+    return true
+end
+
+--- Copies the chosen strokes (for Paste, here or in another drawing). True when there were some.
+function Sketch:lassoCopy()
+    local sel = self.selection
+    if not sel then return false end
+    return require("gzreader_lasso").copy(sel.strokes, function(x, y) return self:toScene(x, y) end) ~= nil
+end
+
+--- Takes the chosen strokes off the page (Undo brings them back). Returns true and where they were.
+function Sketch:lassoDelete()
+    local sel = self.selection
+    if not sel then return false end
+    local area = self:strokesArea(sel.strokes)
+    for _i, st in ipairs(sel.strokes) do st.gone = true end
+    self.history[#self.history + 1] = { kind = "erase", strokes = sel.strokes }
+    self.redone = {}
+    self.selection = nil
+    return true, area
+end
+
+--- Copies the chosen strokes and takes them off the page.
+function Sketch:lassoCut()
+    if not self:lassoCopy() then return false end
+    return self:lassoDelete()
+end
+
+--- Pastes what was copied, its middle at screen point (x, y): new strokes,
+--- chosen (to move into place). Returns true and where they are.
+function Sketch:lassoPaste(x, y)
+    local Lasso = require("gzreader_lasso")
+    local clip = Lasso.clipboard
+    if not clip then return false end
+    local sx, sy = self:toScene(x - self.canvas.x, y - self.canvas.y)
+    local new = Lasso.fromClip(clip, sx, sy, function(px, py) return self:toCanvas(px, py) end)
+    if #new == 0 then return false end
+    for _i, st in ipairs(new) do self.strokes[#self.strokes + 1] = st end
+    self.history[#self.history + 1] = { kind = "add", strokes = new }
+    self.redone = {}
+    self.selection = { strokes = new }
+    return true, self:strokesArea(new)
+end
 
 function Sketch:canUndo() return #self.history > 0 end
 function Sketch:canRedo() return #(self.redone or {}) > 0 end
@@ -910,6 +1336,19 @@ function Sketch:canRedo() return #(self.redone or {}) > 0 end
 function Sketch:redo()
     local h = table.remove(self.redone or {})
     if not h then return false end
+    self.selection = nil
+    if h.kind == "move" then
+        -- (strokes moved or resized with the lasso: where they went)
+        require("gzreader_lasso").restore(h.strokes, h.after)
+        self.history[#self.history + 1] = h
+        return true
+    end
+    if h.kind == "text" then
+        self.text_gone[h.el] = not require("gzreader_drawtext").restore(h.el, h.after) or nil
+        self.history[#self.history + 1] = h
+        return true
+    end
+    for _i, el in ipairs(h.texts or {}) do self.text_gone[el] = h.kind == "clear" or nil end
     if h.kind == "add" then
         for _i, st in ipairs(h.strokes) do
             st.gone, st.undone = false, nil
@@ -919,7 +1358,14 @@ function Sketch:redo()
         for _i, st in ipairs(h.strokes) do st.gone = true end
     end
     self.history[#self.history + 1] = h
-    return true
+    return true, self:stepArea(h)
+end
+
+--- The part of the page an undone or redone step changes: its strokes'
+--- (nil for a step with text boxes or the whole page: all of it is drawn again).
+function Sketch:stepArea(h)
+    if (h.kind ~= "add" and h.kind ~= "erase") or (h.texts and #h.texts > 0) then return nil end
+    return self:strokesArea(h.strokes)
 end
 
 --- Takes back the last stroke, erase or clear. True when something changed.
@@ -928,6 +1374,16 @@ function Sketch:undo()
     if not h then return false end
     self.redone = self.redone or {}
     self.redone[#self.redone + 1] = h
+    self.selection = nil
+    if h.kind == "move" then
+        require("gzreader_lasso").restore(h.strokes, h.before)
+        return true
+    end
+    if h.kind == "text" then
+        self.text_gone[h.el] = not require("gzreader_drawtext").restore(h.el, h.before) or nil
+        return true
+    end
+    for _i, el in ipairs(h.texts or {}) do self.text_gone[el] = nil end
     if h.kind == "add" then
         for _i, st in ipairs(h.strokes) do st.gone = true; st.undone = true end
     else
@@ -937,20 +1393,47 @@ function Sketch:undo()
     local kept = {}
     for _i, st in ipairs(self.strokes) do if not st.undone then kept[#kept + 1] = st end end
     self.strokes = kept
-    return true
+    return true, self:stepArea(h)
 end
 
 --- Clears the page (undo brings it back). True when something changed.
 function Sketch:clear()
-    local live = self:live()
-    if #live == 0 then return false end
+    local live, texts = self:live(), self:liveTexts()
+    if #live == 0 and #texts == 0 then return false end
     for _i, st in ipairs(live) do st.gone = true end
-    self.history[#self.history + 1] = { kind = "clear", strokes = live }
+    for _i, el in ipairs(texts) do self.text_gone[el] = true end
+    self.history[#self.history + 1] = { kind = "clear", strokes = live, texts = texts }
     self.redone = {}
     return true
 end
 
 -- ----------------------------------------------------------------- output
+
+-- undo and redo of a picture put on the page (Sketch:addPicture): around the strokes' own
+do
+    local strokes_undo, strokes_redo = Sketch.undo, Sketch.redo
+    function Sketch:undo()
+        local h = self.history[#self.history]
+        if h and h.kind == "picture" then
+            table.remove(self.history)
+            self.redone = self.redone or {}
+            self.redone[#self.redone + 1] = h
+            dropPicture(self, h.el)
+            return true
+        end
+        return strokes_undo(self)
+    end
+    function Sketch:redo()
+        local h = self.redone and self.redone[#self.redone]
+        if h and h.kind == "picture" then
+            table.remove(self.redone)
+            putPicture(self, h.el)
+            self.history[#self.history + 1] = h
+            return true
+        end
+        return strokes_redo(self)
+    end
+end
 
 --- The box the live strokes cover, in canvas pixels, ink included; nil when empty.
 function Sketch:bounds()
@@ -964,7 +1447,10 @@ function Sketch:bounds()
             maxY = math.max(maxY or p[2] + r, p[2] + r)
         end
     end
-    for _i, el in ipairs(self.locked) do
+    local boxes = {}
+    for _i, el in ipairs(self.locked) do boxes[#boxes + 1] = el end
+    for _i, el in ipairs(self:liveTexts()) do boxes[#boxes + 1] = el end
+    for _i, el in ipairs(boxes) do
         local x0, y0 = self:toCanvas(el.x or 0, el.y or 0)
         local x1, y1 = self:toCanvas((el.x or 0) + (tonumber(el.width) or 0), (el.y or 0) + (tonumber(el.height) or 0))
         minX, minY = math.min(minX or x0, x0, x1), math.min(minY or y0, y0, y1)
@@ -999,9 +1485,15 @@ function Sketch:scene(paper)
         for _i, st in ipairs(self:live()) do if st.el then keep[st.el] = true end end
         local locked = {}
         for _i, el in ipairs(self.locked) do locked[el] = true end
+        for _i, el in ipairs(self:liveTexts()) do locked[el] = true end
         scene.elements = Drawing.list()
         for _i, el in ipairs(self.base.elements or {}) do
             if keep[el] or locked[el] then scene.elements[#scene.elements + 1] = el end
+        end
+        -- (without the last save's pencil layer: its picture isn't carried along)
+        if next(self.layer_files) and type(self.base.files) == "table" then
+            scene.files = {}
+            for id, f in pairs(self.base.files) do if not self.layer_files[id] then scene.files[id] = f end end
         end
     else
         scene = Drawing.newScene(paper)
@@ -1019,7 +1511,29 @@ function Sketch:scene(paper)
             if el and st.kind then el.customData = { gzTool = st.kind } end
         end
     end
+    -- text boxes made here: after the strokes (memos draws them on top)
+    for _i, el in ipairs(self:liveTexts()) do
+        if not self.base_texts[el] then scene.elements[#scene.elements + 1] = el end
+    end
     return scene
+end
+
+--- A text box dragged by contact `c`: moved, or (its corner) resized; its
+--- lines wrap at the new width, and it's never shorter than they are
+--- (`text_height(el)`, the drawing screen's measure, in scene units).
+function Sketch.dragText(self, c)
+    local el, o = c.el, c.orig
+    if not (el and o) then return end
+    local dx, dy = (c.x - c.x0) / self.per_unit, (c.y - c.y0) / self.per_unit
+    local round2 = Drawing.round2
+    if c.part == "resize" then
+        local DrawText = require("gzreader_drawtext")
+        el.width = round2(math.max(DrawText.MIN_WIDTH, o.width + dx))
+        local need = self.text_height and self.text_height(el) or 0
+        el.height = round2(math.max(need, o.height + dy, (tonumber(el.fontSize) or DrawText.SIZE) * DrawText.LINE_HEIGHT))
+    else
+        el.x, el.y = round2(o.x + dx), round2(o.y + dy)
+    end
 end
 
 --- The centres of the discs that paint a segment of radius `r` (one every

@@ -87,8 +87,14 @@ add({ fn = function(E)
     local st = last()
     local d = screen()
     local p = st and st.points[3]
-    local g = p and d.canvas_bb:getPixel(math.floor(p[1]), math.floor(p[2])):getColor8().a
-    check(st and st.kind == "pencil" and g and g > 0 and g < 0xC0, "Pencil: a grey line (" .. tostring(g) .. ")")
+    -- (the pencil has a grain: the darkest of the few pixels at the point)
+    local g = p and 255
+    for dy = -2, 2 do
+        for dx = -2, 2 do
+            if p then g = math.min(g, d.canvas_bb:getPixel(math.floor(p[1]) + dx, math.floor(p[2]) + dy):getColor8().a) end
+        end
+    end
+    check(st and st.kind == "pencil" and g and g > 0 and g < 0xC0, "Pencil: a grey line, in specks (" .. tostring(g) .. ")")
     -- a pen line straight down, for the highlighter to cross
     tap(E, "pen")
 end, after = 2 })

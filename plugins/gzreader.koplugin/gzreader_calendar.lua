@@ -132,10 +132,17 @@ local function dayLabel(t, today)
     return base
 end
 
---- Events on a day (an event spanning days shows on each).
+local function Holidays() return require("gzreader_holidays") end
+
+--- Events on a day (an event spanning days shows on each), the holidays
+--- first when they're on (gzreader_holidays.lua: worked out, not synced).
 function Calendar.eventsOn(day)
     local nextday = addDays(day, 1)
     local out = {}
+    local plugin = Calendar.plugin
+    if plugin and Holidays().enabled(plugin) then
+        out = Holidays().eventsOn(plugin, day, #Calendar.calendars(plugin))
+    end
     for _i, ev in ipairs(Calendar.events or {}) do
         local finish = math.max(ev.finish or ev.start, ev.start + 1)
         if ev.start < nextday and finish > day then out[#out + 1] = ev end
@@ -168,9 +175,14 @@ function Calendar.feedName(feed)
     return (feed.url or ""):match("^https?://([^/?#]+)") or _("Calendar link")
 end
 
---- Anything to show: a CalDAV account or calendar links.
-function Calendar.hasSources(plugin)
+--- Calendars to sync: a CalDAV account or calendar links.
+function Calendar.hasNetSources(plugin)
     return Calendar.client(plugin):isConnected() or #Calendar.feeds(plugin) > 0
+end
+
+--- Anything to show: those, or the holidays.
+function Calendar.hasSources(plugin)
+    return Calendar.hasNetSources(plugin) or Holidays().enabled(plugin)
 end
 
 --- All calendars, as events number them: the CalDAV account's, then the links.
@@ -182,6 +194,9 @@ function Calendar.calendars(plugin)
     end
     for _i, f in ipairs(Calendar.feeds(plugin)) do
         out[#out + 1] = { name = Calendar.feedName(f), kind = "link", ref = f }
+    end
+    if Holidays().enabled(plugin) then
+        out[#out + 1] = { name = Holidays().name(plugin), kind = "holidays", ref = Holidays().conf(plugin) }
     end
     return out
 end
@@ -210,7 +225,7 @@ end
 function Calendar.refresh(plugin, on_done)
     -- (syncing through a computer: the calendars come with the next sync)
     if require("gzreader_net").usb then return on_done and on_done(false, "usb") end
-    if not Calendar.hasSources(plugin) then return on_done and on_done(false, "not_connected") end
+    if not Calendar.hasNetSources(plugin) then return on_done and on_done(false, "not_connected") end
     if Calendar.refreshing then return end
     Calendar.refreshing = true
     local prefs = Calendar.prefs(plugin)
@@ -260,6 +275,8 @@ Calendar.describe = describe
 --- Sync when the tab opens (quietly; Wi-Fi only when needed turns it on and
 --- off again), unless it synced in the last 15 minutes.
 function Calendar.syncOnOpen(plugin)
+    -- (only the holidays: nothing to fetch, no Wi-Fi)
+    if not Calendar.hasNetSources(plugin) then return end
     if Calendar.cached_at and os.time() - Calendar.cached_at < Calendar.SYNC_EVERY then return end
     require("gzreader_net").run(function()
         Calendar.refresh(plugin, function(_ok, err)
@@ -564,6 +581,8 @@ local function message(canvas, x, y, w, text)
 end
 
 local function inRange(day)
+    -- (only the holidays: every day has them)
+    if Calendar.plugin and not Calendar.hasNetSources(Calendar.plugin) then return true end
     local r = Calendar.range
     return r and day >= dayStart(r.from) and day < r.to
 end
@@ -1167,6 +1186,7 @@ function Calendar.show(plugin)
         Calendar.redraw()
         return Calendar.board
     end
+    Calendar.plugin = plugin
     if not Calendar.hasSources(plugin) then return Calendar.showConnect(plugin) end
     if not Calendar.events then Calendar.loadCache() end
     Calendar.layout = Calendar.layout or Calendar.prefs(plugin).layout
@@ -1488,8 +1508,28 @@ function Calendar.connectItems(plugin)
         { text = _("Add from calendars.txt"), gz_icon = Rows.FILE.usb, callback = function() Calendar.importFileUI(plugin) end },
         { text = _("Type a CalDAV account"), gz_icon = "keyboard", callback = function() Calendar.typeConnect(plugin) end },
         { text = _("Copy from another GZreader"), gz_icon = "copy", callback = function() Calendar.copyConnect(plugin) end },
+        { text = T(_("Show holidays (%1)"), Holidays().country(Holidays().conf(plugin).country).name), gz_icon = "calendar",
+            callback = function() Calendar.setHolidays(plugin, { enabled = true }) end },
         Rows.about(_("About calendar links"), _("Add with QR code: open the page on your phone to add calendar links (webcal / ICS, e.g. Proton) or a CalDAV account.\n\nCalendar links are the subscription links calendars share (Proton Calendar: Settings → Calendars → Share → Share with anyone). A CalDAV account (Nextcloud, iCloud, Fastmail…) needs its address, user name and an app password.\n\ncalendars.txt: one link per line (\"Name | link\" to give it a name), in the GZreader folder or at the top of the Kindle's USB drive.")),
     })
+end
+
+--- Holidays on or off, or another country (Settings, the first screen, the
+--- phone page): the tab shows them at once (the first screen gives way to it).
+function Calendar.setHolidays(plugin, v)
+    local c = Holidays().set(plugin, v)
+    Log.info("calendar: holidays", c.enabled and ("on, " .. c.country) or "off")
+    Calendar.plugin = plugin
+    if c.enabled and Calendar.connect_menu then
+        UIManager:close(Calendar.connect_menu)
+        Calendar.connect_menu = nil
+        Calendar.show(plugin)
+    elseif not Calendar.hasSources(plugin) and Calendar.board and not Calendar.board._gz_closed then
+        UIManager:close(Calendar.board)
+    else
+        Calendar.redraw()
+    end
+    return c
 end
 
 function Calendar.showConnect(plugin)
@@ -1737,6 +1777,25 @@ function Calendar.settingsItems(plugin)
                             info(ok and T(_("%1 calendars."), #(store().calendars or {})) or err, 3)
                         end, { reason = "calendar" })
                     end }
+                end
+                return items
+            end,
+        }),
+        icon("calendar", {
+            text_func = function()
+                local c = Holidays().conf(plugin)
+                return c.enabled and T(_("Holidays: %1"), Holidays().country(c.country).name) or _("Holidays: off")
+            end,
+            help_text = _("The holidays as a calendar of their own: worked out on the Kindle, so they need no link, account or Wi-Fi."),
+            sub_item_table_func = function()
+                local items = { { text = _("Show holidays"), checked_func = function() return Holidays().enabled(plugin) end,
+                    keep_menu_open = true,
+                    callback = function() Calendar.setHolidays(plugin, { enabled = not Holidays().enabled(plugin) }) end,
+                    separator = true } }
+                for _i, c in ipairs(Holidays().COUNTRIES) do
+                    items[#items + 1] = { text = c.name, radio = true, keep_menu_open = true,
+                        checked_func = function() return Holidays().conf(plugin).country == c.id end,
+                        callback = function() Calendar.setHolidays(plugin, { country = c.id }) end }
                 end
                 return items
             end,

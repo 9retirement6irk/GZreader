@@ -28,7 +28,7 @@ local function gzreader()
     end
 end
 
--- GZreader: its settings for a section ("general", "reader", "interface").
+-- GZreader: its settings for a section ("general", "reader", "interface", "home").
 local function gz_section(name)
     local g = gzreader()
     if not (g and type(g.sectionItems) == "function") then return {} end
@@ -107,11 +107,13 @@ function M.build(plugin)
             reader = gz_section("reader"),
             interface = gz_section("interface"),
             performance = gz_section("performance"),
+            home = gz_section("home"), -- (the daily paper: at the end of Home's own rows)
         },
         gzreader = gzreader,
         updater = updater,
         plugin_root = plugin_root,
         koreader_item = require("common/gz_settings").koreaderMenuItem(plugin_root),
+        reset_item = require("common/gz_settings").resetItem(), -- (last in Advanced: gzreader_reset.lua)
         -- (Music and Audiobooks: the Kindles with a speaker or jack; House:
         -- not on the Kindles without Wi-Fi, 2 and DX)
         audio = okt and type(Touch) == "table" and type(Touch.audio) == "function" and Touch.audio() and true or false,

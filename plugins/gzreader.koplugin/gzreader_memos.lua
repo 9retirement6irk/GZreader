@@ -159,15 +159,34 @@ end
 --- filter: Memos' CEL filter (tags, created_ts, pinned, has_task_list…).
 --- order: Memos' order_by (pinned, create_time, update_time; pinned first, newest first by default).
 function Memos:list(filter, page_token, page_size, order)
+    -- (the archived notes: a filter Memos.archived(…) made asks for them, with Memos' `state`)
+    local state
+    filter, state = Memos.splitState(filter)
     local _, data, err = self:request("GET", "/memos", nil, {
         pageSize = page_size or Memos.PAGE_SIZE, pageToken = page_token, filter = filter,
-        orderBy = order or "pinned desc, create_time desc",
+        orderBy = order or "pinned desc, create_time desc", state = state,
     })
     if err then return nil, err end
     data = type(data) == "table" and data or {}
     local out = {}
     for _i, m in ipairs(data.memos or {}) do out[#out + 1] = Memos.slim(m) end
     return { memos = out, next = data.nextPageToken ~= "" and data.nextPageToken or nil }
+end
+
+--- The archived notes are listed by Memos' `state` (ARCHIVED), not by its
+--- filter. The Notes tab asks for them with a filter of its own: the CEL
+--- (if any) after this mark, which `Memos.splitState` takes off again.
+Memos.ARCHIVED_MARK = "state=ARCHIVED;"
+function Memos.archived(cel) return Memos.ARCHIVED_MARK .. (cel or "") end
+
+--- A filter as Memos takes it, and the state to list (nil: Memos' own, the notes not archived).
+function Memos.splitState(filter)
+    local mark = Memos.ARCHIVED_MARK
+    if type(filter) == "string" and filter:sub(1, #mark) == mark then
+        local rest = filter:sub(#mark + 1)
+        return rest ~= "" and rest or nil, "ARCHIVED"
+    end
+    return filter, nil
 end
 
 --- Up to `max` notes, fetched a page at a time (Memos sends at most 1000
@@ -268,15 +287,22 @@ function Memos.slim(m)
         tags = type(m.tags) == "table" and m.tags or {}, created = m.createTime, updated = m.updateTime,
         place = loc and (loc.placeholder ~= "" and loc.placeholder or nil) or nil, attachments = atts,
         space = (type(m.space) == "string" and m.space ~= "") and m.space or nil,
+        archived = m.state == "ARCHIVED" or nil,
     }
 end
 
 --- New note (private unless said otherwise), in `space` ("spaces/…") when
 --- given. Returns the note or nil, err.
-function Memos:create(content, visibility, space)
+function Memos:create(content, visibility, space, attachments)
     local body = { content = content, visibility = visibility or "PRIVATE" }
     -- (only when there is one: Memos before v0.31 refuses a field it doesn't know)
     if space and space ~= "" then body.space = space end
+    -- attachments sent already (photos put in the text): the note is made with them
+    if type(attachments) == "table" and #attachments > 0 then
+        local list = {}
+        for i, n in ipairs(attachments) do list[i] = { name = n } end
+        body.attachments = JSON.list(list)
+    end
     local _, data, err = self:request("POST", "/memos", body)
     if err then return nil, err end
     return Memos.slim(data or {})
@@ -310,6 +336,22 @@ function Memos:setPinned(name, pinned)
         { updateMask = "pinned" })
     if err then return nil, err end
     return Memos.slim(data or {})
+end
+
+--- Archive a note (`archived`), or bring it back (Memos' state ARCHIVED / NORMAL).
+function Memos:setArchived(name, archived)
+    local _, data, err = self:request("PATCH", "/" .. name, { name = name, state = archived and "ARCHIVED" or "NORMAL" },
+        { updateMask = "state" })
+    if err then return nil, err end
+    return Memos.slim(data or {})
+end
+
+--- Delete a note for good (its attachments go with it in Memos). true, or nil, err;
+--- a note that's gone already counts as deleted.
+function Memos:deleteMemo(name)
+    local _, _, err = self:request("DELETE", "/" .. name)
+    if err and err ~= "http_404" then return nil, err end
+    return true
 end
 
 --- An attachment's file: /file/attachments/<uid>/<filename> (outside /api).
@@ -418,7 +460,7 @@ end
 --- is skipped: nothing left to send.)
 function Memos:uploadDrawings(q, name)
     for i, d in ipairs(Memos.queuedDrawings(q)) do
-        local att, err = self:uploadAttachment(d.path, d.filename, name)
+        local att, err = self:uploadAttachment(d.path, d.filename, name, d.type) -- (a photo: its own type)
         if not att and err ~= "missing_file" then return nil, err, i - 1 end
     end
     return true
@@ -471,7 +513,7 @@ end
 --- onto it. Returns the note, or nil, err and (the note made but not every
 --- upload) the note's name and how many drawings went.
 function Memos:createWithDrawing(q)
-    local memo, err = self:create(q.content or "", q.visibility, q.space)
+    local memo, err = self:create(q.content or "", q.visibility, q.space, q.attachments)
     if not memo then return nil, err end
     local ok, aerr, sent = self:uploadDrawings(q, memo.name)
     if not ok then return nil, aerr, memo.name, sent end
@@ -506,9 +548,11 @@ function Memos:flush(queue)
             if err == "missing_file" then ok = true end
         elseif q.op == "undraw" then -- a drawing rubbed out to nothing: gone from the note
             ok, err = self:deleteAttachment(q.attachment)
-        elseif q.op == "create" then ok, err = self:create(q.content, q.visibility, q.space)
+        elseif q.op == "create" then ok, err = self:create(q.content, q.visibility, q.space, q.attachments)
         elseif q.op == "update" then ok, err = self:update(q.name, q.content, q.visibility, q.space)
-        elseif q.op == "pin" then ok, err = self:setPinned(q.name, q.pinned) end
+        elseif q.op == "pin" then ok, err = self:setPinned(q.name, q.pinned)
+        elseif q.op == "archive" then ok, err = self:setArchived(q.name, q.archived)
+        elseif q.op == "delete" then ok, err = self:deleteMemo(q.name) end
         if ok then done[#done + 1] = q.id
         else
             first_err = err

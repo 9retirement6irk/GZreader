@@ -49,6 +49,19 @@ function LiveScroll.quiet(fn, mode)
 end
 LiveScroll.STEP_REFRESH = "fast"
 
+--- Once the finger lifts, the page is shown again with this: on the Scribe
+--- and the other REAGL Kindles, the refresh the Kindle turns pages with: no
+--- flash, and it clears what the steps left behind. The ordinary "ui" one
+--- didn't: after a scroll, lines stood two or three times where they'd been
+--- (the owner's video IMG_0270, 2026-11-17). (Like a page turn, KOReader makes
+--- one in every few of them a flash of that part of the screen.)
+LiveScroll.SETTLE_REFRESH = "partial"
+
+--- `widget`'s `region` shown again cleanly (after a drag's rough steps).
+function LiveScroll.settle(widget, region)
+    require("ui/uimanager"):setDirty(widget, function() return LiveScroll.SETTLE_REFRESH, region end)
+end
+
 local function seconds()
     local ok, time = pcall(require, "ui/time")
     if ok and time then return time.to_s(time.now()) end
@@ -91,7 +104,7 @@ function LiveScroll.on(scroller)
     end
     -- (after steps shown roughly: the page once more, properly, even when it ends where the last step left it)
     local function settle(self, rough)
-        if rough then require("ui/uimanager"):setDirty(self.show_parent, function() return "ui", self.dimen end) end
+        if rough then LiveScroll.settle(self.show_parent, self.dimen) end
     end
     function scroller:onScrollablePanRelease(arg, ges)
         local rough = self._gz_live.rough

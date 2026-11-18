@@ -74,6 +74,19 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
 - **5-way focus on Home** refreshes only the old and the new focus boxes
   (quick mode), and the Home key from Settings or the audiobook player makes
   one refresh.
+- **The Notes tab's next page is drawn ahead** (`gzreader_notes.lua`): a
+  page turn on the Notes tab had to paint and tilt every note of the new
+  page. Once the board has been still for half a second, the notes of the
+  next page and of the page before (with Scroll up and down: the rows below
+  and above) are now drawn too, one note at a time between whatever else the
+  Kindle is asked to do, so the turn only shows them. Nothing is drawn ahead
+  while a window is over the board or you keep turning, and not at all on
+  the Kindle 2 and DX (it keeps two more pages of note pictures in memory:
+  about 1 MB on a Kindle Keyboard, 9 MB on a Scribe). In the emulator, CPU
+  time for a page turn: Paperwhite 3, Compact 0.28–0.36 s → 0.08–0.11 s,
+  Full 0.14–0.16 s → 0.08–0.13 s, scrolling a screen 0.12–0.18 s →
+  0.06–0.13 s; Kindle Keyboard, Compact 0.25–0.47 s → 0.10–0.14 s; Scribe,
+  Compact 0.34–0.35 s → 0.11–0.23 s.
 - **The Notes tab opens quickly** (`gzreader_notes.lua`, `gzreader_sticky.lua`):
   each sticky note is painted and tilted by a degree or two, pixel by pixel in
   Lua, and that was most of the time the tab took to open (about 3 s on a
@@ -86,11 +99,36 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
   changed. The last page's pictures stay while the tab is closed (a few MB;
   not on the Kindle 2 and DX). In the emulator (Paperwhite 3): 1.4 s of CPU
   to open before, 0.5 s now, 0.25 s when opened again.
+- **The Notes tab stays quick with many notes** (`gzreader_notes.lua`,
+  `gzreader_sticky.lua`): every time the board was shown again (the tab
+  opened, a note closed, a filter chosen, a sync that came back) the text of
+  every note kept on the Kindle was made plain again, though only the six or
+  so on the page are drawn, and each draw read every note's text once more to
+  find its pictures. With the 100 notes kept by default that was most of the
+  time: the more notes, the slower. Now a note's plain text is worked out
+  only when the note is drawn, a note without a picture isn't read at all,
+  and in the Full view a note's layout is kept under its text, so a sync or a
+  filter (which bring the same notes back) lays out only the notes that
+  changed. In the emulator (Paperwhite 3, 97 notes, CPU time): the tab opened
+  again 0.56 s → 0.25 s; closing a note 0.35 s → 0.11 s; a sync that changed
+  nothing 0.44 s → 0.08 s; in the Full view a page turn 0.24 s → 0.10 s and
+  the board after a sync 0.60 s → 0.03 s.
 - **Notes syncs ask only what your Memos has** (`gzreader_memos.lua`): a
   stock Memos has no spaces and no journaling mode, and each sync asked for
   both and got "not found" (two requests and two warnings in the log every
   time). What a server lacks is now remembered for 6 hours (and asked again
   when you connect again), so a sync is the notes and your tags only.
+- **A photo in a note is shrunk once** (`gzreader_sticky.lua`): a photo from
+  a phone is around 12 megapixels, and to show it a few hundred pixels wide
+  on a sticky note (or in the note's page) the whole file was decoded and
+  shrunk every time that note was drawn again: the whole picture in memory
+  for a moment, and more time than the rest of the page. A picture shown at a
+  quarter of its pixels or less now has its small version kept on the Kindle
+  (a PNG of exactly what was shown, in `cache/gzreader-notes-small`, at most
+  240 files or 12 MB, the oldest going first; Settings → Notes → Free up
+  space removes them with the attachments), and that is what's read from
+  then on. In the emulator (Paperwhite 3): a 12-megapixel photo 0.35–0.41 s
+  the first time, 0.003 s after; a 3-megapixel one 0.10–0.16 s, then 0.003 s.
 - **Less of ZenOS loaded at start**: ZenOS's own updater (about 1,900
   lines, unused: GZreader's updater replaces it) isn't loaded at all; a
   small `gz_updater.lua` answers ZenOS instead, and GZreader's updater is

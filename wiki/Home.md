@@ -3,9 +3,14 @@
 **GZreader** is [KOReader](https://github.com/koreader/koreader) trimmed down to
 reading, with the [ZenOS](https://github.com/xZenLabs/zen-os) interface and a
 built-in connection to your self-hosted [Grimmory](https://grimmory.org) book
-server, packaged for older Kindles (Kindle 2, Keyboard, DX, 4, Touch,
-Paperwhite 3 and newer touch Kindles) and, as test builds, the Nook 1st
-Edition and Nook Simple Touch.
+server, packaged for e-readers from the Kindle 2 and Nook 1 to the Scribe:
+Kindle 2, Keyboard, DX, 4, Touch, Paperwhite 3, Scribe and the other touch
+Kindles, and, as test builds, the Nook 1st Edition and Nook Simple Touch.
+
+Read, and keep your place, bookmarks, highlights and notes in sync with
+Grimmory; send books from your browser; listen to audiobooks and Plex music;
+write Memos notes in a rich text editor and draw in them with a finger or the
+Scribe's pen; see your calendars; switch your Home Assistant lights.
 
 ## Start here
 
@@ -24,7 +29,7 @@ Edition and Nook Simple Touch.
 - [Setup page and connections](Setup-Page-and-Connections): Grimmory, single sign-on, copying connections, Cloudflare
 - [Grimmory library](Grimmory-Library) and [Grimmory sync](Grimmory-Sync): browsing, downloads, progress, bookmarks, highlights
 - [Home and bookshelves](Home-and-Bookshelves), [Picture books](Picture-Books)
-- [Notes](Notes) (and drawing), [Calendar](Calendar), [Music](Music), [Audiobooks and read aloud](Audiobooks-and-Read-Aloud), [House](House) (Home Assistant)
+- [Notes](Notes) (and drawing), [Calendar](Calendar), [Music](Music), [Audiobooks and read aloud](Audiobooks-and-Read-Aloud), [Bluetooth](Bluetooth), [House](House) (Home Assistant)
 - [Sync with a computer](Sync-with-a-Computer) (Kindles without Wi‑Fi), [Wi‑Fi: on, off, auto](Wi-Fi)
 - [Updates and test builds](Updates-and-Test-Builds), [Privacy and diagnostics](Privacy-and-Diagnostics)
 - Nooks: [Nook 1st Edition](Nook-1st-Edition), [Nook Simple Touch](Nook-Simple-Touch)

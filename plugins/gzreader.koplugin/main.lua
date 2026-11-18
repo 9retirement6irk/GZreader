@@ -240,6 +240,9 @@ function Grimmory:init()
             -- downloaded music: Downloads → Music (on the bookshelf, a CD player)
             pcall(function() require("gzreader_musicfolder").start(self) end)
         end
+        -- Home's "Daily paper" widget (ZenOS registers Home's widgets when it
+        -- starts, after GZreader: a tick later)
+        UIManager:nextTick(function() pcall(function() require("gzreader_dailyscreen").install(self) end) end)
         -- Home's "Grimmory reading stats" (every device's reading, from Grimmory)
         local plugin_ref = self
         rawset(_G, "__GZ_GRIMMORY_STATS", function() return require("gzreader_grimstats").values(plugin_ref) end)
@@ -813,6 +816,14 @@ function Grimmory:sectionItems(section)
             })
         end
         return items
+    elseif section == "home" then
+        -- the daily paper (gzreader_daily.lua): feeds fetched once a day, read on Home
+        return {
+            icon("history", {
+                text = _("Daily paper"),
+                sub_item_table_func = function() return require("gzreader_dailyscreen").settingsItems(self) end,
+            }),
+        }
     end
     return {}
 end
@@ -1343,6 +1354,12 @@ end
 function Grimmory:onShowGzHouse()
     if self.ui and self.ui.document then return end -- (file manager's instance)
     require("gzreader_house").show(self)
+    return true
+end
+
+--- The daily paper (Home's widget opens it; gzreader_dailyscreen.lua).
+function Grimmory:onShowGzDailyPaper()
+    require("gzreader_dailyscreen").show(self)
     return true
 end
 
