@@ -384,6 +384,19 @@ function Editor:init()
             self.hint_slot,
             self.floating and VerticalSpan:new{ width = S(6) } or nil,
         }
+        if self.keys_bar then
+            -- (the text box is a whole number of lines tall: if the page is taller than the
+            -- screen with its bar, toolbar and the keys at the foot, the box gives way)
+            self.bar_slot[1] = VerticalSpan:new{ width = self.tool_h }
+            self.hint_slot[1] = VerticalSpan:new{ width = self.footer_h }
+            local over = column:getSize().h - sh
+            if over > 0 then
+                if self.input.free then pcall(self.input.free, self.input) end
+                self.input = box(text_h - over)
+                column[2] = self.input
+                column:resetLayout()
+            end
+        end
     end
     if self.floating then
         -- a window: what's under it (the book, Home) stays on the screen around it

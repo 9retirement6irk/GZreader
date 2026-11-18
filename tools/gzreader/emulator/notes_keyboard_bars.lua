@@ -45,6 +45,9 @@ if MODEL == "k3" then
     add({ fn = function(E)
         local ed = editor()
         check(ed and ed.keys_bar and ed.bar_title == "Georgia section", "the editor: the same bar, the note's name")
+        local sh = require("device").screen:getHeight()
+        local h = ed[1][1]:getSize().h
+        check(h <= sh, "…and everything fits the screen, the keys listed at the foot too (" .. h .. " of " .. sh .. ")")
     end, after = 1 })
     add({ combo = { "Alt", "M" }, after = 3 })
     add({ shot = "3-menu", after = 0.5 })
