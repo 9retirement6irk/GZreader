@@ -9357,22 +9357,23 @@ print("Notes (Memos v0.31)")
             local memo = { name = "memos/details-1", attachments = {}, tags = { "mood/neutral", "trip" },
                 content = "## Tuesday\n\n#mood/neutral #felt/drained #trip\n\n<details>\n<summary>Text from a.png</summary>\n\n"
                     .. "```text\n- [ ] in code\n```\n\n</details>\n\n- [ ] after\n" }
-            local v = Notes.showNote(plugin, memo)
-            local folded = v.picks[1] and v.picks[1].details and v.picks[1].open == false and v.picks[2] and v.picks[2].check == 2 and #v.picks == 2
+            -- (the page itself is laid out in the emulator: tools/gzreader/emulator/notes_details.lua)
+            local refreshed = 0
+            local v = setmetatable({ memo = memo, plugin = plugin, opened = {}, focus = false, refresh = function() refreshed = refreshed + 1 end,
+                picks = { { details = ".5", open = false }, { check = 2 } } }, { __index = Notes._NoteView })
             v:pickIndex(1)
-            local opened = v.picks[1].open == true and v.picks[2].check == 2
+            local opened = v.opened[".5"] == true and refreshed == 1
+            v.picks[1].open = true
             v:pickIndex(1)
-            local again = v.picks[1].open == false
+            local folded = v.opened[".5"] == false and refreshed == 2
             v:pickIndex(2)
-            check(folded and opened and again and saved and saved:find("- [x] after", 1, true) and saved:find("- [ ] in code", 1, true),
-                "note page: a <details> section is a row that opens and folds where it is; the box after it ticks its own line ("
-                .. tostring(folded) .. "," .. tostring(opened) .. "," .. tostring(again) .. ")")
+            check(opened and folded and saved and saved:find("- [x] after", 1, true) and saved:find("- [ ] in code", 1, true),
+                "note page: a section's row opens and folds it (laid out again); the box after it, the note's second, ticks its own line")
             Notes.saveContent = real_save
             local nsrc7 = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
             check(nsrc7:find('table.insert(page, page[1] and page[1].kind == "heading" and 2 or 1, { kind = "toptags" })', 1, true)
                 and not nsrc7:find("add(Notes.tagChips(m.tags", 1, true),
                 "note page: a journal entry's tags at the top under its heading; no list of every tag at the bottom")
-            pcall(function() v:onClose() end)
         end
         -- S sorts (keyboard Kindles)
         local sorted_shown

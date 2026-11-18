@@ -1963,6 +1963,7 @@ function Notes.pageFace(size, bold)
 end
 
 local NoteView = InputContainer:extend{ covers_fullscreen = true, memo = nil, plugin = nil, focus = nil }
+Notes._NoteView = NoteView -- (tests)
 
 function NoteView:init()
     local sw, sh = Screen:getWidth(), Screen:getHeight()
