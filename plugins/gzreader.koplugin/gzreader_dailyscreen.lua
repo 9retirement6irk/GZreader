@@ -1,16 +1,19 @@
 --[[--
 The daily paper on the screen (the edition itself: gzreader_daily.lua).
 
-- Home's "Daily paper" widget: a folded newspaper lying on Home, its name
-  across the top between rules, the lead headline, the next ones in two
-  columns. A tap (or the 5-way's press on the row) opens the paper.
+- On Home's bookshelf: a newspaper standing among the books at the start of
+  the first shelf (its front page small: the name, the date, the lead
+  headline). A tap (the 5-way: move to it, press) opens the paper. ZenOS's
+  shelf.lua asks for it through __GZ_SHELF_PAPER.
+- Optional, off: Home's "Daily paper" widget, a wider folded newspaper with
+  the headlines as a row above the books.
 - The paper: laid out as a newspaper. The nameplate and the date, the lead
   story across the page, the others in columns (2, or 3 on a wide screen),
   each with its section, headline, source and how it begins; more pages
   behind (swipe, the page keys, or the arrows at the foot). A tap on a story
   (the 5-way: move the frame, press) opens it as text to page through, with
   a QR code of its link for the rest of it on a phone.
-- Settings → Home → Daily paper: on/off, Show on Home, the feeds.
+- Settings → Home → Daily paper: on/off, on the bookshelf, as a row, the feeds.
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
@@ -194,25 +197,137 @@ function Paper.homeWidget(plugin, ctx)
     if type(ctx.setWidgetActions) == "function" then ctx.setWidgetActions{ activate = open } end
 
     -- (the row is drawn again when an edition comes; today's is asked for when it's missing)
-    Paper.home = { menu = ctx.menu, refresh = ctx.refreshRow }
+    Paper.home = { menu = ctx.menu }
     D.listen("home", Paper.redrawHome)
     if on then UIManager:nextTick(function() pcall(D.maybeRefresh, plugin) end) end
     return box
 end
 
---- Home's row again (an edition came, or a try began or ended), when Home is up.
+---------------------------------------------------------------- on Home's bookshelf
+
+--- Is the newspaper wanted on Home's bookshelf? (On unless unticked.)
+function Paper.onShelf(plugin)
+    local D = Daily()
+    return D.enabled(plugin) and D.store(plugin).shelf ~= false
+end
+
+--- The newspaper's size on a shelf whose books stand in `area_h`: a front
+--- page a little lower than the books, as wide as a cover at least.
+function Paper.shelfSize(area_h, cover_w)
+    local h = math.floor(area_h * 0.8)
+    return math.max(math.floor(h * 0.7), math.min(cover_w or 0, math.floor(h * 0.8))), h
+end
+
+--- The newspaper standing among Home's books (ZenOS's shelf.lua asks
+--- through __GZ_SHELF_PAPER): { widget, w, h, open } or nil. Its front page
+--- small: the name, the date, the lead headline, and columns of grey lines.
+function Paper.shelfItem(plugin, ctx, area_h, cover_w)
+    if not Paper.onShelf(plugin) then return nil end
+    local TextBoxWidget = require("ui/widget/textboxwidget")
+    local TextWidget = require("ui/widget/textwidget")
+    local Screen = Device.screen
+    local S = function(n) return Screen:scaleBySize(n) end
+    local D = Daily()
+    local w, h = Paper.shelfSize(area_h, cover_w)
+    local pad, pages = S(4), S(3)
+    local sheet_w, sheet_h = w - pages, h - pages
+    local inner_w = sheet_w - pad * 2
+    local now = os.time()
+    local edition = D.load()
+    local today = edition and edition.day == D.day(now)
+
+    -- the name as big as fits across the sheet
+    local mast
+    for size = 12, 5, -1 do
+        if mast then mast:free() end
+        mast = TextWidget:new{ text = _("The Daily Paper"), face = serifBold(size) }
+        if mast:getSize().w <= inner_w then break end
+    end
+    mast:setMaxWidth(inner_w)
+    local date = TextWidget:new{ text = (os.date("%a, %b %d", now):gsub(" 0(%d)$", " %1")), face = serifItalic(6),
+        max_width = inner_w, fgcolor = Blitbuffer.COLOR_DARK_GRAY }
+    local front = D.front(edition, 1)[1]
+    local words = front and front.title or D.refreshing and _("Fetching today's paper…") or _("No paper yet")
+    if front and not today then words = front.title end
+    local lead_face = serifBold(7)
+    local lead = TextBoxWidget:new{ text = words, face = lead_face, width = inner_w, alignment = "left" }
+    local max_lines = 4
+    if lead:getSize().h > lead:getLineHeight() * max_lines then
+        local lh = lead:getLineHeight()
+        lead:free()
+        lead = TextBoxWidget:new{ text = words, face = lead_face, width = inner_w, alignment = "left",
+            height = lh * max_lines, height_adjust = true, height_overflow_show_ellipsis = true }
+    end
+
+    local widget = drawn(w, h, function(bb, x, y)
+        -- the pages behind, then the front page
+        bb:paintRect(x + pages, y + pages, sheet_w, sheet_h, Blitbuffer.COLOR_GRAY)
+        bb:paintRect(x + math.floor(pages / 2), y + math.floor(pages / 2), sheet_w, sheet_h, Blitbuffer.COLOR_LIGHT_GRAY)
+        bb:paintBorder(x + math.floor(pages / 2), y + math.floor(pages / 2), sheet_w, sheet_h, 1, Blitbuffer.COLOR_DARK_GRAY)
+        bb:paintRect(x, y, sheet_w, sheet_h, Blitbuffer.COLOR_WHITE)
+        bb:paintBorder(x, y, sheet_w, sheet_h, 1, Blitbuffer.COLOR_BLACK)
+        local ix, cy = x + pad, y + pad
+        mast:paintTo(bb, ix + math.floor((inner_w - mast:getSize().w) / 2), cy)
+        cy = cy + mast:getSize().h
+        bb:paintRect(ix, cy, inner_w, math.max(2, S(1)), Blitbuffer.COLOR_BLACK)
+        cy = cy + math.max(2, S(1)) + 1
+        date:paintTo(bb, ix + math.floor((inner_w - date:getSize().w) / 2), cy)
+        cy = cy + date:getSize().h
+        bb:paintRect(ix, cy, inner_w, 1, Blitbuffer.COLOR_BLACK)
+        cy = cy + S(3)
+        lead:paintTo(bb, ix, cy)
+        cy = cy + lead:getSize().h + S(3)
+        -- the rest of the page: two columns of lines, a picture in the first
+        local bottom = y + sheet_h - pad
+        local gutter = S(4)
+        local col_w = math.floor((inner_w - gutter) / 2)
+        local step = math.max(3, S(3))
+        if bottom - cy >= step * 3 then
+            bb:paintRect(ix + col_w + math.floor(gutter / 2), cy, 1, bottom - cy, Blitbuffer.COLOR_GRAY)
+            local pic_h = math.min(math.floor(col_w * 0.7), math.floor((bottom - cy) / 2))
+            bb:paintRect(ix, cy, col_w, pic_h, Blitbuffer.COLOR_LIGHT_GRAY)
+            bb:paintBorder(ix, cy, col_w, pic_h, 1, Blitbuffer.COLOR_GRAY)
+            local n = 0
+            for ly = cy, bottom - 1, step do
+                n = n + 1
+                if ly >= cy + pic_h + step then bb:paintRect(ix, ly, col_w - (n % 5 == 0 and math.floor(col_w / 3) or 0), 1, Blitbuffer.COLOR_GRAY) end
+                bb:paintRect(ix + col_w + gutter, ly, col_w - (n % 4 == 0 and math.floor(col_w / 4) or 0), 1, Blitbuffer.COLOR_GRAY)
+            end
+        end
+    end)
+    widget.free = function()
+        mast:free(); date:free(); lead:free()
+    end
+    -- (the shelf is drawn again when an edition comes; today's is asked for when it's missing)
+    Paper.home = { menu = ctx and ctx.menu, shelf = true }
+    D.listen("home", Paper.redrawHome)
+    UIManager:nextTick(function() pcall(D.maybeRefresh, plugin) end)
+    return { widget = widget, w = w, h = h, open = function() Paper.show(plugin) end }
+end
+
+--- Home's shelf (or the paper's row) again: an edition came, or a try began
+--- or ended, while Home is up.
 function Paper.redrawHome()
     local home = Paper.home
     if not (home and home.menu and type(home.menu._zen_home_rebuild_rows) == "function") then return end
     local ok_r, ReaderUI = pcall(require, "apps/reader/readerui")
     if ok_r and ReaderUI.instance then return end
-    local ok, done = pcall(home.menu._zen_home_rebuild_rows, { [Daily().ROW_ID] = true })
-    if ok and done and type(home.refresh) == "function" then pcall(home.refresh) end
+    local ok, done = pcall(home.menu._zen_home_rebuild_rows, { [Daily().ROW_ID] = true, strip = true })
+    if ok and done then
+        pcall(function()
+            local fm = require("apps/filemanager/filemanager").instance
+            if fm then UIManager:setDirty(fm, "ui") end
+        end)
+    else
+        pcall(function() require("common/gz_view").redrawHome() end)
+    end
 end
 
---- Put the widget in Home's list of widgets (ZenOS registers Home's API
---- when it starts, after GZreader: called a tick later).
+--- The newspaper on Home's shelf, and the row among Home's widgets for
+--- whoever wants the headlines there (ZenOS registers Home's API when it
+--- starts, after GZreader: called a tick later).
 function Paper.install(plugin)
+    rawset(_G, "__GZ_SHELF_PAPER", function(ctx, area_h, cover_w) return Paper.shelfItem(plugin, ctx, area_h, cover_w) end)
     local register = rawget(_G, "__ZENOS_REGISTER_HOME_ITEM")
     if type(register) ~= "function" then return false end
     return register(Daily().ROW_ID, function(ctx) return Paper.homeWidget(plugin, ctx) end,
@@ -823,18 +938,28 @@ function Paper.settingsItems(plugin)
                 st.enabled = not st.enabled or nil
                 plugin:save()
                 if st.enabled then
-                    local ok, why = Paper.setOnHome(true)
-                    if not ok and why == "full" then
-                        info(_("The daily paper is on, but Home has no room for it. Turn another widget off in Settings → Home → Widgets, then tick Show on Home. Until then: Read the paper, here."))
-                    end
                     pcall(D.maybeRefresh, plugin)
-                else
+                elseif Paper.onHome() then
                     Paper.setOnHome(false)
                 end
+                pcall(function() require("common/gz_view").redrawHome() end)
             end,
         },
         {
-            text = _("Show on Home"),
+            text = _("On Home's bookshelf"),
+            help_text = _("The newspaper stands at the start of Home's bookshelf, among your books (Home's Bookshelf view). Tap it to read."),
+            enabled_func = on,
+            checked_func = function() return Paper.onShelf(plugin) end,
+            callback = function()
+                local st = D.store(plugin)
+                if st.shelf == false then st.shelf = nil else st.shelf = false end
+                plugin:save()
+                pcall(function() require("common/gz_view").redrawHome() end)
+            end,
+        },
+        {
+            text = _("Headlines as a row on Home"),
+            help_text = _("A wider newspaper with the day's headlines as one of Home's widgets, above the books. It takes a widget's room on Home; the newspaper on the shelf doesn't."),
             enabled_func = on,
             checked_func = function() return on() and Paper.onHome() end,
             callback = function()

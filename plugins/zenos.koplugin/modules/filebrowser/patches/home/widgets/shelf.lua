@@ -673,12 +673,15 @@ function Shelf:paintTo(bb, x, y)
     if self.empty_text then
         -- nothing on it yet: cobwebs in its corners, and a word
         local r = math.min(S(90), math.floor(area_h * 0.4))
-        cobweb(bb, x + S(2), y + S(2), 1, 1, r)
+        -- (GZreader: not behind the daily paper, which stands at the left end)
+        if not (self.slots[1] and self.slots[1].gz_paper) then cobweb(bb, x + S(2), y + S(2), 1, 1, r) end
         cobweb(bb, x + self.w - S(2), board_y - 1, -1, -1, math.floor(r * 0.8))
         local TextBoxWidget = require("ui/widget/textboxwidget")
+        -- (GZreader: beside the daily paper when it stands there)
+        local taken = (self.slots[1] and self.slots[1].gz_paper) and (S(8) + self.slots[1].w) or 0
         local msg = TextBoxWidget:new{ text = self.empty_text, face = Font:getFace("cfont", 17),
-            width = self.w - S(80), alignment = "center", fgcolor = Blitbuffer.gray(0.75) }
-        msg:paintTo(bb, x + S(40), y + math.floor((area_h - msg:getSize().h) / 2))
+            width = self.w - S(80) - taken, alignment = "center", fgcolor = Blitbuffer.gray(0.75) }
+        msg:paintTo(bb, x + S(40) + taken, y + math.floor((area_h - msg:getSize().h) / 2))
         msg:free()
     end
     self.overlay = nil
@@ -778,6 +781,50 @@ function M.build(books, opts)
             local Theme = require("gzreader_shelftheme")
             if Theme.keeps("home", r, rows) then keep = Theme.reserve(area_h) end
         end)
+        -- GZreader: the daily paper stands at the start of Home's first shelf,
+        -- a newspaper among the books (gzreader_dailyscreen.lua draws and opens it)
+        if r == 1 and opts.gz_home then
+            local okp, paper = pcall(function()
+                local hook = rawget(_G, "__GZ_SHELF_PAPER")
+                return hook and hook(ctx, area_h, cover_w, cover_h)
+            end)
+            if okp and type(paper) == "table" and paper.widget and x + paper.w + S(6) <= width - S(4) - keep then
+                local slot = { x = x, w = paper.w + S(6), h = paper.h, gz_paper = true,
+                    book = { is_group = true, group_label = "gz daily paper" } }
+                local item = paper.widget
+                if opts.interactive and Device:isTouchDevice() then
+                    local whole = Geom:new{ x = 0, y = 0, w = Screen:getWidth(), h = Screen:getHeight() }
+                    local tap = InputContainer:new{
+                        dimen = Geom:new{ w = paper.w, h = paper.h },
+                        ges_events = { TapGzPaper = { GestureRange:new{ ges = "tap", range = whole } } },
+                    }
+                    tap.onTapGzPaper = function(self_, _, ges)
+                        if not (ges and ges.pos) then return false end
+                        if ctx.openTopMenu and ctx.openTopMenu(ges) then return true end
+                        local ov = shelf.overlay
+                        if ov and ov.rect:contains(ges.pos) then return false end -- (a book pulled out lies over it)
+                        if slot.hidden or not (self_.dimen and self_.dimen:contains(ges.pos)) then return false end
+                        paper.open()
+                        return true
+                    end
+                    tap[1] = item
+                    item = tap
+                end
+                if opts.interactive and type(ctx.prepareHomeFocusTarget) == "function" then
+                    local target = {
+                        key = "gz:daily-paper", subrow = (opts.row_offset or 0) + r, col = 1,
+                        width = paper.w, height = paper.h, slow_refresh = true, badge_at_bottom = true,
+                        activate = function() paper.open(); return true end,
+                    }
+                    slot.target = target
+                    item = ctx.prepareHomeFocusTarget(target, item)
+                    targets[#targets + 1] = target
+                end
+                shelf.slots[1] = slot
+                shelf[1] = item
+                x = x + slot.w
+            end
+        end
         for i = (r - 1) * per_row + 1, math.min(#books, r * per_row) do
             local book = books[i]
             local look = M.look(book, area_h)

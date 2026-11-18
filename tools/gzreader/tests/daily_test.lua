@@ -495,27 +495,42 @@ shown = {}
 Paper.show(plugin)
 check(shown[#shown] and shown[#shown].kind == "info" and shown[#shown].text:find("Settings → Home → Daily paper", 1, true), "opening the paper while it's off says where to turn it on")
 saves = 0
+check(Paper.onShelf(plugin) == false and Paper.shelfItem(plugin, {}, 300, 150) == nil, "off: no newspaper on the shelf")
 row("Daily paper").callback()
-check(Daily.enabled(plugin) and saves == 1 and home.rows.enabled.daily_paper == true and home.rows.order[#home.rows.order] == "daily_paper" and redrawn == 1,
-    "turned on: kept, the widget ticked on Home (last), Home drawn again")
-check(row("Show on Home").checked_func() == true, "Show on Home is ticked")
+check(Daily.enabled(plugin) and saves == 1 and home.rows.enabled.daily_paper ~= true and redrawn == 1,
+    "turned on: kept, no row of its own on Home, Home drawn again")
+check(Paper.onShelf(plugin) and row("On Home's bookshelf").checked_func() == true, "… the newspaper goes on Home's bookshelf")
+check(type(rawget(_G, "__GZ_SHELF_PAPER")) == "function", "the shelf can ask for it")
+row("On Home's bookshelf").callback()
+check(not Paper.onShelf(plugin) and Daily.enabled(plugin) and plugin.store.daily.shelf == false and redrawn == 2, "unticked: off the shelf, the paper stays on")
+row("On Home's bookshelf").callback()
+check(Paper.onShelf(plugin) and plugin.store.daily.shelf == nil, "ticked again")
+local pw, ph = Paper.shelfSize(300, 150)
+check(ph == 240 and pw == 168, "on the shelf: a little lower than the books, a front page's shape … " .. pw .. "x" .. ph)
+pw, ph = Paper.shelfSize(300, 400)
+check(pw == 192, "never much wider than it is tall … " .. pw)
+row("Headlines as a row on Home").callback()
+check(home.rows.enabled.daily_paper == true and home.rows.order[#home.rows.order] == "daily_paper", "Headlines as a row on Home: the widget ticked (last)")
+check(row("Headlines as a row on Home").checked_func() == true, "… and shown ticked")
 home.rows.order = { "datetime", "featured", "strip", "quotes", "daily_paper" }
 home.rows.enabled.daily_paper = false
-row("Show on Home").callback()
+row("Headlines as a row on Home").callback()
 check(table.concat(home.rows.order, ",") == "datetime,featured,daily_paper,strip,quotes", "with books on Home, the paper goes above them (the bookshelf stays last) … " .. table.concat(home.rows.order, ","))
 home.rows.order = { "daily_paper", "datetime", "featured", "strip" }
-row("Show on Home").callback()
-row("Show on Home").callback()
+row("Headlines as a row on Home").callback()
+row("Headlines as a row on Home").callback()
 check(home.rows.order[3] == "daily_paper" and #home.rows.order == 4, "listed once, however often it's switched")
-row("Show on Home").callback()
-check(home.rows.enabled.daily_paper == false and row("Show on Home").checked_func() == false and Daily.enabled(plugin), "Show on Home unticked: the paper stays on, off Home")
+row("Headlines as a row on Home").callback()
+check(home.rows.enabled.daily_paper == false and row("Headlines as a row on Home").checked_func() == false and Daily.enabled(plugin), "the row unticked: the paper stays on")
 units.featured = 8
 shown = {}
-row("Show on Home").callback()
+row("Headlines as a row on Home").callback()
 check(home.rows.enabled.daily_paper == false and shown[#shown] and shown[#shown].text:find("no room", 1, true), "Home full: said so, nothing changed")
 units.featured = 4
+row("Headlines as a row on Home").callback()
+check(home.rows.enabled.daily_paper == true, "the row on again")
 row("Daily paper").callback()
-check(not Daily.enabled(plugin) and home.rows.enabled.daily_paper == false, "turned off: off Home too")
+check(not Daily.enabled(plugin) and home.rows.enabled.daily_paper == false and not Paper.onShelf(plugin), "the paper turned off: its row and the shelf's newspaper go too")
 row("Daily paper").callback()
 local feed_rows = Paper.feedItems(plugin)
 local n_rows = #Daily.DEFAULT_FEEDS + #plugin.store.daily.feeds + 3
@@ -546,6 +561,10 @@ check(main:find('section == "home"', 1, true) and main:find('require("gzreader_d
 check(main:find('require("gzreader_dailyscreen").install(self)', 1, true), "the plugin registers Home's widget at start")
 local zs = read(REPO .. "/plugins/zenos.koplugin/modules/settings/zen_settings.lua")
 check(zs:find('gz_section("home")', 1, true), "ZenOS's Settings asks GZreader for Home's rows")
+local sh = read(REPO .. "/plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/shelf.lua")
+check(sh:find('rawget(_G, "__GZ_SHELF_PAPER")', 1, true) and sh:find("opts.gz_home", 1, true) and sh:find("gz_paper = true", 1, true),
+    "ZenOS's shelf asks for the newspaper, on Home's first shelf only")
+check(read(REPO .. "/plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/strip_common.lua"):find("gz_home = true", 1, true), "Home's shelf says it's Home's")
 local src = read(PLUGIN .. "/gzreader_daily.lua") .. read(PLUGIN .. "/gzreader_dailyscreen.lua")
 check(not src:find("Log%.[a-z]+%([^\n]*%f[%w]url%f[%W][^\n]*%)") or not src:find("Log%.[a-z]+%([^\n]*[^%.]url[,%)]"), "no log line takes a feed's address")
 local cl = read(PLUGIN .. "/gzreader_changelog.lua")

@@ -8,21 +8,23 @@ Wi‑Fi.
 
 ## Turning it on
 
-**Settings → Home → Daily paper**, and tick **Daily paper**. Home gets a
-**Daily paper** widget, just above your books: a folded newspaper with its
-name across the top, the day's lead headline, and the next ones in two
-columns.
+**Settings → Home → Daily paper**, and tick **Daily paper**. A newspaper
+appears on Home's bookshelf, standing at the start of the first shelf beside
+your books: its name, the date and the day's lead headline on its front page.
+It takes a book's room on the shelf and nothing else on Home.
 
-- If Home has no room for another widget, GZreader says so: turn one off in
-  **Settings → Home → Widgets**, then tick **Show on Home**. Meanwhile
-  **Read the paper** in the same Settings page opens it.
-- **Show on Home** takes the widget off Home and puts it back; you can also
-  move it up or down in **Settings → Home → Widgets** like any other widget.
+- **On Home's bookshelf** takes it off the shelf and puts it back. (The shelf
+  is Home's Bookshelf view; with another view, use the row below, or **Read
+  the paper** in the same Settings page.)
+- **Headlines as a row on Home** adds a wider newspaper with six or so
+  headlines as one of Home's widgets, above the books. It takes a widget's
+  room: if Home is full, turn another widget off in **Settings → Home →
+  Widgets** first. Off unless you tick it.
 
 ## Reading it
 
-Tap the newspaper (on a Kindle with keys: move to it with the 5-way and
-press). It opens laid out as a newspaper: the nameplate and the date, the
+Tap the newspaper on the shelf (on a Kindle with keys: move to it with the
+5-way and press). It opens laid out as a newspaper: the nameplate and the date, the
 lead story across the page, and the other stories in columns (two, or three
 on a DX or a Scribe), each with its section, its headline, where it's from
 and how it begins.

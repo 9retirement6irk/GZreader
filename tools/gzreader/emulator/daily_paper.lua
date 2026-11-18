@@ -1,6 +1,6 @@
 -- The daily paper (gzreader_daily.lua): turned on, an edition made from two
--- feeds given here (no network), Home's Daily paper widget (a folded
--- newspaper), the paper's front page and second page, a story, and Settings → Home → Daily paper → Feeds. Any model.
+-- feeds given here (no network), the newspaper on Home's bookshelf (empty,
+-- then beside books: GZ_EMU_BOOK = an EPUB), the optional headlines row, the paper's front page and second page, a story, and Settings → Home → Daily paper → Feeds. Any model.
 --   GZ_EMU_TREE=<tree>/koreader ./run.sh daily_paper.lua <out>
 -- Checks in <out>/daily-checks.txt.
 local s = { start = 14 }
@@ -57,20 +57,37 @@ add({ fn = function(E)
     check(E, edition ~= nil and Daily.count(edition) == 16, "an edition from five feeds: 16 stories … " .. tostring(edition and Daily.count(edition)))
     Daily.keep(edition)
     Daily.tried_at = os.time() -- (no network here)
-    local ok, why = Paper.setOnHome(true)
-    check(E, ok == true, "the widget ticked on Home … " .. tostring(why))
-    check(E, Paper.onHome(), "Home's settings have it")
-    local rows = require("config/preset_store").getSettings("home").rows
-    local on = {}
-    for _i, id in ipairs(rows.order) do on[#on + 1] = id .. (rows.enabled[id] and "*" or "") end
-    E.say("Home's rows:", table.concat(on, " "))
+    check(E, Paper.onShelf(p) and not Paper.onHome(), "on: the newspaper goes on Home's bookshelf, not in a row of its own")
+    require("common/gz_view").redrawHome()
 end, after = 10 })
 add({ shot = "daily-1-home" })
 add({ fn = function(E)
     local Paper = require("gzreader_dailyscreen")
-    check(E, Paper.home ~= nil and Paper.home.menu ~= nil, "Home built the Daily paper widget")
+    check(E, Paper.home ~= nil and Paper.home.shelf == true and Paper.home.menu ~= nil, "Home's shelf has the newspaper on it")
+    -- with books beside it
+    os.execute("mkdir -p /mnt/us/GZreader")
+    local book = os.getenv("GZ_EMU_BOOK")
+    if book then
+        for _i, name in ipairs({ "one", "two", "three" }) do os.execute("cp " .. book .. " /mnt/us/GZreader/" .. name .. ".epub") end
+        local fm = require("apps/filemanager/filemanager").instance
+        local Home = require("common/shared_state").get(fm and fm.zenos, "home")
+        for _i, name in ipairs({ "one", "two", "three" }) do require("readhistory"):addItem("/mnt/us/GZreader/" .. name .. ".epub", os.time()) end
+        Home.invalidateLibraryCache()
+        Home.rebuildActive()
+    end
+end, after = 12 })
+add({ shot = "daily-1b-home-books" })
+add({ fn = function(E)
+    local Paper = require("gzreader_dailyscreen")
+    local ok = Paper.setOnHome(true)
+    check(E, ok == true and Paper.onHome(), "the headlines row can be ticked on as well")
+end, after = 10 })
+add({ shot = "daily-1c-home-row" })
+add({ fn = function(E)
+    local Paper = require("gzreader_dailyscreen")
+    Paper.setOnHome(false)
     Paper.show(plugin())
-end, after = 8 })
+end, after = 10 })
 add({ shot = "daily-2-paper" })
 add({ fn = function(E)
     local page = require("gzreader_dailyscreen").instance
