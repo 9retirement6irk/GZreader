@@ -26,6 +26,7 @@ Each release has one package per kind of device, plus the update every device do
 | `gzreader-kindle-<version>.zip` | Kindle 4, Kindle Touch (and Paperwhite 1, untested) | [Kindle 4 and Touch](Install-Kindle) |
 | `gzreader-kindlepw2-<version>.zip` | Paperwhite 2 and newer on firmware 5.6.1 – 5.16.2.x | [Touch Kindles, firmware ≤ 5.16.2](Install-Kindle-PW2) |
 | `gzreader-kindlehf-<version>.zip` | Any Kindle on firmware 5.16.3 or newer | [Touch Kindles, firmware 5.16.3+](Install-Kindle-HF) |
+| `gzreader-kobo-<version>.zip` | Kobos (test build) | [Kobo](Install-Kobo) |
 | `gzreader-nook-1st-edition-<version>.zip` | Nook 1st Edition (test build) | [Nook 1st Edition](Install-Nook-1st-Edition) |
 | `gzreader-nook-<version>.zip` | Nook Simple Touch, with or without GlowLight (test build) | [Nook Simple Touch](Install-Nook-Simple-Touch) |
 | `gzreader-update.zip` | Every device: what Settings → General → Updates and the sync page install (Lua only, ~6 MB, the same for all) | [Updates](Updates-and-Test-Builds) |

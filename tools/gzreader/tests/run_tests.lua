@@ -2525,6 +2525,15 @@ print("Sign-ins kept off the Kindle's USB drive")
     local ran_ok, ran_err = pcall(function()
         Secrets.on = nil
         check(not Secrets.active(), "settings not on the USB drive (a Nook, the emulator): nothing changes")
+        -- a Kobo: settings on its drive (/mnt/onboard), sign-ins on its own disk (/usr/local/gzreader)
+        local sdir = require("datastorage"):getSettingsDir()
+        local places = Secrets.PLACES
+        Secrets.PLACES = { { drive = "/mnt/us/", dir = WORK .. "/not-this" }, { drive = sdir:match("^(.*/)"), dir = WORK .. "/kobo-own-disk" } }
+        Secrets.on = nil
+        check(Secrets.active() and Secrets.DIR == WORK .. "/kobo-own-disk", "settings on the second place's drive (a Kobo's): sign-ins kept in its folder")
+        Secrets.PLACES = places
+        check(places[1].drive == "/mnt/us/" and places[1].dir == "/var/local/gzreader" and places[2].drive == "/mnt/onboard/"
+            and places[2].dir == "/usr/local/gzreader", "…a Kindle: /mnt/us → /var/local/gzreader; a Kobo: /mnt/onboard → /usr/local/gzreader")
         Secrets.on, Secrets.DIR, Secrets.written = true, WORK .. "/var-local-gzreader", nil
         os.execute("rm -rf '" .. Secrets.DIR .. "'; mkdir -p '" .. Secrets.DIR .. "'")
         state.refresh_token, state.access_token = "rt-SECRET-1", "at-SECRET-1"
@@ -6450,6 +6459,58 @@ print("ZenOS's updater: not loaded (GZreader's in its place, on first use)")
         "the file browser: not loaded to ask when the plugin scan found none")
 end)()
 
+print("A Kobo's own words")
+do
+    local Kobo = require("gzreader_kobo")
+    local cases = {
+        { "Exit to Kindle", "Exit to Kobo" },
+        { "Delete “%1” from this Kindle?", "Delete “%1” from this Kobo?" },
+        { "3. Choose the Kindle's drive, enter its PIN and press Sync.", "3. Choose the Kobo's drive, enter its PIN and press Sync." },
+        { "This Kindle has no speaker, headphone jack or Bluetooth, so it can't play music. The Kindle 2, Keyboard, DX and Touch can",
+            "This Kobo has no speaker, headphone jack or Bluetooth, so it can't play music. The Kindle 2, Keyboard, DX and Touch can" },
+        { "Kindles with Bluetooth", "Kindles with Bluetooth" },
+        { "Kindle voice set.", "Kindle voice set." },
+        { "on a Kindle Paperwhite or a Kindle 3", "on a Kindle Paperwhite or a Kindle 3" },
+        { "Nothing to do", "Nothing to do" },
+    }
+    local bad = {}
+    for _i, c in ipairs(cases) do
+        local got = Kobo.words(c[1])
+        if got ~= c[2] then bad[#bad + 1] = c[1] .. " -> " .. got end
+    end
+    check(#bad == 0, "a Kobo's words: this/the Kindle become the Kobo; Kindle models and Kindle-only things stay" .. (#bad > 0 and (": " .. table.concat(bad, " | ")) or ""))
+    do
+        local was = Kobo.isKobo
+        Kobo.isKobo = function() return true end
+        local on_kobo = Kobo.noAudio()
+        Kobo.isKobo = function() return false end
+        local elsewhere = Kobo.noAudio()
+        Kobo.isKobo = was
+        check(type(on_kobo) == "string" and on_kobo:find("on a Kobo", 1, true) and elsewhere == nil,
+            "a Kobo: no audiobooks or music, and why (Kobo's Bluetooth is only for its own software); elsewhere the Kindle's message")
+    end
+    -- through KOReader's gettext (GZreader's hook), only once installed on a Kobo
+    local okg, GT = pcall(dofile, PLUGIN .. "/../../frontend/gettext.lua")
+    if okg and type(GT) == "table" then
+        local before = GT("Save to the Kindle (copy over USB)")
+        local was = Kobo.isKobo
+        Kobo.isKobo = function() return false end
+        package.loaded["gettext"], Kobo.installed = GT, nil
+        local not_kobo = Kobo.install()
+        Kobo.isKobo = function() return true end
+        local on_kobo = Kobo.install()
+        local after = GT("Save to the Kindle (copy over USB)")
+        GT.gzSetRewrite(nil)
+        local undone = GT("Save to the Kindle (copy over USB)")
+        package.loaded["gettext"], Kobo.isKobo, Kobo.installed = nil, was, nil
+        check(before == "Save to the Kindle (copy over USB)" and not not_kobo and on_kobo and after == "Save to the Kobo (copy over USB)"
+            and undone == before and GT("KOReader") == "KOReader",
+            "…installed on a Kobo only, through gettext (" .. tostring(after) .. ")")
+    else
+        check(false, "KOReader's gettext loads here: " .. tostring(GT))
+    end
+end
+
 print("Updates from GitHub releases")
 local Update = require("gzreader_update")
 check(Update.compare("1.10.0", "1.9.2") == 1 and Update.compare("v1.0.0", "1.0.0") == 0 and Update.compare("1.0.0-beta1", "1.0.0") == -1, "version comparison")
@@ -6613,6 +6674,41 @@ check(mok and rf(NK .. "/frontend/m.lua") == "mounted" and rf(NK .. "/frontend/c
 check(io.popen("ls -a '" .. NK .. "' '" .. NK .. "/plugins' | grep -c 'gzreader-update\\|gz-old'"):read("*a"):match("^0"), "…nothing left behind")
 Update.freeSpace, Update.cardDir = real_free, real_card
 Update.root = KO
+end
+do
+-- a Kobo (GZreader in .adds/koreader): the same update, with the Kobo's own start script as koreader.sh
+local KB = WORK .. "/kobo/.adds/koreader"
+os.execute("rm -rf '" .. WORK .. "/kobo' && mkdir -p '" .. KB .. "/frontend' '" .. KB .. "/plugins/gzreader.koplugin'")
+wf(KB .. "/koreader.sh", "#!/bin/sh\n# kobo old\n"); wf(KB .. "/gzreader-version", "1.2.0\n")
+wf(KB .. "/plugins/gzreader.koplugin/main.lua", "old main")
+local real_kobo = Update.isKobo
+Update.isKobo = function() return true end
+Update.root = KB
+PKG = { ["koreader/frontend/k.lua"] = "k", ["koreader/plugins/gzreader.koplugin/main.lua"] = "k main",
+    ["koreader/gzreader-version"] = "1.3.0\n", ["koreader/koreader.sh"] = "#!/bin/sh\n# kindle\n",
+    ["koreader/kobo-koreader.sh"] = "#!/bin/sh\n# kobo new\n", ["koreader/nook-gzreader.sh"] = "#!/system/bin/sh\n" }
+local kok, kerr = Update.apply("pkg.zip")
+check(kok and Update.currentVersion() == "1.3.0" and rf(KB .. "/frontend/k.lua") == "k", "on a Kobo: the same update installed (" .. tostring(kerr) .. ")")
+check(rf(KB .. "/koreader.sh") == "#!/bin/sh\n# kobo new\n" and rf(KB .. "/kobo-koreader.sh") == nil,
+    "…with the Kobo's start script as koreader.sh, not the Kindle's")
+check(rf(KB .. "/nook-gzreader.sh") == nil and rf(WORK .. "/kobo/.adds/gzreader.sh") == nil, "…and nothing of the Nook's")
+PKG = { ["koreader/frontend/k.lua"] = "k2", ["koreader/plugins/gzreader.koplugin/main.lua"] = "k main",
+    ["koreader/gzreader-version"] = "1.3.1\n", ["koreader/koreader.sh"] = "#!/bin/sh\n# kindle\n" }
+check(Update.apply("pkg.zip") and Update.currentVersion() == "1.3.1" and rf(KB .. "/koreader.sh") == "#!/bin/sh\n# kobo new\n",
+    "a package from before Kobos (no Kobo start script): the Kobo keeps its own koreader.sh")
+PKG = { [TOP .. "frontend/src.lua"] = "src", [TOP .. "reader.lua"] = "reader", [TOP .. "platform/kindle/koreader.sh"] = "#!/bin/sh\n# kindle src\n",
+    [TOP .. "platform/kobo/koreader.sh"] = "#!/bin/sh\n# kobo src\n", [TOP .. "plugins/gzreader.koplugin/main.lua"] = "src main" }
+check(Update.apply("src.zip", { source = true, version = "1.4.0" }) and rf(KB .. "/koreader.sh") == "#!/bin/sh\n# kobo src\n"
+    and rf(KB .. "/kobo-koreader.sh") == nil, "a release's source code zip on a Kobo: koreader.sh from platform/kobo/")
+-- and on a Kindle: the Kobo's script never installed
+Update.isKobo = function() return false end
+Update.root = KO
+PKG = { ["koreader/frontend/k.lua"] = "k", ["koreader/plugins/gzreader.koplugin/main.lua"] = "k main",
+    ["koreader/gzreader-version"] = "1.4.1\n", ["koreader/koreader.sh"] = "#!/bin/sh\n# kindle 2\n",
+    ["koreader/kobo-koreader.sh"] = "#!/bin/sh\n# kobo\n" }
+check(Update.apply("pkg.zip") and rf(KO .. "/koreader.sh") == "#!/bin/sh\n# kindle 2\n" and rf(KO .. "/kobo-koreader.sh") == nil,
+    "on a Kindle: the Kindle's koreader.sh, the Kobo's left out")
+Update.isKobo = real_kobo
 end
 captured.textviewer = nil
 preload("ui/widget/textviewer", { new = function(_, o) captured.textviewer = o; return o end })
@@ -13801,6 +13897,41 @@ print("Sync through a computer (Kindles without Wi-Fi)")
     Usb.connect(fake)
     UIMq.quit, UIMq.flushSettings = orig_quit, orig_fs
     check(quit_code == 86, "Connect to computer: GZreader saves and steps aside (exit code 86)")
+    -- a Kobo: the same (KOReader's own USB storage mode: platform/kobo/koreader.sh), unless that's off in KOReader's settings
+    do
+        local Dk = require("device")
+        local was = { kindle = Dk.isKindle, kobo = Dk.isKobo, ms = Dk.canToggleMassStorage, model = Dk.model }
+        Dk.isKindle, Dk.isKobo = function() return false end, function() return true end
+        Dk.canToggleMassStorage, Dk.model = function() return true end, "Kobo_nova"
+        local orig_bd = package.loaded["ui/widget/buttondialog"]
+        local shown
+        package.loaded["ui/widget/buttondialog"] = { new = function(_self, o) shown = o; return o end }
+        local orig_ms = package.loaded["ui/elements/mass_storage"]
+        local ms_on = true
+        package.loaded["ui/elements/mass_storage"] = { isEnabled = function() return ms_on end }
+        Usb.show(fake)
+        local texts = {}
+        for _i, row in ipairs(shown and shown.buttons or {}) do texts[#texts + 1] = row[1].text end
+        local all = table.concat(texts, "|")
+        check(all:find("Connect to computer (USB drive)", 1, true) and shown.title:find("so the Kobo can share its USB drive", 1, true)
+            and shown.title:find("Plug the Kobo into a computer", 1, true) and not shown.title:find("Kindle", 1, true),
+            "a Kobo: Sync with a computer offers Connect to computer, in the Kobo's words")
+        ms_on = false
+        Usb.show(fake)
+        texts = {}
+        for _i, row in ipairs(shown and shown.buttons or {}) do texts[#texts + 1] = row[1].text end
+        check(not table.concat(texts, "|"):find("Connect to computer", 1, true) and shown.title:find("1. Exit GZreader", 1, true),
+            "…not when KOReader's USB storage is turned off: exit GZreader first, as elsewhere")
+        local Copy = require("gzreader_copy")
+        local name1 = Copy.modelName()
+        Dk.model = "Kobo_io"
+        local name2 = Copy.modelName()
+        check(name1 == "Kobo Clara HD" and name2 == "Kobo Libra 2" and Copy.deviceName(fake):match("^Kobo Libra 2 · %x%x%x%x$"),
+            "Kobos named as people know them (" .. name1 .. ", " .. name2 .. ")")
+        package.loaded["ui/widget/buttondialog"], package.loaded["ui/elements/mass_storage"] = orig_bd, orig_ms
+        Dk.isKindle, Dk.isKobo, Dk.canToggleMassStorage, Dk.model = was.kindle, was.kobo, was.ms, was.model
+        Usb.forgetCached() -- (the outbox written as a Kobo's)
+    end
     -- no Wi-Fi: no sending the log to a phone, no remote debugging, no Wi-Fi switch
     local gen = plugin:sectionItems("general")
     local labels = {}

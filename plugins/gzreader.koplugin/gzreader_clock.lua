@@ -58,7 +58,8 @@ function Clock.set(t)
     local Device = require("device")
     local ok_kindle = Device.isKindle and Device:isKindle()
     local ok_nook = Device.isNook and Device:isNook()
-    if not ok_kindle and not ok_nook then return false end
+    local ok_kobo = Device.isKobo and Device:isKobo()
+    if not ok_kindle and not ok_nook and not ok_kobo then return false end
     os.execute(string.format("date -u %s >/dev/null 2>&1 && (hwclock -u -w >/dev/null 2>&1 || true)", os.date("!%m%d%H%M%Y.%S", t)))
     return true
 end

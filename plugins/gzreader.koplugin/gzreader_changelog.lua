@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Kobo: GZreader runs on Kobos (test build)", text = "GZreader now has a Kobo package, gzreader-kobo-<version>.zip, for every Kobo KOReader runs on (Touch to Clara Colour, Libra Colour, Elipsa). Unzip it onto the Kobo's drive: GZreader goes into .adds/koreader (where KOReader goes; it replaces a KOReader there), with a GZreader item for NickelMenu's menu and a GZreader book for KFMon, so either starts it. Grimmory, the library, sync, Notes with drawing, Calendar, the daily paper, Home Assistant and Immich work as on a touch Kindle, and the messages say Kobo. Sync with a computer's Connect to computer shares the drive through KOReader's own USB mode and GZreader comes back after you eject. Sign-ins are kept on the Kobo's own disk (/usr/local/gzreader), not on its USB drive. Kobos update from Settings → Updates like the Kindles. Not on a Kobo: audiobooks, music and read aloud (no speaker; Kobo's Bluetooth only works in its own software). Tried in GZreader's emulator as a Clara HD and a Libra 2, not yet on a real Kobo." },
+        },
+    },
+    {
         version = "1.33.0",
         changes = {
             { short = "Drawing: the pencil and the highlighter draw much faster", text = "The pencil and the highlighter were several times slower than the pen: every pixel under the line was read and written through a slow route, several times over. They now write the page's pixels directly, the pencil's texture is looked up instead of worked out for each pixel, and its line is painted in fewer steps. In GZreader's emulator the highlighter's ink takes about a tenth of the time it did and the pencil's about a quarter, close to the pen's. A long stroke's line in the diagnostic log now also says how long each of its frames took to handle." },

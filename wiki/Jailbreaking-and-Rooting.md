@@ -37,6 +37,10 @@ The current jailbreaks block updates themselves and run *scriptlets* (`.sh` file
 
 Then: [`kindlepw2`](Install-Kindle-PW2) (firmware 5.6.1 – 5.16.2.x) or [`kindlehf`](Install-Kindle-HF) (5.16.3 or newer).
 
+## Kobos
+
+Nothing to jailbreak: a Kobo runs GZreader as it runs KOReader, started from **NickelMenu** or **KFMon**, which install by copying a file onto the Kobo. → [install the `kobo` package](Install-Kobo).
+
 ## Nooks
 
 GZreader needs root on a Nook (to pause the Nook's software and reach its screens), and adb to install it: [Android's platform tools](https://developer.android.com/tools/releases/platform-tools) on your computer.

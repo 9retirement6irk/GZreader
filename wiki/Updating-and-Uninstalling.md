@@ -4,6 +4,7 @@ GZreader checks for a new release once a day (while Wi‑Fi is on) and offers it
 
 - **Kindle 2 and DX** (no Wi‑Fi): the [sync page](Sync-with-a-Computer) brings new versions with the sync.
 - **Nooks:** over Wi‑Fi as on a Kindle; a new KOReader version needs the full package pushed again.
+- **Kobos:** over Wi‑Fi as on a Kindle (the update brings the Kobo's own start script); a new KOReader version needs the full package unzipped again.
 - **Test builds:** Settings → General → Updates → **Test builds** gets changes before they're released.
 
 More: [Updates and test builds](Updates-and-Test-Builds).
@@ -22,6 +23,8 @@ Changes not sent yet (reading progress, notes made without Wi‑Fi) are lost. Bo
 ## Uninstalling
 
 **Kindles:** delete the `koreader` folder, `extensions/koreader`, `launchpad/koreader.ini` (Kindle 2/3/DX) and `documents/GZreader.sh` (Kindle 4 and newer). The **GZreader** folder with your books stays until you delete it.
+
+**Kobos:** delete `.adds/koreader`, `.adds/nm/gzreader`, `.adds/kfmon/config/gzreader.ini` and `gzreader.png`. The **GZreader** folder with your books stays until you delete it. Sign-ins kept on the Kobo's own disk go with Reset GZreader (do it before deleting), or with the next Kobo update.
 
 **Nook 1st Edition:** remove the icon's helper and app first (`adb shell sh /data/gzreader/launcher.sh uninstall`, `adb uninstall gzreader.nook.launcher`), then `adb shell rm -r /data/gzreader`, and on the microSD card (or the Nook's own storage) the `.gzreader-app` folder. The `GZreader` folder with your books stays until you delete it.
 

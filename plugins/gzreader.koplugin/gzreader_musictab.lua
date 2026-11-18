@@ -264,7 +264,7 @@ function Tab:rootItems(after)
     local Rows = require("gzreader_rows")
     if not require("gzreader_touch").player() then
         return Rows.mark({ Rows.about(_("No speaker on this Kindle"),
-            _("This Kindle has no speaker, headphone jack or Bluetooth, so it can't play music. The Kindle 2, Keyboard, DX and Touch can, and Kindles with Bluetooth (Scribe, Paperwhite 5 and newer…).")) })
+            require("gzreader_kobo").noAudio() or _("This Kindle has no speaker, headphone jack or Bluetooth, so it can't play music. The Kindle 2, Keyboard, DX and Touch can, and Kindles with Bluetooth (Scribe, Paperwhite 5 and newer…).")) })
     end
     local plex = Music().plex(plugin)
     local items = {}

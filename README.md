@@ -26,8 +26,8 @@ reading, with the [ZenOS](https://github.com/xZenLabs/zen-os) interface and a
 built-in connection to your self-hosted **Grimmory** book server.
 
 It runs on Kindles with a keyboard, a 5-way, a touchscreen or a pen, from the
-Kindle 2 to the Kindle Scribe, and as test builds on the Nook 1st Edition and
-Nook Simple Touch: which ones have been tried is in
+Kindle 2 to the Kindle Scribe, and as test builds on Kobos, the Nook 1st Edition
+and the Nook Simple Touch: which ones have been tried is in
 [device compatibility](https://github.com/9retirement6irk/GZreader/wiki/Device-Compatibility).
 
 <table>
@@ -138,7 +138,8 @@ All the details are in **[the wiki](https://github.com/9retirement6irk/GZreader/
    guide shows a QR code for your phone, and an address and PIN for any browser.
 
 Updates come by themselves (Settings → General → Updates). Step-by-step help
-for each package, uninstalling and the Nooks: [Installing](https://github.com/9retirement6irk/GZreader/wiki/Installing) in the wiki.
+for each package, uninstalling, Kobos (`gzreader-kobo-<version>.zip`: no jailbreak,
+started from NickelMenu or KFMon) and the Nooks: [Installing](https://github.com/9retirement6irk/GZreader/wiki/Installing) in the wiki.
 
 ## Privacy
 

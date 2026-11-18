@@ -1,6 +1,6 @@
 ## Before you start
 
-1. **Jailbreak the Kindle, or root the Nook.** GZreader runs alongside the device's own software, which needs a jailbreak (Kindles) or root (Nooks): see [Jailbreaking and rooting](Jailbreaking-and-Rooting). Turn on **airplane mode** on a Kindle before you start, so it doesn't update itself to a firmware the jailbreak can't handle.
+1. **Jailbreak the Kindle, or root the Nook.** GZreader runs alongside the device's own software, which needs a jailbreak (Kindles) or root (Nooks): see [Jailbreaking and rooting](Jailbreaking-and-Rooting). A Kobo needs neither, only NickelMenu or KFMon to start GZreader: [Kobo](Install-Kobo). Turn on **airplane mode** on a Kindle before you start, so it doesn't update itself to a firmware the jailbreak can't handle.
 2. **Find your package.** Each package is built for one kind of device; the others won't start on it. Download it from the [latest release](https://github.com/9retirement6irk/GZreader/releases/latest):
 
 | Device | Firmware | Package | Steps |
@@ -9,6 +9,7 @@
 | Kindle 4, Kindle Touch (Paperwhite 1, untested) | any | `gzreader-kindle-<version>.zip` | [Kindle 4 and Touch](Install-Kindle) |
 | Paperwhite 2 and newer touch Kindles | 5.6.1 – 5.16.2.x | `gzreader-kindlepw2-<version>.zip` | [Touch Kindles, firmware ≤ 5.16.2](Install-Kindle-PW2) |
 | Any Kindle | 5.16.3 or newer | `gzreader-kindlehf-<version>.zip` | [Touch Kindles, firmware 5.16.3+](Install-Kindle-HF) |
+| Kobo: any KOReader runs on (test build) | any, with NickelMenu or KFMon | `gzreader-kobo-<version>.zip` | [Kobo](Install-Kobo) |
 | Nook 1st Edition (test build) | 1.x, rooted | `gzreader-nook-1st-edition-<version>.zip` | [Nook 1st Edition](Install-Nook-1st-Edition) |
 | Nook Simple Touch, GlowLight (test build) | 1.2.x, rooted | `gzreader-nook-<version>.zip` | [Nook Simple Touch](Install-Nook-Simple-Touch) |
 

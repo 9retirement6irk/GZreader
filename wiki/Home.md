@@ -5,7 +5,7 @@ reading, with the [ZenOS](https://github.com/xZenLabs/zen-os) interface and a
 built-in connection to your self-hosted [Grimmory](https://grimmory.org) book
 server, packaged for e-readers from the Kindle 2 and Nook 1 to the Scribe:
 Kindle 2, Keyboard, DX, 4, Touch, Paperwhite 3, Scribe and the other touch
-Kindles, and, as test builds, the Nook 1st Edition and Nook Simple Touch.
+Kindles, and, as test builds, Kobos, the Nook 1st Edition and Nook Simple Touch.
 
 Read, and keep your place, bookmarks, highlights and notes in sync with
 Grimmory; send books from your browser; listen to audiobooks and Plex music;
@@ -17,7 +17,7 @@ Scribe's pen; see your calendars; switch your Home Assistant lights.
 | | |
 | --- | --- |
 | **[What's in GZreader](Whats-in-GZreader)** | What the package contains, and what was left out |
-| **[Device compatibility](Device-Compatibility)** | Which Kindles and Nooks run it, and what has been tested |
+| **[Device compatibility](Device-Compatibility)** | Which Kindles, Kobos and Nooks run it, and what has been tested |
 | **[Feature overview](Feature-Overview)** | Everything it does, with links to the details |
 | **[Changes from KOReader and ZenOS](Changes-from-KOReader-and-ZenOS)** | What GZreader does differently |
 | **[Installing](Installing)** | Which package, step by step, for each device |
@@ -32,7 +32,7 @@ Scribe's pen; see your calendars; switch your Home Assistant lights.
 - [Notes](Notes) (and drawing), [Calendar](Calendar), [Music](Music), [Audiobooks and read aloud](Audiobooks-and-Read-Aloud), [Bluetooth](Bluetooth), [House](House) (Home Assistant)
 - [Sync with a computer](Sync-with-a-Computer) (Kindles without Wi‑Fi), [Wi‑Fi: on, off, auto](Wi-Fi)
 - [Updates and test builds](Updates-and-Test-Builds), [Privacy and diagnostics](Privacy-and-Diagnostics)
-- Nooks: [Nook 1st Edition](Nook-1st-Edition), [Nook Simple Touch](Nook-Simple-Touch)
+- Kobos: [Kobo](Kobo); Nooks: [Nook 1st Edition](Nook-1st-Edition), [Nook Simple Touch](Nook-Simple-Touch)
 - Under the hood: [Performance](Performance), [Building](Building)
 
 Downloads: the [latest release](https://github.com/9retirement6irk/GZreader/releases/latest).

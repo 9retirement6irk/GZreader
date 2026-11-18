@@ -1,4 +1,4 @@
--- luacheck: globals arg io
+-- luacheck: globals arg io os
 --[[
 Run GZreader (the real KOReader + ZenOS + GZreader Lua) as a Kindle 3 under
 qemu-arm, headless: fake framebuffer, scripted keys, real everything else.
@@ -8,7 +8,10 @@ class at 824 × 1200), dxg (DX Graphite), k4 (Kindle 4: 5-way, no keyboard,
 (Paperwhite 3: touch, 1072 × 1448 at 300 dpi) or scribe (Kindle Scribe:
 touch and a pen, 1860 × 2480 at 300 dpi, KOReader's KindleScribe with its
 MTK display), with that model's serial, framebuffer and key codes; scripted
-taps and swipes on the touch models, pen strokes on the Scribe.
+taps and swipes on the touch models, pen strokes on the Scribe. Kobos:
+clara (Kobo Clara HD: touch, 1072 × 1448 at 300 dpi, KOReader's Kobo_nova)
+or libra (Kobo Libra 2: touch and page keys, 1264 × 1680, Kobo_io): no
+Kindle serial, Kobo's own codename (PRODUCT) and model number.
 
   tools/gzreader/emulator/run.sh <script.lua> <outdir> [cpu %]   (see README.md)
 
@@ -36,7 +39,32 @@ local SERIALS = { k3 = "B00812345678ABCD", k2 = "B00212345678ABCD", dx = "B00412
 -- framebuffer: einkfb (Kindle 2, DX, 3, 4) or mxcfb (touch), size, bits, inverted grey levels
 local SCREENS = { k3 = { 600, 800, 4 }, k2 = { 600, 800, 4 }, dx = { 824, 1200, 4 }, dxg = { 824, 1200, 4 },
     k4 = { 600, 800, 8 }, kt = { 600, 800, 8, mxcfb = true }, pw3 = { 1072, 1448, 8, mxcfb = true },
-    scribe = { 1860, 2480, 8, mxcfb = true } }
+    scribe = { 1860, 2480, 8, mxcfb = true },
+    clara = { 1072, 1448, 8, mxcfb = true }, libra = { 1264, 1680, 8, mxcfb = true } }
+-- the Kobos: what their start script (/bin/kobo_config.sh, /mnt/onboard/.kobo/version) says
+-- (mirror: KOReader mirrors the panel's x after swapping the axes: Kobo touch_mirrored_x)
+-- (snow: the Clara HD's panel speaks KOReader's "snow protocol": no slots, a
+-- contact's tracking id as its slot, lifted with BTN_TOUCH 0 alone)
+local KOBOS = { clara = { product = "nova", number = "376", mirror = true, snow = true },
+    libra = { product = "io", number = "388", mirror = false } }
+local KOBO = KOBOS[MODEL]
+if KOBO then
+    local real_getenv = os.getenv
+    os.getenv = function(k)
+        if k == "PRODUCT" then return KOBO.product end
+        if k == "MODEL_NUMBER" then return KOBO.number end
+        return real_getenv(k)
+    end
+    -- Nickel's settings and version file, as on the Kobo's drive
+    os.execute("mkdir -p '/mnt/onboard/.kobo/Kobo'")
+    local conf = "/mnt/onboard/.kobo/Kobo/Kobo eReader.conf"
+    if not io.open(conf, "r") then
+        local f = io.open(conf, "w"); f:write("[PowerOptions]\nFrontLightLevel=40\n"); f:close()
+    end
+    local f = io.open("/mnt/onboard/.kobo/version", "w")
+    f:write("N000000000000,4.1.15,4.38.21908,4.1.15,4.1.15,00000000-0000-0000-0000-000000000", KOBO.number, "\n")
+    f:close()
+end
 local SCREEN = SCREENS[MODEL] or SCREENS.k3
 local real_open = io.open
 local usid = OUT .. "/usid"
@@ -60,12 +88,16 @@ do
             if p == "/proc/usid" then return nil end
             if p == "/sys/class/graphics/fb0/pgflip_refresh" then return orig(usid, ...) end
         end
+        if KOBO then
+            if p == "/proc/usid" then return nil end
+            if p == "/bin/kobo_config.sh" then return orig(usid, ...) end
+        end
         if p == "/proc/usid" then return orig(usid, ...) end
         return orig(p, ...)
     end
 end
 
-local E = { queue = {}, log = {}, t0 = os.time(), out = OUT, model = MODEL }
+local E = { queue = {}, log = {}, t0 = os.time(), out = OUT, model = MODEL, kobo = KOBO ~= nil }
 E.clock0 = os.clock() -- (CPU time at start)
 _G.EMU = E
 local function say(...)
@@ -152,6 +184,14 @@ local function frame(evs, dt)
 end
 -- the Kindle Touch's panel counts 0–4095 each way (KOReader scales it back)
 local TOUCH_SCALE = MODEL == "kt" and { 4095 / 600, 4095 / 800 } or { 1, 1 }
+-- screen (x, y) to what the panel sends: scaled (Kindle Touch); a Kobo's
+-- panel has its axes swapped (and x mirrored on most), which KOReader undoes
+local function rawXY(x, y)
+    if KOBO then
+        return y, KOBO.mirror and (SCREEN[1] - 1 - x) or x
+    end
+    return x * TOUCH_SCALE[1], y * TOUCH_SCALE[2]
+end
 -- the Nook Simple Touch's zForce panel: single touch, ABS_X / ABS_Y + BTN_TOUCH
 local function stFrame(evs, dt)
     local t = now_tv()
@@ -165,22 +205,35 @@ local function stFrame(evs, dt)
     table.insert(E.queue, out)
 end
 local st_last = { 0, 0 }
+local function snowFrame(evs, dt) return stFrame(evs, dt) end
+local snow_last = { 0, 0 }
 local function down(x, y, dt)
+    if KOBO and KOBO.snow then
+        local rx, ry = rawXY(x, y)
+        snow_last = { math.floor(rx), math.floor(ry) }
+        return snowFrame({ { 3, ABS_MT_TRACKING_ID, 0 }, { 3, ABS_MT_X, snow_last[1] }, { 3, ABS_MT_Y, snow_last[2] }, { 1, 330, 1 } }, dt)
+    end
     if MODEL == "nst" then
         st_last = { math.floor(x), math.floor(y) }
         return stFrame({ { 3, 0, st_last[1] }, { 3, 1, st_last[2] }, { 1, 330, 1 } }, dt)
     end
-    x, y = x * TOUCH_SCALE[1], y * TOUCH_SCALE[2]
+    x, y = rawXY(x, y)
     touch_id = touch_id + 1
     frame({ { ABS_MT_SLOT, 0 }, { ABS_MT_TRACKING_ID, touch_id }, { ABS_MT_X, math.floor(x) }, { ABS_MT_Y, math.floor(y) } }, dt)
 end
 local function move(x, y, dt)
+    if KOBO and KOBO.snow then
+        local rx, ry = rawXY(x, y)
+        snow_last = { math.floor(rx), math.floor(ry) }
+        return snowFrame({ { 3, ABS_MT_TRACKING_ID, 0 }, { 3, ABS_MT_X, snow_last[1] }, { 3, ABS_MT_Y, snow_last[2] } }, dt)
+    end
     if MODEL == "nst" then
         st_last = { math.floor(x), math.floor(y) }
         return stFrame({ { 3, 0, st_last[1] }, { 3, 1, st_last[2] } }, dt)
     end
-    x, y = x * TOUCH_SCALE[1], y * TOUCH_SCALE[2]; frame({ { ABS_MT_SLOT, 0 }, { ABS_MT_X, math.floor(x) }, { ABS_MT_Y, math.floor(y) } }, dt) end
+    x, y = rawXY(x, y); frame({ { ABS_MT_SLOT, 0 }, { ABS_MT_X, math.floor(x) }, { ABS_MT_Y, math.floor(y) } }, dt) end
 local function up(dt)
+    if KOBO and KOBO.snow then return snowFrame({ { 1, 330, 0 } }, dt) end
     if MODEL == "nst" then return stFrame({ { 3, 0, st_last[1] }, { 3, 1, st_last[2] }, { 1, 330, 0 } }, dt) end
     frame({ { ABS_MT_SLOT, 0 }, { ABS_MT_TRACKING_ID, -1 } }, dt) end
 local function later(sec, fn)
@@ -324,7 +377,7 @@ end
 function E.pinch(a0, b0, a1, b1, sec)
     sec = sec or 0.4
     say("pinch", math.floor(a0[1]), math.floor(b0[1]), "->", math.floor(a1[1]), math.floor(b1[1]))
-    local function at(p) return math.floor(p[1] * TOUCH_SCALE[1]), math.floor(p[2] * TOUCH_SCALE[2]) end
+    local function at(p) local x, y = rawXY(p[1], p[2]); return math.floor(x), math.floor(y) end
     local ia, ib = touch_id + 1, touch_id + 2
     touch_id = touch_id + 2
     local ax, ay = at(a0)
@@ -623,7 +676,7 @@ table.insert(package.loaders, 2, function(name)
             NM.restoreWifiAsync = function() end
         end
         if MODEL ~= "nook" then
-            if MODEL ~= "nst" then dev.isKindle = function() return true end end
+            if MODEL ~= "nst" and not KOBO then dev.isKindle = function() return true end end
             E.installDisplay(dev.screen)
         end
         return dev
@@ -875,7 +928,7 @@ table.insert(package.loaders, 2, function(name)
     return function()
         local path = package.searchpath("gzreader_audiobook", package.path)
         local m = dofile(path)
-        m.LUAJIT = "qemu-arm-static -L /usr/arm-linux-gnueabi ./luajit"
+        m.LUAJIT = "qemu-arm-static -L " .. (os.getenv("GZ_EMU_ARMLIBS") or "/usr/arm-linux-gnueabi") .. " ./luajit"
         return m
     end
 end)

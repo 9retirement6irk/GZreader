@@ -7,7 +7,14 @@ tools/gzreader/package-kindle.sh koreader-kindle-legacy-v2026.07.1.zip out/   # 
 tools/gzreader/package-kindle.sh koreader-kindle-v2026.07.1.zip out/          # Kindle 4, Kindle Touch
 tools/gzreader/package-kindle.sh koreader-kindlehf-v2026.07.1.zip out/        # touch, firmware 5.16.3+
 tools/gzreader/package-kindle.sh koreader-kindlepw2-v2026.07.1.zip out/       # touch, firmware 5.6.1–5.16.2
+tools/gzreader/package-kobo.sh koreader-kobo-v2026.07.1.zip out/              # Kobos (.adds/koreader, NickelMenu, KFMon)
 ```
+
+The steps both scripts share (the overlay, dictionary, trimming, bytecode) are
+in `tools/gzreader/package-common.sh`. The update package comes from
+`package-kindle.sh` and is the same for every device: it carries the Kobo's
+start script as `koreader/kobo-koreader.sh` (a Kobo installs it as its
+`koreader.sh`) and keeps KOReader's Kobo device code.
 
 The branch changes only Lua and shell scripts, so the script overlays it onto
 the official release built from the same tag rather than rebuilding the
@@ -17,7 +24,7 @@ It then precompiles every Lua file under `frontend/`, `plugins/` and
 `common/` to LuaJIT bytecode with the release's own `luajit` (run through
 `qemu-arm-static`; needs `qemu-user-static`, `libc6-armel-cross` and
 `libgcc-s1-armel-cross`, or `libc6-armhf-cross` for the `kindlehf`
-package; `GZ_LUAJIT` can name another package's `luajit` of the same
+and `kobo` packages; `GZ_LUAJIT` can name another package's `luajit` of the same
 version instead: the bytecode is the same), keeping the `.lua` names and debug info (line
 numbers, upvalue names, source paths), so loading skips parsing. Without
 qemu it warns and ships source. `GZ_BYTECODE=0` turns it off.
@@ -35,7 +42,8 @@ Publishing an update is just making a GitHub release:
 
 The "GZreader release packages" workflow then builds and attaches the full
 installs (`gzreader-kindle-legacy-<version>.zip`,
-`gzreader-kindle-<version>.zip`, `gzreader-kindlehf-<version>.zip`, `gzreader-kindlepw2-<version>.zip`) and
+`gzreader-kindle-<version>.zip`, `gzreader-kindlehf-<version>.zip`, `gzreader-kindlepw2-<version>.zip`,
+`gzreader-kobo-<version>.zip`) and
 `gzreader-update.zip` (what every Kindle downloads, ~6 MB: Lua only, the same
 for all of them). If a release has no
 attached files, Kindles use the release's source code zip instead (~9 MB),

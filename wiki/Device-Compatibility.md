@@ -1,8 +1,8 @@
-GZreader runs on the Kindles KOReader supports and on two Nooks. Each kind of device has its own [package](Whats-in-GZreader#the-packages).
+GZreader runs on the Kindles KOReader supports, on Kobos (test build) and on two Nooks. Each kind of device has its own [package](Whats-in-GZreader#the-packages).
 
 ## Tested devices
 
-"Real device" means GZreader has been run on that model itself; "emulator" means GZreader's emulator (the real KOReader programs for that Kindle or Nook, under qemu, with that model's screen, keys and touch), which every change to GZreader is checked in before it's released.
+"Real device" means GZreader has been run on that model itself; "emulator" means GZreader's emulator (the real KOReader programs for that Kindle, Kobo or Nook, under qemu, with that model's screen, keys and touch), which every change to GZreader is checked in before it's released.
 
 | Device | Package | How you use it | Tested |
 | --- | --- | --- | --- |
@@ -15,6 +15,12 @@ GZreader runs on the Kindles KOReader supports and on two Nooks. Each kind of de
 | **Kindle Scribe** | `kindlehf` | touch and pen | real device (firmware 5.20.2), emulator |
 | **Nook 1st Edition** (2009) — *test build* | `nook-1st-edition` | the colour touchscreen | real device (firmware 1.0.0, Softroot 2.5.1), emulator |
 | **Nook Simple Touch**, with GlowLight (2011–2012) — *test build* | `nook` | touch | emulator only |
+| **Kobo Clara HD** (2018) — *test build* | `kobo` | touch | emulator only |
+| **Kobo Libra 2** (2021) — *test build* | `kobo` | touch, page keys | emulator only |
+
+## Kobos
+
+One package, `kobo`, for every Kobo KOReader runs on, with KOReader's own device support for each: Touch, Mini, Glo, Glo HD, Aura, Aura HD, Aura H2O (both), Aura One, Aura Edition 2, Touch 2.0, Clara HD, Clara 2E, Clara BW, Clara Colour, Forma, Libra H2O, Libra 2, Libra Colour, Nia, Sage, Elipsa, Elipsa 2E. Only the Clara HD and Libra 2 have been tried, in the emulator; reports from any Kobo are welcome. On a Kobo there's no sound (no audiobooks, music or read aloud), and a pen draws as a finger. More: [Kobo](Kobo).
 
 ## Untested Kindles
 
@@ -52,6 +58,6 @@ On the same Kindles, Settings → General → Screen → E-ink settings → **Fl
 
 Every setting about when the screen flashes is in **Settings → General → Screen → E-ink settings**: KOReader's Full refresh rate (with Always flash on pages with images, which covers comics too: every CBZ page flashes while it's ticked), then GZreader's Flash on every page turn, Flash when the screen changes (the Kindle 2, 3, DX and 4 only) and Partial pages refresh (a flash when a page of Downloads isn't full of books), then KOReader's other e-ink settings. Whichever of Full refresh rate and Flash on every page turn you set last counts. KOReader's Avoid mandatory black flashes in UI works against Flash when the screen changes: leave it off on those Kindles.
 
-KOReader's own device code decides the model from the serial number (the DX runs as KOReader's Kindle 2 class, with its bigger screen); GZreader adapts each screen to keys, the 5-way or touch. More on each: [Using GZreader](Using-GZreader), [Nook 1st Edition](Nook-1st-Edition), [Nook Simple Touch](Nook-Simple-Touch).
+KOReader's own device code decides the model from the serial number (the DX runs as KOReader's Kindle 2 class, with its bigger screen); GZreader adapts each screen to keys, the 5-way or touch. More on each: [Using GZreader](Using-GZreader), [Kobo](Kobo), [Nook 1st Edition](Nook-1st-Edition), [Nook Simple Touch](Nook-Simple-Touch).
 
 **A book's font size on big screens (Scribe, DX).** KOReader's font sizes grow with the screen's width in pixels, so the default (23) made a Scribe's books large print (about 17 points; 10 on a Paperwhite). On a screen more than 5 inches across the default is smaller in step: **14** on a Scribe, 16 on a DX, the same size to the eye as 23 on a 6" Kindle. It's used for books opened from now on, and once replaces the old default (22, 22.5 or 23) saved for all books or kept by a book you'd already opened; a size you chose yourself stays. Change it as always with the quick panel's **Layout** (font size).
