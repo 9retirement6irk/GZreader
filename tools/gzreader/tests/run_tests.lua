@@ -2309,6 +2309,50 @@ print("Wi-Fi network names stay out of the log and reports")
     check(logged:find("wifi (quiet): Connecting to network <network>…\n", 1, true) and logged:find("wifi (quiet): Scanning for networks…\n", 1, true)
         and not logged:find("Example Net", 1, true),
         "the quiet scan's messages logged, without the network's name (or a stray number after them)")
+    -- KOReader's scan finds no network (a Paperwhite 3 and a Touch after a restart): the
+    -- Kindle's connection manager is asked to join its saved network, as ZenOS's Wi-Fi menu does
+    local Dev = require("device")
+    local was_kindle = Dev.isKindle
+    Dev.isKindle = function() return true end
+    local asked, closed = {}, 0
+    local function handle(profiles)
+        return {
+            new_hasharray = function() return { destroy = function() end } end,
+            access_hash_property = function(_h, svc, prop)
+                assert(svc == "com.lab126.wifid" and prop == "profileData")
+                return { to_table = function() return profiles end, destroy = function() end }
+            end,
+            set_string_property = function(_h, svc, prop, v) asked[#asked + 1] = svc .. " " .. prop .. " " .. v end,
+            close = function() closed = closed + 1 end,
+        }
+    end
+    local cbs, scans = 0, 0
+    NM.reconnectOrShowNetworkMenu = function(_self, _cb)
+        scans = scans + 1
+        UIM:show({ text = "Scanning for networks…" })
+        return false -- ("Initial Wi-Fi scan yielded no results", twice)
+    end
+    Net._scan = nil
+    Net._wrapScan()
+    Net.automatic = true
+    Net._lipc = { open_no_name = function() return handle({ { essid = "Example Net", netid = 1 }, { essid = "Other Example" } }) end }
+    local r = NM:reconnectOrShowNetworkMenu(function() cbs = cbs + 1 end, false)
+    Log.flush()
+    lf = io.open(Log.path, "rb"); logged = lf:read("*a"); lf:close()
+    check(r == nil and cbs == 1 and asked[1] == "com.lab126.cmd ensureConnection wifi:Example Net" and #asked == 1 and closed == 1
+        and logged:find("asked the Kindle to join its saved one (2 saved)", 1, true) and not logged:find("Example Net", 1, true),
+        "empty scan: the Kindle asked to join its saved network; KOReader's connectivity check waits (not \"failed\"); no name logged")
+    asked, cbs = {}, 0
+    Net._lipc = { open_no_name = function() return handle({}) end }
+    r = NM:reconnectOrShowNetworkMenu(function() cbs = cbs + 1 end, false)
+    check(r == false and cbs == 0 and #asked == 0, "no saved network: failed as before")
+    r = NM:reconnectOrShowNetworkMenu(function() cbs = cbs + 1 end, true)
+    check(r == false and #asked == 0, "your own Wi-Fi menu (interactive): KOReader's own behaviour")
+    Dev.isKindle = function() return false end
+    Net._lipc = { open_no_name = function() return handle({ { essid = "Example Net" } }) end }
+    r = NM:reconnectOrShowNetworkMenu(function() cbs = cbs + 1 end, false)
+    check(r == false and #asked == 0, "not a Kindle (the Nook): failed as before")
+    Dev.isKindle, Net._lipc = was_kindle, nil
     NM.reconnectOrShowNetworkMenu, Net._scan, Net.automatic = saved[1], saved[2], saved[3]
     -- a saved or sent log: an older log line and crash.log's end too
     Log.flush()

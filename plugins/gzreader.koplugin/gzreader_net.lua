@@ -254,11 +254,61 @@ wrapScan = function()
         local res = { pcall(orig, self, cb, interactive, ...) }
         UIManager.show, UIManager.forceRePaint = show, repaint
         if not res[1] then error(res[2]) end
+        -- KOReader's scan found no network: the Kindle's own saved network
+        if res[2] == false and Net.joinSaved() then
+            if cb then cb() end -- (KOReader's connectivity check waits for it)
+            return nil
+        end
         return unpack(res, 2)
     end
     NetworkMgr.reconnectOrShowNetworkMenu = Net._scan
 end
 Net._wrapScan = wrapScan -- (for the tests)
+
+--- KOReader's scan came back empty: a Paperwhite 3 and a Touch, right after
+--- KOReader or the Kindle restarted, had "Initial Wi-Fi scan yielded no
+--- results" twice within a second on every try (2026-11-08, 2026-11-17),
+--- while ZenOS's Wi-Fi menu still connected them. As that menu does: ask the
+--- Kindle's connection manager to join the network it has saved
+--- (com.lab126.cmd ensureConnection). True when asked. The network's name is
+--- never logged. Net._lipc: tests.
+function Net.joinSaved()
+    local okd, Device = pcall(require, "device")
+    if not (okd and Device.isKindle and Device:isKindle()) then return false end
+    local lipc = Net._lipc
+    if not lipc then
+        local ok, l = pcall(require, "libopenlipclua")
+        if not ok or type(l) ~= "table" or type(l.open_no_name) ~= "function" then return false end
+        lipc = l
+    end
+    local okh, h = pcall(lipc.open_no_name)
+    if not okh or not h then return false end
+    local input, result, profiles
+    pcall(function()
+        input = h:new_hasharray()
+        result = h:access_hash_property("com.lab126.wifid", "profileData", input)
+        profiles = result and result:to_table()
+    end)
+    if result then pcall(result.destroy, result) end
+    if input then pcall(input.destroy, input) end
+    local essid
+    for _i, p in ipairs(type(profiles) == "table" and profiles or {}) do
+        if type(p) == "table" and type(p.essid) == "string" and p.essid ~= "" then essid = p.essid break end
+    end
+    local asked = false
+    if essid then
+        asked = pcall(h.set_string_property, h, "com.lab126.cmd", "ensureConnection", "wifi:" .. essid)
+    end
+    pcall(h.close, h)
+    if asked then
+        Log.info("wifi: the scan found no network; asked the Kindle to join its saved one (" .. #profiles .. " saved)")
+    elseif essid then
+        Log.warn("wifi: the scan found no network, and the Kindle refused to join its saved one")
+    else
+        Log.info("wifi: the scan found no network, and the Kindle has none saved")
+    end
+    return asked
+end
 
 --- Wi-Fi switched on or off by you anywhere else (KOReader's Wi-Fi menu, a
 --- gesture, the network list): On or Off. (Net.setMode's own switching goes
