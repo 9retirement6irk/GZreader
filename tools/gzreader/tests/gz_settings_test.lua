@@ -189,9 +189,10 @@ if okb then
     local im = accounts and find(accounts.sub_item_table, "Photos")
     local okim, imitems = pcall(function() return im.sub_item_table_func() end)
     -- (gzreader_usbsync is a stub here: a Kindle without Wi-Fi, so no House; zen_settings_test.lua has it)
-    check(cl == "|Books|Notes|Calendar|Photos|" and im.mandatory == "Immich" and okim
+    check(cl == "|Books|Notes|Calendar|Photos|Daily paper|" and im.mandatory == "Immich" and okim
             and texts(imitems) == "|Connect with QR code|Connect by typing|",
-        "Accounts and services: Books, Notes, Calendar, Photos (Immich, GZreader's rows in it) " .. cl)
+        "Accounts and services: Books, Notes, Calendar, Photos (Immich, GZreader's rows in it), Daily paper " .. cl)
+    check(find(accounts.sub_item_table, "Daily paper").mandatory == "Feeds", "…the daily paper: its feeds")
     check(find(accounts.sub_item_table, "Books").mandatory == "Grimmory" and find(accounts.sub_item_table, "Notes").mandatory == "Memos"
             and find(accounts.sub_item_table, "Calendar").mandatory == "CalDAV",
         "each row says the service it uses on the right")
