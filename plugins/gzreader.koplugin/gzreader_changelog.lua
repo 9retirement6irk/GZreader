@@ -7,7 +7,7 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
-        version = "next",
+        version = "1.33.0",
         changes = {
             { short = "Drawing: the pencil and the highlighter draw much faster", text = "The pencil and the highlighter were several times slower than the pen: every pixel under the line was read and written through a slow route, several times over. They now write the page's pixels directly, the pencil's texture is looked up instead of worked out for each pixel, and its line is painted in fewer steps. In GZreader's emulator the highlighter's ink takes about a tenth of the time it did and the pencil's about a quarter, close to the pen's. A long stroke's line in the diagnostic log now also says how long each of its frames took to handle." },
             { short = "Drawing: the pencil draws with a pencil's texture", text = "The pencil's line is no longer a flat grey band. It's drawn as graphite catching on the paper: dark grey specks with paper showing between them, sparse when you press lightly, nearly solid when you press hard, and thinner at the line's edges. The texture is the same every time a page is opened. In the picture of the drawing (on the Kindle and in Memos' note) it shows as drawn; if you open the drawing to edit it in Memos, the pencil is still a plain see-through stroke there." },
