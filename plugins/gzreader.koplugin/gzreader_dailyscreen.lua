@@ -960,7 +960,7 @@ function Paper.feedItems(plugin)
             text = feedLabel(f),
             checked_func = function() return f.enabled ~= false end,
             callback = function()
-                f.enabled = (f.enabled == false) and nil or false
+                if f.enabled == false then f.enabled = nil else f.enabled = false end
                 changedFeeds(plugin)
             end,
             hold_callback = function(touchmenu)
