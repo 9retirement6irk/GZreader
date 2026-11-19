@@ -199,7 +199,7 @@ do -- moved by a beta that left the reading history behind (1.34.0-beta.2bcfc79)
     local out = h and h:read("*a") or ""
     if h then h:close() end
     local hist = read(A .. "/history.lua") or ""
-    local _n, again = hist:gsub("Read Again%.epub", "")
+    local again = select(2, hist:gsub("Read Again%.epub", ""))
     check(out:find("nil", 1, true) ~= nil and hist:find('"' .. R .. '/books/Old One.epub"', 1, true) ~= nil
         and not hist:find('"' .. R .. '/Old One.epub"', 1, true) and again == 1 and hist:find("/mnt/elsewhere/Other.epub", 1, true) ~= nil
         and exists(A .. "/" .. M.HISTORY_FIXED),
