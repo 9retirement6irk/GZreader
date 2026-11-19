@@ -346,7 +346,8 @@ API to `/api` are found too.
       Memos gets them as its own text boxes, so they can be edited there,
       and text boxes made in Memos can be moved and retyped here.
     - **Eraser:** rubs out whole strokes, as in Memos; five sizes (how near
-      a stroke it has to pass) and **Erase page**.
+      a stroke it has to pass) and **Erase page**. It keeps up with the pen
+      on a full page too.
     - **Lasso:** draw a loop around some strokes to choose them. A dashed
       frame goes around them, with **Copy**, **Cut** and **Delete** beside
       it. Drag from inside the frame to move them; drag a corner to make
