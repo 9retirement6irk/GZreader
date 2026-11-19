@@ -183,17 +183,69 @@ add({ fn = function(E)
 end, after = 5 })
 add({ fn = function(E)
     if not TOUCH[E.model] then return end
-    local d = E.findText("Draw")
-    check(d ~= nil, "Quick note: Draw on its toolbar")
+    -- (a sticky note: its pencil opens a sticky note of its own to draw on, in a window)
+    local ed = editor()
+    local d = ed and ed.pencil_tap and ed.pencil_tap.dimen
+    check(d ~= nil and d.w > 0 and type(ed.frame.background) == "cdata", "Quick note: a sticky note, with a pencil at the top")
+    if d then E.tap({ d.x + math.floor(d.w / 2), d.y + math.floor(d.h / 2) }) end
+end, after = 5 })
+add({ shot = "qn-4b-sticky-drawing" })
+add({ fn = function(E)
+    if not TOUCH[E.model] then return end
+    local ds
+    for _i, w in ipairs(UIM()._window_stack) do if w.widget.name == "gz_drawscreen" then ds = w.widget end end
+    local Screen = require("device").screen
+    check(ds and ds.sticky and ds.pane and ds.covers_fullscreen == false and ds.pane.w < Screen:getWidth()
+        and ds.pane.h < Screen:getHeight(), "…the pencil: a sticky note to draw on, in a window (not the whole screen; no paper to choose)")
+    -- a line on it, then a tap outside it: Save this drawing? → Save
+    local p = ds.pane
+    local pts = {}
+    for i = 0, 8 do pts[#pts + 1] = { p.x + math.floor(p.w * (0.3 + 0.05 * i)), p.y + math.floor(p.h * 0.6) } end
+    if E.model == "scribe" then E.pen(pts, 0.4); E.penAway(0.3) else E.finger(pts, 0.4) end
+end, after = 3 })
+add({ fn = function(E)
+    if not TOUCH[E.model] then return end
+    local ds
+    for _i, w in ipairs(UIM()._window_stack) do if w.widget.name == "gz_drawscreen" then ds = w.widget end end
+    check(ds and ds.changed, "…drawn on")
+    E.tap({ 10, 10 })
+end, after = 3 })
+add({ shot = "qn-4c-outside" })
+add({ fn = function(E)
+    if not TOUCH[E.model] then return end
+    local asked
+    for _i, w in ipairs(UIM()._window_stack) do
+        if w.widget.title == "Leave without keeping these changes?" or w.widget.title == "Save this drawing?" then asked = w.widget end
+    end
+    check(asked ~= nil, "…a tap outside the drawing: asked first (nothing went to the book under it)")
+    E.tap("Keep drawing")
+end, after = 3 })
+add({ fn = function(E)
+    if not TOUCH[E.model] then return end
+    local ds
+    for _i, w in ipairs(UIM()._window_stack) do if w.widget.name == "gz_drawscreen" then ds = w.widget end end
+    check(ds ~= nil, "…Keep drawing: still drawing")
+    -- (the buttons' places are the window's own: from its corner)
+    for _i, b in ipairs(ds and ds.buttons or {}) do
+        if b.tool.id == "done" then E.tap({ ds.ox + b.rect.x + math.floor(b.rect.w / 2), ds.oy + b.rect.y + math.floor(b.rect.h / 2) }) end
+    end
+end, after = 5 })
+add({ fn = function(E)
+    if not TOUCH[E.model] then return end
+    local ed = editor()
+    check(ed ~= nil and ed:hasDrawing(), "Done: back to the quick note, the drawing with it (its pencil black)")
+    local d = ed and ed.pencil_tap and ed.pencil_tap.dimen
     if d then E.tap({ d.x + math.floor(d.w / 2), d.y + math.floor(d.h / 2) }) end
 end, after = 5 })
 add({ fn = function(E)
     if not TOUCH[E.model] then return end
     local ds
     for _i, w in ipairs(UIM()._window_stack) do if w.widget.name == "gz_drawscreen" then ds = w.widget end end
-    check(ds ~= nil and not kbShown(), "Draw: the drawing screen, no keyboard over it")
+    check(ds ~= nil and not kbShown(), "the pencil again: the drawing, no keyboard over it")
     for _i, b in ipairs(ds and ds.buttons or {}) do
-        if b.tool.id == "cancel" then E.tap({ b.rect.x + math.floor(b.rect.w / 2), b.rect.y + math.floor(b.rect.h / 2) }) end
+        if b.tool.id == "cancel" and not b.tool.row then
+            E.tap({ ds.ox + b.rect.x + math.floor(b.rect.w / 2), ds.oy + b.rect.y + math.floor(b.rect.h / 2) })
+        end
     end
 end, after = 5 })
 add({ shot = "qn-5-after-draw" })
@@ -203,6 +255,14 @@ add({ fn = function(E)
     askToSave(E)
 end, after = 5 })
 add({ shot = "qn-6-closed" })
+add({ fn = function(E)
+    if not TOUCH[E.model] then return end
+    -- (a drawing in it now: the tap outside asks; Discard)
+    local asked
+    for _i, w in ipairs(UIM()._window_stack) do if w.widget.title == "Save this note?" then asked = true end end
+    check(asked, "…a tap outside the quick note with a drawing in it: Save this note?")
+    E.tap("Discard")
+end, after = 3 })
 add({ fn = function(E)
     if not TOUCH[E.model] then return end
     local n = 0
@@ -229,6 +289,8 @@ add({ fn = function(E)
     local ed = editor()
     ds:cancel()
     ed:onCloseDialog()
+    -- (the sticky drawing's window gone with it)
+    check(ed.drawing_rect == nil, "…the sticky drawing's window gone with it")
 end, after = 5 })
 add({ fn = function(E)
     if not TOUCH[E.model] then return end

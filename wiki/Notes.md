@@ -297,6 +297,14 @@ API to `/api` are found too.
   note is sent: the board's list isn't fetched while you read, so the Notes
   tab syncs the next time you open it. On a Kindle syncing through a
   computer it goes with the next sync. Hide the tile in **Settings → Home and tabs → Quick panel**.
+  The window looks like one of the Notes tab's sticky notes: pale paper, a
+  strip of tape at the top, **Quick note** in handwriting. On touch Kindles
+  its **pencil** opens a sticky note of its own to draw or write on with the
+  pen, also in a window (square, in the middle of the screen, on blank
+  paper), not the whole screen. **Done** puts the drawing with the note (a
+  black dot on the pencil says it has one); **←** or a tap outside the
+  drawing asks first if you drew something. Nothing you tap there reaches
+  the book underneath.
 - **Drawings** (touch Kindles, Memos over Wi‑Fi): tap **Draw** on the Notes
   tab, or **✎** in a note's editor (its top bar), for a page to draw on. A note can
   be just drawings.
