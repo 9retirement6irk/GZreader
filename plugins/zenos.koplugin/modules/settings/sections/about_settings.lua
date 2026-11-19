@@ -42,6 +42,11 @@ function M.build(ctx)
         text_func = function()
             return (GzSettings.aboutLines(GzSettings.gzreaderVersion()))
         end,
+        -- (GZreader: tapped seven times, as Android's version number: a little game)
+        callback = function()
+            local ok, Egg = pcall(require, "gzreader_easteregg")
+            if ok then Egg.versionTapped() end
+        end,
         keep_menu_open = true,
     })
     table.insert(items, {
