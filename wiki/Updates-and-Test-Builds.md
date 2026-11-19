@@ -15,7 +15,7 @@ says the certificate isn't trusted and nothing is downloaded. A Nook or DX
 whose clock has run back to 2000 or 1970 can still check (a certificate's
 dates are only ignored while the clock is before 2026).
 
-**A clock that ran down is set as soon as Wi‑Fi connects.** A Kindle or Nook
+**A clock that ran down is set as soon as Wi‑Fi connects.** A Kindle, Kobo or Nook
 whose clock is before 2024 (a Kindle Touch came back from a reboot in 2013)
 asks a time server, `pool.ntp.org`, for the time; if that's blocked, it
 takes the time from GitHub's answer. The log says `clock: said … set from a
@@ -41,6 +41,13 @@ Kindles without Wi‑Fi get them through the sync page: tick **Test
 builds** there (it follows the Kindle's setting, and tells the Kindle when
 you change it). Native parts (KOReader's programs, the Nook's icon app) still come
 only with a full package.
+
+Kobos update the same way, from the same `gzreader-update.zip`: it carries
+the Kobo's own start script (`koreader/kobo-koreader.sh`), which a Kobo
+installs as its `.adds/koreader/koreader.sh` (never the Kindle's), and
+KOReader's Kobo device code. The Kobo's programs stay as installed; a new
+KOReader version needs the full Kobo package unzipped again. Test builds
+don't make a Kobo package: install it from a release first.
 
 The Nook 1st Edition updates the same way, from the same `gzreader-update.zip`
 (Settings → General → Software update, over the Nook's Wi‑Fi): the Lua is the same

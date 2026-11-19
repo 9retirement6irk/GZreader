@@ -1,4 +1,4 @@
-For the Kindle 2 and DX (no Wi‑Fi), and any Kindle that prefers it.
+For the Kindle 2 and DX (no Wi‑Fi), and any Kindle (or Kobo) that prefers it.
 
 The Kindle 2 and the Kindle DX have no Wi‑Fi. GZreader notices (from the
 model) and syncs through a web page on a computer instead, with the Kindle
@@ -9,7 +9,8 @@ write to a USB drive). Any other Kindle can sync this way too: Settings → Gene
 1. On the Kindle: Menu (the quick panel) → **Sync** → **Connect to computer (USB drive)**. KOReader turns the
    Kindle's USB drive off while it runs, so GZreader steps aside and waits;
    after you eject the Kindle it starts again by itself. (Or Menu → Exit to
-   the Kindle.)
+   the Kindle.) On a Kobo, KOReader's own USB mode shares the drive the same
+   way, and GZreader comes back after you eject it.
 2. Plug the Kindle into the computer (unplug and plug it again if it was
    already plugged in), open the page and choose the Kindle's
    drive (or its `documents/GZreader` folder). Nothing else can be set up

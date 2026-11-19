@@ -1165,7 +1165,7 @@ gets a password or token.
       { key: "music", label: "Music", bytes: mu ? await dirSize(mu) : 0 },
     ];
     parts.push({ key: "copy", label: "Library copy, covers and sync files", bytes: await dirSize(cp, function (n) { return n === "in" || n === Vault.FILE; }) });
-    var notes = Drive.root && await Drive.tryDir(Drive.root, "koreader/cache/gzreader-notes");
+    var notes = Drive.root && (await Drive.tryDir(Drive.root, "koreader/cache/gzreader-notes") || await Drive.tryDir(Drive.root, ".adds/koreader/cache/gzreader-notes")); // (a Kobo: .adds/koreader)
     if (notes) parts.push({ key: "notes", label: "Notes' pictures", bytes: await dirSize(notes) });
     var disk = (K.out || {}).disk;
     var coming = Picks.d.books.concat((K.out || {}).queue || []).reduce(function (a, q) { return a + (Number(q.size_kb) || 0) * 1024; }, 0);
@@ -2219,7 +2219,7 @@ gets a password or token.
     readLogs: async function () {
       var fresh = Drive.sync && await Drive.readText(Drive.sync, "reports/latest.txt");
       if (fresh != null && fresh !== "") return { text: fresh, exported: true };
-      var ko = Drive.root && await Drive.tryDir(Drive.root, "koreader");
+      var ko = Drive.root && (await Drive.tryDir(Drive.root, "koreader") || await Drive.tryDir(Drive.root, ".adds/koreader")); // (a Kobo: .adds/koreader)
       if (!ko) return null;
       var a = await Drive.readText(ko, "gzreader.log.1"), b = await Drive.readText(ko, "gzreader.log");
       var crash = await Drive.readText(ko, "crash.log");

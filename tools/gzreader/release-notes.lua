@@ -75,6 +75,7 @@ local function notes(changelog, version, tags)
     out[#out + 1] = "- `gzreader-kindle-" .. version .. ".zip`: Kindle 4, Kindle Touch"
     out[#out + 1] = "- `gzreader-kindlepw2-" .. version .. ".zip`: touch Kindles on firmware 5.6.1 – 5.16.2"
     out[#out + 1] = "- `gzreader-kindlehf-" .. version .. ".zip`: touch Kindles on firmware 5.16.3 and later"
+    out[#out + 1] = "- `gzreader-kobo-" .. version .. ".zip`: Kobos (test build: unzip onto the Kobo's drive; NickelMenu or KFMon starts it)"
     out[#out + 1] = "- `gzreader-nook-1st-edition-" .. version .. ".zip`: Nook 1st Edition (test build)"
     out[#out + 1] = "- `gzreader-nook-" .. version .. ".zip`: Nook Simple Touch (test build)"
     return table.concat(out, "\n") .. "\n"

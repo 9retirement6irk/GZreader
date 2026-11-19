@@ -1,4 +1,4 @@
-What GZreader does, in short, with where to read more. It runs on e-readers from the Kindle 2 and Nook 1 to the Kindle Scribe. Not every feature is on every device: see [Device compatibility](Device-Compatibility).
+What GZreader does, in short, with where to read more. It runs on e-readers from the Kindle 2 and Nook 1 to the Kindle Scribe, and on Kobos (test build). Not every feature is on every device: see [Device compatibility](Device-Compatibility).
 
 ## Reading and your library
 
@@ -36,7 +36,7 @@ What GZreader does, in short, with where to read more. It runs on e-readers from
 ## Using it
 
 - **The quick panel** — one panel of square tiles on every device (Menu, or swipe down): Wi‑Fi, night mode, sleep, updates, settings, and what fits where you are (Home or the book); choose its tiles in Settings → Home and tabs → Quick panel. → [Using GZreader](Using-GZreader#choosing-the-tiles)
-- **Letter keys everywhere** on keyboard Kindles; the 5-way on the Kindle 4; touch on the others, and the pen on the Kindle Scribe; the colour touchscreen on the Nook 1st Edition. → [Using GZreader](Using-GZreader)
+- **Letter keys everywhere** on keyboard Kindles; the 5-way on the Kindle 4; touch on the others, and the pen on the Kindle Scribe; the colour touchscreen on the Nook 1st Edition; touch and page keys on Kobos. → [Using GZreader](Using-GZreader), [Kobo](Kobo)
 - **First-time tour** on touch Kindles, showing the quick panel. → [Using GZreader](Using-GZreader#touch-kindles-kindle-touch-paperwhite-3-scribe)
 
 ## Looking after itself

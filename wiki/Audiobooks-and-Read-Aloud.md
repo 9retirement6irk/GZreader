@@ -1,4 +1,4 @@
-Listening on Kindles with a speaker or headphone jack (Kindle 2, 3, DX, Touch), or with Bluetooth (Scribe, Paperwhite 5 and newer, Colorsoft…; through Bluetooth headphones or a speaker): Grimmory audiobooks, and any book read aloud in the Kindle's own voice. Music from Plex: [Music](Music). Audiobooks can also have a tab of their own: [the Audiobooks tab](Grimmory-Library#the-catalog-tab).
+Listening on Kindles with a speaker or headphone jack (Kindle 2, 3, DX, Touch), or with Bluetooth (Scribe, Paperwhite 5 and newer, Colorsoft…; through Bluetooth headphones or a speaker): Grimmory audiobooks, and any book read aloud in the Kindle's own voice. Music from Plex: [Music](Music). Audiobooks can also have a tab of their own: [the Audiobooks tab](Grimmory-Library#the-catalog-tab). Not on Kobos (no speaker; their Bluetooth only works in Kobo's own software): [Kobo](Kobo).
 
 ## Audiobooks (experimental)
 

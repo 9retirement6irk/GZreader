@@ -98,7 +98,7 @@ ko_update_check() {
     if [ -f "${NEWUPDATE}" ]; then
         # Clear screen to delete UI leftovers
         ./fbink --cls
-        ./fbink -q -y -7 -pmh "Updating KOReader"
+        ./fbink -q -y -7 -pmh "Updating GZreader"
         # Keep a copy of the old manifest for cleaning leftovers later.
         cp "${KOREADER_DIR}/ota/package.index" /tmp/
         # Setup the FBInk daemon
@@ -128,7 +128,7 @@ ko_update_check() {
             # Cleanup leftovers from previous install.
             (cd "${UNPACK_DIR}" && grep -xvFf "${KOREADER_DIR}/ota/package.index" /tmp/package.index | xargs -r rm -vf)
             ./fbink -q -y -6 -pm "Update successful :)"
-            ./fbink -q -y -5 -pm "KOReader will start momentarily . . ."
+            ./fbink -q -y -5 -pm "GZreader will start momentarily . . ."
 
             # Warn if the startup script has been updated...
             if [ "$(md5sum "/tmp/koreader.sh" | cut -f1 -d' ')" != "$(md5sum "${KOREADER_DIR}/koreader.sh" | cut -f1 -d' ')" ]; then
@@ -137,7 +137,7 @@ ko_update_check() {
         else
             # Uh oh...
             ./fbink -q -y -6 -pmh "Update failed :("
-            ./fbink -q -y -5 -pm "KOReader may fail to function properly!"
+            ./fbink -q -y -5 -pm "GZreader may fail to function properly!"
         fi
         rm -f /tmp/package.index "${NEWUPDATE}" # always purge newupdate to prevent update loops
         unset CPOINTS FBINK_NAMED_PIPE
@@ -630,7 +630,10 @@ if [ ${RETURN_VALUE} -ne ${KO_RC_HALT} ]; then
     if [ "${VIA_NICKEL}" = "true" ]; then
         if [ "${FROM_KFMON}" = "true" ]; then
             # KFMon is the only launcher that has a toggle to either reboot or restart Nickel on exit
-            if grep -q "reboot_on_exit=false" "/mnt/onboard/.adds/kfmon/config/koreader.ini" 2>/dev/null; then
+            # GZreader: its own KFMon entry (gzreader.ini, gzreader.png) says, else KOReader's
+            KFMON_INI="/mnt/onboard/.adds/kfmon/config/gzreader.ini"
+            [ -f "${KFMON_INI}" ] || KFMON_INI="/mnt/onboard/.adds/kfmon/config/koreader.ini"
+            if grep -q "reboot_on_exit=false" "${KFMON_INI}" 2>/dev/null; then
                 # KFMon asked us to restart nickel on exit (default since KFMon 0.9.5)
                 ./nickel.sh &
             else
@@ -660,6 +663,9 @@ else
         fi
     fi
 fi
+
+# GZreader: say in crash.log how GZreader ended (the diagnostic log shows it)
+echo "GZreader: exited with ${RETURN_VALUE} (started from Nickel: ${VIA_NICKEL}) at $(date)" >>"${KOREADER_DIR}/crash.log" 2>/dev/null
 
 # Wipe the clones on exit
 rm -f "/tmp/koreader.sh"

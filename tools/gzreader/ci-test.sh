@@ -2,7 +2,8 @@
 # Everything CI checks, on Linux x86-64 (GitHub's ubuntu runners):
 # luacheck and the tests (tools/gzreader/tests/run.sh), then GZreader started
 # in the emulator (qemu) on a Kindle 3, Kindle 4, Kindle Touch, Paperwhite 3,
-# Nook 1st Edition and Nook Simple Touch (GZ_CI_MODELS), with KOReader's
+# Nook 1st Edition and Nook Simple Touch (GZ_CI_MODELS), and as a Kobo
+# Clara HD and Libra 2 (GZ_CI_KOBO), with KOReader's
 # official Kindle 2/3/DX binaries, checking what makes it GZreader: menus,
 # names, the Menu key, Settings, launcher, picture books, the Nook's colour
 # screen, menu text size (tools/gzreader/emulator/keeps.lua); and CPU
@@ -16,7 +17,7 @@
 #
 # Writes <out dir>/summary.md and screenshots; exit status: what failed.
 # Needs: luajit lua-socket lua-sec lua-check python3 (+ radicale) curl rsync unzip
-#        qemu-user-static libc6-armel-cross libgcc-s1-armel-cross, a writable /mnt/us.
+#        qemu-user-static libc6-armel-cross libgcc-s1-armel-cross, a writable /mnt/us and /mnt/onboard.
 set -u
 REPO=$(cd "$(dirname "$0")/../.." && pwd)
 ZIP=$(cd "$(dirname "${1:?zip}")" && pwd)/$(basename "$1")
@@ -61,6 +62,25 @@ for model in ${GZ_CI_MODELS:-k3 k4 kt pw3 nook nst}; do
         echo "- ✅ $model: $(grep -c '^ok' "$k") checks" >> "$SUM"
     fi
 done
+# Kobos: the Clara HD (a snow-protocol panel) and the Libra 2, with the same
+# binaries (emulator/kobo_tour.lua): the tabs, a book, the quick panel,
+# Settings, Sync with a computer. GZ_CI_KOBO=0 skips them.
+if [ "${GZ_CI_KOBO:-1}" = 1 ]; then
+    for model in clara libra; do
+        rm -rf /mnt/onboard/GZreader
+        GZ_EMU_BOOK="$OUT/book.epub" GZ_EMU_TREE="$TREE" GZ_EMU_MODEL=$model EMU_TIMEOUT=420 \
+            bash "$REPO/tools/gzreader/emulator/run.sh" "$REPO/tools/gzreader/emulator/kobo_tour.lua" "$OUT/kobo-$model" > /dev/null 2>&1
+        k="$OUT/kobo-$model/kobo-checks.txt"
+        if [ ! -s "$k" ] || [ "$(grep -c '^ok' "$k")" -lt 9 ]; then
+            failed=$((failed + 1)); echo "- ❌ $model (Kobo): didn't finish (see kobo-$model.txt)" >> "$SUM"
+        elif grep -q '^FAIL' "$k"; then
+            failed=$((failed + 1)); echo "- ❌ $model (Kobo): $(grep -c '^ok' "$k") ok, $(grep -c '^FAIL' "$k") failed" >> "$SUM"
+            sed 's/^/  - /' "$k" | grep FAIL >> "$SUM"
+        else
+            echo "- ✅ $model (Kobo): $(grep -c '^ok' "$k") checks" >> "$SUM"
+        fi
+    done
+fi
 # CPU budgets: a Kindle 3's everyday work (start, a book, page turns, the
 # quick panel, Home) against tools/gzreader/emulator/perf_baseline.json
 # (perf.lua, perf_check.py). GZ_CI_PERF=0 skips it.

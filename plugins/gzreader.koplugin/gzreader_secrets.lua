@@ -15,15 +15,22 @@ strip() just before writing and restore() right after; init calls load().
 A GZreader before this one, given the same settings, finds no sign-ins (it
 asks to connect again).
 
-Only where it matters and works: the settings are on /mnt/us and /var/local
-can be written (`active()`). Elsewhere (the Nook keeps its settings on its
-own disk, the emulator, the tests) nothing changes.
+Only where it matters and works: the settings are on a USB drive and the
+device's own disk can be written (`active()`): a Kindle (/mnt/us, kept in
+/var/local/gzreader) or a Kobo (/mnt/onboard, kept in /usr/local/gzreader:
+a Kobo firmware update can clear it, and GZreader then asks to connect
+again). Elsewhere (the Nook keeps its settings on its own disk, the
+emulator, the tests) nothing changes.
 ]]
 
 local Secrets = {
-    DIR = "/var/local/gzreader",
+    DIR = "/var/local/gzreader", -- (the place in use: set by active())
     FILE = "secrets.lua",
-    DRIVE = "/mnt/us/",
+    -- settings on this USB drive: sign-ins kept in this folder on the device's own disk
+    PLACES = {
+        { drive = "/mnt/us/", dir = "/var/local/gzreader" },      -- a Kindle
+        { drive = "/mnt/onboard/", dir = "/usr/local/gzreader" }, -- a Kobo
+    },
     -- { key, key, … } inside the state
     PATHS = {
         { "refresh_token" }, { "access_token" },
@@ -50,11 +57,14 @@ function Secrets.active()
     if Secrets.on ~= nil then return Secrets.on end
     local dir = settingsDir()
     local on = false
-    if dir and dir:sub(1, #Secrets.DRIVE) == Secrets.DRIVE then
-        os.execute("mkdir -p '" .. Secrets.DIR .. "' 2>/dev/null")
-        local probe = Secrets.DIR .. "/.write-test"
-        local f = io.open(probe, "w")
-        if f then f:close(); os.remove(probe); on = true end
+    for _i, place in ipairs(Secrets.PLACES) do
+        if dir and dir:sub(1, #place.drive) == place.drive then
+            os.execute("mkdir -p '" .. place.dir .. "' 2>/dev/null")
+            local probe = place.dir .. "/.write-test"
+            local f = io.open(probe, "w")
+            if f then f:close(); os.remove(probe); on = true; Secrets.DIR = place.dir end
+            break
+        end
     end
     Secrets.on = on
     return on

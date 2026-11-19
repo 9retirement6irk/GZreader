@@ -45,8 +45,9 @@ def main():
               "every version since the previous release (1.9.0, not 1.10.0 by text order), newest first, not 'next' (%s)" % err.strip())
         check("- Ten two, a feature over two lines." in out and "Changes since v1.9.0" in out,
               "one line per change; says since which release")
-        check("gzreader-kindle-legacy-1.10.2.zip" in out and "gzreader-nook-1st-edition-1.10.2.zip" in out,
-              "which package to download, by name")
+        check("gzreader-kindle-legacy-1.10.2.zip" in out and "gzreader-nook-1st-edition-1.10.2.zip" in out
+              and "gzreader-kobo-1.10.2.zip" in out,
+              "which package to download, by name (the Kobo's too)")
         rc, out, _ = notes("1.10.1", "v1.10.2", "v1.10.1", "v1.9.0", changelog=cl)
         check(rc == 0 and "- Ten one, the long text." in out and "Short" not in out,
               "a { short, text } line: its full text")

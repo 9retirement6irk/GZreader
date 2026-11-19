@@ -19,6 +19,7 @@ To build locally:
 
 ```sh
 tools/gzreader/package-kindle.sh koreader-kindle-legacy-v2026.07.1.zip out/   # or koreader-kindle-…, koreader-kindlehf-…, koreader-kindlepw2-…
+tools/gzreader/package-kobo.sh koreader-kobo-v2026.07.1.zip out/              # Kobos
 ```
 
 The build reuses the native binaries of the official KOReader kindle-legacy release of

@@ -3,8 +3,9 @@ headphones and speakers, connecting to them.
 
 **Which Kindles:** those with Bluetooth, on firmware 5.x — the Kindle 8th
 generation and later, Oasis, Paperwhite 4 and newer, Scribe, Colorsoft. On
-the Kindle 2, 3, DX, 4, Touch, the Paperwhites 2 and 3 and the Nooks there is
-no Bluetooth row (they have no Bluetooth, or no way to manage it).
+the Kindle 2, 3, DX, 4, Touch, the Paperwhites 2 and 3, the Kobos and the Nooks there is
+no Bluetooth row (they have no Bluetooth, or no way to manage it: a Kobo's
+Bluetooth only works in Kobo's own software).
 
 ## Settings → Audio → Bluetooth
 

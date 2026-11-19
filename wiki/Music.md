@@ -3,6 +3,8 @@ Albums and playlists from your Plex server, on Kindles with a speaker or headpho
 Kindles with a speaker or headphone jack (Kindle 2, 3, DX, Touch), or with
 Bluetooth (Scribe, Paperwhite 5 and newer…: through Bluetooth headphones or a speaker): albums and
 playlists from your Plex Media Server, played while you read.
+Not on Kobos: they have no speaker, and their Bluetooth only works in Kobo's
+own software ([Kobo](Kobo)).
 
 Music is the **Catalog** tab's third page: swipe left twice from Books, or
 use the page-turn button ([the Catalog tab](Grimmory-Library#the-catalog-tab)).

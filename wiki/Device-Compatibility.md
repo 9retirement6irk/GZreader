@@ -1,8 +1,8 @@
-GZreader runs on the Kindles KOReader supports and on two Nooks. Each kind of device has its own [package](Whats-in-GZreader#the-packages).
+GZreader runs on the Kindles KOReader supports, on Kobos (test build) and on two Nooks. Each kind of device has its own [package](Whats-in-GZreader#the-packages).
 
 ## Tested devices
 
-"Real device" means GZreader has been run on that model itself; "emulator" means GZreader's emulator (the real KOReader programs for that Kindle or Nook, under qemu, with that model's screen, keys and touch), which every change to GZreader is checked in before it's released.
+"Real device" means GZreader has been run on that model itself; "emulator" means GZreader's emulator (the real KOReader programs for that Kindle, Kobo or Nook, under qemu, with that model's screen, keys and touch), which every change to GZreader is checked in before it's released.
 
 | Device | Package | How you use it | Tested |
 | --- | --- | --- | --- |
@@ -15,6 +15,12 @@ GZreader runs on the Kindles KOReader supports and on two Nooks. Each kind of de
 | **Kindle Scribe** | `kindlehf` | touch and pen | real device (firmware 5.20.2), emulator |
 | **Nook 1st Edition** (2009) — *test build* | `nook-1st-edition` | the colour touchscreen | real device (firmware 1.0.0, Softroot 2.5.1), emulator |
 | **Nook Simple Touch**, with GlowLight (2011–2012) — *test build* | `nook` | touch | emulator only |
+| **Kobo Clara HD** (2018) — *test build* | `kobo` | touch | emulator only |
+| **Kobo Libra 2** (2021) — *test build* | `kobo` | touch, page keys | emulator only |
+
+## Kobos
+
+One package, `kobo`, for every Kobo KOReader runs on, with KOReader's own device support for each: Touch, Mini, Glo, Glo HD, Aura, Aura HD, Aura H2O (both), Aura One, Aura Edition 2, Touch 2.0, Clara HD, Clara 2E, Clara BW, Clara Colour, Forma, Libra H2O, Libra 2, Libra Colour, Nia, Sage, Elipsa, Elipsa 2E. Only the Clara HD and Libra 2 have been tried, in the emulator; reports from any Kobo are welcome. On a Kobo there's no sound (no audiobooks, music or read aloud), and a pen draws as a finger. More: [Kobo](Kobo).
 
 ## Untested Kindles
 
@@ -33,18 +39,18 @@ The firmware version is in the Kindle's Settings → Device Options → Device I
 
 ## What each device does
 
-| | Kindle 2, 3, DX | Kindle 4 | Kindle Touch | Paperwhite 3 | Kindle Scribe | Nook 1st Edition (test) | Nook Simple Touch (test) |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| Use | keyboard, 5-way | 5-way, Menu | touch | touch | touch and pen (pressure; the side button erases; your hand can rest on the screen) | the colour touchscreen's buttons and keyboard | touch |
-| Wi‑Fi | Kindle 3; the Kindle 2 and DX have none: [sync with a computer](Sync-with-a-Computer) | yes | yes | yes | yes | yes | yes |
-| Screen | 600 × 800 (DX 824 × 1200), 16 greys | 600 × 800, 16 greys | 600 × 800 | 1072 × 1448, 300 dpi | 1860 × 2480, 300 dpi | 600 × 800 + a 480 × 144 colour touchscreen | 600 × 800 (GlowLight: frontlight) |
-| Faster drawing (shadow screen) | yes | yes | (not needed) | (not needed) | (not needed) | (not needed) | (not needed) |
-| Audiobooks, music | yes | — (no audio) | yes (player buttons) | — (no audio) | yes, through Bluetooth headphones or a speaker ([Bluetooth](Bluetooth)) | — (not yet) | — (no audio) |
-| Read aloud (Kindle voice) | yes (Shift + Sym) | — | yes (Listen in the quick panel) | — | yes, Amazon's voice through Bluetooth (Read aloud in the quick panel) | — | — |
-| Volume buttons | yes | — | — | — | — (the Bluetooth volume: the quick panel's slider) | — | — |
-| Clock | UTC: set Settings → General → Time and date → Time zone | same | the Kindle's own | the Kindle's own | the Kindle's own | the Nook's own | the Nook's own |
-| Flash on every page turn (default) | on | on | off | off | off | off | off |
-| Start from | KUAL, Shift G G | KUAL | KUAL or the home screen item | the home screen item | the home screen item | its app icon | adb or a terminal app |
+| | Kindle 2, 3, DX | Kindle 4 | Kindle Touch | Paperwhite 3 | Kindle Scribe | Kobo (test) | Nook 1st Edition (test) | Nook Simple Touch (test) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Use | keyboard, 5-way | 5-way, Menu | touch | touch | touch and pen (pressure; the side button erases; your hand can rest on the screen) | touch; page keys on Libra, Sage, Elipsa, Forma (a pen draws as a finger) | the colour touchscreen's buttons and keyboard | touch |
+| Wi‑Fi | Kindle 3; the Kindle 2 and DX have none: [sync with a computer](Sync-with-a-Computer) | yes | yes | yes | yes | yes (KOReader's own for Kobos) | yes | yes |
+| Screen | 600 × 800 (DX 824 × 1200), 16 greys | 600 × 800, 16 greys | 600 × 800 | 1072 × 1448, 300 dpi | 1860 × 2480, 300 dpi | Clara HD 1072 × 1448, Libra 2 1264 × 1680, 300 dpi (others as KOReader knows them); light and warmth | 600 × 800 + a 480 × 144 colour touchscreen | 600 × 800 (GlowLight: frontlight) |
+| Faster drawing (shadow screen) | yes | yes | (not needed) | (not needed) | (not needed) | (not needed) | (not needed) | (not needed) |
+| Audiobooks, music | yes | — (no audio) | yes (player buttons) | — (no audio) | yes, through Bluetooth headphones or a speaker ([Bluetooth](Bluetooth)) | — (no speaker; Kobo's Bluetooth only in its own software) | — (not yet) | — (no audio) |
+| Read aloud (Kindle voice) | yes (Shift + Sym) | — | yes (Listen in the quick panel) | — | yes, Amazon's voice through Bluetooth (Read aloud in the quick panel) | — | — | — |
+| Volume buttons | yes | — | — | — | — (the Bluetooth volume: the quick panel's slider) | — | — | — |
+| Clock | UTC: set Settings → General → Time and date → Time zone | same | the Kindle's own | the Kindle's own | the Kindle's own | the Kobo's own | the Nook's own | the Nook's own |
+| Flash on every page turn (default) | on | on | off | off | off | off | off | off |
+| Start from | KUAL, Shift G G | KUAL | KUAL or the home screen item | the home screen item | the home screen item | NickelMenu or KFMon | its app icon | adb or a terminal app |
 
 **Ghosting** (a grey trace of the last pages): the Kindle 2, 3, DX and 4 have no REAGL, so a page turn without a flash leaves a trace that adds up. Settings → Display and light → Screen → E-ink settings → **Flash on every page turn** flashes the screen clean at every turn, as the Kindle's own reader does; it's on by default on those Kindles and can be turned on on any device. Off: a flash every 6 pages (quicker turns).
 
@@ -52,6 +58,6 @@ On the same Kindles, Settings → Display and light → Screen → E-ink setting
 
 Every setting about when the screen flashes is in **Settings → Display and light → Screen → E-ink settings**: KOReader's Full refresh rate (with Always flash on pages with images, which covers comics too: every CBZ page flashes while it's ticked), then GZreader's Flash on every page turn, Flash when the screen changes (the Kindle 2, 3, DX and 4 only) and Partial pages refresh (a flash when a page of Downloads isn't full of books), then KOReader's other e-ink settings. Whichever of Full refresh rate and Flash on every page turn you set last counts. KOReader's Avoid mandatory black flashes in UI works against Flash when the screen changes: leave it off on those Kindles.
 
-KOReader's own device code decides the model from the serial number (the DX runs as KOReader's Kindle 2 class, with its bigger screen); GZreader adapts each screen to keys, the 5-way or touch. More on each: [Using GZreader](Using-GZreader), [Nook 1st Edition](Nook-1st-Edition), [Nook Simple Touch](Nook-Simple-Touch).
+KOReader's own device code decides the model from the serial number (the DX runs as KOReader's Kindle 2 class, with its bigger screen); GZreader adapts each screen to keys, the 5-way or touch. More on each: [Using GZreader](Using-GZreader), [Kobo](Kobo), [Nook 1st Edition](Nook-1st-Edition), [Nook Simple Touch](Nook-Simple-Touch).
 
 **A book's font size on big screens (Scribe, DX).** KOReader's font sizes grow with the screen's width in pixels, so the default (23) made a Scribe's books large print (about 17 points; 10 on a Paperwhite). On a screen more than 5 inches across the default is smaller in step: **14** on a Scribe, 16 on a DX, the same size to the eye as 23 on a 6" Kindle. It's used for books opened from now on, and once replaces the old default (22, 22.5 or 23) saved for all books or kept by a book you'd already opened; a size you chose yourself stays. Change it as always with the quick panel's **Layout** (font size).

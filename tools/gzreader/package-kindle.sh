@@ -31,7 +31,9 @@ REPO=$(cd "$(dirname "$0")/../.." && pwd)
 STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT
 
-KEEP_PLUGINS="autosuspend coverbrowser gzreader statistics zenos"
+# shellcheck source=tools/gzreader/package-common.sh
+. "$REPO/tools/gzreader/package-common.sh"
+KEEP_PLUGINS=$GZ_KEEP_PLUGINS
 
 unzip -q "$SRC_ZIP" -d "$STAGE"
 KO="$STAGE/koreader"
@@ -43,19 +45,8 @@ fi
 GZ_VERSION=${GZ_VERSION:-$(tr -d ' \n' < "$REPO/GZREADER_VERSION")}
 
 # 1. Frontend and startup Lua: the branch's (menu order, OTA off, branding,
-#    keyboard, read aloud, sleep screen…).
-rsync -a --delete "$REPO/frontend/" "$KO/frontend/"
-cp "$REPO/reader.lua" "$KO/reader.lua"
-cp "$REPO/platform/kindle/koreader.sh" "$KO/koreader.sh"
-
-# 2. Plugins: only the keep-list, from the branch.
-rm -rf "$KO/plugins"
-mkdir -p "$KO/plugins"
-for p in $KEEP_PLUGINS; do
-    cp -r "$REPO/plugins/$p.koplugin" "$KO/plugins/"
-done
-# ZenOS ships an updater; drop its non-English catalogs to save space.
-find "$KO/plugins/zenos.koplugin/locales" -name '*.po' ! -name 'en.po' -delete
+#    keyboard, read aloud, sleep screen…). 2. Plugins: only the keep-list.
+gz_overlay "$KO" platform/kindle/koreader.sh
 
 # 3. Launchers: KUAL menu and launchpad shortcuts say "GZreader".
 cp "$REPO/platform/kindle/extensions/koreader/menu.json" \
@@ -73,73 +64,16 @@ if [ "$PLATFORM" != "kindle-legacy" ]; then
 fi
 
 # 4. Bundled English dictionary: Open English WordNet (CC BY 4.0) as StarDict.
-OEWN_XML=${OEWN_XML:-"$REPO/tools/gzreader/cache/english-wordnet-2025.xml.gz"}
-if [ ! -f "$OEWN_XML" ]; then
-    mkdir -p "$(dirname "$OEWN_XML")"
-    curl -fsSL -o "$OEWN_XML" \
-        https://github.com/globalwordnet/english-wordnet/releases/download/2025-edition/english-wordnet-2025.xml.gz
-fi
-DICT="$KO/data/dict/oewn"
-mkdir -p "$DICT"
-python3 -I "$REPO/tools/gzreader/build-wordnet-stardict.py" "$OEWN_XML" "$DICT"
-if command -v dictzip >/dev/null; then dictzip "$DICT/oewn.dict"; fi
-cat > "$DICT/README.txt" <<'TXT'
-Open English WordNet 2025 (https://en-word.net,
-https://github.com/globalwordnet/english-wordnet), licensed under
-Creative Commons Attribution 4.0 (https://creativecommons.org/licenses/by/4.0/).
-Converted to StarDict format (definitions, examples, synonyms and word forms)
-for the Grimmory KOReader build by tools/gzreader/build-wordnet-stardict.py.
-TXT
+gz_dictionary "$KO"
 
-# 5. Remove what a reading + sync device doesn't use.
-rm -rf "$KO/ota" "$KO/zsync2" "$KO/spinning_zsync"        # OTA (disabled; would restore stock KOReader)
-rm -f  "$KO/dropbear" "$KO/scp" "$KO/sftp-server"        # SSH server
-rm -f  "$KO"/fonts/noto/NotoSansCJK*                      # 16 MB CJK fallback font
-find "$KO/l10n" -mindepth 1 -maxdepth 1 -type d -exec rm -rf {} +   # UI translations (English UI)
-# Other e-readers' device code: frontend/device.lua only loads one of these
-# after detecting that device, so a Kindle never needs them.
-for d in android cervantes kobo pocketbook remarkable sony-prstux sdl; do
-    rm -rf "$KO/frontend/device/$d"
-done
+# 5. Remove what a reading + sync device doesn't use, and other e-readers'
+#    device code. The Kobo's stays: the update package (below, the same for
+#    every device) replaces the whole frontend folder on a Kobo too.
+gz_trim "$KO" android cervantes pocketbook remarkable sony-prstux sdl
 
 # 6. Precompile Lua to LuaJIT bytecode with the Kindle's own LuaJIT (run
-#    through qemu-arm), keeping the .lua names and debug info (line numbers,
-#    upvalue names, source paths relative to the koreader folder, exactly as
-#    when loading source). Loading bytecode skips parsing: ~4-15x faster per
-#    file, about a second or more off every start on a Kindle 3.
-#    Skipped (with a warning) when the Kindle's LuaJIT can't be run here.
-#    GZ_LUAJIT: the command to use instead (a Kindle LuaJIT of the same
-#    version, e.g. another package's under qemu: the bytecode is the same).
-LJ_RUN="${GZ_LUAJIT:-}"
-if [ -n "$LJ_RUN" ] || [ "${GZ_BYTECODE:-1}" != "1" ]; then
-    :
-elif "$KO/luajit" -v >/dev/null 2>&1; then
-    LJ_RUN="$KO/luajit"
-elif command -v qemu-arm-static >/dev/null; then
-    for root in "${QEMU_LD_PREFIX:-}" /usr/arm-linux-gnueabihf /usr/arm-linux-gnueabi; do
-        if [ -n "$root" ] && qemu-arm-static -L "$root" "$KO/luajit" -v >/dev/null 2>&1; then
-            LJ_RUN="qemu-arm-static -L $root $KO/luajit"
-            break
-        fi
-    done
-fi
-if [ -n "$LJ_RUN" ] && [ "${GZ_BYTECODE:-1}" = "1" ]; then
-    n=0
-    while IFS= read -r f; do
-        # keep plain source where people may look or edit
-        case "$f" in */_meta.lua|defaults.lua|setupkoenv.lua) continue ;; esac
-        if (cd "$KO" && LUA_PATH="$KO/?.lua;;" $LJ_RUN -b -g "$f" "$f.bc" 2>/dev/null) && [ -s "$KO/$f.bc" ]; then
-            mv "$KO/$f.bc" "$KO/$f"
-            n=$((n + 1))
-        else
-            rm -f "$KO/$f.bc"
-            echo "warning: kept source for $f (bytecode failed)" >&2
-        fi
-    done < <(cd "$KO" && find frontend plugins common -name '*.lua')
-    echo "precompiled $n Lua files to bytecode"
-else
-    echo "warning: the Kindle's LuaJIT can't run here (install qemu-user-static and libc6-armel-cross / libc6-armhf-cross); shipping Lua source" >&2
-fi
+#    through qemu-arm): package-common.sh.
+gz_bytecode "$KO"
 
 echo "${BASE_REV}-gzreader-${GZ_VERSION}" > "$KO/git-rev"
 echo "$GZ_VERSION" > "$KO/gzreader-version"
@@ -151,16 +85,18 @@ echo "$OUT"
 du -h "$OUT"
 
 # Update package: only what the updater may replace (see gzreader_update.lua).
-# The Nooks install it too (the Lua is the same); their start script comes
-# along as koreader/nook-gzreader.sh, the icon's helper as
-# koreader/nook-launcher.sh (only a Nook installs them).
+# The Nooks and Kobos install it too (the Lua is the same); the Nook's start
+# script comes along as koreader/nook-gzreader.sh, the icon's helper as
+# koreader/nook-launcher.sh (only a Nook installs them), the Kobo's start
+# script as koreader/kobo-koreader.sh (a Kobo installs it as koreader.sh).
 cp "$REPO/platform/nook/gzreader.sh" "$KO/nook-gzreader.sh"
+cp "$REPO/platform/kobo/koreader.sh" "$KO/kobo-koreader.sh"
 # (and the Nook icon's helper, once the repository has it)
 NOOK_EXTRA=
 if [ -f "$REPO/platform/nook/launcher.sh" ]; then cp "$REPO/platform/nook/launcher.sh" "$KO/nook-launcher.sh"; NOOK_EXTRA=koreader/nook-launcher.sh; fi
 UPD="$OUT_DIR/gzreader-update.zip"
 rm -f "$UPD"
-(cd "$STAGE" && zip -qr -9 "$UPD" koreader/frontend koreader/reader.lua koreader/koreader.sh koreader/nook-gzreader.sh $NOOK_EXTRA \
+(cd "$STAGE" && zip -qr -9 "$UPD" koreader/frontend koreader/reader.lua koreader/koreader.sh koreader/nook-gzreader.sh $NOOK_EXTRA koreader/kobo-koreader.sh \
     koreader/gzreader-version koreader/git-rev $(for p in $KEEP_PLUGINS; do echo "koreader/plugins/$p.koplugin"; done))
 echo "$UPD"
 du -h "$UPD"
