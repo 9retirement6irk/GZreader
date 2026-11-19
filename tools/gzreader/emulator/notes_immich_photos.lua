@@ -1,6 +1,6 @@
 -- Photos from Immich in a note and in a drawing (gzreader_immichpick.lua),
 -- through the Memos fork's own Immich connection (its /api/immich proxy):
--- the note editor's "+ Photos" chip → albums → a grid of thumbnails → two
+-- the note editor's top-bar picture (Photos, beside ✎ Draw) → albums → a grid of thumbnails → two
 -- photos picked → Add → "2 photos" → Save: the note in Memos with the two
 -- as JPEG attachments. Then a drawing's ⋮ → Picture from Immich… → a photo
 -- placed in the middle of the page → Done: the drawing's scene has it.
@@ -45,8 +45,11 @@ end, after = 4 })
 add({ shot = "1-editor", after = 0.5 })
 add({ fn = function(E)
     local e = editor()
-    check(e and e.strip and e.strip.photos == "+ Photos", "the note editor: \"+ Photos\" beside Draw")
-    E.tap("+ Photos")
+    local b = e and e.bar_buttons
+    check(b and b.photos and b.draw and b.photos.dimen and b.draw.dimen and b.photos.dimen.x > b.draw.dimen.x
+        and e.strip and e.strip.photos == nil and e.strip.thumbs == 0,
+        "the note editor: Photos in the top bar beside ✎ Draw (as on the drawing screen and an opened note), not in the row under it")
+    if b and b.photos then E.tap(mid(b.photos.dimen)) end
 end, after = 6 })
 add({ shot = "2-albums", after = 0.5 })
 add({ fn = function(E)
@@ -78,7 +81,7 @@ add({ shot = "5-two-photos", after = 0.5 })
 add({ fn = function(E)
     local e = editor()
     check(grid() == nil and albums() == nil and e and #(e.photos or {}) == 2 and strip_thumbs() == 2
-        and e.photos[1].filename == "IMG_0002.jpg", "attached: back in the note, the two as small pictures by + Photos (IMG_0002 first)")
+        and e.photos[1].filename == "IMG_0002.jpg", "attached: back in the note, the two as small pictures under the top bar (IMG_0002 first)")
     if e.rich_input then e.rich_input:addChars(note_text) elseif e.input then e.input:addChars(note_text) end
     e:save()
 end, after = 10 })
@@ -111,7 +114,7 @@ add({ fn = function(E)
     -- a new note, a photo in its text
     require("gzreader_notes").edit(plugin(), nil)
 end, after = 4 })
-add({ fn = function(E) E.tap("+ Photos") end, after = 6 })
+add({ fn = function(E) local e = editor(); if e and e.bar_buttons.photos then E.tap(mid(e.bar_buttons.photos.dimen)) end end, after = 6 })
 add({ fn = function(E) E.tap("Kids") end, after = 6 })
 add({ fn = function(E) local g = grid(); if g then E.tap(mid(g.cells[1].w.dimen)) end end, after = 2 })
 add({ fn = function(E) E.tap("Add (1)") end, after = 6 })
@@ -121,7 +124,7 @@ add({ fn = function(E)
     local e = editor()
     local text = e and e:text() or ""
     check(text:match("!%[IMG_0101%]%(/file/attachments/[%w%-]+/IMG_0101%.jpg%)") and strip_thumbs() == 1 and #(e.sent or {}) == 1,
-        "In the text: sent at once, its picture line at the cursor, shown by + Photos")
+        "In the text: sent at once, its picture line at the cursor, shown as a small picture")
     local shown
     for _i, l in ipairs(e.rich_input and e.rich_input.lines or {}) do if l.picture then shown = l end end
     check(shown and shown.picture.w > 20, "…and the editor shows it as the picture, not its Markdown")

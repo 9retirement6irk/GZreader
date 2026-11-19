@@ -737,7 +737,10 @@ end
 ---   ←  The note's name                       ✎  #  ⋮  [Done]
 ---      Private · its space · #tags
 --- ← leaves (asks to save when something changed); ✎ draws (its sheets);
---- # adds a tag; ⋮ has who can see it, its space, Draw and Close; Done saves.
+--- the picture adds photos from Immich (when it's reachable); # adds a tag;
+--- ⋮ has who can see it, its space, Draw and Close; Done saves. (Draw and
+--- Photos are here, not in the row under it, as on the drawing screen and
+--- an opened note.)
 function Editor:notebookBar(sw)
     local hint = { NoteEditor.VIS_LABEL[self.visibility] or "" }
     if self.has_spaces then hint[#hint + 1] = self:spaceLabel() end
@@ -754,6 +757,7 @@ function Editor:notebookBar(sw)
     end
     local icons = {}
     if self:canDraw() then icons[#icons + 1] = { "draw", "pen", function() self:openDrawing() end, true } end
+    if self.immich then icons[#icons + 1] = { "photos", "photos", function() self:addPhotos() end, true } end
     icons[#icons + 1] = { "tag", "tag", function() self:pickTag() end, true }
     icons[#icons + 1] = { "options", "more", function() self:barOptions() end, true }
     local bar, buttons = require("gzreader_notebar").build{
@@ -865,6 +869,7 @@ NoteEditor.STRIP_PHOTOS = 3 -- photos pictured there (the rest: "+n", a list)
 --- The formatted page's row under the title: the note's sheets as small pictures (a tap
 --- opens that page to draw on), their count, and "New sheet" for a note without any.
 --- Without drawing (not connected, a pen-less Kindle): how formatting works.
+--- With the top bar (touch): only the small pictures; ✎ and + Photos are its icons.
 function Editor:sheetStrip(width)
     local row = HorizontalGroup:new{ align = "center" }
     local sheets = self:sheets()
@@ -901,7 +906,10 @@ function Editor:sheetStrip(width)
     self.strip.label = text
     local chip = FrameContainer:new{ padding = S(6), radius = S(6), bordersize = self:canDraw() and Size.border.thick or 0,
         label(text, true) }
-    row[#row + 1] = self:canDraw() and tapTarget(chip, function() self:openDrawing() end) or chip
+    local bar_icons = self.save_top -- (the top bar has ✎ and + Photos)
+    if not bar_icons then
+        row[#row + 1] = self:canDraw() and tapTarget(chip, function() self:openDrawing() end) or chip
+    end
     -- the note's photos (attached, put in the text here, or to be attached): small pictures,
     -- a tap for what to do with one; then + Photos (Immich)
     local photos = self:photoList()
@@ -931,7 +939,7 @@ function Editor:sheetStrip(width)
             row[#row + 1] = tapTarget(label("+" .. (#photos - NoteEditor.STRIP_PHOTOS), true, true), function() self:photosMenu() end)
         end
     end
-    if self.immich then
+    if self.immich and not bar_icons then
         -- photos from Immich (as the Memos fork's Insert image → From Immich): in the text or attached, asked each time
         local ptext = "+ " .. _("Photos")
         self.strip.photos = ptext
@@ -939,10 +947,10 @@ function Editor:sheetStrip(width)
         row[#row + 1] = tapTarget(FrameContainer:new{ padding = S(6), radius = S(6), bordersize = Size.border.thick, label(ptext, true) },
             function() self:addPhotos() end)
     end
-    if #sheets == 0 and not self.immich and #photos == 0 then
-        row[#row + 1] = HorizontalSpan:new{ width = S(10) }
+    if #sheets == 0 and #photos == 0 and (bar_icons or not self.immich) then
+        row[#row + 1] = HorizontalSpan:new{ width = bar_icons and 0 or S(10) }
         row[#row + 1] = TextWidget:new{ text = _("Hold a word to format it"), face = Font:getFace("cfont", 13),
-            fgcolor = Blitbuffer.COLOR_DARK_GRAY, max_width = math.max(S(40), width - chip:getSize().w - S(14)) }
+            fgcolor = Blitbuffer.COLOR_DARK_GRAY, max_width = math.max(S(40), width - (bar_icons and 0 or chip:getSize().w) - S(14)) }
     end
     return row
 end

@@ -167,12 +167,14 @@ API to `/api` are found too.
     The button in use is black. The bar stays for another button; a tap on
     the text, or typing, puts it away. (It sits above the selection, or
     under it on the first line, where it covers the next line until it goes.)
-  - The row under the title shows the note's **sheets** (its drawings) as
-    small pictures: tap one to draw on it; **✎ Draw** adds the first.
+  - The row under the title shows the note's **sheets** (its drawings) and
+    its photos as small pictures: tap a sheet to draw on it. **✎** in the top
+    bar draws (a new note's first sheet), and the picture beside it adds
+    photos, as on the drawing screen and an opened note.
   - **The top bar is the drawing screen's:** **←** (leave; asks whether to
     save when something changed), the note's name (its first line; under it
     who can see it, its space and its tags), then **✎** (draw: its sheets),
-    **#** (add a tag), **⋮** (**Who can see it**, a tap for the next choice;
+    a picture (**Photos** from Immich, when it's connected), **#** (add a tag), **⋮** (**Who can see it**, a tap for the next choice;
     **Space**; **Draw**; **Close**) and **Done**, which saves. For a moment
     after the drawing screen's **Done**, a tap on this bar is ignored, so a
     second tap on a slow Done doesn't save the note before you meant to.
@@ -244,12 +246,13 @@ API to `/api` are found too.
     web app shows them (a tap opens one full screen); PDFs and other files
     stay as rows.
   - **In the editor**, the note's photos show as small pictures in the row
-    under the title, after Draw; one shown in the text has a thick frame
+    under the title, after its sheets; one shown in the text has a thick frame
     (**+n** beyond three: a list of them all). Tap one for **Put it in the
     text, at the cursor** (or **Take it out of the text**, keeping it
     attached), **Remove it from the note…** (deleted in Memos when you
     save; its picture leaves the text too) and **Show it**.
-  - **+ Photos** (in that row, when Immich is connected): photos from your
+  - **Photos** (the picture in the editor's top bar, beside ✎, when Immich
+    is connected; keyboard Kindles: **+ Photos** in the row): photos from your
     Immich. It opens your albums (**All photos** first); tap an album for a
     grid of its photos, tap the ones you want (each gets a thick frame and
     its number in the order picked; tap again to let one go), turn pages
@@ -290,7 +293,7 @@ API to `/api` are found too.
   tab syncs the next time you open it. On a Kindle syncing through a
   computer it goes with the next sync. Hide the tile in **Settings → Home and tabs → Quick panel**.
 - **Drawings** (touch Kindles, Memos over Wi‑Fi): tap **Draw** on the Notes
-  tab, or **✎ Draw** in a note's editor, for a page to draw on. A note can
+  tab, or **✎** in a note's editor (its top bar), for a page to draw on. A note can
   be just drawings.
   - **The drawing screen is laid out as the Kindle Scribe's notebook.** The
     page is the whole screen; the bar at the top and the tools at the side

@@ -8999,6 +8999,12 @@ print("Notes (Memos v0.31)")
             and nesrc:find('back = function() self:onCloseDialog() end', 1, true) ~= nil
             and nesrc:find('action = { "done", _("Done"), function() self:save() end, true }', 1, true) ~= nil,
             "editor (touch, full page): the drawing screen's top bar: ← (not guarded) … ✎ # ⋮ Done (guarded); Done saves")
+        check(nesrc:find('if self.immich then icons[#icons + 1] = { "photos", "photos", function() self:addPhotos() end, true } end', 1, true) ~= nil
+            and nesrc:find("local bar_icons = self.save_top", 1, true) ~= nil
+            and nesrc:find("if self.immich and not bar_icons then", 1, true) ~= nil
+            and nesrc:find("if not bar_icons then\n        row[#row + 1] = self:canDraw() and tapTarget(chip", 1, true) ~= nil
+            and io.open(PLUGIN .. "/icons/draw/photos.svg", "rb") ~= nil,
+            "editor (touch): Draw and Photos are the top bar's icons (✎, a picture), not chips in the row under it; keyboard Kindles keep the chips")
         ;(function() -- the same bar on an opened note (touch), and the bar's name for a note
             local NoteBar = require("gzreader_notebar")
             check(NoteBar.nameOf("# Weekend\n\nBike") == "Weekend" and NoteBar.nameOf("#plans #trip\n- [ ] milk") == "milk"
