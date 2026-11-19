@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Music no longer shows up as a book in Recently read", text = "On a Kindle DX Graphite, playing a playlist or album you had copied over from the computer could make it Home's most recently read book. Music now never goes into the reading history, whatever opens it, and any albums or playlists already there are taken out when GZreader starts. An album or playlist found under another spelling of its folder's path now also plays, instead of opening as a book. Audiobooks still show in Recently read, with how far you've listened." },
+        },
+    },
+    {
         version = "1.34.0",
         changes = {
             { short = "Quick panel: Send books is now Connect", text = "The quick panel's Send books tile at Home is now called Connect, with its own icon, because the page it opens does much more than send books: it sets up Grimmory, Notes, Calendar and Music from your phone or computer. It opens that page at its first tab; Send books is one tap away there. If you'd hidden the tile it stays hidden." },
