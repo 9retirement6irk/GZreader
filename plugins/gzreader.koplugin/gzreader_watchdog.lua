@@ -146,14 +146,19 @@ end
 local ENDPOINT = { send = "/send", state = "/state/upsert", resolve = "/state/resolve" }
 
 --- "GZreader/1.34.0": what every request of GZreader's says it is (as
---- socketutil.lua's), from gzreader-version in the koreader folder (where
---- the watchdog runs); "GZreader/dev" without one.
-function W.userAgent()
-    local v = readFile("gzreader-version")
-    v = v and v:match("^%s*v?([%w%.%-]+)") or "dev"
-    return "GZreader/" .. v
+--- socketutil.lua's; the watchdog can't load socketutil, which needs the
+--- device), from gzreader-version in the koreader folder (where the
+--- watchdog runs); "GZreader/dev" without one. Read once.
+local agent
+local function userAgent()
+    if not agent then
+        local v = readFile("gzreader-version")
+        v = v and v:match("^%s*v?([%w%.%-]+)") or "dev"
+        agent = "GZreader/" .. v
+    end
+    return agent
 end
-local USER_AGENT = W.userAgent()
+W.userAgent = userAgent
 
 local function post(url, payload)
     if not okh then return false end
@@ -163,7 +168,7 @@ local function post(url, payload)
         local c = select(2, http.request{
             url = url, method = "POST",
             headers = { ["Content-Type"] = "application/json", ["Content-Length"] = tostring(#payload),
-                ["User-Agent"] = USER_AGENT },
+                ["User-Agent"] = userAgent() },
             source = ltn12.source.string(payload), sink = ltn12.sink.table(sink),
         })
         return c
