@@ -13774,6 +13774,41 @@ print("1.23.7 fixes and speed-ups")
     check(saves == 0, "music folder check: settings not written when nothing changed")
     plugin.save = orig_save
 
+    -- music isn't reading: a stand-in never in the reading history (the owner's DX Graphite, 2026-11-19)
+    do
+        local saved_rh = package.loaded["readhistory"]
+        local edir = MF.entryDir(plugin)
+        plugin.store.music_stubs = plugin.store.music_stubs or {}
+        plugin.store.music_stubs["Road Trip.epub"] = "playlist-7"
+        local flushed = 0
+        local RH = { hist = {
+            { file = WORK .. "/Book.epub", time = 3 },
+            { file = edir .. "/Road Trip.epub", time = 2 },
+            { file = "/mnt/base-us/GZreader/Music/Road Trip.epub", time = 1 },
+            { file = "/mnt/us/Other/Music/Not Ours.epub", time = 0 },
+        } }
+        function RH:addItem(file) table.insert(self.hist, 1, { file = file, time = 9 }) end
+        function RH:removeItem(_item, i) table.remove(self.hist, i) end
+        function RH:_flush() flushed = flushed + 1 end
+        package.loaded["readhistory"] = RH
+        MF.plugin = plugin
+        local gone = MF.guardHistory(plugin)
+        local names = {}
+        for _i, e in ipairs(RH.hist) do names[#names + 1] = e.file:match("[^/]+$") end
+        check(gone == 2 and #RH.hist == 2 and flushed == 1 and names[1] == "Book.epub" and names[2] == "Not Ours.epub",
+            "music stand-ins taken out of the reading history at start (here, or by another spelling of the path); others kept (" .. table.concat(names, ", ") .. ")")
+        RH:addItem(edir .. "/Road Trip.epub")
+        RH:addItem("/mnt/base-us/GZreader/Music/Road Trip.epub")
+        check(#RH.hist == 2, "…and kept out whatever opens one")
+        RH:addItem(WORK .. "/Another.epub")
+        check(#RH.hist == 3 and RH.hist[1].file:match("Another"), "…books still go in")
+        check(MF.folderForPath(plugin, "/mnt/base-us/GZreader/Music/Road Trip.epub") == "playlist-7"
+            and MF.folderForPath(plugin, WORK .. "/Road Trip.epub") == nil,
+            "a stand-in by another spelling of its path still plays (not opened as a book)")
+        plugin.store.music_stubs["Road Trip.epub"] = nil
+        package.loaded["readhistory"] = saved_rh
+    end
+
     -- subtitles: each book's looked at once
     local Titles = require("gzreader_titles")
     local s_sub, s_apply = Titles.subtitle, Titles.apply

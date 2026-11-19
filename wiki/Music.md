@@ -27,6 +27,10 @@ and the artist and year (a playlist: its number of tracks). An artist opens
 to their albums, as CD cases too. Search results stay a list (artists,
 albums and tracks together).
 
+Music isn't reading: playing an album or playlist never puts it in Home's
+**Recently read** or makes it the book you were reading last. Audiobooks do
+go there, with how far you've listened.
+
 ![The Catalog's Music page](https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/catalog-music.png) ![An album playing in the CD player](https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/cd-player.png)
 
 There is also a **Music tab**, off until you turn it on: Settings → Accounts and services → Music → Music tab, or Settings → Home and tabs → Tab bar →

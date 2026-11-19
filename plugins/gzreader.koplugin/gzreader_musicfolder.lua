@@ -144,12 +144,51 @@ function Folder.sync(plugin)
     if changed then plugin:save() end
 end
 
---- The music folder (in .music) of a stand-in's path, or nil.
+--- The music folder (in .music) of a stand-in's path, or nil. A stand-in is
+--- known by its name in a folder called Music: the one in the books' folder,
+--- or one kept from before (the books' folder moved, or the path spelled
+--- another way: /mnt/base-us for /mnt/us), which would open as a book.
 function Folder.folderForPath(plugin, path)
     if type(path) ~= "string" then return nil end
     local dir, name = path:match("^(.*)/([^/]+%.epub)$")
-    if not dir or dir ~= Folder.entryDir(plugin) then return nil end
+    if not dir then return nil end
+    if dir ~= Folder.entryDir(plugin) and dir:match("[^/]+$") ~= Folder.ENTRY then return nil end
     return stubs(plugin)[name]
+end
+
+--- Music isn't reading: a stand-in never goes into the reading history
+--- (Home's Recently read, the book you were reading last), whatever opens
+--- it; and those it got into before are taken out (at start).
+function Folder.guardHistory(plugin)
+    local ok, ReadHistory = pcall(require, "readhistory")
+    if not ok or not ReadHistory then return 0 end
+    if not ReadHistory._gz_music_guard then
+        ReadHistory._gz_music_guard = true
+        local orig = ReadHistory.addItem
+        ReadHistory.addItem = function(self, file, ...)
+            local p = Folder.plugin
+            if p and Folder.folderForPath(p, file) then
+                -- (where from: what put it there before)
+                local from = debug.traceback("", 2):gsub("\n%s*", " | "):sub(1, 400)
+                Log.info("music stand-in kept out of the reading history:", (file:match("[^/]+$")), from)
+                return
+            end
+            return orig(self, file, ...)
+        end
+    end
+    local gone = 0
+    for i = #(ReadHistory.hist or {}), 1, -1 do
+        local e = ReadHistory.hist[i]
+        if type(e) == "table" and Folder.folderForPath(plugin, e.file) then
+            pcall(ReadHistory.removeItem, ReadHistory, e, i, true)
+            gone = gone + 1
+        end
+    end
+    if gone > 0 then
+        pcall(ReadHistory._flush, ReadHistory)
+        Log.info("music stand-ins taken out of the reading history:", gone)
+    end
+    return gone
 end
 
 --- Opening a stand-in plays it (and shows the player).
@@ -184,6 +223,7 @@ end
 
 function Folder.start(plugin)
     Folder.install(plugin)
+    pcall(Folder.guardHistory, plugin)
     -- once a run (downloads and deletes sync again themselves): KOReader
     -- starts the plugin again every time a book closes
     if not Folder.synced then
