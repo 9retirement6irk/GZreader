@@ -90,11 +90,17 @@ function Sketch.new(opts)
 end
 
 --- The pen Kindles: KOReader reads their pen with its wacom protocol.
+--- The Kobos with a pen (Kobo Stylus, Stylus 2): it comes on the touch panel
+--- itself, as a contact whose tool is a pen (ABS_MT_TOOL_TYPE 1), with its
+--- pressure (ABS_MT_PRESSURE); its other end rubs out (tool 2).
+Sketch.KOBO_PENS = { Kobo_europa = true, Kobo_cadmus = true, Kobo_condor = true, Kobo_monza = true }
+
 function Sketch.penDevice(device)
     local input = device and device.input
     if input and input.wacom_protocol then return true end
     local model = device and device.model
-    return type(model) == "string" and model:match("Scribe") ~= nil
+    if type(model) ~= "string" then return false end
+    return model:match("Scribe") ~= nil or Sketch.KOBO_PENS[model] == true
 end
 
 --- Screen pixels per scene unit for a screen of `dpi`: 2 at 300 dpi (memos

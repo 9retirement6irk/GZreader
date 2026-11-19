@@ -1065,6 +1065,9 @@ function Input:handleTouchEv(ev)
             self:setCurrentMtSlot("gz_tilt_x", ev.value)
         elseif ev.code == C.ABS_TILT_Y then
             self:setCurrentMtSlot("gz_tilt_y", ev.value)
+        elseif ev.code == C.ABS_MT_PRESSURE and self:getCurrentMtSlotData("tool") == TOOL_TYPE_PEN then
+            -- (a Kobo's pen, on its touch panel: the Elipsa, Sage, Elipsa 2E, Libra Colour)
+            self:setCurrentMtSlot("gz_pressure", ev.value)
         end
         -- NOTE: Ideally, an input frame starts with either ABS_MT_SLOT or ABS_MT_TRACKING_ID,
         --       but they *both* may be omitted if the last contact point just moved without lift.

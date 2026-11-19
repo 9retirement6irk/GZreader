@@ -31,7 +31,7 @@ package.preload["device/gesturedetector"] = function()
         o.frames = {}
         o.feedEvent = function(self, slots)
             local f = {}
-            for _i, s in ipairs(slots) do f[#f + 1] = { slot = s.slot, id = s.id, x = s.x, y = s.y, tool = s.tool } end
+            for _i, s in ipairs(slots) do f[#f + 1] = { slot = s.slot, id = s.id, x = s.x, y = s.y, tool = s.tool, gz_pressure = s.gz_pressure } end
             self.frames[#self.frames + 1] = f
             return {}
         end
@@ -217,6 +217,30 @@ print("== the decision on its own")
         "slots below the pen's kept (two-finger gestures use 0 and 1)")
     check(not PenInput.install({ wacom_protocol = false }) and not PenInput.install(nil), "Kindles without a pen: nothing changes")
 end)()
+
+-- a Kobo's pen (the Elipsa, Sage, Elipsa 2E, Libra Colour): on the touch panel itself, a
+-- contact whose tool is a pen (ABS_MT_TOOL_TYPE 1), its pressure in ABS_MT_PRESSURE
+do
+    local ABS_MT_TOOL_TYPE, ABS_MT_PRESSURE = 0x37, 0x3a
+    local dev = setmetatable({ screen = { getWidth = function() return 1404 end, getHeight = function() return 1872 end } },
+        { __index = function() return function() return false end end })
+    local inp = Input:new{ device = dev, input = {}, event_map = {} }
+    inp.pressure_event = ABS_MT_PRESSURE -- (KoboCondor)
+    feed(inp, { { EV_ABS, ABS_MT_SLOT, 0 }, { EV_ABS, ABS_MT_TRACKING_ID, 7 }, { EV_ABS, ABS_MT_TOOL_TYPE, 0 },
+        { EV_ABS, ABS_MT_X, 900 }, { EV_ABS, ABS_MT_Y, 900 }, { EV_ABS, ABS_MT_PRESSURE, 40 } })
+    feed(inp, { { EV_ABS, ABS_MT_SLOT, 1 }, { EV_ABS, ABS_MT_TRACKING_ID, 8 }, { EV_ABS, ABS_MT_TOOL_TYPE, 1 },
+        { EV_ABS, ABS_MT_X, 300 }, { EV_ABS, ABS_MT_Y, 500 }, { EV_ABS, ABS_MT_PRESSURE, 2200 } })
+    feed(inp, { { EV_ABS, ABS_MT_SLOT, 1 }, { EV_ABS, ABS_MT_X, 320 }, { EV_ABS, ABS_MT_PRESSURE, 2600 } })
+    local pen, finger
+    for _i, f in ipairs(inp.gesture_detector.frames) do
+        for _j, c in ipairs(f) do
+            if c.tool == 1 and c.gz_pressure then pen = c.gz_pressure end
+            if c.tool == 0 and c.slot == 0 then finger = c end
+        end
+    end
+    check(pen == 2600, "a Kobo's pen: its pressure (ABS_MT_PRESSURE) goes with its contact as the Scribe's does (" .. tostring(pen) .. ")")
+    check(finger and finger.gz_pressure == nil, "…a finger's pressure doesn't (fingers draw without)")
+end
 
 print(string.format("pen input: %d passed, %d failed", pass, fail))
 os.exit(fail == 0 and 0 or 1)

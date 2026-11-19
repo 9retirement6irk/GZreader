@@ -50,6 +50,10 @@ print("== which Kindles draw with a pen")
     check(Sketch.penDevice({ input = {}, model = "KindleScribe2" }), "…by its model too")
     check(not Sketch.penDevice({ input = {}, model = "KindlePaperWhite3" }), "a Paperwhite 3: a finger Kindle")
     check(not Sketch.penDevice(nil), "no device: no pen")
+    local kobo_pens = Sketch.penDevice({ input = {}, model = "Kobo_europa" }) and Sketch.penDevice({ input = {}, model = "Kobo_cadmus" })
+        and Sketch.penDevice({ input = {}, model = "Kobo_condor" }) and Sketch.penDevice({ input = {}, model = "Kobo_monza" })
+    check(kobo_pens and not Sketch.penDevice({ input = {}, model = "Kobo_io" }) and not Sketch.penDevice({ input = {}, model = "Kobo_spaColour" }),
+        "the Kobos with a pen (Elipsa, Sage, Elipsa 2E, Libra Colour): pen devices; a Libra 2 or a Clara Colour: no")
     check(Sketch.perUnitFor(300) == 2 and Sketch.perUnitFor(167) > 1 and Sketch.perUnitFor(100) == 1,
         "2 screen pixels per scene unit at 300 dpi (memos' 2x), never under 1")
     check(Sketch.radiusFor(1, 2) == 2 and Sketch.radiusFor(2, 2) == 3 and Sketch.radiusFor(4, 2) == 6,

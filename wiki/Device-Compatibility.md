@@ -20,7 +20,7 @@ GZreader runs on the Kindles KOReader supports, on Kobos (test build) and on two
 
 ## Kobos
 
-One package, `kobo`, for every Kobo KOReader runs on, with KOReader's own device support for each: Touch, Mini, Glo, Glo HD, Aura, Aura HD, Aura H2O (both), Aura One, Aura Edition 2, Touch 2.0, Clara HD, Clara 2E, Clara BW, Clara Colour, Forma, Libra H2O, Libra 2, Libra Colour, Nia, Sage, Elipsa, Elipsa 2E. Only the Clara HD and Libra 2 have been tried, in the emulator; reports from any Kobo are welcome. On a Kobo there's no sound (no audiobooks, music or read aloud), and a pen draws as a finger. More: [Kobo](Kobo).
+One package, `kobo`, for every Kobo KOReader runs on, with KOReader's own device support for each: Touch, Mini, Glo, Glo HD, Aura, Aura HD, Aura H2O (both), Aura One, Aura Edition 2, Touch 2.0, Clara HD, Clara 2E, Clara BW, Clara Colour, Forma, Libra H2O, Libra 2, Libra Colour, Nia, Sage, Elipsa, Elipsa 2E. Only the Clara HD and Libra 2 have been tried, in the emulator; reports from any Kobo are welcome. On a Kobo there's no sound (no audiobooks, music or read aloud). A Kobo's pen (Elipsa, Sage, Elipsa 2E, Libra Colour) draws with its pressure while your hand rests on the screen. More: [Kobo](Kobo).
 
 ## Untested Kindles
 
@@ -41,7 +41,7 @@ The firmware version is in the Kindle's Settings → Device Options → Device I
 
 | | Kindle 2, 3, DX | Kindle 4 | Kindle Touch | Paperwhite 3 | Kindle Scribe | Kobo (test) | Nook 1st Edition (test) | Nook Simple Touch (test) |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Use | keyboard, 5-way | 5-way, Menu | touch | touch | touch and pen (pressure; the side button erases; your hand can rest on the screen) | touch; page keys on Libra, Sage, Elipsa, Forma (a pen draws as a finger) | the colour touchscreen's buttons and keyboard | touch |
+| Use | keyboard, 5-way | 5-way, Menu | touch | touch | touch and pen (pressure; the side button erases; your hand can rest on the screen) | touch; page keys on Libra, Sage, Elipsa, Forma; a pen on Elipsa, Sage, Elipsa 2E, Libra Colour (pressure; your hand can rest on the screen) | the colour touchscreen's buttons and keyboard | touch |
 | Wi‑Fi | Kindle 3; the Kindle 2 and DX have none: [sync with a computer](Sync-with-a-Computer) | yes | yes | yes | yes | yes (KOReader's own for Kobos) | yes | yes |
 | Screen | 600 × 800 (DX 824 × 1200), 16 greys | 600 × 800, 16 greys | 600 × 800 | 1072 × 1448, 300 dpi | 1860 × 2480, 300 dpi | Clara HD 1072 × 1448, Libra 2 1264 × 1680, 300 dpi (others as KOReader knows them); light and warmth | 600 × 800 + a 480 × 144 colour touchscreen | 600 × 800 (GlowLight: frontlight) |
 | Faster drawing (shadow screen) | yes | yes | (not needed) | (not needed) | (not needed) | (not needed) | (not needed) | (not needed) |
