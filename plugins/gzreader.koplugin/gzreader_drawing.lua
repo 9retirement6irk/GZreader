@@ -414,6 +414,11 @@ function Drawing.decode(text)
     local Json = require("gzreader_json")
     local ok, data = pcall(Json.decode, text)
     if not ok then return nil, "not-json" end
+    return Drawing.checked(data)
+end
+
+--- `data` (a scene already decoded from JSON) after memos' checks, or nil and the reason.
+function Drawing.checked(data)
     if type(data) ~= "table" then return nil, "invalid-scene" end
     if data.type ~= Drawing.SCENE_TYPE then return nil, "wrong-type" end
     local v = data.version
