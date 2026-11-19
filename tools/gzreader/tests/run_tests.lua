@@ -9360,6 +9360,29 @@ print("Notes (Memos v0.31)")
         local jm
         for _i, m in ipairs(mstate().memos) do if m.content == jq.content then jm = m end end
         check(jm and jm.space == "spaces/family" and jm.visibility == "PRIVATE", "Memos has the entry, in the journal space")
+        -- its place (the owner, 2026-11-19: as the web's journal): the note's own location in Memos
+        check(Notes.locationOf(nil) == nil and Notes.locationOf({ name = "x" }) == nil
+            and Notes.locationOf({ lat = 42.3, lon = -71.1 }).placeholder == "", "a place without a point: no location")
+        jshown.on_save("Dinner.\n", nil, { lat = 42.3601, lon = -71.0589, name = "Example Deli", source = "search" })
+        local lq = plugin.store.memos.queue[#plugin.store.memos.queue]
+        check(lq and lq.location and lq.location.latitude == 42.3601 and lq.location.placeholder == "Example Deli" and lq.location.name == nil,
+            "a journal entry's place: queued as the note's location ({ placeholder, latitude, longitude })")
+        check(sync(), "…sent")
+        local lm
+        for _i, m in ipairs(mstate().memos) do if m.content == "Dinner.\n" then lm = m end end
+        check(lm and lm.location and lm.location.placeholder == "Example Deli" and lm.location.longitude == -71.0589,
+            "…Memos has it as the note's location (where Memos and the fork's map show it)")
+        do
+            local Usb = require("gzreader_usbsync")
+            plugin.store.memos.queue = plugin.store.memos.queue or {}
+            table.insert(plugin.store.memos.queue, { id = "qloc", op = "create", content = "x", visibility = "PRIVATE",
+                location = { placeholder = "P", latitude = 1, longitude = 2 } })
+            local ok_o, out = pcall(Usb.outbox, plugin)
+            local found
+            for _i, q in ipairs(ok_o and type(out) == "table" and out.notes and out.notes.queue or {}) do if q.id == "qloc" then found = q end end
+            table.remove(plugin.store.memos.queue)
+            check(found and found.location and found.location.latitude == 1, "…and through a computer: the outbox carries it (the sync page sends it)")
+        end
         ;(function() -- a journal entry with a drawing (touch Kindles: ✎ in the corner of its words)
             local dpath = WORK .. "/journal-drawing.canvas.png"
             local df = io.open(dpath, "w"); df:write("png"); df:close()

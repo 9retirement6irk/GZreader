@@ -3,7 +3,7 @@
 Mirrors the parts of Memos' REST API (v0.31.0, /api/v1) GZreader uses:
   GET   /api/v1/auth/me
   GET   /api/v1/memos            pageSize, pageToken, orderBy, filter (CEL subset), state (NORMAL / ARCHIVED)
-  POST  /api/v1/memos            {content, visibility, space} (content may be empty, as in Memos)
+  POST  /api/v1/memos            {content, visibility, space, location} (content may be empty, as in Memos)
   POST  /api/v1/attachments      {filename, type, content (base64), memo}: memo links it to that note
   POST  /api/v1/attachments:upload  Memos' resumable upload ({spec, upload_id, write_offset, data, finish_write});
                                  spec.replace_attachment puts the new file over that attachment (same name and
@@ -54,6 +54,7 @@ OLD_UPLOAD = "--old-upload" in sys.argv
 # --journal: a Memos with journaling mode (github.com/9retirement6irk/memos): each user's
 # journal settings at /api/journal/settings (beside the API, not under it)
 JOURNAL = "--journal" in sys.argv
+DAWARICH = "--dawarich" in sys.argv  # (with --journal: Dawarich connected to the fork)
 IMMICH = "--immich" in sys.argv
 # a small grey JPEG (96 x 64): what the Immich proxy sends as a thumbnail or a preview
 TEST_JPEG = base64.b64decode("/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAA0JCgsKCA0LCgsODg0PEyAVExISEyccHhcgLikxMC4pLSwzOko+MzZGNywtQFdBRkxOUlNSMj5aYVpQYEpRUk//wAALCABAAGABAREA/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/9oACAEBAAA/AL/iTxC+hyWccVi1290WVVV9pyNuABg5zurO/wCEt1j/AKFK+/N//iKP+Et1j/oUr783/wDiKP8AhLdY/wChSvvzf/4ij/hLdY/6FK+/N/8A4ij/AIS3WP8AoUr783/+Io/4S3WP+hSvvzf/AOIo/wCEt1j/AKFK+/N//iKP+Et1j/oUr783/wDiKP8AhLdY/wChSvvzf/4ij/hLdY/6FK+/N/8A4itHw34hfXJLyOWxa0e1Kqys+45O7IIwMY21neMv+Rh8M/8AX3/7PHXXUUUVRutZ020fZPdxhskELliCOoOM4/GmQa9pU7lUvYwQM/OCg/NgK0aKKK5Hwb/yMPib/r7/APZ5KPGX/Iw+Gf8Ar7/9njrrqKK4/wAR+IPP32Vg/wC66SSg/f8AYe3v3+nXmaK3PD2utpzi3uSWtGP1MZ9R7eo/H69yjK6K6MGVhkEHII9aWiuR8G/8jD4m/wCvv/2eSjxl/wAjD4Z/6+//AGeOuuoqjrly1po11MmdwTaCGwQWOM59s5rzeiiiu98J3LXGior5zC5jyWzkcEfocfhWzRXI+Df+Rh8Tf9ff/s8lHjL/AJGHwz/19/8As8dddRWd4hhafQrtEIBCb+fRSGP6CvOqKKK7rwfC0Wi72IxLKzrjsOF5/FTW5RXI+Df+Rh8Tf9ff/s8lHjL/AJGHwz/19/8As8dddRRXC+IdCbTnNxbAtaMfqYz6H29D+H1w6K1ND0aXVZ8nKWyH55PX2Hv/AC/n6BFGkMKRRjakahVGc4A4FOorkfBv/Iw+Jv8Ar7/9nko8Zf8AIw+Gf+vv/wBnjrrqKKR1V0ZHUMrDBBGQR6Vj3XhjTLh9ypJAcknymwDn2OcfhimQeFNMics/nTDGNrvgD3+UCtqKKOGMRwxpGg6KowB+FOoorkfBv/Iw+Jv+vv8A9nkrR8SeHn1ySzkivmtHtSzKypuOTtwQcjGNtZ3/AAiWsf8AQ2335P8A/F0f8IlrH/Q2335P/wDF0f8ACJax/wBDbffk/wD8XR/wiWsf9Dbffk//AMXR/wAIlrH/AENt9+T/APxdH/CJax/0Nt9+T/8AxdH/AAiWsf8AQ2335P8A/F0f8IlrH/Q2335P/wDF0f8ACJax/wBDbffk/wD8XR/wiWsf9Dbffk//AMXWj4b8PPocl5JLfNdvdFWZmTacjdkk5Oc7q//Z")
@@ -348,7 +349,7 @@ class H(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         self.note(u)
         if u.path == "/__state":
-            return self.send(200, {"memos": STATE["memos"], "log": STATE["log"], "immich_fetched": STATE.get("immich_fetched", []),
+            return self.send(200, {"memos": STATE["memos"], "log": STATE["log"], "immich_fetched": STATE.get("immich_fetched", []), "meteo": STATE.get("meteo", []),
                                    "loose": sorted(STATE["loose"].keys())})
         if STATE["offline"]:
             self.close_connection = True
@@ -363,6 +364,39 @@ class H(BaseHTTPRequestHandler):
                 return self.send(404, {"message": "not found"})
             typ = "application/pdf" if data.startswith(b"%PDF") else ("image/jpeg" if data.startswith(b"\xff\xd8") else "image/png")
             return self.send(200, ctype=typ, raw=data)
+        # the fork's Dawarich (--dawarich: connected), and stand-ins for Open-Meteo and OpenStreetMap
+        # (a journal entry's place and weather: gzreader_journalplace.lua; a tour points them here)
+        if u.path.startswith("/api/dawarich/"):
+            if not JOURNAL:
+                return self.send(404, raw=b"404 page not found", ctype="text/plain")
+            if not self.authed():
+                return
+            rest = u.path[len("/api/dawarich"):]
+            if rest == "/connection":
+                return self.send(200, {"configured": DAWARICH, "url": "https://where.example.com" if DAWARICH else ""})
+            if not DAWARICH:
+                return self.send(404, {"message": "connect Dawarich in Settings first"})
+            now = datetime.now(timezone.utc)
+            if rest == "/visits":
+                return self.send(200, {"visits": [{"name": "Example Park", "start": iso(now - timedelta(hours=2)),
+                                                   "end": iso(now + timedelta(hours=2)), "lat": 42.31, "lon": -71.11}]})
+            if rest == "/points":
+                return self.send(200, {"points": [{"lat": 42.3, "lon": -71.1, "time": iso(now)}], "distanceMeters": 0})
+            return self.send(404, {"message": "not found"})
+        if u.path == "/__meteo/forecast" or u.path == "/__meteo/archive":
+            q = parse_qs(u.query)
+            STATE.setdefault("meteo", []).append({k: v[0] for k, v in q.items()})
+            day = q.get("start_date", ["2026-11-18"])[0]
+            hours = ["%sT%02d:00" % (day, h) for h in range(24)]
+            celsius = q.get("temperature_unit", [""])[0] == "celsius"
+            return self.send(200, {"hourly": {"time": hours, "temperature_2m": [(10 if celsius else 50) + h * 0.3 for h in range(24)],
+                                              "weather_code": [0] * 24}})
+        if u.path == "/__meteo/geo":
+            return self.send(200, {"results": [{"latitude": 41.0, "longitude": -70.0, "name": "Exampleton", "admin1_code": "MA", "country_code": "US"}]})
+        if u.path == "/__osm/search":
+            return self.send(200, [{"lat": "42.36", "lon": "-71.06", "name": "Example Deli", "display_name": "Example Deli, Exampleton"}])
+        if u.path == "/__osm/reverse":
+            return self.send(200, {"name": "", "address": {"suburb": "Example Square", "city": "Exampleton"}})
         if u.path.startswith("/api/immich/"):
             if not (IMMICH or JOURNAL):  # (stock Memos: no such address)
                 return self.send(404, raw=b"404 page not found", ctype="text/plain")
@@ -491,6 +525,9 @@ class H(BaseHTTPRequestHandler):
                         STATE["loose"][a["name"]] = a
                     return self.send(400, {"code": 9, "message": "managed image attachment %s must be bound to the memo" % uid})
             m = add(b.get("content") or "", visibility=vis, space=space)
+            loc = b.get("location")
+            if isinstance(loc, dict):  # (a journal entry's place: Memos keeps it as the note's location)
+                m["location"] = {"placeholder": str(loc.get("placeholder", "")), "latitude": loc.get("latitude"), "longitude": loc.get("longitude")}
             for a in linked:
                 a["memo"] = m["name"]
                 m["attachments"].insert(0, a)

@@ -7,6 +7,13 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Journal: the prompt is kept with an entry you drew", text = "A journal entry answered with a drawing and no typed words was saved without its prompt (the quoted question at the top), because the web journal leaves the prompt out when there are no words. A drawing now counts as the answer: the prompt is kept, as in an entry you typed." },
+            { short = "Journal: location and weather, as the web journal adds them", text = "A journal entry on a touch Kindle now has the web journal's location and weather above the prompt. If your Memos has Dawarich connected and the journal settings add a location, it starts where Dawarich had you; tap it for Where Dawarich had you, Search for a place… (a place, address or city) or No location (a Kindle has no GPS, so there's no current location). The weather (like 56°F, clear) is for that place, or the journal settings' default city, at the entry's hour, from Open-Meteo; only the point and the day are sent. The location is saved as the note's own location in Memos, the weather as a line in the entry, as the web writes them. Both need Wi-Fi when the entry opens; whether they're added, the default city and °F or °C come from your journal settings in Memos. Places are never written to the log." },
+        },
+    },
+    {
         version = "1.34.0",
         changes = {
             { short = "Quick panel: Send books is now Connect", text = "The quick panel's Send books tile at Home is now called Connect, with its own icon, because the page it opens does much more than send books: it sets up Grimmory, Notes, Calendar and Music from your phone or computer. It opens that page at its first tab; Send books is one tap away there. If you'd hidden the tile it stays hidden." },

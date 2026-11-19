@@ -292,9 +292,13 @@ function Memos.slim(m)
 end
 
 --- New note (private unless said otherwise), in `space` ("spaces/…") when
---- given. Returns the note or nil, err.
-function Memos:create(content, visibility, space, attachments)
+--- given, at `location` ({ placeholder, latitude, longitude }: a journal
+--- entry's place) when given. Returns the note or nil, err.
+function Memos:create(content, visibility, space, attachments, location)
     local body = { content = content, visibility = visibility or "PRIVATE" }
+    if type(location) == "table" and type(location.latitude) == "number" and type(location.longitude) == "number" then
+        body.location = { placeholder = tostring(location.placeholder or ""), latitude = location.latitude, longitude = location.longitude }
+    end
     -- (only when there is one: Memos before v0.31 refuses a field it doesn't know)
     if space and space ~= "" then body.space = space end
     -- attachments sent already (photos put in the text): the note is made with them
@@ -513,7 +517,7 @@ end
 --- onto it. Returns the note, or nil, err and (the note made but not every
 --- upload) the note's name and how many drawings went.
 function Memos:createWithDrawing(q)
-    local memo, err = self:create(q.content or "", q.visibility, q.space, q.attachments)
+    local memo, err = self:create(q.content or "", q.visibility, q.space, q.attachments, q.location)
     if not memo then return nil, err end
     local ok, aerr, sent = self:uploadDrawings(q, memo.name)
     if not ok then return nil, aerr, memo.name, sent end
@@ -548,7 +552,7 @@ function Memos:flush(queue)
             if err == "missing_file" then ok = true end
         elseif q.op == "undraw" then -- a drawing rubbed out to nothing: gone from the note
             ok, err = self:deleteAttachment(q.attachment)
-        elseif q.op == "create" then ok, err = self:create(q.content, q.visibility, q.space, q.attachments)
+        elseif q.op == "create" then ok, err = self:create(q.content, q.visibility, q.space, q.attachments, q.location)
         elseif q.op == "update" then ok, err = self:update(q.name, q.content, q.visibility, q.space)
         elseif q.op == "pin" then ok, err = self:setPinned(q.name, q.pinned)
         elseif q.op == "archive" then ok, err = self:setArchived(q.name, q.archived)

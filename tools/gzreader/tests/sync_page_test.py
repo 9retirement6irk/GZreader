@@ -151,6 +151,9 @@ OUTBOX = {
     "notes": {"queue": [{"id": "q1", "op": "create", "content": "Written on the Kindle #kindle", "visibility": "PRIVATE"},
                         # (Memos v0.31's spaces: a new note in one, a note moved into one)
                         {"id": "q2", "op": "create", "content": "For the family #kindle", "visibility": "SPACE", "space": "spaces/family"},
+                        # (a journal entry's place: the note's location)
+                        {"id": "q4", "op": "create", "content": "Dinner out #journal", "visibility": "PRIVATE",
+                         "location": {"placeholder": "Example Deli", "latitude": 42.36, "longitude": -71.06}},
                         {"id": "q3", "op": "update", "name": "memos/m003", "content": "A quote for the book club #quotes",
                          "visibility": "PRIVATE", "space": "spaces/book-club"}],
               "keep": 100, "files": {}},
@@ -819,7 +822,7 @@ check(tc == {"/library/metadata/301": "192", "/library/metadata/304": "192"} and
       "music quality chosen on the page: FLAC and the 320 kbps MP3 converted at 192 kbps; the 200 kbps MP3 as it is; the Kindle told %r" % (tc,))
 notes = json.loads(files.get(G + "in/notes.json", b"{}"))
 memos = json.loads(urllib.request.urlopen("http://127.0.0.1:%d/__state" % MP).read())
-check(inbox.get("notes", {}).get("done") == ["q1", "q2", "q3"] and any("Written on the Kindle" in (m.get("content") or "") for m in memos.get("memos", memos if isinstance(memos, list) else [])),
+check(inbox.get("notes", {}).get("done") == ["q1", "q2", "q4", "q3"] and any("Written on the Kindle" in (m.get("content") or "") for m in memos.get("memos", memos if isinstance(memos, list) else [])),
       "notes: the one written on the Kindle is in Memos")
 by_content = {m.get("content"): m for m in memos.get("memos", [])}
 check("space" not in by_content.get("Written on the Kindle #kindle", {"space": 1})
@@ -827,6 +830,10 @@ check("space" not in by_content.get("Written on the Kindle #kindle", {"space": 1
       and by_content.get("For the family #kindle", {}).get("visibility") == "SPACE"
       and by_content.get("A quote for the book club #quotes", {}).get("space") == "spaces/book-club",
       "notes: a note's space from the Kindle (a new note in Family, one moved to Book club; none sent for a note in no space)")
+check((by_content.get("Dinner out #journal", {}).get("location") or {}).get("placeholder") == "Example Deli"
+      and (by_content.get("Dinner out #journal", {}).get("location") or {}).get("latitude") == 42.36
+      and "location" not in by_content.get("Written on the Kindle #kindle", {"location": 1}),
+      "notes: a journal entry's place from the Kindle, as the note's location (none sent for a note without one)")
 check([sp.get("title") for sp in notes.get("spaces") or []] == ["Family", "Book club"]
       and any(n.get("space") == "spaces/family" for n in notes.get("notes", [])),
       "notes: your spaces and each note's space, for the Kindle")

@@ -445,6 +445,7 @@ function Usb.outbox(plugin)
             notes_queue[#notes_queue + 1] = { id = q.id, op = q.op, content = q.content, visibility = q.visibility,
                 name = q.name, pinned = q.pinned, at = q.at, space = q.space }
             notes_queue[#notes_queue].archived = q.archived -- (archive, or restore)
+            notes_queue[#notes_queue].location = q.location -- (a journal entry's place)
         end
     end
     -- the notes' pictures already here (not brought again)

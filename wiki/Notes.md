@@ -544,16 +544,34 @@ API to `/api` are found too.
     back to typing, and **Save** saves the journal entry, words and drawing
     together. ✎ shows how many sheets go with the entry.
     (Kindles with keys: **W** writes in a box of its own, as before.)
-  - **Save** makes a private note: the prompt as a quote and your words, the
-    goals as a checklist, any drawings as the note's drawings, then the tags, like
+  - **Where and the weather** (above the prompt, as the web journal's
+    line): the entry's **location**, and the **weather** there at the
+    entry's hour, like *56°F, clear*. When the journal settings add a
+    location and your Memos has **Dawarich** connected (the fork's
+    Settings), it starts where Dawarich had you; tap the location for
+    **Where Dawarich had you**, **Search for a place…** (a place, address or
+    city, from OpenStreetMap) or **No location**. A Kindle has no GPS, so
+    there's no "current location". The weather is for the location, or for
+    the journal settings' **default city** when there's none, from
+    Open-Meteo (only the point and the day are sent, never your name or
+    notes). Both need Wi-Fi when the entry opens; without it the entry
+    simply has neither. The location is saved as the **note's own
+    location** in Memos (where Memos and the fork's map show it), the
+    weather as a line in the entry. Places are never written to the log.
+  - **Save** makes a private note: the prompt as a quote and your words (or
+    your drawing: an entry answered with only a drawing keeps its prompt
+    too), the goals as a checklist, the weather line, any drawings as the
+    note's drawings, then the tags, like
     `#mood/pleasant #mood/today #felt/grateful #impact/work #did/reading`.
     It's written exactly as the fork's web editor writes an entry, so its
     Insights count entries from the Kindle; any Memos shows it as a note.
   - With that fork, your **activities, goals, tag prefixes, hidden causes,
-    whether a prompt and a date heading are used, and your journal space**
-    come from Memos at each sync (Settings → Journal in its web app), and
-    entries go to the journal space. With stock Memos the fork's defaults
-    are used. Place and weather aren't added on the Kindle.
+    whether a prompt and a date heading are used, whether a location and the
+    weather are added, the default city and °F or °C, and your journal
+    space** come from Memos at each sync (Settings → Journal in its web
+    app), and entries go to the journal space. With stock Memos the fork's
+    defaults are used (no Dawarich: the weather only with a place you
+    search for).
   - Every button works with a tap, or with the 5-way and Press. On a
     keyboard Kindle: **Alt+Q … U** (1–7) the step, **T** today / right now,
     **F** feelings, **I** what's behind it, **A** what you did, **G** goals,

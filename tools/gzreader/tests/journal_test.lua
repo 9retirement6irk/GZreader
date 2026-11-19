@@ -81,8 +81,8 @@ local s = Journal.settings{ space = "spaces/journal", moodTagPrefix = "m/", acti
 check(s.space == "spaces/journal" and s.moodTagPrefix == "m/" and s.feelingTagPrefix == "felt/" and #s.activities == 2 and s.activities[1].label == "A walk"
     and s.activities[2].label == "Nap" and #s.goals == 1 and s.goals[1] == "Read" and s.showPrompt == false and s.dateHeading == true,
     "the server's settings: the space, prefixes, activities (a label from the id when it has none), goals, prompt and heading switches")
-check(s.reminderToken == nil and s.view == nil and s.defaultCity == nil and s.activities[1].icon == "tree" and s.activities[2].icon == "star",
-    "…and nothing else kept (no tokens, no place); each activity its icon (a star for none)")
+check(s.reminderToken == nil and s.view == nil and s.defaultCity == "Boston, MA" and s.activities[1].icon == "tree" and s.activities[2].icon == "star",
+    "…and nothing else kept (no tokens; the default city, since 2026-11-19, for the weather); each activity its icon (a star for none)")
 check(Journal.settings{ space = "spaces/a b\" || true" }.space == "" and Journal.settings{ space = 5 }.space == "", "a space name that isn't one: none")
 local imp = Journal.impacts(s)
 check(#imp == 16 and imp[1] == "community" and not table.concat(imp, ","):find("dating") and not table.concat(imp, ","):find("money"),
@@ -141,6 +141,81 @@ check(MF.pixel(20, 32, "neutral", nil, true) > MF.pixel(20, 32, "neutral"), "a f
 local painted = 0
 MF.paint({ setPixel = function() painted = painted + 1 end }, 0, 0, 20, "pleasant")
 check(painted > 200 and painted < 400, "painted pixel by pixel, the round part only (" .. painted .. " of 400)")
+
+print("== a prompt answered with a drawing; place and weather (the owner, 2026-11-19)")
+do
+    local base = with{ prompt = "What are you grateful for right now?", body = "", goals = {},
+        mind = { valence = "neutral", feelings = {}, impacts = {} }, mindKind = "today", activities = {} }
+    local plain = Journal.compose(base)
+    base.drawn = true
+    local drawn = Journal.compose(base)
+    check(not plain:find("> What are you grateful", 1, true) and drawn:find("> What are you grateful for right now?\n\n#mood/neutral", 1, true) == 1,
+        "no words: no prompt (as the web); a drawing for an answer: the prompt kept … " .. show(drawn))
+    local s = Journal.settings({ addLocation = false, addWeather = true, defaultCity = "Boston, MA", temperatureUnit = "celsius",
+        showPrompt = true })
+    local d = Journal.settings(nil)
+    check(s.addLocation == false and s.addWeather == true and s.defaultCity == "Boston, MA" and s.temperatureUnit == "celsius"
+        and d.addLocation == true and d.addWeather == true and d.defaultCity == "" and d.temperatureUnit == "fahrenheit"
+        and Journal.settings({ temperatureUnit = "kelvin", defaultCity = 5 }).temperatureUnit == "fahrenheit",
+        "settings: add location, add weather, default city, temperature unit (the fork's), kept only when of the right kind")
+    local st = { valence = "pleasant", feelings = {}, impacts = {}, activities = {}, goals = {}, body = "Dinner at the deli.",
+        prompt = "What are you grateful for right now?", weather = { temperature = 56, unit = "fahrenheit", kind = "clear" } }
+    local e = Journal.entry(st, Journal.settings({ showPrompt = true }), os.time())
+    check(e:find("> What are you grateful for right now?\n\nDinner at the deli.\n\n56\u{00B0}F, clear\n\n#mood/", 1, true) ~= nil,
+        "the weather line after the words, before the tags, as the web writes it … " .. show(e))
+    local off = Journal.entry(st, Journal.settings({ addWeather = false }), os.time())
+    check(not off:find("56", 1, true), "weather turned off in the journal settings: no line")
+end
+
+print("== place and weather (gzreader_journalplace.lua: the fork's weather.ts)")
+package.preload["gzreader_log"] = function() return { info = function() end, warn = function() end } end
+local Place = require("gzreader_journalplace")
+local kinds = {}
+for _i, c in ipairs({ 0, 1, 2, 3, 45, 53, 63, 81, 73, 86, 95, 99, 4 }) do kinds[#kinds + 1] = Place.weatherKind(c) end
+check(table.concat(kinds, ",") == "clear,mostly-clear,partly-cloudy,cloudy,fog,drizzle,rain,rain,snow,snow,thunderstorm,thunderstorm,cloudy",
+    "WMO codes as the fork reads them: " .. table.concat(kinds, ","))
+check(Place.weatherLine({ temperature = 56, unit = "fahrenheit", kind = "clear" }) == "56\u{00B0}F, clear"
+    and Place.weatherLine({ temperature = -3, unit = "celsius", kind = "partly-cloudy" }) == "-3\u{00B0}C, partly cloudy"
+    and Place.weatherLine(nil) == nil, "the weather line: 56°F, clear; -3°C, partly cloudy")
+local at = 1795014000 -- 2026-11-18 15:00 UTC
+local u = Place.weatherUrl(42.36, -71.06, at, "fahrenheit", at + 3600)
+local old = Place.weatherUrl(42.36, -71.06, at - 100 * 86400, "celsius", at)
+check(u:find("^https://api%.open%-meteo%.com/v1/forecast%?") ~= nil and u:find("start_date=2026-11-18", 1, true) and u:find("latitude=42.3600", 1, true)
+    and u:find("temperature_unit=fahrenheit", 1, true) and u:find("timezone=GMT", 1, true)
+    and old:find("^https://archive%-api%.open%-meteo%.com/v1/archive%?") ~= nil and old:find("temperature_unit=celsius", 1, true),
+    "Open-Meteo: the forecast for the last three months, the archive before; the day, the place, the unit")
+local times, temps, codes = {}, {}, {}
+for h = 0, 23 do times[h + 1] = "2026-11-18T" .. string.format("%02d", h) .. ":00"; temps[h + 1] = 40 + h; codes[h + 1] = h == 15 and 0 or 3 end
+local w = Place.parseWeather({ hourly = { time = times, temperature_2m = temps, weather_code = codes } }, at, "fahrenheit")
+check(w and w.temperature == 55 and w.kind == "clear" and w.unit == "fahrenheit", "the entry's hour picked out of the day (15:00 UTC: 55, clear)")
+check(Place.parseWeather({ hourly = { time = times, temperature_2m = {}, weather_code = codes } }, at) == nil
+    and Place.parseWeather({}, at) == nil and Place.parseWeather(nil, at) == nil, "no weather in the answer: none")
+local cu = Place.cityUrl("Springfield, IL")
+local city = Place.parseCity({ results = {
+    { latitude = 42.1, longitude = -72.5, name = "Springfield", admin1 = "Massachusetts", admin1_code = "MA", country_code = "US" },
+    { latitude = 39.8, longitude = -89.6, name = "Springfield", admin1 = "Illinois", admin1_code = "IL", country_code = "US" } } }, "Springfield, IL")
+local first = Place.parseCity({ results = { { latitude = 1, longitude = 2, name = "A" } } }, "A")
+check(cu:find("name=Springfield$") ~= nil and not cu:find("IL", 1, true) and city and city.lat == 39.8 and first and first.lat == 1
+    and Place.cityUrl("  ") == nil, "the default city: its name asked, the state or country after the comma picks among the answers")
+local found = Place.parseSearch({ { lat = "42.31", lon = "-71.11", name = "", display_name = "Jamaica Pond, Boston, MA" } }, "pond")
+check(found and found.lat == 42.31 and found.name == "Jamaica Pond" and Place.parseSearch({}, "x") == nil
+    and Place.searchUrl("Jason's Deli"):find("q=Jason%27s%20Deli", 1, true) ~= nil,
+    "a place by name (OpenStreetMap): its point and a short name")
+check(Place.parseReverse({ name = "", address = { suburb = "Jamaica Plain", city = "Boston" } }) == "Jamaica Plain"
+    and Place.parseReverse({ name = "Fenway Park" }) == "Fenway Park" and Place.parseReverse({ address = {} }) == nil,
+    "a point's short name: its own, else the park, neighbourhood, suburb, city")
+check(Place.isoTime("2026-11-18T15:00:00Z") == at and Place.isoTime("2026-11-18T10:00:00-05:00") == at
+    and Place.isoTime("2026-11-18T15:00:00.123Z") == at and Place.isoTime("x") == nil, "ISO times (UTC, with an offset) as seconds")
+local visits = { { name = "Home", start = "2026-11-18T14:00:00Z", ["end"] = "2026-11-18T16:00:00Z", lat = 1.5, lon = 2.5 } }
+local points = { { lat = 3, lon = 4, time = "2026-11-18T14:50:00Z" }, { lat = 5, lon = 6, time = "2026-11-18T15:04:00Z" } }
+local pv, pp = Place.placeAt(visits, points, at), Place.placeAt({}, points, at)
+check(pv and pv.name == "Home" and pv.lat == 1.5 and pp and pp.lat == 5 and pp.name == nil and Place.placeAt(nil, nil, at) == nil,
+    "Dawarich: the visit covering the moment, else the nearest point (the fork's placeAt)")
+check(Place.range(at) == "end=2026-11-18T15%3A30%3A00Z&start=2026-11-18T14%3A30%3A00Z", "Dawarich: half an hour either side")
+local src = io.open(PLUGIN .. "/gzreader_journalplace.lua"):read("*a")
+check(select(2, src:gsub("log_url = shown", "")) == 1 and src:find("local function base(url)", 1, true) ~= nil
+    and not src:find("Log.info(.-place%.name") and not src:find("Log.info(.-lat"),
+    "privacy: the addresses asked are logged without their query (no place, no coordinates in the log)")
 
 print(("journal: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)
