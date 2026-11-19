@@ -1012,6 +1012,24 @@ end)()
     check(st and #st.points == 5 and st.points[3][1] == 300 and st.points[3][2] == 250 and st.kind == nil and st.width == 2
         and #outs[2].segments == 0 and outs[4].redraw and outs[4].stroke_done,
         "the shape tool: nothing drawn on the way, a square from where the pen landed to where it lifted (a stroke in the pen's ink)")
+    -- (its outline follows the pen: shown, not drawn, and only its own part of the page asked for)
+    check(type(outs[2].shape_preview) == "table" and outs[2].shape_preview.x1 >= 200 and outs[2].shape_preview.x0 <= 100 and outs[3].shape_preview == nil
+        and sk.shape_preview == nil and outs[4].area and outs[4].area.x0 <= 100 and outs[4].area.x1 >= 300 and outs[4].area.x1 < 320,
+        "…its outline shown as the pen goes (not at every sample: " .. Sketch.SHAPE_INTERVAL .. " s apart); gone at the lift, when only the shape's part of the page is drawn again")
+    do
+        local sk3 = sketch()
+        sk3.tool, sk3.shape, sk3.width = "shape", "circle", 2
+        sk3:frame({ { slot = 0, id = 1, x = 100, y = 100 } }, 5)
+        local o1 = sk3:frame({ { slot = 0, id = 1, x = 200, y = 180 } }, 5.2)
+        local p1 = sk3.shape_preview
+        local o2 = sk3:frame({ { slot = 0, id = 1, x = 400, y = 300 } }, 5.4)
+        local p2 = sk3.shape_preview
+        check(p1 and #p1.points >= 25 and p2 and p2 ~= p1 and o1.shape_preview.x1 < 220 and o2.shape_preview.x0 <= 100 and o2.shape_preview.x1 >= 400
+            and #sk3:live() == 0 and #o1.segments == 0,
+            "a circle dragged out: the outline as it is at each step (nothing on the page yet); each step asks for where it is and where it was")
+        sk3:frame({ { slot = 0, id = -1 } }, 5.5)
+        check(sk3.shape_preview == nil and #sk3:live() == 1, "…lifted: the circle on the page, the outline put away")
+    end
     check(sk:canUndo() and sk:undo() and #sk:live() == 0 and sk:redo() and #sk:live() == 1, "…undone and redone like any stroke")
     local scene = sk:scene()
     local el
