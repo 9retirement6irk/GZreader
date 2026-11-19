@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "A book replaced on Grimmory: GZreader offers to download the new copy", text = "When a book was replaced on Grimmory (a better edition uploaded over the old one), a Kindle that had downloaded it before kept the old copy, and nothing said so: a picture book could look wrong on one Kindle and right on another. When you open a book from Grimmory, GZreader now compares its size with the one Grimmory lists (from the library list kept on the Kindle, so no request is made). If they differ, it asks once whether to download it again. Download again replaces the copy and opens it at your place, and how the old copy was shown (fitted as a picture book, its margins) is forgotten so the new one is looked at afresh. Keep this one stops asking for that copy." },
+        },
+    },
+    {
         version = "1.34.0",
         changes = {
             { short = "Quick panel: Send books is now Connect", text = "The quick panel's Send books tile at Home is now called Connect, with its own icon, because the page it opens does much more than send books: it sets up Grimmory, Notes, Calendar and Music from your phone or computer. It opens that page at its first tab; Send books is one tap away there. If you'd hidden the tile it stays hidden." },

@@ -3530,6 +3530,33 @@ do
     AsyncMod.sync = true
 end
 
+print("A book Grimmory has a different copy of now (gzreader_newcopy.lua)")
+do
+    local NC = require("gzreader_newcopy")
+    -- the owner's Dog Days: 14.8 MB on the Kindle 3 (October), 16.2 MB on Grimmory (November)
+    check(NC.differs(15508480, 16556) == true and NC.differs(16953344, 16556) == false and NC.differs(16953000, 16557) == false
+        and NC.differs(nil, 100) == nil and NC.differs(100, nil) == nil,
+        "a copy a few percent apart from Grimmory's is a different one; the same size give or take a KB isn't")
+    local index = { files = { ["Dog Days.epub"] = { 66, 66, "EPUB", "Dog Days", 16556 }, ["Other.epub"] = { 7, 9, "EPUB", "Other" } } }
+    local info, name = NC.indexed(index, 66)
+    check(info and info[5] == 16556 and name == "Dog Days.epub" and NC.indexed(index, 1) == nil and NC.indexed(nil, 66) == nil,
+        "found in the library index by its id, with Grimmory's size")
+    local saved = { book_style_tweak = "p { color: red; }\n/* GZreader picture book: begin */ img {} /* GZreader picture book: end */",
+        book_style_tweak_enabled = true, gzreader_picture_book = true, gzreader_pb_check = 2, gzreader_pb_wide = { "a" },
+        gzreader_pb_margins = { 10, 12, 10, 14 }, last_xpointer = "/body/DocFragment[3]" }
+    local ds = { readSetting = function(_s, k) return saved[k] end, saveSetting = function(_s, k, v) saved[k] = v end,
+        delSetting = function(_s, k) saved[k] = nil end }
+    NC.forget(ds)
+    check(saved.book_style_tweak == "p { color: red; }" and saved.book_style_tweak_enabled == true and saved.gzreader_picture_book == nil
+        and saved.gzreader_pb_wide == nil and saved.copt_t_page_margin == 12 and saved.last_xpointer == "/body/DocFragment[3]",
+        "downloaded again: how the old copy was shown forgotten (picture book, its margins back); your own style and place kept")
+    local isrc = io.open(PLUGIN .. "/gzreader_index.lua"):read("*a")
+    local msrc = io.open(PLUGIN .. "/main.lua"):read("*a")
+    check(isrc:find("ftype, b.title, tonumber(b.fileSizeKb) }", 1, true) ~= nil and isrc:find("or data.sized == nil", 1, true) ~= nil
+        and msrc:find('require("gzreader_newcopy").check(self, self.ui, book_id, entry)', 1, true) ~= nil,
+        "the library index keeps each book's size (built again once); a book opening is compared with it")
+end
+
 print("Big results from the background process (more than a pipe holds)")
 do
     AsyncMod.sync = false

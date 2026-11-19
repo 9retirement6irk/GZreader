@@ -1823,6 +1823,8 @@ function Grimmory:onReaderReady()
         end)
     end
     Log.info("opened Grimmory book", book_id, "file_id", tostring(entry.file_id), "format", tostring(entry.format))
+    -- (Grimmory's copy replaced since this one was downloaded: offered again, once)
+    pcall(function() require("gzreader_newcopy").check(self, self.ui, book_id, entry) end)
     pcall(function() require("gzreader_layout").opened(self.ui.document, entry, book_id) end)
     self.sync = Sync:new(self, self.ui, entry, book_id)
     self.sync:onReady() -- (then openSync, below: a moment after the first page)
