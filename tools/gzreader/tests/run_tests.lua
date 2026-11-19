@@ -10283,6 +10283,12 @@ print("Notes (Memos v0.31)")
             and psrc:find("self.cropping_widget = self.scroller", 1, true) ~= nil
             and pshow:find("PaperList:new{", 1, true) ~= nil and not pshow:find("Grid:new", 1, true),
             "Paper: small tiles six to a row sized to the screen's width, in a grid that scrolls (no pages)")
+        -- a new drawing's paper: in a window over the Notes tab, not the whole screen (the owner, 2026-11-19)
+        check(psrc:find("Pages.POPUP_W, Pages.POPUP_H = 0.88, 0.74", 1, true) ~= nil
+            and psrc:find("local win = self.create and Pages.popupRect(full_w, full_h) or nil", 1, true) ~= nil
+            and psrc:find("self.covers_fullscreen = false", 1, true) ~= nil
+            and psrc:find("function PaperList:onTapOutside", 1, true) ~= nil,
+            "a new drawing's paper: in a window in the middle of the screen; a tap outside it cancels (emulator/paper_list.lua)")
         -- a note that's only a drawing (its name and tags) opens on its drawing
         ;(function()
             local ND = require("gzreader_newdrawing")

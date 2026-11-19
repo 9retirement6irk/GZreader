@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Drawing: a new drawing's paper is chosen in a window", text = "A new drawing asked which paper (template) to start on in a screen of its own. It now asks in a window in the middle of the screen, over the Notes tab, as the Kindle Scribe's Create notebook does: tap a paper, then Create. Cancel, or a tap outside the window, goes back. Changing a page's paper from the drawing screen still shows the whole grid." },
+        },
+    },
+    {
         version = "1.34.0",
         changes = {
             { short = "Quick panel: Send books is now Connect", text = "The quick panel's Send books tile at Home is now called Connect, with its own icon, because the page it opens does much more than send books: it sets up Grimmory, Notes, Calendar and Music from your phone or computer. It opens that page at its first tab; Send books is one tap away there. If you'd hidden the tile it stays hidden." },
