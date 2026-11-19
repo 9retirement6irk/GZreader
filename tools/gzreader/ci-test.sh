@@ -80,6 +80,19 @@ if [ "${GZ_CI_KOBO:-1}" = 1 ]; then
             echo "- ✅ $model (Kobo): $(grep -c '^ok' "$k") checks" >> "$SUM"
         fi
     done
+    # a Kobo with a pen (the Elipsa 2E): the pen draws with its pressure, a finger
+    # doesn't, its other end rubs out (emulator/kobo_pen.lua)
+    GZ_EMU_TREE="$TREE" GZ_EMU_MODEL=condor EMU_TIMEOUT=300 \
+        bash "$REPO/tools/gzreader/emulator/run.sh" "$REPO/tools/gzreader/emulator/kobo_pen.lua" "$OUT/kobo-pen" > /dev/null 2>&1
+    k="$OUT/kobo-pen/kobo-pen-checks.txt"
+    if [ ! -s "$k" ] || [ "$(grep -c '^ok' "$k")" -lt 9 ]; then
+        failed=$((failed + 1)); echo "- ❌ condor (Kobo pen): didn't finish (see kobo-pen.txt)" >> "$SUM"
+    elif grep -q '^FAIL' "$k"; then
+        failed=$((failed + 1)); echo "- ❌ condor (Kobo pen): $(grep -c '^FAIL' "$k") failed" >> "$SUM"
+        sed 's/^/  - /' "$k" | grep FAIL >> "$SUM"
+    else
+        echo "- ✅ condor (Kobo pen): $(grep -c '^ok' "$k") checks" >> "$SUM"
+    fi
 fi
 # CPU budgets: a Kindle 3's everyday work (start, a book, page turns, the
 # quick panel, Home) against tools/gzreader/emulator/perf_baseline.json

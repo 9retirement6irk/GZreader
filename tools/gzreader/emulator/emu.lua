@@ -10,7 +10,8 @@ touch and a pen, 1860 × 2480 at 300 dpi, KOReader's KindleScribe with its
 MTK display), with that model's serial, framebuffer and key codes; scripted
 taps and swipes on the touch models, pen strokes on the Scribe. Kobos:
 clara (Kobo Clara HD: touch, 1072 × 1448 at 300 dpi, KOReader's Kobo_nova)
-or libra (Kobo Libra 2: touch and page keys, 1264 × 1680, Kobo_io): no
+or libra (Kobo Libra 2: touch and page keys, 1264 × 1680, Kobo_io), condor (Kobo
+Elipsa 2E: touch and its pen, 1404 × 1872 at 227 dpi, Kobo_condor): no
 Kindle serial, Kobo's own codename (PRODUCT) and model number.
 
   tools/gzreader/emulator/run.sh <script.lua> <outdir> [cpu %]   (see README.md)
@@ -40,13 +41,17 @@ local SERIALS = { k3 = "B00812345678ABCD", k2 = "B00212345678ABCD", dx = "B00412
 local SCREENS = { k3 = { 600, 800, 4 }, k2 = { 600, 800, 4 }, dx = { 824, 1200, 4 }, dxg = { 824, 1200, 4 },
     k4 = { 600, 800, 8 }, kt = { 600, 800, 8, mxcfb = true }, pw3 = { 1072, 1448, 8, mxcfb = true },
     scribe = { 1860, 2480, 8, mxcfb = true },
-    clara = { 1072, 1448, 8, mxcfb = true }, libra = { 1264, 1680, 8, mxcfb = true } }
+    clara = { 1072, 1448, 8, mxcfb = true }, libra = { 1264, 1680, 8, mxcfb = true },
+    condor = { 1404, 1872, 8, mxcfb = true } }
 -- the Kobos: what their start script (/bin/kobo_config.sh, /mnt/onboard/.kobo/version) says
 -- (mirror: KOReader mirrors the panel's x after swapping the axes: Kobo touch_mirrored_x)
 -- (snow: the Clara HD's panel speaks KOReader's "snow protocol": no slots, a
 -- contact's tracking id as its slot, lifted with BTN_TOUCH 0 alone)
+-- (mirror_y: KOReader mirrors y instead: touch_mirrored_y; pen: a Kobo Stylus on the
+-- touch panel, a contact whose tool is a pen, with its pressure: ABS_MT_TOOL_TYPE 1, ABS_MT_PRESSURE)
 local KOBOS = { clara = { product = "nova", number = "376", mirror = true, snow = true },
-    libra = { product = "io", number = "388", mirror = false } }
+    libra = { product = "io", number = "388", mirror = false },
+    condor = { product = "condor", number = "389", mirror = false, mirror_y = true, pen = true } }
 local KOBO = KOBOS[MODEL]
 if KOBO then
     local real_getenv = os.getenv
@@ -188,6 +193,7 @@ local TOUCH_SCALE = MODEL == "kt" and { 4095 / 600, 4095 / 800 } or { 1, 1 }
 -- panel has its axes swapped (and x mirrored on most), which KOReader undoes
 local function rawXY(x, y)
     if KOBO then
+        if KOBO.mirror_y then return SCREEN[2] - 1 - y, x end
         return y, KOBO.mirror and (SCREEN[1] - 1 - x) or x
     end
     return x * TOUCH_SCALE[1], y * TOUCH_SCALE[2]
@@ -289,8 +295,33 @@ local function penFrame(evs, dt) stFrame(evs, dt) end
 --- screen pixels; one point: a tap), `sec` long; `eraser`: the pen's other end.
 --- A point's pressure (as the pen reports it, of 4095; 1500 when not given)
 --- and tilt (degrees; not sent when not given).
+-- a Kobo's pen: a contact on the touch panel (its own slot) whose tool is a pen (1) or its
+-- other end (2), with its pressure; hovering is pressure 0 (KOReader lifts it)
+local ABS_MT_TOOL_TYPE, ABS_MT_PRESSURE = 0x37, 0x3a
+local KOBO_PEN_SLOT = 1
+local function koboPen(points, sec, eraser)
+    local tool = eraser and 2 or 1
+    touch_id = touch_id + 1
+    local function at(p, dt, first)
+        local x, y = rawXY(p[1], p[2])
+        local evs = { { ABS_MT_SLOT, KOBO_PEN_SLOT } }
+        if first then evs[#evs + 1] = { ABS_MT_TRACKING_ID, touch_id }; evs[#evs + 1] = { ABS_MT_TOOL_TYPE, tool } end
+        evs[#evs + 1] = { ABS_MT_X, math.floor(x) }
+        evs[#evs + 1] = { ABS_MT_Y, math.floor(y) }
+        evs[#evs + 1] = { ABS_MT_PRESSURE, math.floor(p[3] or 1500) }
+        frame(evs, dt)
+    end
+    local n = #points
+    at(points[1], 0.01, true)
+    for i = 2, n do at(points[i], 0.01 + sec * (i - 1) / n) end
+    frame({ { ABS_MT_SLOT, KOBO_PEN_SLOT }, { ABS_MT_TRACKING_ID, -1 } }, sec + 0.02)
+end
 function E.pen(points, sec, eraser)
     if type(points) ~= "table" or #points == 0 then return say("pen: no points") end
+    if KOBO and KOBO.pen then
+        say(eraser and "eraser" or "pen", #points, "points from", math.floor(points[1][1]), math.floor(points[1][2]), "(a Kobo's pen)")
+        return koboPen(points, sec or 0.3, eraser)
+    end
     sec = sec or 0.3
     local tool = eraser and BTN_TOOL_RUBBER or BTN_TOOL_PEN
     local p1 = points[1]
@@ -324,7 +355,11 @@ function E.penHover(x, y, dt)
     say("pen hovering", math.floor(x), math.floor(y))
     penFrame({ { 1, BTN_TOOL_PEN, 1 }, { 3, ABS_X, math.floor(x) }, { 3, ABS_Y, math.floor(y) }, { 3, ABS_PRESSURE, 0 } }, dt or 0)
 end
-function E.penAway(dt) say("pen away"); penFrame({ { 1, BTN_TOOL_PEN, 0 } }, dt or 0) end
+function E.penAway(dt)
+    say("pen away")
+    if KOBO and KOBO.pen then return end -- (a Kobo's pen: gone once lifted)
+    penFrame({ { 1, BTN_TOOL_PEN, 0 } }, dt or 0)
+end
 --- A tap with the pen on `what` ({ x, y } or text on screen).
 function E.penTap(what)
     local x, y = E.where(what)

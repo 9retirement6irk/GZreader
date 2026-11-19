@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Kobo: the pen draws with its pressure, and your hand can rest on the screen", text = "On a Kobo with a pen (Kobo Stylus or Stylus 2: Elipsa, Sage, Elipsa 2E, Libra Colour) the pen drew in Notes as a finger did, and a hand on the screen drew too. Now it draws as on the Kindle Scribe: the line follows how hard you press, a finger or a resting hand draws nothing, the pen's other end rubs out, and its buttons work as KOReader reads them. The drawing screen's pen / finger button lets a finger draw instead. Tried in GZreader's emulator as an Elipsa 2E, not yet on a real Kobo." },
+        },
+    },
+    {
         version = "1.34.0",
         changes = {
             { short = "Quick panel: Send books is now Connect", text = "The quick panel's Send books tile at Home is now called Connect, with its own icon, because the page it opens does much more than send books: it sets up Grimmory, Notes, Calendar and Music from your phone or computer. It opens that page at its first tab; Send books is one tap away there. If you'd hidden the tile it stays hidden." },

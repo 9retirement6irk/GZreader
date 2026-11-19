@@ -15,7 +15,7 @@ A Kobo is used as a touch Kindle: tap or swipe to turn pages, swipe down from th
 - **Sync with a computer → Connect to computer:** GZreader steps aside and KOReader's USB mode shares the drive. When you eject the Kobo, GZreader comes back and takes in what the [sync page](Sync-with-a-Computer) brought. (Turned off in KOReader's USB settings: exit GZreader first.)
 - **Sign-ins** (passwords, tokens, calendar links) are kept on the Kobo's own disk, `/usr/local/gzreader`, not on the USB drive a computer can read. A Kobo firmware update can clear that folder: GZreader then asks you to connect again.
 - **No sound:** no audiobooks, music or read aloud. Kobos have no speaker or headphone jack, and the ones with Bluetooth play audiobooks only in Kobo's own software, which GZreader can't use.
-- **A pen** (Elipsa, Sage, Libra Colour) draws in Notes as a finger does. The Kindle Scribe's pen extras (pressure, the side button erasing, a hand resting on the screen) aren't there. Untested.
+- **A pen** (Kobo Stylus or Stylus 2: Elipsa, Sage, Elipsa 2E, Libra Colour) draws in Notes as on the Kindle Scribe: with its **pressure**, while a **hand can rest on the screen** (a finger draws nothing); its **other end** and its **buttons** rub out or highlight, as KOReader reads them. The drawing screen's pen / finger button lets a finger draw instead. Tried in the emulator as an Elipsa 2E, not yet on a real Kobo. On the first Elipsa (2021), whose screen holds everything up while it updates, the ink may trail behind the pen.
 - **Exit to Kobo** (quick panel) goes back to the Kobo's Home. With KFMon set to restart the Kobo on exit, it restarts instead.
 
 ## Files on the Kobo's drive
