@@ -20,6 +20,21 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
   The packing reads four pixels at a time where the rows are aligned (one
   32-bit read and one 16-bit write per four pixels): about a third less
   time than two at a time, byte for byte the same.
+- **A safety net under every timer** (`gzreader_tasksafe.lua`). Everything
+  on a timer, GZreader's and KOReader's, runs in KOReader's rounds of
+  scheduled work, and KOReader used to run every task that was due before it
+  looked at the screen again. Now a round stops after half a second and lets
+  the touch screen, the pen and the keys have a turn first, so a runaway
+  timer makes the Kindle slow, never frozen. A task that keeps scheduling
+  itself at once (200 times in one round) is put off by a second each time,
+  and logged once (`a timer's task keeps coming back at once`). One of
+  GZreader's own tasks that fails is logged with its traceback (`a timer's
+  task failed`, and a debug report when they're on) and the others go on;
+  KOReader's own tasks fail as before. The e-ink refresh hooks
+  (`gzreader_eink.lua`) run GZreader's part in a pcall, so a fault there
+  never stops a refresh. (On 2026-11-18 a Kindle Scribe spent most of a
+  minute in one round, KOReader's sleep timer at its slowest, and stopped
+  answering.)
 - **Fewer wake-ups while reading:** GZreader's own timers (the debug
   reports' heartbeat, the Wi‑Fi idle check) fire on
   the clock's quarter minutes, together, instead of each at its own offset

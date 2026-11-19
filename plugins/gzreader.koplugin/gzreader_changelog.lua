@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "A runaway timer can no longer freeze the Kindle", text = "Everything GZreader and KOReader do on a timer (ink and keeping a drawing, the daily paper, audiobooks, Wi-Fi, calendar sync, the sleep timer…) runs in rounds, and a round ran every task that was due before the Kindle looked at the screen again. One that took most of a minute (it happened on a Kindle Scribe, in KOReader's sleep timer) left the pen and the screen dead until GZreader restarted. Now a round stops after half a second and the touch screen, the pen and the keys get a turn first. A timer that keeps scheduling itself at once is put off by a second each time and noted in the log. And one of GZreader's own timers that fails is logged (with a debug report, when they're on) and stops alone, instead of taking GZreader down." },
+        },
+    },
+    {
         version = "1.34.0",
         changes = {
             { short = "Quick panel: Send books is now Connect", text = "The quick panel's Send books tile at Home is now called Connect, with its own icon, because the page it opens does much more than send books: it sets up Grimmory, Notes, Calendar and Music from your phone or computer. It opens that page at its first tab; Send books is one tap away there. If you'd hidden the tile it stays hidden." },

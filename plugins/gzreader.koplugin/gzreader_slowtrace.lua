@@ -276,6 +276,15 @@ function S.install(dir, opts)
         end
         return wait_until, self._now
     end
+    -- (the safety net's round, gzreader_tasksafe.lua, notes the slowest task itself: timed as it is)
+    local Safe = package.loaded["gzreader_tasksafe"]
+    if Safe and Safe.installed then
+        checkTasks = function(self)
+            local w, n = orig_tasks(self)
+            S.slowest_task = Safe.slowest
+            return w, n
+        end
+    end
     UIManager._checkTasks = function(self)
         S.slowest_task = nil
         return timed("scheduled work", checkTasks, self)
