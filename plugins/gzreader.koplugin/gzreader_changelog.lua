@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Grimmory: a slow Kindle no longer gets signed out", text = "Grimmory gives the Kindle a new login key every time it renews its sign-in and throws the old one away. A Kindle 3 just woken up, its Wi-Fi still coming up, took longer than the 10 seconds GZreader waited for the answer: it gave up, while Grimmory had already replaced the key, so the next try was refused and you had to connect again (twice in a week on one Kindle 3). GZreader now waits up to 45 seconds for that answer." },
+        },
+    },
+    {
         version = "1.34.0",
         changes = {
             { short = "Quick panel: Send books is now Connect", text = "The quick panel's Send books tile at Home is now called Connect, with its own icon, because the page it opens does much more than send books: it sets up Grimmory, Notes, Calendar and Music from your phone or computer. It opens that page at its first tab; Send books is one tap away there. If you'd hidden the tile it stays hidden." },

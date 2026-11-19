@@ -3530,6 +3530,22 @@ do
     AsyncMod.sync = true
 end
 
+print("A slow refresh of the login: waited for (Grimmory replaces the refresh token each time)")
+do
+    local Api = require("gzreader_api")
+    -- a Kindle 3 just awake waited 10 s, gave up, and Grimmory had replaced the token: signed out
+    check(Api.REFRESH_TIMEOUTS[1] >= 30 and Api.REFRESH_TIMEOUTS[2] >= 60, "a refresh is waited for 45 s (it was 10 s)")
+    -- a slow answer (the token replaced on Grimmory all the same): waited for, the new one kept
+    local ok_login = plugin.api:login(plugin.store.server, "will", "hunter22")
+    ctl("/refresh_delay?s=3")
+    plugin.store.access_expires_at = 0
+    local old = plugin.store.refresh_token
+    local ok3 = plugin.api:ensureToken()
+    ctl("/refresh_delay?s=0")
+    check(ok_login and ok3 and plugin.store.refresh_token ~= old and plugin.api:ensureToken(),
+        "waited for: the new token kept, still signed in")
+end
+
 print("Big results from the background process (more than a pipe holds)")
 do
     AsyncMod.sync = false

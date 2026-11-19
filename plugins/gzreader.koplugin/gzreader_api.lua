@@ -516,6 +516,9 @@ function Api:login(server, username, password)
     return false, last_err
 end
 
+--- How long a refresh of the login is waited for (s: a block, the whole).
+Api.REFRESH_TIMEOUTS = { 45, 90 }
+
 --- Make sure we hold a valid access token, refreshing it if needed.
 function Api:ensureToken()
     if self.store.access_token and os.time() < (self.store.access_expires_at or 0) - 120 then
@@ -528,10 +531,17 @@ function Api:ensureToken()
         -- download subprocess: a rotated refresh token would be lost on exit
         return false, "expired"
     end
+    -- (Grimmory replaces the refresh token on every refresh: a reply given up on
+    -- leaves this Kindle with one Grimmory has already thrown away, and the next
+    -- refresh is refused: signed out. A Kindle 3 just awake, Wi-Fi coming up,
+    -- took over 10 s, the old limit, twice in a week. So it waits much longer.)
     local code, data = rawRequest("POST", self.store.server .. "/api/v1/auth/refresh", {
         body = { refreshToken = self.store.refresh_token },
-        timeouts = { 10, 20 },
+        timeouts = Api.REFRESH_TIMEOUTS,
     })
+    if not code then
+        Log.warn("Grimmory: the login's refresh got no answer: if Grimmory replaced it meanwhile, this Kindle must connect again")
+    end
     if code == 200 and type(data) == "table" and str(data.accessToken) then
         self:_saveTokens(data)
         return true
