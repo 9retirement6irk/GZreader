@@ -432,8 +432,9 @@ API to `/api` are found too.
     planner**, **Monthly planner**, **Habit tracker**, **Storyboard** and
     **Music**, then your own. The page's paper has a thick border. Tap one
     to put the page on it; where there are more rows than fit, scroll with a
-    finger. **A new drawing asks which paper first:** tap one, then
-    **Create** (**Cancel** goes back to the note). New pages start on
+    finger. **A new drawing asks which paper first,** in a window over the
+    Notes tab: tap one, then **Create** (**Cancel**, or a tap outside the
+    window, goes back). New pages start on
     the paper you chose last. The paper goes to Memos with the drawing as its
     background, as Memos' own drawing editor keeps one (a locked picture
     under everything), so Memos shows and keeps it; on the Kindle it's grey.

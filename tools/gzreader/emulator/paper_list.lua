@@ -55,25 +55,30 @@ add({ fn = function(E)
             .. "Narrow ruled, Narrow ruled with margin, Vertical ruled, Vertical ruled with margin, Graph, Dotted, Checklist, "
             .. "Daily planner, Weekly planner, Monthly planner, Habit tracker, Storyboard, Music, Mine 1") ~= nil,
         "a new drawing asks which paper first: " .. table.concat(names, ", "))
-    local cols = W >= 1000 and 6 or 4
+    local cols = require("gzreader_drawpages").paperCell(l.win and l.win.w or W)
     local first, last = l.rows[1].dimen, l.rows[cols].dimen
     check(first.y == last.y and l.rows[cols + 1].dimen.y > first.y and last.x + last.w <= W and first.w < W / cols,
         "…small tiles, " .. cols .. " to a row, the row wholly on screen (" .. (last.x + last.w) .. " of " .. W .. ")")
     check(l.current == "blank" and E.findText("Create") ~= nil and E.findText("Cancel") ~= nil,
         "…Blank chosen to begin with; Cancel and Create under the grid")
-    tap(E, (cell(l, "weekly")))
+    local win = l.win
+    check(win and l.covers_fullscreen == false and win.x > 0 and win.y > 0 and win.x + win.w < W and win.y + win.h < H
+        and first.x >= win.x and first.y >= win.y and last.x + last.w <= win.x + win.w,
+        "…in a window over the Notes tab (" .. (win and (win.w .. "x" .. win.h .. " at " .. win.x .. "," .. win.y) or "none")
+            .. "), the tiles inside it")
+    tap(E, (cell(l, "ruled-narrow")))
 end, after = 3 })
-add({ shot = "2-weekly-chosen", after = 0.5 })
+add({ shot = "2-narrow-chosen", after = 0.5 })
 add({ fn = function(E)
     local l = list()
-    check(l and l.current == "weekly" and screen() == nil, "a tap on Weekly planner: chosen (not started yet)")
+    check(l and l.current == "ruled-narrow" and screen() == nil, "a tap on Narrow ruled: chosen (not started yet)")
     tap(E, "Create")
 end, after = 4 })
-add({ shot = "3-drawing-on-weekly", after = 0.5 })
+add({ shot = "3-drawing-on-narrow", after = 0.5 })
 add({ fn = function(E)
     local d = screen()
-    check(list() == nil and d and d.sketch:paper() == "weekly" and G_reader_settings:readSetting("gzreader_drawing_paper") == "weekly",
-        "Create: the drawing screen, its page on Weekly planner (new pages start on it too)")
+    check(list() == nil and d and d.sketch:paper() == "ruled-narrow" and G_reader_settings:readSetting("gzreader_drawing_paper") == "ruled-narrow",
+        "Create: the drawing screen, its page on Narrow ruled (new pages start on it too)")
     -- the paper is kept in colour under the ink (a colour screen shows it so; the picture sent to Memos has it)
     local blue = 0
     local bb = d and d.color_bb
@@ -91,7 +96,7 @@ end, after = 3 })
 add({ shot = "4-paper", after = 0.5 })
 add({ fn = function(E)
     local l = list()
-    check(l and not l.create and l.current == "weekly" and E.findText("Create") == nil,
+    check(l and not l.create and l.current == "ruled-narrow" and E.findText("Create") == nil,
         "Paper on the drawing screen: the same grid, the page's paper chosen, no Create (a tap picks)")
     E.scrolls = l.scroller._is_scrollable
     E.offset0 = l.scroller:getScrolledOffset().y
@@ -126,7 +131,7 @@ add({ fn = function(E)
 end, after = 3 })
 add({ shot = "6-picked", after = 0.5 })
 add({ fn = function(E)
-    check(E.last_id ~= nil and E.last_id ~= "weekly" and list() == nil and screen().sketch:paper() == E.last_id,
+    check(E.last_id ~= nil and E.last_id ~= "ruled-narrow" and list() == nil and screen().sketch:paper() == E.last_id,
         "a tap on a tile: the page on that paper (" .. tostring(E.last_id) .. ")")
     -- a new drawing, cancelled: nothing opens
     UIM():close(screen())
@@ -137,6 +142,12 @@ add({ shot = "7-new-again", after = 0.5 })
 add({ fn = function(E) tap(E, "Cancel") end, after = 3 })
 add({ fn = function(E)
     check(list() == nil and screen() == nil and cancelled == 1, "a new drawing, Cancel: no drawing screen, the note told so")
+    require("gzreader_drawscreen").show{ title = "Papers", choose_paper = true, on_done = function() end,
+        on_cancel = function() cancelled = cancelled + 1 end }
+end, after = 3 })
+add({ fn = function(E) tap(E, { math.floor(W / 2), math.floor(H * 0.05) }) end, after = 3 })
+add({ fn = function(E)
+    check(list() == nil and screen() == nil and cancelled == 2, "…a tap outside the window: Cancel too")
     -- a page on a paper GZreader no longer offers stays on it
     local NP = require("gzreader_notepaper")
     local sc = NP.scene("college")

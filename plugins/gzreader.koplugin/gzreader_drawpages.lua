@@ -258,7 +258,7 @@ end
 --- Create starts the drawing on it, Cancel leaves.
 local PaperList = InputContainer:extend{
     name = "gz_paperlist",
-    covers_fullscreen = true,
+    covers_fullscreen = true, -- (a new drawing's: a window over the Notes tab, see init)
     kind = "papers",
     title = "", papers = nil, current = nil, on_pick = nil, create = nil,
 }
@@ -277,10 +277,34 @@ function Pages.paperCell(width)
     return cols, tile, cell_w, tile + S(4) + 3 * Pages.PAPER_LINE, gap
 end
 
+--- A new drawing's window: its size and place on a screen sw × sh (the owner, 2026-11-19:
+--- "new drawing template in a popup window"), as the Kindle Scribe's Create notebook.
+Pages.POPUP_W, Pages.POPUP_H = 0.88, 0.74
+function Pages.popupRect(sw, sh)
+    local w, h = math.floor(sw * Pages.POPUP_W), math.floor(sh * Pages.POPUP_H)
+    return Geom:new{ x = math.floor((sw - w) / 2), y = math.floor((sh - h) / 2), w = w, h = h }
+end
+
 function PaperList:init()
-    local sw, sh = Screen:getWidth(), Screen:getHeight()
-    self.dimen = Geom:new{ x = 0, y = 0, w = sw, h = sh }
-    local back = Button:new{ text = "\u{2190} " .. _("Back"), callback = function() self:back() end, show_parent = self,
+    local full_w, full_h = Screen:getWidth(), Screen:getHeight()
+    local sw, sh = full_w, full_h
+    -- a new drawing: a window (the Notes tab around it); changing a page's paper: the whole screen
+    local win = self.create and Pages.popupRect(full_w, full_h) or nil
+    self.win = win
+    local border = win and Size.border.thick or 0
+    if win then
+        self.covers_fullscreen = false
+        sw, sh = win.w - 2 * border, win.h - 2 * border
+        self.dimen = Geom:new{ x = win.x, y = win.y, w = win.w, h = win.h }
+        -- (a tap outside the window: Cancel)
+        self.ges_events = { TapOutside = { GestureRange:new{ ges = "tap",
+            range = Geom:new{ x = 0, y = 0, w = full_w, h = full_h } } } }
+    else
+        self.dimen = Geom:new{ x = 0, y = 0, w = sw, h = sh }
+    end
+    -- (a window: no Back, Cancel is under the grid and a tap outside closes it)
+    local back = win and HorizontalSpan:new{ width = S(6) } or Button:new{ text = "\u{2190} " .. _("Back"),
+        callback = function() self:back() end, show_parent = self,
         bordersize = Size.border.thin, radius = Size.radius.button, margin = 0, padding = Size.padding.small, text_font_size = 17 }
     local head = VerticalGroup:new{ align = "left", VerticalSpan:new{ width = S(6) },
         HorizontalGroup:new{ align = "center", HorizontalSpan:new{ width = S(8) }, back, HorizontalSpan:new{ width = S(12) },
@@ -347,7 +371,8 @@ function PaperList:init()
     self.scroller = ScrollableContainer:new{ dimen = Geom:new{ w = sw - S(12), h = view_h }, show_parent = self,
         swipe_full_view = false, grid }
     self.cropping_widget = self.scroller
-    self[1] = FrameContainer:new{ width = sw, height = sh, padding = 0, margin = 0, bordersize = 0, background = Blitbuffer.COLOR_WHITE,
+    self[1] = FrameContainer:new{ width = sw + 2 * border, height = sh + 2 * border, padding = 0, margin = 0,
+        bordersize = border, radius = win and S(14) or nil, background = Blitbuffer.COLOR_WHITE,
         VerticalGroup:new{ align = "left", head, HorizontalGroup:new{ HorizontalSpan:new{ width = S(6) }, self.scroller }, foot } }
     -- (the chosen paper in view; after a tap: where the grid was. The
     -- scroller measures itself when first painted: before that it can't be moved.)
@@ -365,6 +390,20 @@ function PaperList:init()
             end
         end
     end
+end
+
+--- A new drawing's window: a tap outside it is Cancel (inside, the tiles and buttons have it).
+function PaperList:onTapOutside(_arg, ges)
+    if not self.create or not ges or not ges.pos then return false end
+    if ges.pos:intersectWith(self.dimen) then return false end
+    self:back()
+    return true
+end
+
+function PaperList:paintTo(bb, x, y)
+    -- (a window: painted where it is, the Notes tab around it as it was)
+    local win = self.win
+    InputContainer.paintTo(self, bb, x + (win and win.x or 0), y + (win and win.y or 0))
 end
 
 function PaperList:chosenIndex()
