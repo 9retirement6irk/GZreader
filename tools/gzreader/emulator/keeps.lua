@@ -137,7 +137,7 @@ add({ shot = "keeps-home" })
 -- 2. the quick panel (the Menu key, or a swipe down from the top)
 add({ fn = function(E) openPanel(E) end, after = 5 })
 add({ fn = function(E)
-    check(topName() == "gzreader quick panel" and hasTile("Send books") and hasTile("Restart") and hasTile("Settings"),
+    check(topName() == "gzreader quick panel" and hasTile("Connect") and hasTile("Restart") and hasTile("Settings"),
         (TOUCH[E.model] and "a swipe down at Home: the quick panel" or "Menu key at Home: the quick panel") .. " (top: " .. topName() .. ")")
     check(hasTile("Exit to " .. KINDLE_WORD), "names: \"Exit to " .. KINDLE_WORD .. "\"")
     check(not hasTile("Contents"), "…with Home's tiles, not a book's")
@@ -189,7 +189,7 @@ end, after = 5 })
 add({ fn = function(E)
     check(topName() == "gzreader quick panel" and hasTile("Contents") and hasTile("Bookmarks") and hasTile("Fit pictures"),
         "in a book, the quick panel: the book's tiles (top: " .. topName() .. ")")
-    check(not hasTile("Send books") and not hasTile("Continue"), "…and not Home's (Continue, Send books)")
+    check(not hasTile("Connect") and not hasTile("Continue"), "…and not Home's (Continue, Connect)")
     check(hasTile("Font") and hasTile("Layout") and not hasTile("More"), "…with Font and Layout (fonts and layout on every Kindle), no More")
     if E.model == "kt" then check(hasTile("Read aloud"), "Kindle Touch: Read aloud in the quick panel") end
     E.shot("keeps-panel-book")

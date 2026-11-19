@@ -15,7 +15,7 @@ keep each tile under an inch wide (seven on a Scribe, eight turned sideways).
   on or off, the panel staying open; a hold opens Bluetooth devices), Night mode, Rotate, Restart, Sleep, Home,
   Updates, Settings, Diagnostics (while diagnostic logging is on, Settings →
   Privacy and diagnostics) and Exit to Kindle (Exit to Nook).
-- **Home:** Manage book (the highlighted book), Continue, Send books, Search,
+- **Home:** Manage book (the highlighted book), Continue, Connect (your phone or computer: send books, set up), Search,
   History, View and Sort; **Quick note** while [Memos](Notes) is connected;
   **Music** and **Audiobook** while one plays or is
   paused (they open its player: music and audiobooks are browsed in the

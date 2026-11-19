@@ -2653,8 +2653,16 @@ do
     check(not no_diag:match("Diagnostics") and labels(Panel.controls(hplug)):match("|Diagnostics|"), "Diagnostics tile only while diagnostics is on")
     hplug.store.logging_disabled = saved_ld
     local home = labels(Panel.homeTiles(hplug, nil))
-    check(home:match("|Continue|") and home:match("|Send books|") and home:match("|Sort|") and not home:match("|More|")
-        and not home:match("Manage") and not home:match("Contents"), "panel at Home: Continue, Send books, Sort (no More); Manage only with a book… " .. home)
+    check(home:match("|Continue|") and home:match("|Connect|") and not home:match("|Send books|") and home:match("|Sort|") and not home:match("|More|")
+        and not home:match("Manage") and not home:match("Contents"), "panel at Home: Continue, Connect (was Send books), Sort (no More); Manage only with a book… " .. home)
+    do -- Connect opens the page for a phone or computer at its first tab (Send books is one of its tabs)
+        local asked = "none"
+        local kept = hplug.openPhonePage
+        hplug.openPhonePage = function(_self, section) asked = section end
+        for _i, t in ipairs(Panel.homeTiles(hplug, nil)) do if t.label == "Connect" then t.run() end end
+        hplug.openPhonePage = kept
+        check(asked == nil, "Connect: the phone page at its first tab, not at Send books")
+    end
     -- Settings opens ZenOS's Settings page with the ZenOS plugin instance
     local opened = {}
     package.loaded["modules/settings/zen_settings_page"] = { show = function(z, o) opened[#opened + 1] = { z = z, o = o } end }
@@ -2671,7 +2679,7 @@ do
     Panel.setShown("home", "send", false)
     for _i, id in ipairs({ "home", "settings", "exit" }) do Panel.setShown("controls", id, false) end
     local c2, h2 = labels(Panel.controls(hplug)), labels(Panel.homeTiles(hplug, nil))
-    check(not c2:match("|Rotate|") and c2:match("|Restart|") and not h2:match("|Sort|") and not h2:match("|Send books|") and h2:match("|Continue|"),
+    check(not c2:match("|Rotate|") and c2:match("|Restart|") and not h2:match("|Sort|") and not h2:match("|Connect|") and h2:match("|Continue|"),
         "hidden tiles aren't on the panel; the others are… " .. c2 .. " " .. h2)
     check(c2:match("|Home|") and c2:match("|Settings|") and c2:match("|Exit to Kindle|") and Panel.isShown("controls", "settings"),
         "Home, Settings and Exit to Kindle can't be hidden")
@@ -2766,7 +2774,7 @@ do
     for _i, r in ipairs(usb_item.sub_item_table[2].sub_item_table) do usb_rows[#usb_rows + 1] = r.text end
     usb_rows = "|" .. table.concat(usb_rows, "|") .. "|"
     NetM.usb = was_usb
-    check(usb_rows:match("|Sync|") and not usb_rows:match("|Updates|") and not usb_rows:match("|Send books|"),
+    check(usb_rows:match("|Sync|") and not usb_rows:match("|Updates|") and not usb_rows:match("|Connect|"),
         "a Kindle without Wi-Fi: only the tiles it can have are listed… " .. usb_rows)
     for _i, id in ipairs({ "continue", "search", "history", "view", "manage", "music", "audiobook", "tasks", "note" }) do Panel.setShown("home", id, false) end
     check(#Panel.homeTiles(hplug, { path = "/mnt/us/a.epub" }) == 0, "every Home tile hidden: an empty group (the panel leaves it out)")

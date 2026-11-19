@@ -71,7 +71,7 @@ Immich and Home Assistant (which, on the home network, is still tried at
 `http://…:8123` first).
 
 Where to open it: the setup guide's first page (**Set up from your browser**),
-the quick panel → **Send books**, the Catalog, Notes and Calendar tabs'
+the quick panel → **Connect**, the Catalog, Notes and Calendar tabs'
 *Connect with QR code*, Settings → Accounts and services → Books / Memos / Calendar /
 Immich.
 
