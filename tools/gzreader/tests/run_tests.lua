@@ -14521,6 +14521,7 @@ if os.getenv("GZ_SYNC_DUMP") and require("lfs").attributes(os.getenv("GZ_SYNC_DU
                 -- (books put on shelves here: the page's jobs sh:3:5 and sh:5:6)
                 shelves = { ["3"] = { seq = 5, set = { ["6"] = true } }, ["5"] = { seq = 6, set = { ["7"] = true } } } },
             memos = { queue = { { id = "q1", op = "create", content = "Written on the Kindle #kindle" } } },
+            daily = { enabled = true },
             usb_queue = { { id = 3, kind = "book", title = "Book 03" }, { id = 32, kind = "audiobook", title = "Book 32" } } } }
         local f = io.open(lib .. "/book1.epub", "wb"); f:write("x"); f:close()
         function fake:libraryDir() return lib end
@@ -14623,6 +14624,28 @@ if os.getenv("GZ_SYNC_DUMP") and require("lfs").attributes(os.getenv("GZ_SYNC_DU
             "e2e: the music quality chosen on the page, in the Kindle's Plex settings")
         check(r.notes and r.notes >= 3 and #fake.store.memos.queue == 0, "e2e: notes in, the Kindle's note sent")
         check(r.events == 2 and #fake.store.calendar_feeds == 2, "e2e: the calendar's events, the failed one kept by name")
+        do
+            -- the daily paper, made here from the feeds the page could read
+            local Daily = require("gzreader_daily")
+            Daily.loaded, Daily.edition = false, nil
+            runLoop(function() Daily.loaded = false; return Daily.load() ~= nil end, 60)
+            local ed = Daily.load() or {}
+            local topics, titles, full = {}, {}, nil
+            for _i, sec in ipairs(ed.sections or {}) do
+                topics[#topics + 1] = sec.topic
+                for _j, it in ipairs(sec.items) do titles[#titles + 1] = it.title; if it.title == "Short Story" then full = it end end
+            end
+            check(r.paper == true and ed.usb and table.concat(topics, ",") == "World,Technology"
+                and table.concat(titles, ",") == "Short Story,Long Story,A Gadget" and (ed.failed or {})[1] == "Closed News"
+                and Usb.summaryText(r):match("today's paper"),
+                "e2e: the daily paper made on the Kindle from the feeds the page brought (" .. table.concat(titles, ",") .. ")")
+            check(full and full.full and (full.text or ""):find("Paragraph 3 of the whole story", 1, true) and (ed.full or 0) >= 1,
+                "e2e: …a short story whole, from its own page the page brought")
+            check(require("libs/libkoreader-lfs").attributes(Daily.inDir(), "mode") == nil
+                and require("libs/libkoreader-lfs").attributes(lib .. "/.gzsync/in", "mode") == nil,
+                "e2e: …and what it was made from cleared away")
+            Daily.forget()
+        end
         local api = require("gzreader_offlineapi"):new(fake.store, nil, lib .. "/.gzsync")
         require("gzreader_offlineapi").forget()
         local thumb = WORK .. "/e2e-thumb.jpg"

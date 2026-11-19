@@ -446,10 +446,23 @@ Daily.tried_at = nil
 check(Daily.due(plugin, tomorrow) == false and Daily.maybeRefresh(plugin, tomorrow) == false, "the paper off: nothing is fetched")
 plugin.store.daily.enabled = true
 net.usb = true
-check(Daily.enabled(plugin) == false and Daily.maybeRefresh(plugin, tomorrow) == false, "a Kindle without Wi-Fi: no paper")
+calls_before = #http.calls
+Daily.tried_at = nil
+check(Daily.enabled(plugin) == true and Daily.maybeRefresh(plugin, tomorrow) == false and #http.calls == calls_before,
+    "a Kindle without Wi-Fi: the paper can be on, but it doesn't fetch (the sync page brings it)")
 local okr, errr
 Daily.refresh(plugin, function(ok, err) okr, errr = ok, err end)
-check(okr == false and errr == "usb", "… and asking says why")
+check(okr == false and errr == "usb" and Daily.why("usb"):find("sync", 1, true), "… and asking says it comes with a sync")
+do
+    -- what the sync page is told (outbox.json's daily)
+    local ob = Daily.outbox(plugin)
+    local ok_feeds = ob and #ob.feeds == #Daily.feeds(plugin) and ob.feeds[1].url and ob.feeds[1].name and ob.feeds[1].topic
+    check(ok_feeds and ob.full == Daily.fullStories(plugin) and ob.per_feed == Daily.PER_FEED and ob.pages == Daily.USB_PAGES,
+        "the sync page is told the feeds to fetch (address, name, topic), whole stories or not, how many")
+    plugin.store.daily.enabled = nil
+    check(Daily.outbox(plugin) == nil, "… nothing when the paper is off")
+    plugin.store.daily.enabled = true
+end
 net.usb = false
 plugin.store.daily.feeds = {}
 Daily.refresh(plugin, function(ok, err) okr, errr = ok, err end)
@@ -640,7 +653,14 @@ added, where = Paper.importFile(plugin)
 check(added == nil and where:find("feeds.txt", 1, true), "no feeds.txt: says where to put one")
 net.usb = true
 rows = Paper.settingsItems(plugin)
-check(#rows == 1 and rows[1].enabled == false and rows[1].text:find("Wi-Fi", 1, true), "a Kindle without Wi-Fi: Settings says the paper needs it")
+local names = {}
+for _i, r in ipairs(rows) do names[#names + 1] = r.text or (r.text_func and r.text_func()) or "?" end
+local joined = table.concat(names, " | ")
+check(rows[1].text == "Daily paper" and rows[1].help_text:find("sync page", 1, true) and joined:find("Feeds", 1, true)
+    and joined:find("Whole stories", 1, true) and not joined:find("Pictures", 1, true) and not joined:find("Weather", 1, true)
+    and not joined:find("QR code", 1, true) and not joined:find("Fetch now", 1, true) and rows[#rows].enabled == false
+    and names[#names]:find("Comes with each sync", 1, true),
+    "a Kindle without Wi-Fi: the paper's settings, without pictures, weather or the phone page; it comes with each sync (" .. joined .. ")")
 net.usb = false
 
 print("== a story's text from its own page")
