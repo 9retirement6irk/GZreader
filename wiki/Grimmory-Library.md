@@ -174,6 +174,20 @@ later still continues from there). A stalled download now also keeps its
 part. Stopping a download yourself, taking it out of the queue, or a "not
 found" from Grimmory clears it.
 
+## A book replaced on Grimmory
+
+When a book is replaced on Grimmory (a better edition uploaded over the old
+one), it keeps its place in the library, so a Kindle that downloaded it
+before keeps the old copy. When you open a book from Grimmory, GZreader
+compares its size with the size Grimmory lists (from the library list it
+keeps on the Kindle, so no request is made). If they differ by more than a
+little, a few seconds after the book opens it asks **Download again** or
+**Keep this one**, once for each copy. Download again closes the book,
+downloads Grimmory's copy over it and opens it again. Your place comes back
+from Grimmory as usual, and how the old copy was shown (fitted as a picture
+book, its margins) is forgotten, so the new copy is looked at afresh. The
+library list learns the sizes at its next refresh.
+
 ## The first open of a new book
 
 The first time a big book is opened, the Kindle lays the whole book out

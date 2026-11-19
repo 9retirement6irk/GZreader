@@ -45,6 +45,7 @@ function Index.isStale(data)
     return not data or type(data.built_at) ~= "number" or os.time() - data.built_at > MAX_AGE
         or data.built_at > os.time() + 3600 -- clock went backwards a lot
         or data.subtitles == nil -- built before GZreader 1.0.19 (no subtitles yet)
+        or data.sized == nil -- built before 1.35 (no file sizes: gzreader_newcopy.lua)
 end
 
 --- Child process: page through readable books and aggregate.
@@ -78,7 +79,8 @@ local function collect(api, report)
                 end
                 if type(b.primaryFileName) == "string" and b.primaryFileName ~= "" then
                     -- for relinking books already on the Kindle (file name -> book)
-                    files[b.primaryFileName:match("[^/\\]+$")] = { b.id, b.primaryFileId, ftype, b.title }
+                    -- (its size: a copy on the Kindle that differs is offered again, gzreader_newcopy.lua)
+                    files[b.primaryFileName:match("[^/\\]+$")] = { b.id, b.primaryFileId, ftype, b.title, tonumber(b.fileSizeKb) }
                 end
                 if b.libraryId then
                     local k = tostring(b.libraryId)
@@ -105,7 +107,8 @@ local function collect(api, report)
         end
         wpage = wpage + 1
     end
-    return { authors = authors, series = series, libraries = libraries, files = files, total = total, subtitles = subtitles }
+    return { authors = authors, series = series, libraries = libraries, files = files, total = total, subtitles = subtitles,
+        sized = true }
 end
 
 --- Build (or rebuild) the index. `show` = show a progress dialog.
