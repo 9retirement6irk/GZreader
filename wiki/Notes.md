@@ -353,7 +353,8 @@ API to `/api` are found too.
       as ink. How it's read is in the panel (**Read: …**) and in
       [Settings → Notes → Handwriting to text](#handwriting-to-text).
     - **Eraser:** rubs out whole strokes, as in Memos; five sizes (how near
-      a stroke it has to pass) and **Erase page**.
+      a stroke it has to pass) and **Erase page**. It keeps up with the pen
+      on a full page too.
     - **Lasso:** draw a loop around some strokes to choose them. A dashed
       frame goes around them, with **Copy**, **Cut**, **Delete** and **To
       text** beside it. **To text** reads the chosen writing and shows the

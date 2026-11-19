@@ -1395,5 +1395,62 @@ print("== writing turned into text (handwriting to text)")
     check(s2:live()[1] and s2:live()[1].hw == true, "a stroke written with the text tool's Write is marked to be read")
 end)()
 
+print("== the eraser on a full page: only strokes near it tested point by point")
+;(function()
+    local sk = Sketch.new({ canvas = CANVAS, per_unit = 2 })
+    -- (a page of handwriting: 300 strokes of 400 points, lines of words)
+    local rnd = 12345
+    local function r() rnd = (rnd * 1103515245 + 12345) % 2147483648; return rnd / 2147483648 end
+    for s = 1, 300 do
+        local pts = {}
+        local x0, y0 = 20 + (s % 15) * 64, 30 + math.floor(s / 15) * 60
+        for j = 1, 400 do pts[j] = { x0 + j * 0.15 + 6 * math.sin(j / 7), y0 + 18 * math.sin(j / 23) } end
+        sk.strokes[#sk.strokes + 1] = { points = pts, width = 2, kind = "pen" }
+    end
+    -- the old way: every segment of every stroke
+    local function brute(x, y, reach)
+        for i = #sk.strokes, 1, -1 do
+            local st = sk.strokes[i]
+            if not st.gone then
+                local rr = reach + sk:radius(st.width)
+                local pts = st.points
+                for j = 2, #pts do
+                    if Sketch.distToSegment(x, y, pts[j - 1][1], pts[j - 1][2], pts[j][1], pts[j][2]) <= rr then return st end
+                end
+            end
+        end
+    end
+    local same, hits = true, 0
+    for _k = 1, 400 do
+        local x, y = r() * 1000, r() * 1300
+        local a, b = sk:strokeAt(x, y, 6), brute(x, y, 6)
+        if a ~= b then same = false end
+        if a then hits = hits + 1 end
+    end
+    check(same and hits > 20, "the stroke found under the eraser is the one every point's test finds (400 places, " .. hits .. " on a stroke)")
+    local t0 = os.clock()
+    for _k = 1, 200 do sk:strokeAt(r() * 1000, r() * 1300, 6) end
+    local fast = os.clock() - t0
+    t0 = os.clock()
+    for _k = 1, 200 do brute(r() * 1000, r() * 1300, 6) end
+    local slow = os.clock() - t0
+    check(fast * 5 < slow, string.format("…and much quicker: %.1f ms against %.1f ms for 200 places", fast * 1000, slow * 1000))
+    -- the boxes follow the points: a stroke moved (the lasso: new points), drawn on, zoomed (moved in place)
+    local st = sk.strokes[1]
+    local far = { 900, 1250 }
+    check(sk:strokeAt(far[1], far[2], 4) ~= st, "…a stroke away from the eraser isn't found")
+    local moved = {}
+    for j, p in ipairs(st.points) do moved[j] = { p[1] + far[1] - st.points[1][1], p[2] + far[2] - st.points[1][2] } end
+    st.points = moved
+    check(sk:strokeAt(far[1], far[2], 4) == st, "…moved there with the lasso (its points another table): found there")
+    st.points[#st.points + 1] = { 700, 1200 }
+    check(sk:strokeAt(700, 1200, 4) == st, "…drawn on (more points): found at its new end")
+    for _j, p in ipairs(st.points) do p[1], p[2] = p[1] - 300, p[2] - 300 end
+    check(sk:strokeAt(400, 900, 4) == st and sk:strokeAt(700, 1200, 1) ~= st, "…moved in place (zoom): found where it is now, not where it was")
+    local dot = { points = { { 50, 1290 } }, width = 2, kind = "pen" }
+    sk.strokes[#sk.strokes + 1] = dot
+    check(sk:strokeAt(52, 1290, 2) == dot, "…a dot (one point) is found too")
+end)()
+
 print(string.format("sketch: %d passed, %d failed", pass, fail))
 os.exit(fail == 0 and 0 or 1)

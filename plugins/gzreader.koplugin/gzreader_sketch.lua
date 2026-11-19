@@ -807,17 +807,68 @@ function Sketch:strokesArea(strokes, area)
     return area
 end
 
+--- Where a stroke is, for finding the one under the eraser quickly: its points'
+--- box, and a box for each run of HIT_CHUNK points (with the point before it,
+--- so each segment is in its run's box). Made when first needed and again
+--- whenever the points changed: another table (the lasso), more of them (a
+--- stroke still being drawn) or moved (zoom: the first and last move too).
+--- (Testing every point of every stroke at each step of the eraser was slow
+--- on a full page: hundreds of strokes of hundreds of points.)
+Sketch.HIT_CHUNK = 16
+function Sketch.hitIndex(st)
+    local pts = st.points
+    local n = pts and #pts or 0
+    if n == 0 then return nil end
+    local first, last = pts[1], pts[n]
+    local h = st._hit
+    if h and h.pts == pts and h.n == n and h.fx == first[1] and h.fy == first[2] and h.lx == last[1] and h.ly == last[2] then
+        return h
+    end
+    local K = Sketch.HIT_CHUNK
+    h = { pts = pts, n = n, fx = first[1], fy = first[2], lx = last[1], ly = last[2], chunks = {} }
+    local X0, Y0, X1, Y1 = math.huge, math.huge, -math.huge, -math.huge
+    for c = 1, math.ceil(n / K) do
+        local j0, j1 = (c - 1) * K + 1, math.min(n, c * K)
+        local x0, y0, x1, y1 = math.huge, math.huge, -math.huge, -math.huge
+        for j = math.max(1, j0 - 1), j1 do
+            local p = pts[j]
+            local px, py = p[1], p[2]
+            if px < x0 then x0 = px end
+            if px > x1 then x1 = px end
+            if py < y0 then y0 = py end
+            if py > y1 then y1 = py end
+        end
+        h.chunks[c] = { j0, j1, x0, y0, x1, y1 }
+        if x0 < X0 then X0 = x0 end
+        if x1 > X1 then X1 = x1 end
+        if y0 < Y0 then Y0 = y0 end
+        if y1 > Y1 then Y1 = y1 end
+    end
+    h.x0, h.y0, h.x1, h.y1 = X0, Y0, X1, Y1
+    st._hit = h
+    return h
+end
+
 function Sketch:strokeAt(x, y, reach)
     for i = #self.strokes, 1, -1 do
         local st = self.strokes[i]
         if not st.gone then
             local r = reach + self:radius(st.width)
-            local pts = st.points
-            if #pts == 1 then
-                if distToSegment(x, y, pts[1][1], pts[1][2], pts[1][1], pts[1][2]) <= r then return st end
-            else
-                for j = 2, #pts do
-                    if distToSegment(x, y, pts[j - 1][1], pts[j - 1][2], pts[j][1], pts[j][2]) <= r then return st end
+            local h = Sketch.hitIndex(st)
+            -- (far from the whole stroke, or from a run of its points: not tested point by point)
+            if h and x >= h.x0 - r and x <= h.x1 + r and y >= h.y0 - r and y <= h.y1 + r then
+                local pts = st.points
+                if h.n == 1 then
+                    if distToSegment(x, y, pts[1][1], pts[1][2], pts[1][1], pts[1][2]) <= r then return st end
+                else
+                    for _c, ch in ipairs(h.chunks) do
+                        if x >= ch[3] - r and x <= ch[5] + r and y >= ch[4] - r and y <= ch[6] + r then
+                            for j = math.max(2, ch[1]), ch[2] do
+                                local a, b = pts[j - 1], pts[j]
+                                if distToSegment(x, y, a[1], a[2], b[1], b[2]) <= r then return st end
+                            end
+                        end
+                    end
                 end
             end
         end
