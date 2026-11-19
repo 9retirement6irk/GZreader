@@ -8877,6 +8877,26 @@ print("Notes (Memos v0.31)")
             "Paperwhite 3: as wide as on a Kindle 3 (scaled), a margin each side, above the keyboard")
         local land = NEq.floatingBox(1448, 1072, 0, pw_s(150), pw_s)
         check(land.w == pw_s(560) and land.x == math.floor((1448 - land.w) / 2), "landscape: no wider than a page")
+        -- the quick note as a sticky note; its pencil: a sticky note of its own to draw on, in a window (the owner, 2026-11-19)
+        local st = NEq.stickyRect(600, 800, id)
+        local st_pw = NEq.stickyRect(1072, 1448, pw_s)
+        check(st.w == st.h and st.w == 564 and st.x == 18 and st.y == math.floor((800 - 564) / 2)
+            and st_pw.w == st_pw.h and st_pw.w <= pw_s(NEq.STICKY_MAX) and st_pw.w < 1072 and st_pw.y > 0,
+            "the quick note's drawing: a square sticky note in the middle, as large as fits (" .. st.w .. ", " .. st_pw.w .. " on a Paperwhite)")
+        do
+            local nesq = io.open(PLUGIN .. "/gzreader_noteeditor.lua"):read("*a")
+            local dssq = io.open(PLUGIN .. "/gzreader_drawscreen.lua"):read("*a")
+            check(nesq:find("background = Blitbuffer.gray(NoteEditor.STICKY_PAPER), column }", 1, true) ~= nil
+                and nesq:find("bb:paintRect(bx + S(5), by + S(6), fw, fh, Blitbuffer.gray(NoteEditor.STICKY_SHADOW))", 1, true) ~= nil
+                and nesq:find('text = self.memo and _("Edit note") or _("Quick note")', 1, true) ~= nil
+                and nesq:find("(self.floating and self:canDraw()) and self:pencilTap()", 1, true) ~= nil,
+                "the quick note: a sticky note (pale paper, tape, a shadow, \"Quick note\" in handwriting), a pencil at the top")
+            check(nesq:find("choose_paper = not self.floating,", 1, true) ~= nil
+                and nesq:find("pane = self.drawing_rect or nil,", 1, true) ~= nil and nesq:find("sticky = self.floating or nil,", 1, true) ~= nil
+                and dssq:find("if self.sticky then\n        -- the quick note's drawing: a tap outside it is ✕", 1, true) ~= nil
+                and dssq:find("or self.journal or self.sticky then return end", 1, true) ~= nil,
+                "its pencil: the drawing screen in a sticky note's window (no paper to choose); a tap outside asks, nothing reaches the book")
+        end
         -- a tap outside the window closes it as Back does (real geometry here)
         ;(function()
             local saved_m = { ["ui/geometry"] = package.loaded["ui/geometry"], optmath = package.loaded["optmath"] }
@@ -9088,7 +9108,7 @@ print("Notes (Memos v0.31)")
             and nesrc:find("self.save_top and self:topTap(FrameContainer:new{", 1, true) ~= nil
             and nesrc:find("if not self.save_top then\n        bar[#bar + 1] = HorizontalSpan:new{ width = S(10) }", 1, true) ~= nil
             and nesrc:find("self.drawing_closed_at = Editor.now()", 1, true) ~= nil
-            and select(2, nesrc:gsub("self:topTap%(", "")) == 5,
+            and select(2, nesrc:gsub("self:topTap%(", "")) == 6,
             "editor (touch, full page): Save at the top right, not in the row under the title; Draw, space, visibility and Save guarded")
         check(nesrc:find("self.title_slot[1] = (self.save_top or self.keys_bar) and self:notebookBar(sw) or OverlapGroup:new{", 1, true) ~= nil
             and nesrc:find('tap = function(w, fn, guarded) return guarded and self:topTap(w, fn) or tapTarget(w, fn) end', 1, true) ~= nil
@@ -10437,14 +10457,14 @@ print("Notes (Memos v0.31)")
             check(jsrc:find('pane = { x = rect.x, y = rect.y, w = rect.w, h = rect.h },', 1, true) ~= nil
                 and jsrc:find('journal = { under = self },', 1, true) ~= nil and not jsrc:find('inline = { rect', 1, true)
                 and not dsrcs:find('INLINE_TOOLS', 1, true) and not dsrcs:find('function DrawScreen:passThrough', 1, true)
-                and dsrcs:find('local taken = split and not opts.journal and split.take()', 1, true) ~= nil
+                and dsrcs:find('local taken = split and not opts.journal and not opts.sticky and split.take()', 1, true) ~= nil
                 and dsrcs:find('if under and UIManager:getTopmostVisibleWidget() == self then return under:handleEvent(event) end', 1, true) ~= nil,
                 "journal: its drawing is the whole drawing screen (every tool, pinch, pan) in a pane under the prompt, not a box with a few tools; touches above go to the entry")
             check(dsrcs:find('add({ id = "done", label = self.journal and _("Save") or _("Done") }', 1, true) ~= nil
                 and dsrcs:find('if self.journal then icons[#icons + 1] = { id = "typing", label = _("Aa") } end', 1, true) ~= nil
                 and dsrcs:find('self.flyout = nil; self.after = "entry"; self:done()', 1, true) ~= nil
                 and jsrc:find('if after == "save" then', 1, true) ~= nil
-                and dsrcs:find('if not (self.pane and page and page.w > 0) or self.journal then return end', 1, true) ~= nil,
+                and dsrcs:find('if not (self.pane and page and page.w > 0) or self.journal or self.sticky then return end', 1, true) ~= nil,
                 "journal's drawing: ← back to the entry (kept), Aa to typing, Save saves the entry; the whole page shows (not fitted to the width)")
         end)()
         -- a long stroke keeps up with the pen: the ink shown at most 60 times a second, 8 while behind
@@ -10515,7 +10535,7 @@ print("Notes (Memos v0.31)")
         end
         check(dsrcp:find("if opts.choose_paper and DrawScreen.asksPaper(opts.pages) then", 1, true) ~= nil
             and dsrcp:find("on_back = function() if opts.on_cancel then opts.on_cancel() end end", 1, true) ~= nil
-            and esrc2:find("choose_paper = true, -- (a new drawing: which paper first)", 1, true) ~= nil
+            and esrc2:find("choose_paper = not self.floating, -- (a new drawing: which paper first; a sticky note's is blank)", 1, true) ~= nil
             and psrc:find("if not self.create then return self:pick(i) end", 1, true) ~= nil,
             "a new drawing asks which paper first (Create starts it, Cancel goes back to the note); a page's Paper: a tap picks")
         local dsrc = io.open(PLUGIN .. "/gzreader_drawscreen.lua"):read("*a")

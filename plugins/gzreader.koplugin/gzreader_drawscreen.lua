@@ -788,7 +788,7 @@ function DrawScreen:paintBar(bb, x, y)
         bb:paintBorder(x + f.x, y + f.y, f.w, f.h, Size.border.thin, Blitbuffer.COLOR_BLACK, radius)
     end
     -- (beside a book: a line between the two)
-    if self.pane then
+    if self.pane and not self.sticky then
         local t = Size.line.thick
         if self.pane.y > 0 then bb:paintRect(x, y, sw, t, Blitbuffer.COLOR_BLACK) end
         if self.pane.x > 0 then bb:paintRect(x, y, t, self.dimen.h, Blitbuffer.COLOR_BLACK) end
@@ -808,6 +808,10 @@ function DrawScreen:paintTo(bb, x, y)
     self:paintLasso(bb, x + c.x, y + c.y)
     self:paintShapePreview(bb, x + c.x, y + c.y)
     self:paintBar(bb, x, y)
+    if self.sticky then
+        -- (the quick note's drawing: a sticky note of its own, framed, over what's around it)
+        bb:paintBorder(x, y, self.dimen.w, self.dimen.h, Size.border.thick, Blitbuffer.COLOR_BLACK)
+    end
     self._shown = { undo = self.sketch:canUndo(), redo = self.sketch:canRedo() }
 end
 
@@ -1271,6 +1275,16 @@ end
 function DrawScreen:handleEvent(event)
     local handled = InputContainer.handleEvent(self, event)
     if handled or not self.pane or self._closed then return handled end
+    if self.sticky then
+        -- the quick note's drawing: a tap outside it is ✕ (asks when something was drawn);
+        -- nothing goes on to the book or Home under it
+        local ges = event.handler == "onGesture" and event.args and event.args[1]
+        if ges and ges.ges == "tap" and ges.pos and not ges.pos:intersectWith(self.dimen)
+                and UIManager:getTopmostVisibleWidget() == self then
+            self:cancel()
+        end
+        return true
+    end
     if self.journal then
         local under = self.journal.under
         if under and UIManager:getTopmostVisibleWidget() == self then return under:handleEvent(event) end
@@ -1296,7 +1310,7 @@ function DrawScreen:fitPane()
     local sk = self.sketch
     local page = sk and sk:pageRect()
     -- (a journal's drawing is as wide as the screen: the whole page shows, as in the full screen)
-    if not (self.pane and page and page.w > 0) or self.journal then return end
+    if not (self.pane and page and page.w > 0) or self.journal or self.sticky then return end
     local scale = math.min(Sketch.MAX_ZOOM or 4, self.canvas.w / page.w)
     if scale > 1.02 then sk:zoomBy(scale, page.x, page.y, 0, 0) end
 end
@@ -2557,7 +2571,7 @@ function DrawScreen.show(opts)
     -- Beside a book (gzreader_splitview): this drawing opens in the notes' part of the
     -- screen, on the paper used last (no chooser over the book), named for the book.
     local split = package.loaded["gzreader_splitview"]
-    local taken = split and not opts.journal and split.take()
+    local taken = split and not opts.journal and not opts.sticky and split.take()
     if taken then
         local o = {}
         for k, v in pairs(opts) do o[k] = v end
@@ -2601,6 +2615,7 @@ function DrawScreen.show(opts)
     w = DrawScreen:new{ pages = pages, start = opts.start, on_cancel = opts.on_cancel, title = opts.title, meta = opts.meta,
         plugin = opts.plugin, -- (the quick panel, pulled down)
         pane = opts.pane,
+        sticky = opts.sticky, -- the quick note's drawing: `pane` is a sticky note's window (gzreader_noteeditor)
         journal = opts.journal, -- { under }: a journal entry's drawing, in `pane` under its prompt (the entry: `under`)
         note_actions = opts.note_actions, -- { archive(screen), delete(screen) }: a note that's already there
         on_done = on_done and function(res)

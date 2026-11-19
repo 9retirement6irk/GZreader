@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Quick note: a sticky note, and its pencil opens a sticky note to draw on", text = "The quick panel's Quick note now looks like one of the Notes tab's sticky notes: pale paper, a strip of tape at the top and a shadow, with Quick note in handwriting. On touch Kindles the Draw button is now a pencil, and it opens a sticky note of its own to draw or write on with the pen, in a square window in the middle of the screen, not the whole screen (the drawing screen's tools are all there, on blank paper, with no paper to choose). Done puts the drawing with the note, and a black dot on the pencil shows it has one. ← or a tap outside the drawing asks first if you drew something, and nothing you tap there reaches the book under it." },
+        },
+    },
+    {
         version = "1.34.0",
         changes = {
             { short = "Quick panel: Send books is now Connect", text = "The quick panel's Send books tile at Home is now called Connect, with its own icon, because the page it opens does much more than send books: it sets up Grimmory, Notes, Calendar and Music from your phone or computer. It opens that page at its first tab; Send books is one tap away there. If you'd hidden the tile it stays hidden." },

@@ -234,6 +234,20 @@ function NoteEditor.floatingBox(sw, sh, kb_h, chrome_h, s)
     return { x = math.floor((sw - w) / 2), y = y, w = w, h = h, text_h = text_h }
 end
 
+--- The quick note's drawing: a square sticky note in the middle of the screen,
+--- as large as fits (a margin around it, no larger than STICKY_MAX). Pure.
+NoteEditor.STICKY_MAX = 620
+function NoteEditor.stickyRect(sw, sh, s)
+    local side = math.min(sw - 2 * s(18), sh - 2 * s(48), s(NoteEditor.STICKY_MAX))
+    return { x = math.floor((sw - side) / 2), y = math.floor((sh - side) / 2), w = side, h = side }
+end
+
+--- The quick note's look: a sticky note (the board's): pale paper, a strip of tape
+--- at the top, a shadow under it, square corners.
+NoteEditor.STICKY_PAPER = 0.07
+NoteEditor.STICKY_SHADOW = 0.30
+NoteEditor.STICKY_TAPE = 0.22
+
 ---------------------------------------------------------------- the page
 
 local Editor = InputContainer:extend{ covers_fullscreen = true,
@@ -398,8 +412,9 @@ function Editor:init()
     end
     if self.floating then
         -- a window: what's under it (the book, Home) stays on the screen around it
-        self.frame = FrameContainer:new{ padding = 0, bordersize = Size.border.window, radius = Size.radius.window,
-            background = Blitbuffer.COLOR_WHITE, column }
+        -- (a sticky note: pale paper, square corners; the tape and the shadow in paintTo)
+        self.frame = FrameContainer:new{ padding = 0, bordersize = Size.border.window, radius = 0,
+            background = Blitbuffer.gray(NoteEditor.STICKY_PAPER), column }
         self[1] = VerticalGroup:new{ align = "left", VerticalSpan:new{ width = self.box.y },
             HorizontalGroup:new{ HorizontalSpan:new{ width = self.box.x }, self.frame } }
         if Touch.on() then
@@ -482,7 +497,12 @@ end
 
 --- What a redraw refreshes: the window, or the page.
 function Editor:area()
-    if self.frame and self.frame.dimen then return self.frame.dimen end
+    if self.frame and self.frame.dimen then
+        if not self.floating then return self.frame.dimen end
+        -- (the sticky note's shadow, and its tape above the top edge)
+        local d = self.frame.dimen
+        return Geom:new{ x = d.x, y = d.y - S(10), w = d.w + S(8), h = d.h + S(18) }
+    end
     return self.dimen
 end
 
@@ -625,6 +645,41 @@ function Editor:keepDrafts()
     UIManager:scheduleIn(Saving.DRAFT_EVERY, look)
 end
 
+--- The window's title: a quick note's in the board's handwriting ("Quick note").
+function Editor:windowTitle()
+    if self.floating then
+        local ok, face = pcall(require("gzreader_sticky").hand, 24)
+        return TextWidget:new{ text = self.memo and _("Edit note") or _("Quick note"),
+            face = ok and face or Font:getFace("smalltfont", 21), bold = not ok }
+    end
+    return TextWidget:new{ text = self.memo and _("Edit note") or _("New note"), face = Font:getFace("smalltfont", 21), bold = true }
+end
+
+--- The quick note's pencil: a sticky note of its own to draw on (a black dot in its
+--- corner when there's a drawing).
+function Editor:pencilButton()
+    local IconWidget = require("ui/widget/iconwidget")
+    local isz, pad = S(26), S(7)
+    local side = isz + 2 * pad
+    local group = OverlapGroup:new{ dimen = Geom:new{ w = side, h = side },
+        CenterContainer:new{ dimen = Geom:new{ w = side, h = side },
+            IconWidget:new{ file = require("gzreader_notebar").ICON_DIR .. "pencil.svg", width = isz, height = isz, alpha = true } } }
+    if self:hasDrawing() then
+        local dot = S(10)
+        group[#group + 1] = RightContainer:new{ dimen = Geom:new{ w = side - S(5), h = dot + S(5) },
+            VerticalGroup:new{ VerticalSpan:new{ width = S(5) },
+                FrameContainer:new{ width = dot, height = dot, padding = 0, margin = 0, bordersize = 0, radius = math.floor(dot / 2),
+                    background = Blitbuffer.COLOR_BLACK, VerticalSpan:new{ width = 0 } } } }
+    end
+    return FrameContainer:new{ padding = 0, radius = S(6), bordersize = Size.border.thick,
+        background = Blitbuffer.COLOR_WHITE, group }
+end
+
+function Editor:pencilTap()
+    self.pencil_tap = self:topTap(self:pencilButton(), function() self:openDrawing() end)
+    return self.pencil_tap
+end
+
 function Editor:drawChrome()
     local sw = self.win_w
     local margin = self.margin
@@ -637,10 +692,11 @@ function Editor:drawChrome()
                     TextWidget:new{ text = "\u{2715}", face = Font:getFace("cfont", 22) } }, function() self:onCloseDialog() end)
                     or HorizontalSpan:new{ width = 0 },
                 self.touch and HorizontalSpan:new{ width = S(8) } or HorizontalSpan:new{ width = 0 },
-                TextWidget:new{ text = self.memo and _("Edit note") or _("New note"), face = Font:getFace("smalltfont", 21), bold = true } } },
+                self:windowTitle() } },
         RightContainer:new{ dimen = Geom:new{ w = sw, h = self.title_h },
             HorizontalGroup:new{
-                (self:canDraw() and not self.rich) and self:topTap(FrameContainer:new{ padding = S(6), radius = S(6), bordersize = Size.border.thick,
+                (self.floating and self:canDraw()) and self:pencilTap()
+                    or (self:canDraw() and not self.rich) and self:topTap(FrameContainer:new{ padding = S(6), radius = S(6), bordersize = Size.border.thick,
                     background = self:hasDrawing() and Blitbuffer.COLOR_BLACK or Blitbuffer.COLOR_WHITE,
                     TextWidget:new{ text = self:drawingLabel(),
                         face = Font:getFace("cfont", 15), bold = true,
@@ -1462,6 +1518,11 @@ function Editor:openDrawing(page)
     if self.input and self.input.onCloseKeyboard then pcall(self.input.onCloseKeyboard, self.input) end
     local function back()
         self.drawing_closed_at = Editor.now()
+        if self.drawing_rect then
+            -- (the sticky drawing closed: the text's window again, the screen cleaned of the drawing's)
+            self.drawing_rect = nil
+            UIManager:setDirty("all", "ui")
+        end
         self:redraw()
         self:keyboardSoon()
     end
@@ -1492,10 +1553,18 @@ function Editor:openDrawing(page)
         page = page or (#list + 1)
         for _i, p in ipairs(extra) do list[#list + 1] = p end
     end
+    if self.floating then
+        self.drawing_rect = NoteEditor.stickyRect(Screen:getWidth(), Screen:getHeight(), S)
+        -- (the whole screen painted once: the text's window gone, the drawing's shadow and tape there)
+        UIManager:setDirty("all", "ui")
+    end
     DrawScreen.show{
         plugin = self.plugin, -- (the quick panel, pulled down from the top)
         pages = list,
-        choose_paper = true, -- (a new drawing: which paper first)
+        choose_paper = not self.floating, -- (a new drawing: which paper first; a sticky note's is blank)
+        -- (the quick note: a sticky note of its own to draw on, in a window, not the whole screen)
+        pane = self.drawing_rect or nil,
+        sticky = self.floating or nil,
         start = page,
         title = self:heading(),
         -- (a new drawing: named and tagged from the drawing screen's top bar, as the Kindle Scribe's notebooks)
@@ -1520,6 +1589,7 @@ function Editor:openDrawing(page)
             back()
         end,
         on_cancel = function()
+            if self.drawing_rect then self.drawing_rect = nil; UIManager:setDirty("all", "ui") end
             if #self.pages == 0 and #(self.drawing_atts or {}) == 0 then self.pages = nil end
             -- (a new drawing left at once: nothing to save, the Notes tab again)
             if self.popup_only and not self:hasDrawing() then return UIManager:close(self, "full") end
@@ -1640,6 +1710,24 @@ end
 --- the New drawing window show; the Notes tab stays under them).
 function Editor:paintTo(bb, x, y)
     if self.popup_only then return end
+    if self.drawing_rect then
+        -- (the quick note's drawing open: its sticky note's shadow and tape; the text's window out of sight)
+        local r = self.drawing_rect
+        bb:paintRect(x + r.x + S(6), y + r.y + S(7), r.w, r.h, Blitbuffer.gray(NoteEditor.STICKY_SHADOW))
+        local tw, th = S(90), S(20)
+        bb:paintRect(x + r.x + math.floor((r.w - tw) / 2), y + r.y - math.floor(th / 2), tw, th, Blitbuffer.gray(NoteEditor.STICKY_TAPE))
+        return
+    end
+    if self.floating and self.box and self.frame then
+        -- the quick note as a sticky note: its shadow under it, then a strip of tape over its top edge
+        local fw, fh = self.frame:getSize().w, self.frame:getSize().h
+        local bx, by = x + self.box.x, y + self.box.y
+        bb:paintRect(bx + S(5), by + S(6), fw, fh, Blitbuffer.gray(NoteEditor.STICKY_SHADOW))
+        InputContainer.paintTo(self, bb, x, y)
+        local tw, th = S(90), S(20)
+        bb:paintRect(bx + math.floor((fw - tw) / 2), by - math.floor(th / 2), tw, th, Blitbuffer.gray(NoteEditor.STICKY_TAPE))
+        return
+    end
     return InputContainer.paintTo(self, bb, x, y)
 end
 
