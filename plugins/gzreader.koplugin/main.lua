@@ -281,6 +281,8 @@ function Grimmory:init()
         pcall(function() require("gzreader_recovery").schedule(self) end)
         -- GZreader moved into its own folder at this start (gzreader_migrate.lua): said once
         pcall(function() require("gzreader_places").announce() end)
+        -- a drawing never saved (GZreader stopped while it was open): ask what to do
+        pcall(function() require("gzreader_drawdraft").schedule(self) end)
         if self.api:isPaired() then
             UIManager:scheduleIn(8, function()
                 if not NetworkMgr:isConnected() then return end
