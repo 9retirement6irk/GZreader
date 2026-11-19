@@ -204,6 +204,15 @@ local function rmTree(p)
     end
 end
 
+--- KUAL's entry for GZreader there, starting GZreader/app's koreader.sh itself
+--- (as KOReader's own entry does: nothing in between)?
+M.KUAL_ACTION = "/mnt/us/GZreader/app/koreader.sh"
+function M.kualReady(home)
+    local menu = readFile(home .. "/extensions/gzreader/menu.json")
+    return menu ~= nil and menu:find('"' .. M.KUAL_ACTION .. '"', 1, true) ~= nil
+        and not menu:find("bin/start.sh", 1, true) and mode(home .. "/extensions/gzreader/config.xml") == "file"
+end
+
 --- GZreader's launchers pointed at GZreader/app (KOReader's own are left alone).
 function M.launchers(o)
     local here = o.app .. "/plugins/gzreader.koplugin/launchers"
@@ -215,6 +224,7 @@ function M.launchers(o)
             local menu = readFile(old .. "/menu.json")
             if menu and menu:find("GZreader", 1, true) then rmTree(old); say("removed GZreader's old KUAL entry (extensions/koreader)") end
             copyTree(here .. "/kindle/extensions/gzreader", home .. "/extensions/gzreader")
+            say("KUAL entry:", M.kualReady(home) and "extensions/gzreader, to GZreader/app" or "extensions/gzreader NOT written")
         end
         -- the Kindle 2/3/DX's launchpad
         if isDir(home .. "/launchpad") then
@@ -399,6 +409,12 @@ function M.early()
         -- (moved already, by a beta that left the reading history behind: put right once)
         if cwd == home .. "/" .. M.FOLDER .. "/app" then
             pcall(M.fixHistory, cwd, home .. "/" .. M.FOLDER, test_home and (home .. "/koreader") or l.app)
+            -- (KUAL's entry: written again when it's missing or goes through bin/start.sh,
+            -- as 1.34.0-beta.2bcfc79's did: a Kindle 3 couldn't start GZreader from it)
+            local device = os.getenv("GZ_MOVE_DEVICE") or l.device
+            if device == "kindle" and isDir(home .. "/extensions") and not M.kualReady(home) then
+                pcall(M.launchers, { app = cwd, home = home, device = device })
+            end
             return nil
         end
         if test_home then app = cwd end
