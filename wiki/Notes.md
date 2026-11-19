@@ -264,8 +264,11 @@ API to `/api` are found too.
     grid; the photos you pick are placed **in the middle of the page you
     see**, at most 60 % of it (never enlarged), several fanned out a step
     down and to the right, as the fork's drawing sheet places them. They're
-    part of the drawing, under your ink; **Undo** takes one off. Memos can
-    move or resize them there (on the Kindle they stay where placed).
+    part of the drawing, under your ink; **Undo** takes one off. Placed,
+    they're chosen with the **lasso**: drag inside the frame to move them,
+    a corner to make them bigger or smaller, then tap elsewhere. Later, a
+    lasso loop round a picture's middle chooses it again (Memos can move
+    or resize them too).
   - What's sent is Immich's **preview** of each photo (a JPEG up to 1440
     pixels a side, quick over the Kindle's Wi‑Fi), named like the photo
     (`IMG_1234.jpg`). Immich is reached through your **Memos fork's own
@@ -348,8 +351,10 @@ API to `/api` are found too.
       **Paste** appears there (the copy is kept for other drawings too,
       until the Kindle restarts). A tap outside the frame, or another tool,
       lets go. It chooses anything drawn on the Kindle (strokes and
-      shapes); text boxes are moved with the Text tool, and shapes made in
-      Memos stay where they are.
+      shapes) and pictures (from Immich or Memos: when the loop goes round
+      a picture's middle), which move, resize, copy and delete with the
+      rest; text boxes are moved with the Text tool, and shapes made in
+      Memos stay where they are. The page's paper is never chosen.
     - **Hand:** the pen (or a finger, where fingers draw) takes hold of the
       page and moves it; nothing is drawn. For a page you've zoomed in on.
     - **Pen / finger** (Kindle Scribe): what draws. Its icon is a pen while

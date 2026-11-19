@@ -210,6 +210,9 @@ add({ fn = function(E)
     local c = d.canvas
     local cx, cy = d.sketch:toCanvas(pic.x + pic.width / 2, pic.y + pic.height / 2)
     check(math.abs(cx - c.w / 2) < 3 and math.abs(cy - c.h / 2) < 3, "…in the middle of the page shown")
+    local sel = d.sketch.selection
+    check(d.tool == "lasso" and sel and sel.pictures and sel.pictures[1] == pic and d.sketch:selectionBox() ~= nil,
+        "…chosen with the lasso, a frame with handles round it (to move and size it)")
     d:use({ id = "undo" })
 end, after = 2 })
 add({ fn = function(E)
@@ -219,9 +222,43 @@ add({ fn = function(E)
     check(n == 0, "Undo: the picture off")
     d:use({ id = "redo" })
 end, after = 2 })
+-- chosen again with the lasso: dragged from inside it, then by its bottom right handle
+local moved = {}
+local function drawn(E, pts)
+    if os.getenv("GZ_EMU_MODEL") == "scribe" then E.pen(pts, 0.6) else E.finger(pts, 0.6) end
+end
 add({ fn = function(E)
     local d = drawing()
-    d:done()
+    local pic
+    for _i, el in ipairs(d.sketch.locked) do if el.type == "image" and not el.locked then pic = el end end
+    d:use({ id = "lasso" })
+    d.sketch:selectPictures({ pic })
+    d:layoutBar(); d:redrawAll()
+    moved.pic, moved.x, moved.w = pic, pic.x, pic.width
+    local c = d.canvas
+    local b = d.sketch:pictureBox(pic)
+    local x, y = c.x + (b.x0 + b.x1) / 2, c.y + (b.y0 + b.y1) / 2
+    drawn(E, { { x, y }, { x - 40, y + 20 }, { x - 80, y + 40 }, { x - 120, y + 60 } })
+end, after = 4 })
+add({ shot = "7b-picture-moved", after = 0.5 })
+add({ fn = function(E)
+    local d = drawing()
+    local pic = moved.pic
+    check(pic.x < moved.x - 10 and math.abs(pic.width - moved.w) < 1e-6, "dragged from inside its frame: the picture moved, its size as it was")
+    moved.x2, moved.y2 = pic.x, pic.y
+    local c = d.canvas
+    local pad = d.sketch.lasso_pad or 0
+    local b = d.sketch:selectionBox()
+    local x, y = c.x + b.x1 - pad, c.y + b.y1 - pad
+    drawn(E, { { x, y }, { x + 30, y + 10 }, { x + 70, y + 20 }, { x + 100, y + 30 } })
+end, after = 4 })
+add({ shot = "7c-picture-bigger", after = 0.5 })
+add({ fn = function(E)
+    local pic = moved.pic
+    check(pic.width > moved.w * 1.2 and math.abs(pic.x - moved.x2) < 1e-6 and math.abs(pic.y - moved.y2) < 1e-6,
+        "its bottom right handle dragged out: bigger, its top left corner where it was (" .. math.floor(moved.w) .. " → " .. math.floor(pic.width) .. ")")
+    moved.final_x, moved.final_w = pic.x, pic.width
+    drawing():done()
 end, after = 4 })
 add({ fn = function(E)
     local Drawing = require("gzreader_drawing")
@@ -231,6 +268,8 @@ add({ fn = function(E)
     for _i, el in ipairs(scene and scene.elements or {}) do if el.type == "image" then img = el end end
     check(img and scene.files[img.fileId] and tostring(scene.files[img.fileId].dataURL):match("^data:image/jpeg"),
         "Redo, Done: the drawing's file has the picture (memos shows it, can move it)")
+    check(img and math.abs(img.x - moved.final_x) < 0.5 and math.abs(img.width - moved.final_w) < 0.5,
+        "…where it was moved to, at the size it was given")
     local f = io.open(E.out .. "/notes-immich-photos-checks.txt", "w")
     if f then f:write(table.concat(lines, "\n") .. "\n"); f:close() end
     for _i, l in ipairs(lines) do E.say("check", l) end

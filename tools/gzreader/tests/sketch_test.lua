@@ -356,6 +356,71 @@ print("== the lasso: choose, move, resize, copy, cut, paste")
     Lasso.clipboard = nil
 end)()
 
+print("== pictures with the lasso: placed chosen, moved, resized, copied, deleted")
+;(function()
+    local Lasso = require("gzreader_lasso")
+    Lasso.clipboard = nil
+    local sk = Sketch.new{ canvas = CANVAS, pen_only = true, pen_slot = PEN_SLOT, per_unit = 2 }
+    local cx0, cy0 = CANVAS.x, CANVAS.y
+    local function lasso(frames, t)
+        local res = {}
+        for i, fr in ipairs(frames) do
+            local o = sk:frame(fr, t + i * 0.4)
+            for k, v in pairs(o) do if k ~= "segments" and k ~= "taps" and v then res[k] = v end end
+        end
+        return res
+    end
+    local function near(a, b) return math.abs(a - b) < 1e-6 end
+    -- a picture 100 x 50 (scene units) with its middle at (200, 200): on the canvas 300..500 across, 350..450 down
+    local pic = sk:addPicture("data:image/png;base64,AAAA", "image/png", 100, 50, 200, 200)
+    -- the page's paper: a picture too, but never chosen
+    local paper = { type = "image", x = 0, y = 0, width = 800, height = 1000, locked = true, fileId = "paper" }
+    table.insert(sk.locked, 1, paper)
+    check(sk:selectPictures({ pic }) and sk.tool == "lasso" and sk.selection.pictures[1] == pic, "a picture just put on the page: chosen with the lasso")
+    local b = sk:selectionBox()
+    check(b and b.x0 <= 300 and b.x0 > 280 and b.x1 >= 500 and b.y0 <= 350 and b.y1 >= 450 and b.y1 < 470, "…its frame around it")
+    -- dragged from inside: moved as far as the pen went
+    local o = lasso({ { hover(400 + cx0, 400 + cy0) }, { pen(400 + cx0, 400 + cy0) }, { pen(450 + cx0, 430 + cy0) }, { pen(500 + cx0, 460 + cy0) }, { hover(500 + cx0, 460 + cy0) } }, 10)
+    check(o.redraw and o.area and near(pic.x, 200) and near(pic.y, 205) and near(pic.width, 100) and o.area.y0 <= 350 and o.area.y1 >= 510,
+        "dragged 100 right and 60 down (pixels, 2 a unit): the picture 50 and 30 units on, its old and new place drawn again (" .. pic.x .. ", " .. pic.y .. ")")
+    check(sk:undo() and near(pic.x, 150) and near(pic.y, 175) and sk:redo() and near(pic.x, 200), "Undo: back where it was; Redo: moved again")
+    -- a corner: bigger, in proportion, from the opposite corner
+    sk:selectPictures({ pic })
+    b = sk:selectionBox()
+    local pad = sk.lasso_pad or 0
+    local bx1, by1 = b.x1 - pad, b.y1 - pad
+    lasso({ { hover(bx1 + cx0, by1 + cy0) }, { pen(bx1 + cx0, by1 + cy0) }, { pen(bx1 + 100 + cx0, by1 + cy0) }, { pen(bx1 + 200 + cx0, by1 + 10 + cy0) },
+        { hover(bx1 + 200 + cx0, by1 + 10 + cy0) } }, 20)
+    check(near(pic.width, 200) and near(pic.height, 100) and near(pic.x, 200) and near(pic.y, 205),
+        "the bottom right handle dragged out by its width: twice the size, its top left corner where it was (" .. pic.width .. " x " .. pic.height .. ")")
+    check(sk:undo() and near(pic.width, 100) and near(pic.height, 50), "Undo: its size back")
+    check(pic.version and pic.version > 1, "moved or resized: Memos is told it changed (its version)")
+    -- a loop round its middle chooses it (not the paper under everything)
+    lasso({ { hover(900 + cx0, 900 + cy0) }, { pen(900 + cx0, 900 + cy0) }, { hover(900 + cx0, 900 + cy0) } }, 30)
+    local pb = sk:pictureBox(pic)
+    local mx, my = (pb.x0 + pb.x1) / 2, (pb.y0 + pb.y1) / 2
+    local sel_o = lasso({ { hover(mx - 60 + cx0, my - 40 + cy0) }, { pen(mx - 60 + cx0, my - 40 + cy0) }, { pen(mx + 60 + cx0, my - 40 + cy0) }, { pen(mx + 60 + cx0, my + 40 + cy0) },
+        { pen(mx - 60 + cx0, my + 40 + cy0) }, { pen(mx - 60 + cx0, my - 30 + cy0) }, { hover(mx - 60 + cx0, my - 30 + cy0) } }, 40)
+    check(sel_o.sel_changed and sk.selection and #sk.selection.pictures == 1 and sk.selection.pictures[1] == pic and #sk.selection.strokes == 0,
+        "a loop round the picture's middle: the picture chosen, not the paper")
+    -- copied and pasted: a new picture, chosen; Undo takes it away
+    check(sk:lassoCopy() and Lasso.clipboard and #Lasso.clipboard.pictures == 1 and near(Lasso.clipboard.w, 100), "Copy: the picture kept, at its size")
+    local n0 = #sk.locked
+    local ok = sk:lassoPaste(700 + cx0, 300 + cy0)
+    local new = sk.selection and sk.selection.pictures and sk.selection.pictures[1]
+    check(ok and new and new ~= pic and #sk.locked == n0 + 1 and near(new.width, 100) and near(new.x + 50, 350) and near(new.y + 25, 150)
+        and sk.base.files[new.fileId] and sk.base.files[new.fileId].dataURL == "data:image/png;base64,AAAA",
+        "Paste: a new picture, its middle where the tap was, chosen")
+    check(sk:undo() and #sk.locked == n0, "Undo takes the pasted picture back")
+    -- deleted, and back
+    sk:selectPictures({ pic })
+    check(sk:lassoDelete() and #sk:movablePictures() == 0, "Delete: the picture off the page")
+    local in_scene = false
+    for _i, el in ipairs(sk.base.elements) do if el == pic then in_scene = true end end
+    check(not in_scene and sk:undo() and #sk:movablePictures() == 1, "…not saved with the drawing; Undo brings it back")
+    Lasso.clipboard = nil
+end)()
+
 print("== pinch to zoom")
 ;(function()
     local W, H = CANVAS.w, CANVAS.h

@@ -641,6 +641,9 @@ function DrawScreen:hint()
         for i, name in ipairs(self.meta.tags) do out[i] = "#" .. name end
         return table.concat(out, " ")
     end
+    if self.tool == "lasso" and self.sketch.selection then
+        return _("Drag inside the frame to move, a corner to resize; tap elsewhere when it's in place")
+    end
     if self.tool == "text" then
         return self.text_sel and _("Drag the box to move it, its corner to resize it; tap it to change its words")
             or _("Tap where a text box goes; tap a box to choose it")
@@ -1526,7 +1529,7 @@ function DrawScreen:apply(out)
         self:layoutBar()
         UIManager:setDirty(self, "ui")
         local sel = self.sketch.selection
-        Log.info("drawing: lasso,", sel and #sel.strokes or 0, "strokes chosen")
+        Log.info("drawing: lasso,", sel and #sel.strokes or 0, "strokes and", sel and #(sel.pictures or {}) or 0, "pictures chosen")
     end
     if out.stroke_done then self:flushInk(true) end
     if out.stroke_done then
@@ -2293,7 +2296,7 @@ function DrawScreen:addPictures(files)
     for i, f in ipairs(files) do sizes[i] = { w = f.w, h = f.h } end
     local places = Sketch.placePictures(sizes, view)
     local b64 = require("ffi/sha2").bin_to_base64
-    local added = 0
+    local added, els = 0, {}
     for i, f in ipairs(files) do
         local fh = io.open(f.path, "rb")
         local data = fh and fh:read("*a")
@@ -2301,13 +2304,17 @@ function DrawScreen:addPictures(files)
         os.remove(f.path) -- (its pixels are in the drawing now)
         if data and #data > 0 then
             local pl = places[i]
-            sk:addPicture("data:" .. (f.type or "image/jpeg") .. ";base64," .. b64(data), f.type or "image/jpeg", pl.w, pl.h, pl.cx, pl.cy)
+            els[#els + 1] = sk:addPicture("data:" .. (f.type or "image/jpeg") .. ";base64," .. b64(data), f.type or "image/jpeg", pl.w, pl.h, pl.cx, pl.cy)
             added = added + 1
         end
     end
     if added > 0 then
         self:touched()
-        Log.info("drawing:", added, "picture(s) from Immich placed")
+        Log.info("drawing:", added, "picture(s) from Immich placed, chosen with the lasso to move and size")
+        -- chosen with the lasso: drag to move them, a corner to make them bigger or smaller
+        self:setTool("lasso"); self:setFlyout(nil)
+        sk:selectPictures(els)
+        self:layoutBar()
         self:redrawAll()
     end
     return added
