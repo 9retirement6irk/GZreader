@@ -116,13 +116,13 @@ with open(os.path.join(web, "feeds", "world.xml"), "w") as f:
     f.write(rss("World Example", [("Short Story", "http://127.0.0.1:%d/stories/one.html" % WP, "Only a line."),
                                   ("Long Story", "http://127.0.0.1:%d/stories/two.html" % WP, "Words. " * 600)]))
 with open(os.path.join(web, "stories", "one.html"), "w") as f:
-    f.write("<html><body><article><h1>Short Story</h1>" + "<p>The whole story, at length.</p>" * 80 + "</article></body></html>")
+    f.write("<html><body><article><h1>Short Story</h1>" + "".join("<p>Paragraph %d of the whole story goes on at some length, as a real article's paragraphs do.</p>" % i for i in range(1, 13)) + "</article></body></html>")
 paper_web = tempfile.mkdtemp()
 os.makedirs(os.path.join(paper_web, "open")); os.makedirs(os.path.join(paper_web, "closed"))
 with open(os.path.join(paper_web, "open", "tech.xml"), "w") as f:
     f.write(rss("Open Tech", [("A Gadget", "http://127.0.0.1:%d/open/gadget.html" % XP, "A gadget, in a line.")]))
 with open(os.path.join(paper_web, "open", "gadget.html"), "w") as f:
-    f.write("<html><body><article>" + "<p>The gadget's whole story.</p>" * 80 + "</article></body></html>")
+    f.write("<html><body><article>" + "".join("<p>Paragraph %d of the gadget's whole story goes on at some length, as articles do.</p>" % i for i in range(1, 13)) + "</article></body></html>")
 with open(os.path.join(paper_web, "closed", "news.xml"), "w") as f:
     f.write(rss("Closed News", [("Not for web pages", "http://127.0.0.1:%d/closed/x.html" % XP, "x")]))
 class Feeds(Quiet):
@@ -878,7 +878,7 @@ check(dp.get("dir") == "in/daily" and len(dfeeds) == 2 and dp.get("failed") == [
       and abs((dp.get("at") or 0) - time.time()) < 600,
       "daily paper: the feeds a web page may read brought for the Kindle (its own site's, one that allows it); the one that doesn't, named")
 check(set(dpages) == {"http://127.0.0.1:%d/stories/one.html" % WP, "http://127.0.0.1:%d/open/gadget.html" % XP}
-      and b"The whole story" in files.get(G + "in/daily/" + dpages.get("http://127.0.0.1:%d/stories/one.html" % WP, "-"), b""),
+      and b"Paragraph 3 of the whole story" in files.get(G + "in/daily/" + dpages.get("http://127.0.0.1:%d/stories/one.html" % WP, "-"), b""),
       "daily paper: whole stories, the short ones' own pages (not the long one's)")
 check("PAPERKEY42" not in log and "Closed News" in log and "Daily paper: 2 of 3 feeds, 2 whole stories." in log,
       "daily paper: the log names the feed that couldn't come, never a feed's address")

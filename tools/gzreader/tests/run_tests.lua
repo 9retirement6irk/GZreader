@@ -14341,7 +14341,7 @@ if os.getenv("GZ_SYNC_DUMP") and require("lfs").attributes(os.getenv("GZ_SYNC_DU
                 and table.concat(titles, ",") == "Short Story,Long Story,A Gadget" and (ed.failed or {})[1] == "Closed News"
                 and Usb.summaryText(r):match("today's paper"),
                 "e2e: the daily paper made on the Kindle from the feeds the page brought (" .. table.concat(titles, ",") .. ")")
-            check(full and full.full and (full.text or ""):find("The whole story, at length.", 1, true) and (ed.full or 0) >= 1,
+            check(full and full.full and (full.text or ""):find("Paragraph 3 of the whole story", 1, true) and (ed.full or 0) >= 1,
                 "e2e: …a short story whole, from its own page the page brought")
             check(require("libs/libkoreader-lfs").attributes(Daily.inDir(), "mode") == nil
                 and require("libs/libkoreader-lfs").attributes(lib .. "/.gzsync/in", "mode") == nil,
