@@ -2,7 +2,7 @@
 -- (Radicale), after the setup guide (demo/demo_grimmory.py on 18080): the
 -- tab bar (Home, Downloads, Grimmory, Notes, Calendar on Z X C V B), the
 -- connect page, Agenda, an event, Day, Week, Month, paging, letter keys,
--- and Settings → Connections → Calendar. Also the Notes tab's M key.
+-- and Settings → Accounts and services → Calendar. Also the Notes tab's M key.
 local readme = dofile("/root/work/koreader/tools/gzreader/emulator/readme_shots.lua")
 local s = { start = readme.start }
 for _i, step in ipairs(readme) do
@@ -78,7 +78,7 @@ windows("after Grimmory → Calendar:")
 key("V", 8)
 shot("cal-16-V-notes")
 windows("after Calendar → Notes:")
--- Settings → Connections → Calendar
+-- Settings → Accounts and services → Calendar
 key("Z", 6)
 key("Menu", 4)
 key("U", 6)

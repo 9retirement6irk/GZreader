@@ -1,5 +1,5 @@
 --[[--
-Settings → Connections → Immich (Photos): the connection, the album, what
+Settings → Accounts and services → Photos: the connection, the album, what
 its pictures are used for (the sleep screen, the Home wallpaper), how many
 are kept on the Kindle, and Get new pictures now (gzreader_immich.lua).
 Kindles without Wi‑Fi set it up on the sync page; here they only choose what
@@ -168,7 +168,7 @@ function S.items(plugin)
         useItem("immich", _("An Immich picture, always")),
         useItem("none", _("Not used (pictures from the screensavers folder)")),
     } }
-    items[#items + 1] = { text = _("Home wallpaper"), help_text = _("A picture from the album as the wallpaper of Home and the tabs (Settings → Interface → Wallpaper); another one each time new pictures come."),
+    items[#items + 1] = { text = _("Home wallpaper"), help_text = _("A picture from the album as the wallpaper of Home and the tabs (Settings → Sleep and wallpaper → Home background); another one each time new pictures come."),
         checked_func = function() local W = Wallpaper(); return W ~= nil and W.isOn() end,
         keep_menu_open = true,
         callback = function(tm)

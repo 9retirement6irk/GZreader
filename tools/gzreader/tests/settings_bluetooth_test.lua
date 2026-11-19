@@ -1,4 +1,4 @@
--- Settings → General → Bluetooth on Kindles with Bluetooth: ZenOS's
+-- Settings → Audio → Bluetooth (or the first page, with no Audio) on Kindles with Bluetooth: ZenOS's
 -- Bluetooth module, its Kindle adapter and its device list, brought back
 -- with GZreader's gate (common/gz_bluetooth.lua: only Kindles whose Amazon
 -- Bluetooth service answers; one question, no lipc-get-prop process).

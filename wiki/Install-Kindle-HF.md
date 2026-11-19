@@ -28,6 +28,6 @@ The setup guide runs on the first start ([After installing](Installing#after-ins
 
 - Touch throughout. → [Using GZreader → Touch Kindles](Using-GZreader#touch-kindles-kindle-touch-paperwhite-3-scribe)
 - Kindles with a frontlight get a light slider in the quick panel; those with a warm light (Paperwhite 5 and newer, Oasis 3, Scribe, Colorsoft) also a warmth slider, cool to warm. → [Using GZreader → Touch Kindles](Using-GZreader#touch-kindles-kindle-touch-paperwhite-3-scribe)
-- These Kindles have no speaker or headphone jack (the newer ones play audio over Bluetooth only): audiobooks, music and read aloud play through Bluetooth headphones or a speaker → [Audiobooks and Read Aloud](Audiobooks-and-Read-Aloud). Bluetooth itself is in Settings → General → Bluetooth (on or off, pairing, connecting). → [Bluetooth](Bluetooth)
+- These Kindles have no speaker or headphone jack (the newer ones play audio over Bluetooth only): audiobooks, music and read aloud play through Bluetooth headphones or a speaker → [Audiobooks and Read Aloud](Audiobooks-and-Read-Aloud). Bluetooth itself is in Settings → Audio → Bluetooth (on or off, pairing, connecting). → [Bluetooth](Bluetooth)
 
 Updating and uninstalling: [Updating and uninstalling](Updating-and-Uninstalling).

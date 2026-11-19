@@ -1,7 +1,7 @@
 --[[--
 Grimmory audiobooks on the Kindle: download, listen, chapters, sleep timer,
 progress synced with Grimmory's own audiobook progress (the web player's).
-Or Plex's (Settings → Connections → Plex → Audiobooks): an album of a Plex
+Or Plex's (Settings → Accounts and services → Audiobooks): an album of a Plex
 library is a book (id "plex-<album key>", book.plex = { key, thumb }), its
 tracks the book's files (gzreader_plex.lua Plex:audiobookInfo), and the
 listening position goes to the track's place in Plex (Plex:setProgress),
@@ -899,7 +899,7 @@ function Player:tick()
         if self.ticker then UIManager:unschedule(self.ticker); self.ticker = nil end
         self:save()
         UIManager:show(InfoMessage:new{ text = played < 4000
-            and _("The audio didn't play. Run Test audiobook playback (Settings → General → Audio), then send the log (Menu → Diagnostics) if it still fails.")
+            and _("The audio didn't play. Run Test audiobook playback (Settings → Audio), then send the log (Menu → Diagnostics) if it still fails.")
             or _("The audio stopped unexpectedly. Your place is kept. If it keeps happening, send the log (Menu → Diagnostics).") })
         if self.screen then self.screen:refresh() end
         return

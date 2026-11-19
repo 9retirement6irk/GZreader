@@ -228,7 +228,11 @@ end
 
 --- The page's lines (pure: run_tests.lua). Each has an icon (`icon_glyph`)
 --- and a part with things in it a submenu, for Settings → General → Storage.
-function Storage.items(r)
+--- `extra` (optional): { [part] = rows } put at the end of that part's
+--- submenu after a line — the services' own lines about what they keep and
+--- their Free up space rows (Storage.serviceRows), so one page frees it all.
+function Storage.items(r, extra)
+    extra = type(extra) == "table" and extra or {}
     local items = {}
     if r.disk then
         items[#items + 1] = iconed("free", { text = _("Free on this Kindle"), keep_menu_open = true,
@@ -247,7 +251,15 @@ function Storage.items(r)
             end
             if #sub == 0 then sub[1] = iconed(key, { text = none, select_enabled = false, keep_menu_open = true }) end
             entry.sub_item_table = sub
-        else
+        end
+        local more = extra[key]
+        if type(more) == "table" and #more > 0 then
+            local sub = entry.sub_item_table or {}
+            if sub[#sub] then sub[#sub].separator = true end
+            for _i, row in ipairs(more) do sub[#sub + 1] = row end
+            entry.sub_item_table = sub
+        end
+        if not entry.sub_item_table then
             entry.select_enabled = false
             entry.keep_menu_open = true
         end
@@ -262,6 +274,53 @@ function Storage.items(r)
     group("calendar", _("Calendar"))
     group("caches", _("Covers and saved lists"))
     return items
+end
+
+--- The services' own storage rows, for their parts of the page: Notes (what's
+--- kept, changes waiting, Free up space), Calendar (events kept, last sync,
+--- Free up space), Music (Remove all downloaded music). Until 1.32.0 each
+--- was on its own page in Connections; those pages now link here
+--- (Storage.linkItem). A service whose module fails is left out.
+function Storage.serviceRows(plugin)
+    local out = {}
+    local function add(key, fn)
+        local ok, rows = pcall(fn)
+        if ok and type(rows) == "table" and #rows > 0 then out[key] = rows end
+    end
+    add("notes", function() return require("gzreader_notesettings").storageItems(plugin) end)
+    add("calendar", function() return require("gzreader_calendar").storageItems(plugin) end)
+    add("music", function() return require("gzreader_musictab").storageItems(plugin) end)
+    return out
+end
+
+--- The parts' names on the page (Storage.items' labels), by part.
+Storage.LABELS = { books = "Books", audiobooks = "Audiobooks", music = "Music", notes = "Notes", calendar = "Calendar" }
+
+--- Opens Settings → General → Storage, and the part `key` in it when it's
+--- measured already (the page measures again when it opens).
+function Storage.open(key)
+    local path = { { key = "_zen_settings_root", value = "general" }, { key = "text", value = _("Storage") } }
+    if key and Storage.LABELS[key] then path[3] = { key = "text", value = _(Storage.LABELS[key]) } end
+    local ok, zen = pcall(function() return require("gzreader_tabs").zen() end)
+    if not (ok and zen) then return nil end
+    local okp, page = pcall(function() return require("modules/settings/zen_settings_page").show(zen, { path = path }) end)
+    return okp and page or nil
+end
+
+--- The row a service's settings page has for what it keeps on the Kindle
+--- (Accounts and services → Books, Music, Notes, Calendar): its size from the
+--- last measurement, and a tap opens its part of Settings → General → Storage.
+function Storage.linkItem(key)
+    return iconed(key, {
+        text = _("Storage on this Kindle"),
+        help_text = _("How much room this takes on the Kindle, and freeing it: Settings → General → Storage."),
+        mandatory_func = function()
+            local g = Storage.last and Storage.last[key]
+            return g and g.bytes and Storage.size(g.bytes) or nil
+        end,
+        keep_menu_open = true,
+        callback = function() Storage.open(key) end,
+    })
 end
 
 --- The last measurement (shown at once the next time, then measured again).
@@ -282,7 +341,7 @@ function Storage.settingsItems(plugin, page)
         for i, it in ipairs(items) do list[i] = it end
         if page and not page._closed and page.item_table == list and page.updateItems then page:updateItems() end
     end
-    fill(Storage.last and Storage.items(Storage.last)
+    fill(Storage.last and Storage.items(Storage.last, Storage.serviceRows(plugin))
         or { iconed("free", { text = _("Measuring…"), select_enabled = false, keep_menu_open = true }) })
     local tries = 0
     local function run()
@@ -299,7 +358,7 @@ function Storage.settingsItems(plugin, page)
                 return
             end
             Storage.last = r
-            fill(Storage.items(r))
+            fill(Storage.items(r, Storage.serviceRows(plugin)))
         end)
     end
     run()

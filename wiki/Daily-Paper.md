@@ -8,7 +8,7 @@ Wi‑Fi.
 
 ## Turning it on
 
-**Settings → Home → Daily paper**, and tick **Daily paper**. A folded
+**Settings → Home and tabs → Home → Daily paper**, and tick **Daily paper**. A folded
 newspaper appears on Home's bookshelf, standing on its side at the start of
 the first shelf like the books beside it, nearly as tall as they are: you see
 its fold with the paper's name running up it, the day's lead headline, and
@@ -52,7 +52,7 @@ rain on a wet day. It comes with the day's paper:
 - from your **Home Assistant** when the [House](House) tab's is connected (its
   first weather entity); nothing leaves your network;
 - otherwise from **Open‑Meteo** (open-meteo.com: free, no account) for the
-  town you set in **Settings → Home → Daily paper → Weather → Town**, or on
+  town you set in **Settings → Home and tabs → Home → Daily paper → Weather → Town**, or on
   the setup page's Daily paper tab. **Degrees** switches Fahrenheit and
   Celsius (it starts as the town's country uses).
 
@@ -64,13 +64,13 @@ front page has a **TODAY** box under the date with today's events, all-day
 ones first, then by time. They're the events the Calendar tab last synced,
 kept on the Kindle: nothing is fetched for it and nothing about them leaves
 the Kindle. Tap the box for the Calendar tab. A day without events has no
-box; **Settings → Home → Daily paper → Today's calendar events** turns it off.
+box; **Settings → Home and tabs → Home → Daily paper → Today's calendar events** turns it off.
 
 **Pictures**: the lead story's picture runs across the front page, a few more
 stories have theirs in the columns (eight an edition at most), and the lead's
 is on the newspaper's front page on the shelf. They are fetched with the
 paper, kept until the next edition and shown in grey. A story opened as text
-has no picture. **Settings → Home → Daily paper → Pictures** turns them off
+has no picture. **Settings → Home and tabs → Home → Daily paper → Pictures** turns them off
 (the paper is fetched faster without them).
 
 ## When it's fetched
@@ -81,7 +81,7 @@ Once a day, the first time Home (or the paper) is on the screen after
 - With [Wi‑Fi](Wi-Fi) on **Auto**, GZreader turns Wi‑Fi on for it and off
   again afterwards. On **On** it's fetched straight away. On **Off** nothing
   is fetched until you ask: **Fetch today's paper** at the foot of the
-  paper (or **Settings → Home → Daily paper → Fetch now**), which turns
+  paper (or **Settings → Home and tabs → Home → Daily paper → Fetch now**), which turns
   Wi‑Fi on for that.
 - If the feeds can't be reached, yesterday's paper stays (the widget says
   which day it's from) and GZreader tries again half an hour later.
@@ -96,14 +96,14 @@ A feed is a site's list of its newest stories (RSS or Atom); most news sites
 and blogs have one.
 
 **From your phone or computer** (the easy way to paste addresses):
-**Settings → Home → Daily paper → Set up from a browser (QR code)** opens the
+**Settings → Home and tabs → Home → Daily paper → Set up from a browser (QR code)** opens the
 [setup page](Setup-Page-and-Connections) at its **Daily paper** tab. Scan the
 code, or open the address shown on a computer on the same Wi‑Fi. There you
 can turn the paper on or off, take it off the bookshelf, tick the feeds
 GZreader comes with, paste your own (one per line, as in `feeds.txt` below),
 and remove them. **Save**, then press Back on the Kindle.
 
-**On the Kindle**: **Settings → Home → Daily paper → Feeds**:
+**On the Kindle**: **Settings → Home and tabs → Home → Daily paper → Feeds**:
 
 - GZreader comes with a few to tick, by section: BBC News (World, Technology,
   Science), NPR, Ars Technica, NASA, Literary Hub, Atlas Obscura, NPR Strange

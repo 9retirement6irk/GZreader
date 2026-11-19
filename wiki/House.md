@@ -10,9 +10,9 @@ Not on the Kindle 2 and DX: they have no Wi‑Fi.
 
 ## Turning it on
 
-1. **Settings → Connections → Home Assistant (House)**, and connect (below).
+1. **Settings → Accounts and services → House**, and connect (below).
 2. Tick **House tab** there. The tab goes at the end of the tab bar; move it
-   or turn it off in **Settings → Interface → Navbar → Tabs** like any other
+   or turn it off in **Settings → Home and tabs → Tab bar → Tabs** like any other
    tab. The bar holds 7 tabs: if it's full, turn one off first.
 
 ## Connecting
@@ -81,7 +81,7 @@ Assistant can't be reached, the last list stays with a line saying why.
 
 ## Settings
 
-**Settings → Connections → Home Assistant (House)**:
+**Settings → Accounts and services → House**:
 
 - **House tab**: in the tab bar or not.
 - **Rooms and devices**: hide a room, or single devices in it (e.g. a

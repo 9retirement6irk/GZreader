@@ -225,7 +225,7 @@ local function houseSection(st, base)
     local h = st.house
     if not h then return "" end
     local parts = { '<section id="house" class="tab"><h2>House (Home Assistant)</h2>',
-        '<p class="what">The House tab shows your <a href="https://www.home-assistant.io">Home Assistant</a> rooms with their lights, switches, thermostats, locks and scenes, to switch from the Kindle. Turn the tab on in Settings → Connections → Home Assistant.</p>' }
+        '<p class="what">The House tab shows your <a href="https://www.home-assistant.io">Home Assistant</a> rooms with their lights, switches, thermostats, locks and scenes, to switch from the Kindle. Turn the tab on in Settings → Accounts and services → House.</p>' }
     if h.connected then
         parts[#parts + 1] = status(true, "Connected to <b>" .. esc(h.name or "Home Assistant") .. "</b> · " .. esc(h.host))
         parts[#parts + 1] = form(base .. "/house/disconnect",
@@ -411,7 +411,7 @@ local function musicSection(st, base)
     local m = st.plex
     if not m then return "" end
     local parts = { '<section id="music" class="tab"><h2>Music (Plex)</h2>',
-        '<p class="what">Albums and playlists from your Plex Media Server, to play while you read (the Music tab; turn it on in Settings → Connections → Plex (Music) → Music tab).</p>' }
+        '<p class="what">Albums and playlists from your Plex Media Server, to play while you read (the Music tab; turn it on in Settings → Accounts and services → Music → Music tab).</p>' }
     if m.error then parts[#parts + 1] = '<p class="err">' .. esc(m.error) .. "</p>" end
     if m.connected then
         parts[#parts + 1] = status(true, "Signed in as <b>" .. esc(m.username) .. "</b> · " .. esc(m.server))
@@ -514,7 +514,7 @@ local function sleepSection(st, base)
         radios[#radios + 1] = radio("mode", "immich", SLEEP_LABELS.immich, mode == "immich")
     end
     if not SLEEP_LABELS[mode or ""] then
-        radios[#radios + 1] = '<p class="note" style="margin:0 0 12px">Now: another sleep screen, chosen on the Kindle (Settings → General → Sleep → Wallpaper).</p>'
+        radios[#radios + 1] = '<p class="note" style="margin:0 0 12px">Now: another sleep screen, chosen on the Kindle (Settings → Sleep and wallpaper → Sleep → Wallpaper).</p>'
     end
     parts[#parts + 1] = form(base .. "/sleep/mode", table.concat(radios) .. '<button class="alt small" type="submit">Use this sleep screen</button>', "Saving…")
     -- adding pictures (made here: the Kindle's size, grey, PNG)

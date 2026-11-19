@@ -411,9 +411,9 @@ function Shelves.ready(plugin)
     local api = plugin.api
     if type(api) == "table" and api:isPaired() then return true end
     if type(api) == "table" and api.offline then
-        info(_("Sign in to Grimmory to continue: plug this Kindle into a computer and sync with the sync page (Settings → Connections → Sync through a computer)."), 6)
+        info(_("Sign in to Grimmory to continue: plug this Kindle into a computer and sync with the sync page (Settings → General → Transfer → Sync through a computer)."), 6)
     else
-        info(_("Sign in to Grimmory to continue: Settings → Connections → Grimmory."), 5)
+        info(_("Sign in to Grimmory to continue: Settings → Accounts and services → Books."), 5)
     end
     return false
 end

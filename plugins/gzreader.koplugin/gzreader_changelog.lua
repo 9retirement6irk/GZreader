@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Settings arranged as on an iPhone or Mac: Wi-Fi at the top, Dark mode on one page, your accounts together", text = "Settings is arranged the way an iPhone's or a Mac's is. The first page fits on one screen: Wi-Fi (its mode on the right), then General (About, Software update, Storage, Battery, Time and date, Language, Transfer, Setup Guide, Performance), Display and light (Screen, Brightness and warmth, Dark mode, menu font, accent colour, icons), Sleep and wallpaper (Sleep, Home background, pictures from Immich), Audio (Bluetooth first), Home and tabs (Home, Status bar, Tab bar, Quick panel, Downloads tab), Reader (with Closing a book), Accounts and services (Books with your Grimmory account, Audiobooks, Music, Notes, Calendar, Photos, House, each with its service on the right) and Privacy and diagnostics (the diagnostic log, Report a problem, Advanced). Dark mode's settings, spread over four places before, are on one page; the two Wallpaper rows are now Sleep and Home background; Copy to or from another GZreader and Sync through a computer are in General → Transfer; each service's page ends with its storage, which opens Settings → General → Storage where every Free up space row now is. Nothing you had set changes, only where it is: the wiki's Settings page lists every move." },
+        },
+    },
+    {
         version = "1.33.0",
         changes = {
             { short = "Drawing: the pencil and the highlighter draw much faster", text = "The pencil and the highlighter were several times slower than the pen: every pixel under the line was read and written through a slow route, several times over. They now write the page's pixels directly, the pencil's texture is looked up instead of worked out for each pixel, and its line is painted in fewer steps. In GZreader's emulator the highlighter's ink takes about a tenth of the time it did and the pencil's about a quarter, close to the pen's. A long stroke's line in the diagnostic log now also says how long each of its frames took to handle." },

@@ -1,5 +1,5 @@
 --[[--
-Audiobooks from a Plex library, instead of Grimmory's (Settings → Connections
+Audiobooks from a Plex library, instead of Grimmory's (Settings → Accounts and services
 → Plex → Audiobooks): the Catalog's Audiobooks page (gzreader_browser.lua
 asks PA.items when a Plex library is chosen), its lists and search. The
 Bookshelf view's shelves (Continue listening, Recently added) are

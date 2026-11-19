@@ -69,7 +69,10 @@ check(find(out, "Gestures and controls").sub_item_table[1].separator == nil, "no
 check(find(out, "Appearance").separator == true, "rows outside a group keep their line")
 check(out.needs_refresh == true, "the list's own fields are kept")
 check(find(out, "Gestures and controls").icon_glyph ~= nil and find(out, "Notes and footnotes").icon_glyph ~= nil, "each group has an icon")
-check(texts(G.group(rows("Appearance", "End of book"))) == "|Appearance|End of book|", "no members: no empty group")
+check(texts(G.group(rows("Appearance", "Highlight / Lookup"))) == "|Appearance|Highlight / Lookup|", "no members: no empty group")
+local closing = G.group(rows("Appearance", "Restore library location on exit", "End of book"))
+check(texts(closing) == "|Appearance|Closing a book|" and texts(find(closing, "Closing a book").sub_item_table) == "|End of book|Restore library location on exit|",
+    "Closing a book: End of book, then Restore library location on exit " .. texts(closing))
 check(G.group(nil) == nil, "nil: nil")
 
 -- the paths the Settings buttons open
@@ -99,8 +102,10 @@ local okb, reader = pcall(require("modules/settings/sections/reader_settings").b
 check(okb and type(reader) == "table", "Reader builds " .. tostring(not okb and reader or ""))
 if okb then
     print("    Reader: " .. texts(reader))
-    check(texts(reader) == "|Appearance|Highlight / Lookup|Gestures and controls|Table of contents|Notes and footnotes|Restore library location on exit|End of book|",
-        "Reader: Appearance, Highlight / Lookup, Gestures and controls, Table of contents, Notes and footnotes, Restore library location on exit, End of book")
+    check(texts(reader) == "|Appearance|Highlight / Lookup|Gestures and controls|Table of contents|Notes and footnotes|Closing a book|",
+        "Reader: Appearance, Highlight / Lookup, Gestures and controls, Table of contents, Notes and footnotes, Closing a book " .. texts(reader))
+    check(texts(find(reader, "Closing a book").sub_item_table) == "|End of book|Restore library location on exit|",
+        "Closing a book holds End of book and Restore library location on exit")
     -- (ZenOS 4.3.2's Table of contents: a row of its own, not in a group)
     local toc = find(reader, "Table of contents")
     check(toc and texts(toc.sub_item_table) == "|Show chapter page counts|", "Table of contents holds Show chapter page counts")

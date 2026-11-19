@@ -3,7 +3,7 @@ The Notes tab's views, after the Memos web app's: how many notes side by
 side (List, Two, Three, Auto) and how long a note is on the board (Compact:
 every note the same size, a long one cut off; Full: each note as long as it
 needs, nothing cut off). L on the board (or Layout, More → Layout), and
-Settings → Connections → Memos (Notes) → Layout.
+Settings → Accounts and services → Notes → Layout.
 
 Only arithmetic here (no widgets), so it can be tested on its own:
 gzreader_notes.lua measures the notes and draws what this lays out.

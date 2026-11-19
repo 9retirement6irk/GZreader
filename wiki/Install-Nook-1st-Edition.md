@@ -102,7 +102,7 @@ always brings back its own software.
 
 ## Updating
 
-Once installed, the Nook updates over Wi‑Fi like a Kindle (Settings → General → Updates), from the same `gzreader-update.zip`; its start script comes with the update. A new KOReader version still needs the full package pushed again. → [Updates and test builds](Updates-and-Test-Builds)
+Once installed, the Nook updates over Wi‑Fi like a Kindle (Settings → General → Software update), from the same `gzreader-update.zip`; its start script comes with the update. A new KOReader version still needs the full package pushed again. → [Updates and test builds](Updates-and-Test-Builds)
 
 ## What to send back
 
