@@ -16,7 +16,7 @@ if [ "$KIND" = kobo ]; then
     printf '[FeatureSettings]\nFoo=1\n' > "$D/.kobo/Kobo/Kobo eReader.conf"
 fi
 cp -a "$TREE" "$APP"
-rm -f "$APP/settings.reader.lua" "$APP/settings/history.lua"
+rm -f "$APP/settings.reader.lua" "$APP/history.lua" "$APP/settings/history.lua"
 mkdir -p "$D/GZreader/Moved Book.sdr" "$D/GZreader/.music/album-1" "$APP/settings/gzreader-drawings"
 python3 "$(dirname "$0")/../tests/make_epub.py" "$D/GZreader/Moved Book.epub" > /dev/null
 cat > "$D/GZreader/Moved Book.sdr/metadata.epub.lua" <<L
@@ -27,7 +27,7 @@ return {
 L
 head -c 2048 /dev/zero > "$D/GZreader/.music/album-1/01.mp3"
 head -c 100 /dev/zero > "$APP/settings/gzreader-drawings/waiting.png"
-cat > "$APP/settings/history.lua" <<L
+cat > "$APP/history.lua" <<L
 return {
     [1] = {
         ["file"] = "$D/GZreader/Moved Book.epub",
