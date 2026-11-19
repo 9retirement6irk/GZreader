@@ -86,14 +86,18 @@ API to `/api` are found too.
   **⋮** and **Restore** instead. (The note editor's **⋮** and, for a note
   that's already there, the drawing screen's **⋮** have **Archive note**
   and **Delete note…** too: Archive saves what you changed first; Delete
-  asks, and drops what wasn't saved.) Below it, the text
+  asks, and drops what wasn't saved. The drawing screen also has both in
+  its top bar, beside **⋮**: a note that is only a drawing opens straight on
+  that screen.) Below it, the text
   in the note editor's font (the sticky notes on the
   Notes tab stay handwritten, in Patrick Hand), checklist items with letter keys
   (press one to tick or untick it; the change goes to Memos), pictures from
   the note shown inline, its tags and place, and its attachments (PDFs and
   other documents open in the reader, pictures in the image viewer; each is
   downloaded once into `cache/gzreader-notes`). **Alt+E** edits, **Alt+P**
-  pins, page keys scroll a long note.
+  pins, page keys scroll a long note. The top of the screen has the
+  note's name, and under it its date, its space and whether it's pinned, as
+  on the touch Kindles (which have buttons there too).
 - **Archive and delete:** a note's **More** (**M** on keyboard Kindles,
   Menu on a Kindle 4) has **Archive** (the note goes into Memos' archive:
   off the board, kept) and **Delete…** (asks first; gone for good, in Memos
@@ -188,6 +192,9 @@ API to `/api` are found too.
   from the last line also reaches the toolbar; ◀ ▶ choose, Press applies. Shortcuts:
   Alt+L list, Alt+C checklist, Alt+N numbered, Alt+H heading, Alt+K italic,
   Alt+B bold, Alt+G tag, Alt+S save, Alt+V who can see it, Alt+A its space.
+  **Alt+M** opens a menu with who can see it, its space, **Archive note**,
+  **Delete note…** and Close. The top of the screen has the note's name, and
+  under it who can see it, its space and its tags.
   Alt + the top row types 1–0 here. New notes are **private** unless you
   change it. Back asks whether to save.
 - **Pictures in a note** show at the size and place they were given in

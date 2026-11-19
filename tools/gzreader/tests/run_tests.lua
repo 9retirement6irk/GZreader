@@ -8964,7 +8964,7 @@ print("Notes (Memos v0.31)")
             and nesrc:find("self.drawing_closed_at = Editor.now()", 1, true) ~= nil
             and select(2, nesrc:gsub("self:topTap%(", "")) == 5,
             "editor (touch, full page): Save at the top right, not in the row under the title; Draw, space, visibility and Save guarded")
-        check(nesrc:find("self.title_slot[1] = self.save_top and self:notebookBar(sw) or OverlapGroup:new{", 1, true) ~= nil
+        check(nesrc:find("self.title_slot[1] = (self.save_top or self.keys_bar) and self:notebookBar(sw) or OverlapGroup:new{", 1, true) ~= nil
             and nesrc:find('tap = function(w, fn, guarded) return guarded and self:topTap(w, fn) or tapTarget(w, fn) end', 1, true) ~= nil
             and nesrc:find('back = function() self:onCloseDialog() end', 1, true) ~= nil
             and nesrc:find('action = { "done", _("Done"), function() self:save() end, true }', 1, true) ~= nil,
@@ -8976,7 +8976,23 @@ print("Notes (Memos v0.31)")
                 and NoteBar.nameOf(string.rep("word ", 20)):sub(-3) == "…",
                 "the bar's name: a note's first line of words (marks off, not a picture or a line of tags, 48 characters at most)")
             local vsrc = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
-            check(vsrc:find("Touch.on() and self:topBar(sw, title_h, space) or CenterContainer:new{", 1, true) ~= nil
+            -- keyboard Kindles: the same bar without buttons on an opened note and in the editor; Alt+M the editor's menu
+            check(vsrc:find("            self:topBar(sw, title_h, space),", 1, true) ~= nil
+                and vsrc:find('note = Touch.keys() and _("M more") or _("Menu: more") }', 1, true) ~= nil
+                and not vsrc:find('TextWidget:new{ text = _("Note"), face = Font:getFace("smalltfont", 22), bold = true }', 1, true),
+                "an opened note without a touch screen: the bar with the note's name and its date (not just \"Note\"); M more at its right")
+            check(nesrc:find("self.keys_bar = not self.touch and not self.dpad and not self.floating or nil", 1, true) ~= nil
+                and nesrc:find('hint = table.concat(hint, " \\u{00B7} "), note = _("Alt+M more") })', 1, true) ~= nil
+                and nesrc:find('if k == "M" and self.keys_bar then self:barOptions(); return true end', 1, true) ~= nil,
+                "the editor on a keyboard Kindle: the bar with the note's name, who can see it, its space and tags; Alt+M: its menu (Archive, Delete)")
+            ;(function()
+                -- the bar built without a back button and with a note at the right (stand-in widgets)
+                local nbsrc = io.open(PLUGIN .. "/gzreader_notebar.lua"):read("*a")
+                check(nbsrc:find('local back = o.back and iconButton("back", "back", o.back, false) or HorizontalSpan:new{ width = S(8) }', 1, true) ~= nil
+                    and nbsrc:find("if o.note then", 1, true) ~= nil,
+                    "the bar: no ← without a touch screen; a grey word at the right for the key that has the rest")
+            end)()
+            check(vsrc:find("self:topBar(sw, title_h, space)", 1, true) ~= nil
                 and vsrc:find('{ "pin", m.pinned and "pinned" or "pin", function() self:onPin() end }', 1, true) ~= nil
                 and vsrc:find('{ "archive", "archive", function() self:onArchive(true) end }', 1, true) ~= nil
                 and vsrc:find('{ "delete", "trash", function() self:onDelete() end }', 1, true) ~= nil
@@ -8997,6 +9013,9 @@ print("Notes (Memos v0.31)")
                 and dsrc3:find('rows[#rows + 1] = { id = "archive-note", row = true, label = _("Archive note") }', 1, true) ~= nil
                 and dsrc3:find('rows[#rows + 1] = { id = "delete-note", row = true, label = _("Delete note…") }', 1, true) ~= nil,
                 "the editor's ⋮ and the drawing screen's ⋮ (a note that's there): Archive note (saved first), Delete note…")
+            check(dsrc3:find('icons[#icons + 1] = { id = "delete-note", icon = "trash", label = _("Delete note…") }', 1, true) ~= nil
+                and dsrc3:find('icons[#icons + 1] = { id = "archive-note", icon = "archive", label = _("Archive note") }', 1, true) ~= nil,
+                "the drawing screen's top bar (a note that's there): Archive and Delete beside ⋮, as an opened note has")
             -- an opened note under the editor goes when its note is archived or deleted
             local UIMq = require("ui/uimanager")
             local shown_was = UIMq._window_stack

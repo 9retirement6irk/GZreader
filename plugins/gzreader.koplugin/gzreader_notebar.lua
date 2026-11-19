@@ -12,6 +12,8 @@ same thing from widgets, with the same icons (icons/draw/).
   NoteBar.build{ width, height, title, hint, back = fn,
       icons = { { id, icon, fn, guarded }, … }, action = { id, text, fn, guarded },
       tap = function(widget, fn, guarded) … end }
+  Without a touch screen: no `back`, no icons; `note` is a grey word at the
+  right (the key that has the rest: "M more").
   → the bar widget, { [id] = its tap target } (back is "back").
 ]]
 
@@ -57,8 +59,14 @@ function NoteBar.build(o)
         buttons[id] = t
         return t
     end
-    local back = iconButton("back", "back", o.back, false)
+    -- (no `back`: a Kindle without a touch screen, where keys do what the buttons do)
+    local back = o.back and iconButton("back", "back", o.back, false) or HorizontalSpan:new{ width = S(8) }
     local right = HorizontalGroup:new{ align = "center" }
+    if o.note then
+        -- (…and at the right, in grey, the key that has the rest)
+        right[#right + 1] = TextWidget:new{ text = o.note, face = Font:getFace("cfont", 13), fgcolor = Blitbuffer.COLOR_DARK_GRAY }
+        right[#right + 1] = HorizontalSpan:new{ width = S(6) }
+    end
     for _i, ic in ipairs(o.icons or {}) do right[#right + 1] = iconButton(ic[1], ic[2], ic[3], ic[4]) end
     if o.action then
         local a = o.action
@@ -70,7 +78,7 @@ function NoteBar.build(o)
         right[#right + 1] = t
     end
     right[#right + 1] = HorizontalSpan:new{ width = S(6) }
-    local left_w = S(4) + bh + S(6)
+    local left_w = S(4) + back:getSize().w + S(6)
     local title_w = math.max(S(60), sw - left_w - right:getSize().w - S(10))
     local title = VerticalGroup:new{ align = "left",
         TextWidget:new{ text = o.title or "", face = Font:getFace("cfont", 17), bold = true, max_width = title_w } }

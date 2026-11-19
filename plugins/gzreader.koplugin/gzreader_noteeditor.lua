@@ -313,7 +313,10 @@ function Editor:init()
     -- touch, the full page: Save at the top right (beside Space and Private, where the drawing screen's Done is)
     self.save_top = self.touch and not self.floating or nil
     -- (and its top row is the drawing screen's bar: ←, the note's name, ✎ # ⋮ Done; Editor:notebookBar)
-    if self.save_top then self.title_h = S(52) end
+    -- a keyboard Kindle, the full page: the same bar (the note's name; who can see it, its space and
+    -- its tags under it), without buttons: Alt+M has the rest (who can see it, space, Archive, Delete)
+    self.keys_bar = not self.touch and not self.dpad and not self.floating or nil
+    if self.save_top or self.keys_bar then self.title_h = S(52) end
     if self.rich then self.tool_h = S(50) end -- (the row under the title: the note's sheets, and Save off touch)
     local function box(h)
         -- (the formatted page: made once, its own height above its keyboard)
@@ -403,6 +406,20 @@ function Editor:init()
         self.ges_events.PullPanel = { GestureRange:new{ ges = "swipe", range = function() return self:pullZone() end } }
     end
     self:drawChrome()
+    if self.keys_bar then
+        -- (the text box is a whole number of lines tall: if the page is taller than the screen
+        -- with its bar, toolbar and the keys at the foot, the box gives way)
+        local over = column:getSize().h - sh
+        if over > 0 then self:shorten(column, box, text_h, over) end
+    end
+end
+
+--- The page `over` pixels too tall for the screen: its text box made shorter.
+function Editor:shorten(column, box, text_h, over)
+    if self.input.free then pcall(self.input.free, self.input) end
+    self.input = box(text_h - over)
+    column[2] = self.input
+    column:resetLayout()
 end
 
 --- Where a swipe down opens the quick panel: the title row (and a little
@@ -535,7 +552,7 @@ function Editor:drawChrome()
     local sw = self.win_w
     local margin = self.margin
     self.title_slot:clear()
-    self.title_slot[1] = self.save_top and self:notebookBar(sw) or OverlapGroup:new{
+    self.title_slot[1] = (self.save_top or self.keys_bar) and self:notebookBar(sw) or OverlapGroup:new{
         dimen = Geom:new{ w = sw, h = self.title_h },
         LeftContainer:new{ dimen = Geom:new{ w = sw, h = self.title_h },
             HorizontalGroup:new{ HorizontalSpan:new{ width = margin },
@@ -632,7 +649,7 @@ function Editor:drawChrome()
         hint = _("Save to Memos") .. "  (Alt+S)   \u{00B7}   Menu " .. _("back to the text")
     else
         hint = "Menu " .. _("toolbar") .. "   \u{00B7}   Alt+G " .. _("tag") .. "   Alt+C " .. _("check") .. "   Alt+B "
-            .. _("bold") .. "   Alt+S " .. _("save")
+            .. _("bold") .. "   Alt+S " .. _("save") .. (self.keys_bar and ("   Alt+M " .. _("more")) or "")
     end
     self.hint_slot:clear()
     self.hint_slot[1] = CenterContainer:new{ dimen = Geom:new{ w = sw, h = self.footer_h },
@@ -653,6 +670,11 @@ function Editor:notebookBar(sw)
     end
     if #tags > 0 then hint[#hint + 1] = table.concat(tags, " ") end
     self.bar_title = self:heading() or (self.memo and _("Edit note") or _("New note"))
+    if self.keys_bar then
+        self.bar_buttons = {}
+        return (require("gzreader_notebar").build{ width = sw, height = self.title_h, title = self.bar_title,
+            hint = table.concat(hint, " \u{00B7} "), note = _("Alt+M more") })
+    end
     local icons = {}
     if self:canDraw() then icons[#icons + 1] = { "draw", "pen", function() self:openDrawing() end, true } end
     icons[#icons + 1] = { "tag", "tag", function() self:pickTag() end, true }
@@ -721,6 +743,11 @@ function Editor:barOptions()
     end
     rows[#rows + 1] = { { text = _("Close"), align = "left", callback = run(function() self:onCloseDialog() end) } }
     dialog = ButtonDialog:new{ title = _("Note"), buttons = rows }
+    if self.keys_bar then
+        -- (a keyboard Kindle: each row has its letter, as the menus on the board and an opened note)
+        local letters = rawget(_G, "__ZEN_DIALOG_SHORTCUTS")
+        if letters then pcall(letters, dialog) end
+    end
     self.options_dialog = dialog
     self:keyboardAside(dialog)
     UIManager:show(dialog)
@@ -930,6 +957,7 @@ function Editor:onShortcut(k)
         return true
     end
     if k == "A" and self.has_spaces then self:pickSpace(); return true end
+    if k == "M" and self.keys_bar then self:barOptions(); return true end
     for i, t in ipairs(NoteEditor.TOOLS) do
         if t.key == k then self:useTool(i); return true end
     end
