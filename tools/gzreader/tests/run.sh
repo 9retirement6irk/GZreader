@@ -254,6 +254,10 @@ echo "== the shelf ornaments stand level"
 timeout 60 python3 -I "$T/ornament_level_test.py" 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
 
+echo "== the Nook package, from the Kindle 2/3/DX package (GZreader/app or koreader/)"
+timeout 120 bash "$T/package_nook_test.sh" "$REPO" 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+
 echo "== the wiki's links"
 timeout 60 python3 "$T/wiki_test.py" 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
