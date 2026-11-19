@@ -70,6 +70,9 @@ timeout 60 python3 -I "$T/drawing_format_test.py" "$WORK/drawings" 2>&1 | grep -
 echo "== the drawing screen's input (finger; pen only, palm rejection)"
 (cd "$T" && luajit sketch_test.lua "$REPO/plugins/gzreader.koplugin" "$T/lib" "$KOBASE") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+echo "== a safety net under every timer (a round's budget, runaway tasks, GZreader's tasks failing alone)"
+(cd "$T" && luajit tasksafe_test.lua "$REPO/plugins/gzreader.koplugin" "$T/lib" "$KOBASE") 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
 echo "== pen Kindles: the pen and the touch screen kept apart (KOReader's input.lua)"
 (cd "$T" && luajit peninput_test.lua "$REPO" "$KOBASE") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
