@@ -54,6 +54,7 @@ function Paper.statusText(plugin, now)
     local edition = D.load()
     if D.refreshing then return _("fetching today's paper…") end
     if not edition then
+        if D.noWifi() then return _("comes with the next sync") end
         if D.last_error then return _("couldn't fetch the paper") end
         return _("comes when Wi-Fi is on")
     end
@@ -61,6 +62,14 @@ function Paper.statusText(plugin, now)
         return T(_("from %1"), Paper.dateText(edition.at))
     end
     return T(_("%1 stories · %2"), D.count(edition), Paper.timeText(edition.at))
+end
+
+--- Said where there's no paper yet.
+function Paper.noPaperText()
+    if Daily().noWifi() then
+        return _("No paper yet. It comes when this Kindle syncs with the computer: plug it in and open the sync page.")
+    end
+    return _("No paper yet. It's fetched once a day, when Wi-Fi is on.")
 end
 
 ---------------------------------------------------------------- type
@@ -212,7 +221,7 @@ function Paper.homeWidget(plugin, ctx)
     if #front == 0 then
         empty = TextWidget:new{ face = serifItalic(10), max_width = L.inner_w, fgcolor = Blitbuffer.COLOR_DARK_GRAY,
             text = not on and _("Turn the daily paper on in Settings.") or D.refreshing and _("Fetching today's paper…")
-                or _("No paper yet. It's fetched once a day, when Wi-Fi is on.") }
+                or Paper.noPaperText() }
     end
 
     local sheet = drawn(w, h, function(bb, x, y)
@@ -893,7 +902,7 @@ local function pageClass()
         if self.n == 0 then
             local msg = TextBoxWidget:new{ width = inner_w, alignment = "center", face = serifItalic(12),
                 text = D.refreshing and _("Fetching today's paper…") or D.last_error and D.why(D.last_error)
-                    or _("No paper yet. It's fetched once a day, when Wi-Fi is on.") }
+                    or Paper.noPaperText() }
             self.widgets[#self.widgets + 1] = msg
             self.message = { widget = msg, x = margin, y = y + math.floor(body_h / 3) }
             self.next_start = 1
@@ -1106,6 +1115,7 @@ end
 function Paper.refresh(plugin, self)
     local D = Daily()
     if D.refreshing then return info(D.why("busy"), 2) end
+    if D.noWifi() then return info(D.why("usb"), 6) end
     require("gzreader_net").run(function()
         D.refresh(plugin, function(ok, err)
             if not ok and not (self and self.closed) then info(D.why(err), 4) end
@@ -1117,7 +1127,6 @@ end
 --- pages behind it.
 function Paper.show(plugin)
     local D = Daily()
-    if D.noWifi() then return info(D.why("usb")) end
     if not D.enabled(plugin) then
         return info(_("The daily paper is off. Turn it on in Settings → Accounts and services → Daily paper."))
     end
@@ -1767,14 +1776,13 @@ end
 --- Settings → Accounts and services → Daily paper.
 function Paper.settingsItems(plugin)
     local D = Daily()
-    if D.noWifi() then
-        return { { text = _("The daily paper is fetched over Wi-Fi, and this Kindle syncs through a computer (it has no Wi-Fi, or Sync through a computer is chosen in Settings → Connections)."), enabled = false } }
-    end
+    local usb = D.noWifi()
     local function on() return D.enabled(plugin) end
-    return {
+    local items = {
         {
             text = _("Daily paper"),
-            help_text = _("Once a day GZreader fetches the feeds you tick (news sites' and blogs' lists of their newest stories) and puts them together as a paper to read on Home, also with Wi-Fi off afterwards. Fetching a feed tells its site this Kindle's internet address, as opening the site in a browser would; nothing else is sent."),
+            help_text = usb and _("This Kindle syncs through a computer: each time you sync, the sync page fetches the feeds you tick (news sites' and blogs' lists of their newest stories) and GZreader puts them together as a paper to read on Home. A web page can only read a feed whose site allows it, so some feeds can't come this way (the sync page names them), and there are no pictures or weather. Fetching a feed tells its site the computer's internet address; nothing else is sent.")
+                or _("Once a day GZreader fetches the feeds you tick (news sites' and blogs' lists of their newest stories) and puts them together as a paper to read on Home, also with Wi-Fi off afterwards. Fetching a feed tells its site this Kindle's internet address, as opening the site in a browser would; nothing else is sent."),
             checked_func = on,
             callback = function()
                 local st = D.store(plugin)
@@ -1872,6 +1880,22 @@ function Paper.settingsItems(plugin)
         { text_func = function() return T(_("Fetch now (%1)"), Paper.statusText(plugin)) end, enabled_func = on, keep_menu_open = true,
           callback = function() Paper.refresh(plugin) end },
     }
+    if usb then
+        -- (through a computer: the page fetches what it can; no pictures, no weather, no phone setup page)
+        local out = {}
+        for _i, it in ipairs(items) do
+            local t = it.text
+            if t == _("Whole stories") then
+                it.help_text = _("Many feeds carry only a sentence or two of each story. With this on, the sync page also tries each such story's own page and GZreader takes the article out of it. Only pages whose sites let a web page read them come this way; the others keep the feed's summary.")
+            end
+            if t ~= _("Pictures") and t ~= _("Weather") and t ~= _("Set up from a browser (QR code)") and not it.text_func then
+                out[#out + 1] = it
+            end
+        end
+        out[#out + 1] = { text_func = function() return T(_("Comes with each sync (%1)"), Paper.statusText(plugin)) end, enabled = false }
+        return out
+    end
+    return items
 end
 
 return Paper

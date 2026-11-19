@@ -20,7 +20,11 @@ gzreader_dailyscreen.lua); a tap opens the whole paper.
 - Feeds: GZreader's own list by topic (each can be ticked off) and your
   own, typed in or brought in a feeds.txt. A feed's address is never
   written to the log (only its site), as some carry a key.
-- The Kindles without Wi-Fi (2, DX) have no paper yet.
+- The Kindles without Wi-Fi (2, DX, DX Graphite, or Sync through a computer
+  chosen): the sync page fetches the feeds that let a web page read them (and
+  the stories' pages that do) and leaves them on the drive; GZreader makes the
+  edition from them when it takes in what the computer brought
+  (Daily.outbox, Daily.fromComputer). No pictures or weather that way.
 
 The edition (settings/gzreader-daily.json):
   { day = "2026-11-17", at = seconds, sections = { { topic = "World",
@@ -101,7 +105,7 @@ function Daily.noWifi()
 end
 
 function Daily.enabled(plugin)
-    return Daily.store(plugin).enabled == true and not Daily.noWifi()
+    return Daily.store(plugin).enabled == true
 end
 
 --- Is one of GZreader's own feeds on?
@@ -711,6 +715,7 @@ end
 --- on, or brought on (not when you turned Wi-Fi off). Quiet: nothing shown.
 function Daily.maybeRefresh(plugin, now)
     now = now or os.time()
+    if Daily.noWifi() then return false end -- (the sync page brings it)
     if Daily.refreshing or not Daily.due(plugin, now) then return false end
     if Daily.tried_at and now - Daily.tried_at < Daily.RETRY and now >= Daily.tried_at then return false end
     Daily.tried_at = now
@@ -731,12 +736,143 @@ end
 
 --- Why there's no paper, in words.
 function Daily.why(err)
-    if err == "usb" then return _("The daily paper needs Wi-Fi, and this Kindle syncs through a computer.") end
+    if err == "usb" then return _("This Kindle gets the daily paper when it syncs with the computer: plug it in and open the sync page. Feeds whose sites don't let a web page read them can't come that way.") end
     if err == "no feeds" then return _("No feeds are ticked: Settings → Accounts and services → Daily paper → Feeds.") end
     if err == "busy" then return _("Already fetching today's paper…") end
     if err == "empty" then return _("The feeds answered, but had no stories.") end
     if err == "timeout" then return _("The feeds took too long to answer.") end
     return _("Couldn't reach the feeds. Check the Wi-Fi and try again.")
+end
+
+---------------------------------------------------------------- without Wi-Fi
+
+Daily.USB_PAGES = 40 -- stories' pages the sync page tries (whole stories)
+
+--- What the sync page needs to fetch the paper (outbox.json's daily), or nil
+--- when the paper is off. Feeds' addresses only go to the drive (the page
+--- reads them there), never to the log.
+function Daily.outbox(plugin)
+    if not Daily.enabled(plugin) then return nil end
+    local feeds = {}
+    for _i, f in ipairs(Daily.feeds(plugin)) do
+        feeds[#feeds + 1] = { url = f.url, name = f.name or Daily.site(f.url), topic = f.topic }
+    end
+    if #feeds == 0 then return nil end
+    local edition = Daily.load()
+    return { feeds = feeds, full = Daily.fullStories(plugin), per_feed = Daily.PER_FEED, pages = Daily.USB_PAGES,
+        max_bytes = Daily.MAX_BYTES, have = edition and edition.day or nil }
+end
+
+--- An edition from the files the sync page brought (in `dir`): `d` is
+--- inbox.json's daily, { at = the computer's time (s), feeds = { { url, file, name, topic } },
+--- failed = { names }, pages = { { url, file } } } (files relative to dir).
+--- Made as over Wi-Fi (Daily.build, Daily.addFullText). → edition, or nil and why.
+function Daily.fromFiles(feeds, dir, d, full)
+    local function reader(list)
+        local files = {}
+        for _i, e in ipairs(type(list) == "table" and list or {}) do
+            if type(e) == "table" and type(e.url) == "string" and type(e.file) == "string"
+                and not e.file:find("..", 1, true) and not e.file:match("^/") then
+                files[e.url] = dir .. "/" .. e.file
+            end
+        end
+        return function(url)
+            local path = files[url]
+            local f = path and io.open(path, "rb")
+            if not f then return nil, "unreachable" end
+            local body = f:read(Daily.MAX_BYTES * 4 + 1)
+            f:close()
+            if not body or body == "" then return nil, "empty" end
+            if #body > Daily.MAX_BYTES * 4 then return nil, "too big" end
+            return body
+        end
+    end
+    local now = tonumber(d.at)
+    if not now or now < 1704067200 then now = os.time() end
+    local edition, err = Daily.build(feeds, now, reader(d.feeds))
+    if not edition then return nil, err end
+    -- (feeds the page couldn't read: their sites don't let a web page in)
+    local named = {}
+    for _i, f in ipairs(edition.failed) do named[f] = true end
+    for _i, name in ipairs(type(d.failed) == "table" and d.failed or {}) do
+        if type(name) == "string" and not named[name] then named[name] = true; edition.failed[#edition.failed + 1] = name end
+    end
+    if full and type(d.pages) == "table" and #d.pages > 0 then
+        local page = reader(d.pages)
+        edition.full, edition.pages = Daily.addFullText(edition, function(url) return page(url) end)
+    end
+    edition.usb = true
+    return edition
+end
+
+--- Where what the sync page brought for the paper waits (out of the sync
+--- folder, which is emptied once taken in) while the edition is made.
+function Daily.inDir() return require("datastorage"):getDataDir() .. "/cache/gzreader-daily-in" end
+
+local function rmrf(path)
+    local lfs = require("libs/libkoreader-lfs")
+    if lfs.attributes(path, "mode") == "directory" then
+        for name in lfs.dir(path) do
+            if name ~= "." and name ~= ".." then rmrf(path .. "/" .. name) end
+        end
+        lfs.rmdir(path)
+    else
+        os.remove(path)
+    end
+end
+
+--- The paper from what the sync page brought: the files in `from` (the
+--- sync folder's in/daily) moved aside, the edition made in the background
+--- (a Kindle DX takes a while over 40 stories' pages) and kept.
+--- on_done(stories or nil, why). → true when it's under way.
+function Daily.fromComputer(plugin, from, d, on_done)
+    on_done = on_done or function() end
+    if type(d) ~= "table" or type(d.feeds) ~= "table" or not Daily.enabled(plugin) then return false end
+    -- (the feeds as the page fetched them: those the outbox named then)
+    local feeds = {}
+    for _i, f in ipairs(d.feeds) do
+        if type(f) == "table" and type(f.url) == "string" then
+            feeds[#feeds + 1] = { url = f.url, name = type(f.name) == "string" and f.name or nil,
+                topic = type(f.topic) == "string" and f.topic ~= "" and f.topic or Daily.OWN_TOPIC }
+        end
+    end
+    if #feeds == 0 then return false end
+    local dir = Daily.inDir()
+    rmrf(dir)
+    require("util").makePath(dir:match("^(.*)/[^/]+$"))
+    if not os.rename(from, dir) then
+        Log.warn("daily paper: couldn't keep what the computer brought")
+        return false
+    end
+    local full = Daily.fullStories(plugin)
+    local function finish(edition, err)
+        rmrf(dir)
+        if type(edition) ~= "table" then
+            Daily.last_error = err or "empty"
+            Log.warn("daily paper: nothing from the computer:", tostring(err))
+            Daily.changed()
+            return on_done(nil, Daily.last_error)
+        end
+        -- (no pictures this way: a web page can't read other sites' pictures)
+        Daily.addPictures(edition, Daily.pictureDir(), function() return nil end)
+        Daily.clearPictures()
+        Daily.last_error = nil
+        Daily.keep(edition)
+        Log.info("daily paper (from the computer):", Daily.count(edition), "stories in", #edition.sections, "sections;",
+            #(edition.failed or {}), "feeds not readable;", tonumber(edition.full) or 0, "whole stories")
+        Daily.changed()
+        on_done(Daily.count(edition))
+    end
+    local function go()
+        require("gzreader_async").background(function() return Daily.fromFiles(feeds, dir, d, full) end, function(edition, err)
+            if edition == nil and err == "busy" then
+                return require("ui/uimanager"):scheduleIn(20, go)
+            end
+            finish(edition, err)
+        end, "daily paper from the computer", { timeout = 600 })
+    end
+    go()
+    return true
 end
 
 return Daily

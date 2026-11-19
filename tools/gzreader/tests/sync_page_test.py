@@ -103,6 +103,34 @@ class Quiet(SimpleHTTPRequestHandler):
     def log_message(self, *a): pass
 srv = ThreadingHTTPServer(("127.0.0.1", WP), partial(Quiet, directory=web))
 threading.Thread(target=srv.serve_forever, daemon=True).start()
+# the daily paper's feeds: one on the page's own site, one on a site that lets web pages
+# read it (CORS), one that doesn't (most news sites' feeds)
+XP = PORT + 25
+def rss(title, items):
+    return ('<?xml version="1.0"?><rss version="2.0"><channel><title>%s</title>' % title
+            + "".join("<item><title>%s</title><link>%s</link><description>%s</description><pubDate>%s</pubDate></item>"
+                      % (t, l, d, time.strftime("%a, %d %b %Y %H:%M:%S GMT", time.gmtime(now - 3600))) for t, l, d in items)
+            + "</channel></rss>")
+os.makedirs(os.path.join(web, "feeds")); os.makedirs(os.path.join(web, "stories"))
+with open(os.path.join(web, "feeds", "world.xml"), "w") as f:
+    f.write(rss("World Example", [("Short Story", "http://127.0.0.1:%d/stories/one.html" % WP, "Only a line."),
+                                  ("Long Story", "http://127.0.0.1:%d/stories/two.html" % WP, "Words. " * 600)]))
+with open(os.path.join(web, "stories", "one.html"), "w") as f:
+    f.write("<html><body><article><h1>Short Story</h1>" + "<p>The whole story, at length.</p>" * 80 + "</article></body></html>")
+paper_web = tempfile.mkdtemp()
+os.makedirs(os.path.join(paper_web, "open")); os.makedirs(os.path.join(paper_web, "closed"))
+with open(os.path.join(paper_web, "open", "tech.xml"), "w") as f:
+    f.write(rss("Open Tech", [("A Gadget", "http://127.0.0.1:%d/open/gadget.html" % XP, "A gadget, in a line.")]))
+with open(os.path.join(paper_web, "open", "gadget.html"), "w") as f:
+    f.write("<html><body><article>" + "<p>The gadget's whole story.</p>" * 80 + "</article></body></html>")
+with open(os.path.join(paper_web, "closed", "news.xml"), "w") as f:
+    f.write(rss("Closed News", [("Not for web pages", "http://127.0.0.1:%d/closed/x.html" % XP, "x")]))
+class Feeds(Quiet):
+    def end_headers(self):
+        if self.path.startswith("/open/"): self.send_header("Access-Control-Allow-Origin", "*")
+        SimpleHTTPRequestHandler.end_headers(self)
+psrv = ThreadingHTTPServer(("127.0.0.1", XP), partial(Feeds, directory=paper_web))
+threading.Thread(target=psrv.serve_forever, daemon=True).start()
 for p in (GP, MP, PP, IP, IP + 1):
     wait_port(p)
 
@@ -155,6 +183,11 @@ OUTBOX = {
                          "visibility": "PRIVATE", "space": "spaces/book-club"}],
               "keep": 100, "files": {}},
     "calendar": {"days_back": 14, "days_ahead": 90},
+    # the daily paper is on (gzreader_daily.lua's outbox): its feeds; one carries a key in its address
+    "daily": {"feeds": [{"url": "http://127.0.0.1:%d/feeds/world.xml" % WP, "name": "World Example", "topic": "World"},
+                        {"url": "http://127.0.0.1:%d/open/tech.xml" % XP, "name": "Open Tech", "topic": "Technology"},
+                        {"url": "http://127.0.0.1:%d/closed/news.xml?key=PAPERKEY42" % XP, "name": "Closed News", "topic": "World"}],
+              "full": True, "per_feed": 5, "pages": 40, "max_bytes": 1572864},
     # (each book's bookmarks and highlights in a file of its own, marks/<id>.json)
     "copy": {"marks_files": True},
     # (GZreader up to 1.28.1 also wrote usage statistics' server here; the page ignores it)
@@ -836,6 +869,19 @@ cals = inbox.get("calendars", [])
 check(len(cals) == 2 and cals[0]["name"] == "Family" and b"Dentist" in files.get(G + cals[0]["file"], b"") and cals[1]["file"] is None,
       "calendars: a link brought; one that fails is listed without events")
 check("http://127.0.0.1:%d/family.ics" % WP not in log and "missing.ics" not in log, "calendar links (secret keys) never shown in full")
+dp = inbox.get("daily") or {}
+dfeeds = {f.get("url"): f.get("file") for f in dp.get("feeds") or []}
+dpages = {f.get("url"): f.get("file") for f in dp.get("pages") or []}
+check(dp.get("dir") == "in/daily" and len(dfeeds) == 2 and dp.get("failed") == ["Closed News"]
+      and b"Short Story" in files.get(G + "in/daily/" + (dfeeds.get("http://127.0.0.1:%d/feeds/world.xml" % WP) or "-"), b"")
+      and b"A Gadget" in files.get(G + "in/daily/" + (dfeeds.get("http://127.0.0.1:%d/open/tech.xml" % XP) or "-"), b"")
+      and abs((dp.get("at") or 0) - time.time()) < 600,
+      "daily paper: the feeds a web page may read brought for the Kindle (its own site's, one that allows it); the one that doesn't, named")
+check(set(dpages) == {"http://127.0.0.1:%d/stories/one.html" % WP, "http://127.0.0.1:%d/open/gadget.html" % XP}
+      and b"The whole story" in files.get(G + "in/daily/" + dpages.get("http://127.0.0.1:%d/stories/one.html" % WP, "-"), b""),
+      "daily paper: whole stories, the short ones' own pages (not the long one's)")
+check("PAPERKEY42" not in log and "Closed News" in log and "Daily paper: 2 of 3 feeds, 2 whole stories." in log,
+      "daily paper: the log names the feed that couldn't come, never a feed's address")
 check(not any(t in json.dumps(inbox) + json.dumps(lib) for t in ("hunter22", "memos-test-token", "srv-token", "plex-token")),
       "nothing secret written to the Kindle")
 

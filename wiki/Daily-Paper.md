@@ -3,8 +3,9 @@ day from the news feeds you choose, and shows on Home. It's fetched over
 Wi‑Fi in the morning and kept on the Kindle, so you can read it all day with
 Wi‑Fi off.
 
-It's off until you turn it on. Not on the Kindle 2 and DX yet: they have no
-Wi‑Fi.
+It's off until you turn it on. The Kindle 2, DX and DX Graphite (no Wi‑Fi)
+get it when they [sync with a computer](Sync-with-a-Computer): see
+[Without Wi‑Fi](#without-wifi).
 
 ## Turning it on
 
@@ -123,6 +124,22 @@ Once a day, the first time Home (or the paper) is on the screen after
 
 Stories older than a day and a half stay out, except from a feed that posts
 seldom: its newest story is shown rather than nothing.
+
+## Without Wi‑Fi
+
+The Kindle 2, DX and DX Graphite (or any Kindle with **Sync through a
+computer** chosen) get the paper each time you
+[sync with a computer](Sync-with-a-Computer). Turn it on and choose feeds on
+the Kindle as usual (Settings → Accounts and services → Daily paper). Then,
+when you sync, the sync page fetches the feeds and GZreader makes the paper
+when it next starts.
+
+A web page can only read a feed whose site allows it, and many news sites'
+feeds don't (many blogs' do). The sync page names each feed it couldn't
+read, and the paper is made from the others. With **Whole stories** on, the
+page also tries each short story's own page, and only those whose sites
+allow it come. There are no pictures and no weather box this way. Today's
+calendar events still show, from the calendars the page brought.
 
 ## Choosing feeds
 

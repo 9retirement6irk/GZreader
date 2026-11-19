@@ -32,7 +32,8 @@ Format 1:
     notes = { queue = { Memos changes: id, op, content, visibility, name, pinned } },
     calendar = { from, to }, auto_shelf = { id, magic }, last_import,
     screensavers = { names, mode = "auto"|"always"|"immich_auto"|"immich"|"other" }; kindle.screen = { w, h },
-    immich = { album = { id, name }, have = { asset ids }, count, wallpaper } }
+    immich = { album = { id, name }, have = { asset ids }, count, wallpaper },
+    daily = { feeds = { { url, name, topic } }, full, per_feed, pages, max_bytes, have } (the paper on) }
 - usage/*.jsonl: usage statistics GZreader up to 1.28.1 left for the page;
   the page deletes them without sending (no usage statistics since).
   inbox = { format, written_at, done = { job ids }, failed = { { id, error } },
@@ -46,7 +47,8 @@ Format 1:
     immich = { album = { id, name, count }, server, add = { { file, id } }, keep = { asset ids },
       count, wallpaper } or { off = true },
     grimmory_stats = { at, values = { streak, longest_streak, reading_days,
-      week_time, week_books, month_sessions, year_finished } } or { at, error } }
+      week_time, week_books, month_sessions, year_finished } } or { at, error },
+    daily = { dir = "in/daily", at, feeds = { { url, file } }, failed = { names }, pages = { { url, file } } } }
 ]]
 
 local DataStorage = require("datastorage")
@@ -486,6 +488,11 @@ function Usb.outbox(plugin)
         screensavers = { names = jsonList(cached("screensavers", Usb.screensavers)), mode = Usb.sleepMode() },
         -- the Immich album's pictures on the Kindle (the page brings the others)
         immich = Usb.immichOut(plugin),
+        -- the daily paper's feeds (the page fetches those a web page may read: gzreader_daily.lua)
+        daily = (function()
+            local ok, d = pcall(function() return require("gzreader_daily").outbox(plugin) end)
+            return ok and d or nil
+        end)(),
         -- (the library copy: each book's bookmarks and highlights in a file of
         -- its own, marks/<id>.json, not in library.json: gzreader_offlineapi.lua)
         copy = { marks_files = true },
@@ -1053,6 +1060,12 @@ function Usb.import(plugin, on_prepared)
             local oks, got = pcall(Usb.takeScreensavers, base, inbox.screensavers)
             if oks then r.pictures = got else Log.warn("sync: sleep screen pictures:", tostring(got)) end
         end
+        if type(inbox.daily) == "table" then
+            local d = inbox.daily
+            local dir = type(d.dir) == "string" and not d.dir:find("..", 1, true) and not d.dir:match("^/") and d.dir or "in/daily"
+            local okd, got = pcall(require("gzreader_daily").fromComputer, plugin, base .. "/" .. dir, d)
+            if okd then r.paper = got or nil else Log.warn("sync: daily paper:", tostring(got)) end
+        end
         if type(inbox.immich) == "table" then
             local oki, got = pcall(Usb.takeImmich, plugin, base, inbox.immich)
             if oki then r.photos = got else Log.warn("sync: Immich pictures:", tostring(got)) end
@@ -1103,6 +1116,7 @@ function Usb.summaryText(r)
     if r.notes then parts[#parts + 1] = r.notes == 1 and _("1 note") or T(_("%1 notes"), r.notes) end
     if r.events then parts[#parts + 1] = T(_("calendar: %1 events"), r.events) end
     if (r.pictures or 0) > 0 then parts[#parts + 1] = r.pictures == 1 and _("1 sleep screen picture") or T(_("%1 sleep screen pictures"), r.pictures) end
+    if r.paper then parts[#parts + 1] = _("today's paper") end
     if (r.photos or 0) > 0 then parts[#parts + 1] = r.photos == 1 and _("1 picture from Immich") or T(_("%1 pictures from Immich"), r.photos) end
     local text = #parts > 0 and table.concat(parts, ", ") or _("No new books")
     if r.sent > 0 then text = text .. "\n" .. T(_("%1 reading updates sent to Grimmory."), r.sent) end

@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Daily paper on the Kindle 2, DX and DX Graphite: it comes with each sync", text = "The daily paper now works on Kindles without Wi-Fi. Turn it on and choose feeds as usual (Settings → Accounts and services → Daily paper). Each time you sync with the computer, the sync page fetches the feeds, and GZreader makes the paper from them when it next starts. A web page can only read a feed whose site allows it, and many news sites' feeds don't, so the sync page names the ones it couldn't read. Whole stories come only from pages that allow it too. There are no pictures or weather box this way." },
+        },
+    },
+    {
         version = "1.34.0",
         changes = {
             { short = "Quick panel: Send books is now Connect", text = "The quick panel's Send books tile at Home is now called Connect, with its own icon, because the page it opens does much more than send books: it sets up Grimmory, Notes, Calendar and Music from your phone or computer. It opens that page at its first tab; Send books is one tap away there. If you'd hidden the tile it stays hidden." },

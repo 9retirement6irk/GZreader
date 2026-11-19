@@ -129,6 +129,7 @@ What a sync does:
 | Notes | Notes written, edited, ticked or pinned on the Kindle | Your notes (the synced tags, as many as Settings → Notes keeps) and their pictures |
 | Calendars | | Calendar links, CalDAV calendars and `.ics` files, as the Calendar tab's events |
 | Music | | The Plex albums and playlists chosen on the page, and Plex audiobooks (Kindles with a speaker, headphone jack or Bluetooth) |
+| Daily paper | The feeds you ticked (when the [daily paper](Daily-Paper#without-wifi) is on) | Those feeds, and whole stories' pages, from the sites that let a web page read them; the Kindle makes the paper from them |
 
 What's already on the Kindle is never brought again: the page shows it as **On the Kindle**, and a pick that reached the Kindle another way (a sync from another computer, a download over Wi‑Fi) comes off the page's list, so it doesn't come back after you delete it from the Kindle.
 
@@ -154,6 +155,9 @@ comes to the Kindle with the next sync (merged when the book opens).
 Covers: Grimmory doesn't let other web pages read its covers (only show
 them), so the page takes an EPUB's cover from the book itself and an
 audiobook's from its audio cover; PDFs and comics have no cover in the copy.
+
+Daily paper: many news sites don't let a web page read their feeds. The
+page names each one it couldn't read, and the paper comes from the others.
 
 Calendars: many calendar servers (Google, Proton) don't let a web page read
 their links, and most CalDAV servers don't either. The page says so; then

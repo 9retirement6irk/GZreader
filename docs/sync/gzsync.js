@@ -12,6 +12,8 @@ Kindle); this page, with the Kindle plugged in:
   4. Memos: sends the notes written on the Kindle, brings the notes;
   5. calendars: links, CalDAV calendars, .ics files;
   6. Plex: the albums and playlists chosen here;
+  7. the daily paper (when it's on, in GZreader): the feeds whose sites let a
+     web page read them, and those stories' own pages that do;
 and writes .gzsync/inbox.json (after each step: what's there so far). The
 next time GZreader starts it takes all that in (gzreader_usbsync.lua).
 
@@ -1045,6 +1047,7 @@ gets a password or token.
     o.notes.queue = asList(o.notes.queue);
     o.notes.files = asList(o.notes.files);
     if (o.notes.sync_tags != null) o.notes.sync_tags = asList(o.notes.sync_tags);
+    if (o.daily && typeof o.daily === "object") o.daily.feeds = asList(o.daily.feeds);
     o.jobs.forEach(function (j) { if (j && j.queue) j.queue = asList(j.queue); });
     o.queue.forEach(function (q) { if (q && q.authors != null) q.authors = asList(q.authors); });
     return o;
@@ -1940,6 +1943,108 @@ gets a password or token.
     log("Calendars: " + list.filter(function (c) { return c.file; }).length + " of " + list.length + " brought (" + events + " events).", "ok");
   }
 
+  // 5b. the daily paper: GZreader asks for its feeds (outbox.daily); this page
+  // fetches those a web page may read (a site has to allow it: many news
+  // sites' feeds don't) and, for whole stories, the stories' own pages that
+  // do. GZreader makes the edition from them when it takes them in. Feed
+  // addresses can carry a key: only their names are shown here.
+  var Paper = {
+    FEED_MS: 20000, PAGE_MS: 12000, PAGES_MS: 120000, FULL_ENOUGH: 2500, PAGE_BYTES: 2 * 1024 * 1024,
+    // a page's text, or an error: refused by its site (no CORS), not found, too big
+    read: async function (url, max, ms, html) {
+      if (!/^https?:\/\//i.test(url) || mixedContent(url)) throw new Error("not over https");
+      var ctl = typeof AbortController === "function" ? new AbortController() : null;
+      var timer = ctl ? setTimeout(function () { ctl.abort(); }, ms) : null;
+      try {
+        var r;
+        try {
+          r = await fetch(url, { credentials: "omit", redirect: "follow", signal: ctl ? ctl.signal : undefined,
+            headers: { Accept: html ? "text/html, application/xhtml+xml" : "application/rss+xml, application/atom+xml, application/xml, text/xml, */*" } });
+        } catch (e) { throw new Error("its site doesn't let web pages read it"); }
+        if (!r.ok) throw new HttpError(r.status, "its site");
+        var kind = r.headers.get("content-type") || "";
+        if (html && kind && !/html/i.test(kind)) throw new Error("not a web page");
+        var t = await r.text();
+        if (!t) throw new Error("empty");
+        if (t.length > max) throw new Error("too big");
+        return t;
+      } finally { if (timer) clearTimeout(timer); }
+    },
+    // the stories in a feed whose text is short (their pages are worth a try)
+    shortLinks: function (text, n) {
+      var doc;
+      try { doc = new DOMParser().parseFromString(text, "application/xml"); } catch (e) { return []; }
+      if (!doc || doc.getElementsByTagName("parsererror").length) return [];
+      var items = Array.prototype.slice.call(doc.getElementsByTagName("item"));
+      if (!items.length) items = Array.prototype.slice.call(doc.getElementsByTagName("entry"));
+      var out = [];
+      items.slice(0, n).forEach(function (it) {
+        var link = null, body = "";
+        Array.prototype.forEach.call(it.children, function (c) {
+          var name = c.localName;
+          if (name === "link") {
+            var href = c.getAttribute("href");
+            var rel = c.getAttribute("rel");
+            if (href && (!rel || rel === "alternate")) link = link || href;
+            else if (!href && c.textContent.trim()) link = link || c.textContent.trim();
+          } else if (name === "description" || name === "summary" || name === "content" || name === "encoded") {
+            if (c.textContent.length > body.length) body = c.textContent;
+          }
+        });
+        var plain = body.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ");
+        if (link && /^https?:\/\//i.test(link) && !mixedContent(link) && plain.length < Paper.FULL_ENOUGH) out.push(link);
+      });
+      return out;
+    },
+  };
+
+  async function syncPaper(out, inbox) {
+    var d = out.daily;
+    if (!d || !Array.isArray(d.feeds) || !d.feeds.length) return;
+    phase("Daily paper…");
+    var maxBytes = (d.max_bytes || 1536 * 1024) * 4;
+    var got = [], failed = [], links = [], seen = new Set();
+    await Drive.remove(Drive.sync, "in/daily");
+    for (var i = 0; i < d.feeds.length; i++) {
+      var f = d.feeds[i] || {};
+      var name = f.name || hostOf(f.url);
+      try {
+        var text = await Paper.read(String(f.url || ""), maxBytes, Paper.FEED_MS, false);
+        if (!/<(rss|feed|rdf:RDF|channel)[\s>]/i.test(text)) throw new Error("it isn't a feed");
+        var file = "f" + (got.length + 1) + ".xml";
+        await Drive.write(Drive.sync, "in/daily/" + file, text);
+        got.push({ url: f.url, file: file, name: f.name, topic: f.topic });
+        if (d.full) Paper.shortLinks(text, d.per_feed || 5).forEach(function (l) { if (!seen.has(l)) { seen.add(l); links.push(l); } });
+      } catch (e) {
+        failed.push(name);
+        log("Daily paper: “" + name + "” couldn't be read (" + e.message + ").", "bad");
+      }
+    }
+    // whole stories: the pages whose sites let a web page read them
+    var pages = [];
+    if (links.length) {
+      links = links.slice(0, d.pages || 40);
+      var until = Date.now() + Paper.PAGES_MS;
+      phase("Daily paper: whole stories…");
+      await pool(links, 4, async function (url) {
+        if (Date.now() > until) return;
+        try {
+          var html = await Paper.read(url, Paper.PAGE_BYTES * 3, Paper.PAGE_MS, true);
+          var file = "p" + (pages.length + 1) + ".html";
+          pages.push({ url: url, file: file });
+          await Drive.write(Drive.sync, "in/daily/" + file, html);
+        } catch (e) {}
+      });
+    }
+    if (!got.length) {
+      log("Daily paper: none of the feeds let a web page read them, so there's no paper this time. Feeds from sites that allow it (many blogs do) can come this way.", "bad");
+      return;
+    }
+    inbox.daily = { dir: "in/daily", at: Math.floor(Date.now() / 1000), feeds: got, failed: failed, pages: pages };
+    await saveInbox(inbox);
+    log("Daily paper: " + got.length + " of " + d.feeds.length + " feeds" + (pages.length ? ", " + pages.length + " whole stories" : "") + ".", "ok");
+  }
+
   // 6. music
   function picks() { return Picks.d.music; }
   function setPicks(l) { Picks.d.music = l; Picks.save(); }
@@ -2314,6 +2419,7 @@ gets a password or token.
       }
       if (M.connected()) { try { await syncNotes(out, inbox); } catch (e) { log("Notes: " + e.message, "bad"); } }
       if (Cal.list.length) { try { await syncCalendars(out, inbox); } catch (e) { log("Calendars: " + e.message, "bad"); } }
+      if (out.daily) { try { await syncPaper(out, inbox); } catch (e) { log("Daily paper: " + e.message, "bad"); } }
       if (P.connected() && ((out.kindle || {}).audio !== false) && picks().length) {
         try { await syncMusic(out, inbox); } catch (e) { log("Music: " + e.message, "bad"); }
       }
@@ -2355,7 +2461,8 @@ gets a password or token.
   // ------------------------------------------------------------ the page
 
   function updateSyncButton() {
-    $("#sync").disabled = !Drive.sync || !(G.connected() || M.connected() || Cal.list.length || P.connected() || Sleep.count() || I.ready() || (I.st && I.st.off));
+    $("#sync").disabled = !Drive.sync || !(G.connected() || M.connected() || Cal.list.length || P.connected() || Sleep.count() || I.ready() || (I.st && I.st.off)
+      || (K.out && K.out.daily));
   }
 
   function renderConnections() {

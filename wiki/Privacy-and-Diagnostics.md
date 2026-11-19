@@ -130,7 +130,9 @@ Kindle fetches the feeds you ticked once a day, straight from their sites
 (BBC, NPR and the others listed there, or the ones you added). Each site sees
 the Kindle's internet address and that GZreader asked, as with any web page;
 no account, cookie or anything about you is sent, and feed addresses are
-never written to the log.
+never written to the log. A Kindle that syncs through a computer leaves its
+feeds' addresses for the sync page, which fetches them from the computer
+(those sites then see the computer's address) and shows only their names.
 
 Its weather box asks your own Home Assistant when that's connected;
 otherwise [Open‑Meteo](https://open-meteo.com), with the town you set (its
