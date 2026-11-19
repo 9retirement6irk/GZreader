@@ -391,7 +391,7 @@
     var docs = await Drive.tryDir(root, "documents");
     var docNames = docs ? (await Drive.list(docs)).map(function (t) { return t.name; }) : [];
     var r = {
-      isKindle: !!docs && (has("system") || has("audible") || has("music") || has("fonts") || has("koreader") || has("extensions")),
+      isKindle: !!docs && (has("system") || has("audible") || has("music") || has("fonts") || has("koreader") || has("GZreader") || has("extensions")),
       pickedDocuments: root.name === "documents" || (!docs && has("GZreader")),
       markers: [], strays: [],
       gzreader: null, outboxModel: null,
@@ -405,12 +405,13 @@
       if (/\.bin$/i.test(n) || /^update\.bin\.tmp\.partial$/i.test(n)) r.strays.push(n);
     });
     [["extensions", "KUAL extensions (extensions/)"], ["launchpad", "Launchpad (launchpad/)"], ["mrpackages", "MRPI (mrpackages/)"],
-      ["koreader", "KOReader or GZreader (koreader/)"], ["kual-dx-fix", "the KUAL DX fix"], ["mesquito", "WinterBreak's files"],
+      ["koreader", "KOReader, or an older GZreader (koreader/)"], ["GZreader", "GZreader (GZreader/)"], ["kual-dx-fix", "the KUAL DX fix"], ["mesquito", "WinterBreak's files"],
       ["winterbreak2", "WinterBreak2's files"]].forEach(function (m) { if (has(m[0])) r.markers.push(m[1]); });
     if (r.kual.length) r.markers.push("KUAL (" + r.kual.join(", ") + ")");
     var others = r.scriptlets.filter(function (n) { return !/^GZreader\.sh$/i.test(n) && !/^KUAL\.sh$/i.test(n); });
     if (others.length) r.markers.push("scriptlets (" + others.slice(0, 3).join(", ") + (others.length > 3 ? "…" : "") + ")");
-    var v = await Drive.readText(root, "koreader/gzreader-version");
+    // (GZreader in its own folder since 1.35, GZreader/app; before, in KOReader's place)
+    var v = await Drive.readText(root, "GZreader/app/gzreader-version") || await Drive.readText(root, "koreader/gzreader-version");
     if (v) r.gzreader = v.trim();
     var out = null;
     try { out = JSON.parse(await Drive.readText(root, "documents/GZreader/.gzsync/outbox.json") || "null"); } catch (e) {}
@@ -483,11 +484,11 @@
 
   function packageStep(flavour, start) {
     return { id: "gzreader", kind: "package", flavour: flavour, title: "Put GZreader on the Kindle",
-      why: "GZreader's <code>" + flavour + "</code> package: the folders <code>koreader</code>, <code>extensions</code> and " +
+      why: "GZreader's <code>" + flavour + "</code> package: the folders <code>GZreader</code>, <code>extensions</code> and " +
         (flavour === "kindle-legacy" ? "<code>launchpad</code>" : "<code>documents/GZreader.sh</code>") +
-        ", merged into the drive. Your books and an older KOReader's settings stay.",
+        ", merged into the drive. Your books stay, and so does a KOReader already there (GZreader has a folder of its own).",
       device: start,
-      check: function (scan) { return scan.gzreader ? true : "No koreader/gzreader-version on the drive yet."; } };
+      check: function (scan) { return scan.gzreader ? true : "No GZreader/app/gzreader-version on the drive yet."; } };
   }
 
   var START_LEGACY = "<ol>" + EJECT + "<li>Restart the Kindle (<b>Home → Menu → Settings → Menu → Restart</b>) so Launchpad reads " +
@@ -729,7 +730,7 @@
       var m = /^gzreader-(kindle-legacy|kindle|kindlepw2|kindlehf)-([\d.]+)(?: \(\d+\))?\.zip$/i.exec(file.name);
       if (m && m[1].toLowerCase() !== flavour) throw new Error("That's the " + m[1] + " package: this Kindle takes gzreader-" + flavour + "-….zip.");
       var es = await zipEntries(file), names = es.map(function (e) { return e.name; });
-      if (!names.some(function (n) { return /^koreader\/plugins\/gzreader\.koplugin\//.test(n); })) throw new Error("That isn't a GZreader package.");
+      if (!names.some(function (n) { return /^(GZreader\/app|koreader)\/plugins\/gzreader\.koplugin\//.test(n); })) throw new Error("That isn't a GZreader package.");
       if (flavour === "kindle-legacy" && !names.some(function (n) { return /^launchpad\//.test(n); })) throw new Error("That isn't the kindle-legacy package (no launchpad folder).");
       if (flavour !== "kindle-legacy" && names.some(function (n) { return /^launchpad\//.test(n); })) throw new Error("That's the kindle-legacy package: this Kindle takes gzreader-" + flavour + "-….zip.");
       return es;
@@ -1036,7 +1037,7 @@
     var bar = progressBar(out);
     var t0 = Date.now();
     var written = await writeEntries(S.root, entries, function (n) {
-      return /^(koreader|extensions|launchpad|documents)\//.test(n) ? n : null;
+      return /^(GZreader|koreader|extensions|launchpad|documents)\//.test(n) ? n : null;
     }, function (d, t) { bar(d, t, d + " of " + t + " files"); });
     S.done["gzreader:files"] = true; S.done.gzreader = true; save();
     await rescan();

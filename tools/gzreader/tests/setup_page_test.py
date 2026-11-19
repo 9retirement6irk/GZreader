@@ -39,13 +39,14 @@ def make_zip(files):
 
 def package(flavour):
     files = {
-        "koreader/gzreader-version": "1.27.0\n",
-        "koreader/plugins/gzreader.koplugin/main.lua": "-- GZreader (" + flavour + ")\n",
-        "koreader/reader.lua": "-- KOReader\n",
-        "extensions/koreader/config.xml": "<extension/>\n",
+        # (the package as it's been since 1.35: GZreader in a folder of its own)
+        "GZreader/app/gzreader-version": "1.27.0\n",
+        "GZreader/app/plugins/gzreader.koplugin/main.lua": "-- GZreader (" + flavour + ")\n",
+        "GZreader/app/reader.lua": "-- KOReader\n",
+        "extensions/gzreader/config.xml": "<extension/>\n",
     }
     if flavour == "kindle-legacy":
-        files["launchpad/koreader.ini"] = "[Actions]\nG G = !sh /mnt/us/koreader/koreader.sh\n"
+        files["launchpad/gzreader.ini"] = "[Actions]\nG G = !/mnt/us/GZreader/app/koreader.sh\n"
     else:
         files["documents/GZreader.sh"] = "#!/bin/sh\n"
     return make_zip(files)
@@ -255,9 +256,9 @@ def main():
         page.wait_for_function("() => document.querySelector('#steps #do').textContent.includes('1.27.0')")
         page.click("#steps #do")
         page.wait_for_function("() => document.querySelector('#steps .out').textContent.includes('files on the Kindle')", timeout=30000)
-        check(ev("() => T.read('koreader/gzreader-version')") == "1.27.0\n" and ev("() => T.has('launchpad/koreader.ini')")
-              and ev("() => T.has('extensions/koreader/config.xml')") and not ev("() => T.has('documents/GZreader.sh')"),
-              "GZreader's kindle-legacy package from the updates branch: koreader, extensions, launchpad on the drive")
+        check(ev("() => T.read('GZreader/app/gzreader-version')") == "1.27.0\n" and ev("() => T.has('launchpad/gzreader.ini')")
+              and ev("() => T.has('extensions/gzreader/config.xml')") and not ev("() => T.has('documents/GZreader.sh')"),
+              "GZreader's kindle-legacy package from the updates branch: GZreader, extensions, launchpad on the drive")
         check(ev("() => document.querySelector('#step-list li[data-step=gzreader]').classList.contains('done')")
               and "Shift, G, G" in ev("() => document.querySelector('#steps .device').textContent"),
               "the package step is done, and says to start with Shift, G, G")
@@ -267,7 +268,7 @@ def main():
         page.wait_for_function("() => document.querySelector('#steps .out').textContent.includes('On the Kindle')")
         check(ev("() => T.sha('documents/KUAL-KDK-1.0.azw2')") == sha_file(os.path.join(FILES, "kual-dx-fix/documents/KUAL-KDK-1.0.azw2"))
               and ev("() => T.has('kual-dx-fix/install_keystore.sh')") and ev("() => T.has('launchpad/kualfix.ini')")
-              and ev("() => T.has('launchpad/koreader.ini')") and not ev("() => T.has('documents/KUAL-KDK-2.0.azw2')"),
+              and ev("() => T.has('launchpad/gzreader.ini')") and not ev("() => T.has('documents/KUAL-KDK-2.0.azw2')"),
               "kual-dx-fix: the re-signed KUAL, the keystore folder, Shift K I's shortcut; the other KUAL book removed, GZreader's shortcut kept")
         page.click("#check")
         page.wait_for_function("() => document.querySelector('#steps .out').textContent.includes('install.log')")
@@ -323,11 +324,11 @@ def main():
         page.wait_for_selector("#pkg-drop:not(.hidden)")
         drop("gzreader-kindle-1.27.0.zip", package("kindle"), "#pkg-drop input[type=file]")
         page.wait_for_function("() => document.querySelector('#steps .out').textContent.length > 0")
-        check("this Kindle takes gzreader-kindle-legacy" in out_text() and not ev("() => T.has('koreader/gzreader-version')"),
+        check("this Kindle takes gzreader-kindle-legacy" in out_text() and not ev("() => T.has('GZreader/app/gzreader-version')"),
               "no packages on the updates branch: the release's zip is asked for, and the wrong one refused")
         drop("gzreader-kindle-legacy-1.27.0.zip", package("kindle-legacy"), "#pkg-drop input[type=file]")
         page.wait_for_function("() => document.querySelector('#steps .out').textContent.includes('files on the Kindle')")
-        check(ev("() => T.has('launchpad/koreader.ini')") and ev("() => T.read('koreader/gzreader-version')") == "1.27.0\n",
+        check(ev("() => T.has('launchpad/gzreader.ini')") and ev("() => T.read('GZreader/app/gzreader-version')") == "1.27.0\n",
               "the right one dropped: installed")
 
         print("a Paperwhite 3 on 5.16.2.1.1, with WinterBreak")
@@ -353,7 +354,7 @@ def main():
         goto_step("gzreader")
         page.click("#steps #do")
         page.wait_for_function("() => document.querySelector('#steps .out').textContent.includes('files on the Kindle')")
-        check(ev("() => T.read('koreader/plugins/gzreader.koplugin/main.lua')") == "-- GZreader (kindlepw2)\n" and ev("() => T.has('documents/GZreader.sh')"),
+        check(ev("() => T.read('GZreader/app/plugins/gzreader.koplugin/main.lua')") == "-- GZreader (kindlepw2)\n" and ev("() => T.has('documents/GZreader.sh')"),
               "firmware before 5.16.3: the kindlepw2 package, with the GZreader item (documents/GZreader.sh)")
         page.fill("#fw", "5.16.3")
         page.wait_for_function("() => document.querySelector('#step-list li[data-step=gzreader]')")
