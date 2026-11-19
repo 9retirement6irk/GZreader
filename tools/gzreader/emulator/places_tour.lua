@@ -45,11 +45,15 @@ add({ fn = function(E)
         check(not exists(home .. "/koreader") and exists(root .. "/books/Moved Book.epub") and exists(root .. "/books/Moved Book.sdr")
             and exists(root .. "/music/album-1/01.mp3") and exists(root .. "/notes/drawings/waiting.png"),
             "moved at this start: koreader/ gone; the book, its .sdr, music, a drawing waiting")
-        local hf = io.open(app .. "/settings/history.lua")
+        local hf = io.open(app .. "/history.lua") -- (KOReader keeps it beside the settings)
         local hist = hf and hf:read("*a") or ""
         if hf then hf:close() end
         check(hist:find('"' .. root .. '/books/Moved Book.epub"', 1, true) ~= nil and not hist:find(root .. '/Moved Book.epub', 1, true),
             "reading history: the book's new place")
+        local RH = require("readhistory")
+        pcall(RH.reload, RH, true)
+        check(RH.hist[1] and RH.hist[1].file == root .. "/books/Moved Book.epub" and RH.hist[1].select_enabled ~= false,
+            "…and Home's recently read has it (KOReader's history, the book there): " .. tostring(RH.hist[1] and RH.hist[1].file))
         local DocSettings = require("docsettings")
         local ds = DocSettings:open(root .. "/books/Moved Book.epub")
         check(ds:readSetting("last_xpointer") == "/body/DocFragment[3]" and ds:readSetting("doc_path") == root .. "/books/Moved Book.epub",

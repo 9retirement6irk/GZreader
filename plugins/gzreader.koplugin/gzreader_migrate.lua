@@ -354,13 +354,16 @@ function M.run(o)
     -- 5. every saved path: KOReader's settings, history, collections; GZreader's and ZenOS's
     local rules = M.rules(o)
     local done = { files = 0, paths = 0 }
-    for _i, f in ipairs({ o.app .. "/settings.reader.lua" }) do
+    -- (KOReader's reading history is beside the settings, not in settings/: 1.35's
+    -- first betas missed it, and Home's recently read came up empty)
+    for _i, f in ipairs({ o.app .. "/settings.reader.lua", o.app .. "/history.lua" }) do
         local text = readFile(f)
         if text then
             local new, n = M.rewriteText(text, rules, o.root)
             if n > 0 and writeFile(f, new) then done.files, done.paths = done.files + 1, done.paths + n end
         end
     end
+    writeFile(o.app .. "/" .. M.HISTORY_FIXED, os.date("!%Y-%m-%dT%H:%M:%SZ") .. "\n")
     rewriteTree(o.app .. "/settings", rules, o.root, 1, done)
     -- (each book's own settings, in its .sdr folder, say where the book is: doc_path)
     rewriteTree(o.root .. "/books", rules, o.root, 1, done, true)
@@ -388,6 +391,43 @@ function M.run(o)
     return target
 end
 
+--- The reading history of a device moved by a beta that missed it
+--- (1.34.0-beta.2bcfc79): its books' old places (GZreader/<book>,
+--- koreader/…) to the new ones, once. Entries for a book read again since
+--- (in the history twice now) are kept once, the newest. → how many changed.
+M.HISTORY_FIXED = "settings/gzreader-history-moved.done"
+function M.fixHistory(app, root, old_app, keep_app)
+    if mode(app .. "/" .. M.HISTORY_FIXED) then return 0 end
+    local file = app .. "/history.lua"
+    local n = 0
+    local text = readFile(file)
+    if text then
+        local ok_l, load = pcall(require, "gzdataload")
+        local ok, list = false, nil
+        if ok_l then ok, list = pcall(load.file, file) end
+        if ok and type(list) == "table" then
+            local rules = M.rules({ app = old_app, lib = root, root = root, keep_app = keep_app })
+            local seen, out = {}, {}
+            for _i, e in ipairs(list) do
+                if type(e) == "table" and type(e.file) == "string" then
+                    local new = M.mapPath(e.file, rules, root)
+                    if new then e.file, n = new, n + 1 end
+                    if not seen[e.file] then seen[e.file] = true; out[#out + 1] = e end
+                end
+            end
+            if n > 0 then
+                -- (newest first, as KOReader keeps it)
+                table.sort(out, function(a, b) return (tonumber(a.time) or 0) > (tonumber(b.time) or 0) end)
+                local ok_d, dump = pcall(require, "dump")
+                if not (ok_d and writeFile(file, dump(out) .. "\n")) then return 0 end
+            end
+        end
+    end
+    writeFile(app .. "/" .. M.HISTORY_FIXED, os.date("!%Y-%m-%dT%H:%M:%SZ") .. "\n")
+    if n > 0 then say("reading history: " .. n .. " books' places put right") end
+    return n
+end
+
 --- From reader.lua: the device's own places; nothing when GZreader isn't in one of them.
 function M.early()
     local cwd = (lfs.currentdir() or ""):gsub("/+$", "")
@@ -396,7 +436,12 @@ function M.early()
     local nook = os.getenv("GZ_NOOK_HOME")
     if nook and nook ~= "" then
         nook = nook:gsub("/+$", "")
-        if mode(cwd .. "/" .. M.NOOK_DONE) or not isDir(nook) then return nil end
+        if mode(cwd .. "/" .. M.NOOK_DONE) then
+            -- (moved by a beta that left the reading history behind: put right once)
+            pcall(M.fixHistory, cwd, nook .. "/" .. M.FOLDER, cwd, true)
+            return nil
+        end
+        if not isDir(nook) then return nil end
         local state = readFile(cwd .. "/settings/gzreader.lua") or ""
         local lib = state:match('%["library_dir"%]%s*=%s*"([^"\n]+)"')
         local ok, res, why = pcall(M.run, { home = nook, app = cwd, lib = lib, device = "nook", keep_app = true })
@@ -407,7 +452,13 @@ function M.early()
     local test_home = os.getenv("GZ_MOVE_HOME") -- (the tests and the emulator: a drive of their own)
     for _i, l in ipairs(M.LEGACY) do
         local home, app = l.home, l.app
-        if test_home then home, app = test_home, cwd end
+        if test_home then home = test_home end
+        -- (moved already, by a beta that left the reading history behind: put right once)
+        if cwd == home .. "/" .. M.FOLDER .. "/app" then
+            pcall(M.fixHistory, cwd, home .. "/" .. M.FOLDER, test_home and (home .. "/koreader") or l.app)
+            return nil
+        end
+        if test_home then app = cwd end
         if cwd == app and (test_home or isDir(home)) then
             -- (the books' folder GZreader remembers: kept in its state)
             local state = readFile(app .. "/settings/gzreader.lua") or ""

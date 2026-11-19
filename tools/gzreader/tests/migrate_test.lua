@@ -35,7 +35,7 @@ local function kindleDrive(home)
     os.execute("mkdir -p '" .. A .. "/plugins'")
     os.execute("cp -r '" .. REPO .. "/plugins/gzreader.koplugin' '" .. REPO .. "/plugins/zenos.koplugin' '" .. A .. "/plugins/'")
     write(A .. "/settings.reader.lua", '-- we can read Lua syntax here!\nreturn {\n    ["home_dir"] = "' .. L .. '",\n    ["lastfile"] = "' .. L .. '/Dog Days.epub",\n    ["screensaver_dir"] = "' .. A .. '/screensavers",\n}\n')
-    write(A .. "/settings/history.lua", 'return {\n    [1] = {\n        ["file"] = "' .. L .. '/Dog Days.epub",\n        ["time"] = 1795000000,\n    },\n    [2] = {\n        ["file"] = "/mnt/elsewhere/Other.epub",\n        ["time"] = 1794000000,\n    },\n}\n')
+    write(A .. "/history.lua", 'return {\n    [1] = {\n        ["file"] = "' .. L .. '/Dog Days.epub",\n        ["time"] = 1795000000,\n    },\n    [2] = {\n        ["file"] = "/mnt/elsewhere/Other.epub",\n        ["time"] = 1794000000,\n    },\n}\n')
     write(A .. "/settings/collection.lua", 'return {\n    ["favorites"] = {\n        ["' .. L .. '/Dog Days.epub"] = {\n            ["file"] = "' .. L .. '/Dog Days.epub",\n            ["order"] = 1,\n        },\n    },\n}\n')
     write(A .. "/settings/gzreader.lua", 'return {\n    ["library_dir"] = "' .. L .. '",\n    ["downloads"] = {\n        ["42"] = "' .. L .. '/Dog Days.epub",\n    },\n    ["memos"] = {\n        ["queue"] = {\n            [1] = {\n                ["drawings"] = {\n                    [1] = {\n                        ["path"] = "./settings/gzreader-drawings/20261118-a.png",\n                    },\n                },\n            },\n        },\n    },\n}\n')
     write(A .. "/settings/zen_ui/config.lua", 'return { ["shelf_folder"] = "' .. L .. '/Comics" }\n')
@@ -74,8 +74,9 @@ do
     local s = read(R .. "/app/settings.reader.lua")
     check(s:find('"home_dir"] = "' .. R .. '/books"', 1, true) and s:find('"lastfile"] = "' .. R .. '/books/Dog Days.epub"', 1, true)
         and s:find('"screensaver_dir"] = "' .. R .. '/app/screensavers"', 1, true), "KOReader's settings: home folder, last book, the program's own paths")
-    local h = read(R .. "/app/settings/history.lua")
-    check(h:find(R .. "/books/Dog Days.epub", 1, true) and h:find("/mnt/elsewhere/Other.epub", 1, true), "reading history: moved books' paths, others as they were")
+    local h = read(R .. "/app/history.lua") or ""
+    check(h:find(R .. "/books/Dog Days.epub", 1, true) and h:find("/mnt/elsewhere/Other.epub", 1, true),
+        "reading history (KOReader's history.lua, beside the settings): moved books' paths, others as they were")
     local c = read(R .. "/app/settings/collection.lua")
     local count, at = 0, 1
     while true do local i = c:find(R .. "/books/Dog Days.epub", at, true); if not i then break end; count, at = count + 1, i + 1 end
@@ -230,6 +231,38 @@ do -- the Nook: its program stays on /data; the rest into GZreader/ on the card,
     check(M.copyFile(WORK .. "/copy-from.bin", WORK .. "/copy-to.bin") and read(WORK .. "/copy-to.bin") == string.rep("x", 200000)
         and not exists(WORK .. "/copy-to.bin.gzmove"), "a file copied in pieces, whole (another disk)")
     package.loaded["gzreader_places"] = nil
+end
+
+do -- moved by a beta that left the reading history behind (1.34.0-beta.2bcfc79): put right once, at the next start
+    local home = WORK .. "/history-fix"
+    os.execute("rm -rf '" .. home .. "'")
+    local R = home .. "/GZreader"
+    local A = R .. "/app"
+    write(A .. "/settings/settings.reader.lua", "return {}\n")
+    write(R .. "/books/Old One.epub", "EPUB")
+    write(R .. "/books/Read Again.epub", "EPUB")
+    write(A .. "/history.lua", 'return {\n'
+        .. '    [1] = { ["file"] = "' .. R .. '/books/Read Again.epub", ["time"] = 1795100000 },\n'
+        .. '    [2] = { ["file"] = "' .. R .. '/Read Again.epub", ["time"] = 1795000000 },\n'
+        .. '    [3] = { ["file"] = "' .. R .. '/Old One.epub", ["time"] = 1794000000 },\n'
+        .. '    [4] = { ["file"] = "/mnt/elsewhere/Other.epub", ["time"] = 1793000000 },\n}\n')
+    local cmd = string.format("cd '%s' && GZ_MOVE_HOME='%s' luajit -e \"package.path='%s/frontend/?.lua;%s/?.lua;'..package.path; "
+        .. "package.cpath='%s/?.so;%s/libs/?.so;'..package.cpath; "
+        .. "if not pcall(require,'libs/libkoreader-lfs') then package.preload['libs/libkoreader-lfs']=function() return require('lfs') end end; "
+        .. "io.write(tostring(dofile('%s/plugins/gzreader.koplugin/gzreader_migrate.lua').early()))\" 2>&1",
+        A, home, KO, KO, KO, KO, REPO)
+    local h = io.popen(cmd)
+    local out = h and h:read("*a") or ""
+    if h then h:close() end
+    local hist = read(A .. "/history.lua") or ""
+    local again = select(2, hist:gsub("Read Again%.epub", ""))
+    check(out:find("nil", 1, true) ~= nil and hist:find('"' .. R .. '/books/Old One.epub"', 1, true) ~= nil
+        and not hist:find('"' .. R .. '/Old One.epub"', 1, true) and again == 1 and hist:find("/mnt/elsewhere/Other.epub", 1, true) ~= nil
+        and exists(A .. "/" .. M.HISTORY_FIXED),
+        "moved by a beta that missed the reading history: its books' places put right at the next start, a book read again since kept once (" .. out:gsub("\n", " ") .. ")")
+    write(A .. "/history.lua", 'return {\n    [1] = { ["file"] = "' .. R .. '/Later.epub", ["time"] = 1 },\n}\n')
+    h = io.popen(cmd); if h then h:read("*a"); h:close() end
+    check((read(A .. "/history.lua") or ""):find(R .. "/Later.epub", 1, true) ~= nil, "…once only (a marker in its settings)")
 end
 
 print(string.format("move into the GZreader folder: %d passed, %d failed", pass, fail))
