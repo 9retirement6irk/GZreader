@@ -9092,10 +9092,11 @@ print("Notes (Memos v0.31)")
             "editor (touch, full page): Save at the top right, not in the row under the title; Draw, space, visibility and Save guarded")
         check(nesrc:find("self.title_slot[1] = (self.save_top or self.keys_bar) and self:notebookBar(sw) or OverlapGroup:new{", 1, true) ~= nil
             and nesrc:find('tap = function(w, fn, guarded) return guarded and self:topTap(w, fn) or tapTarget(w, fn) end', 1, true) ~= nil
-            and nesrc:find('back = function() self:onCloseDialog() end', 1, true) ~= nil
+            and nesrc:find('back = function() self:onCloseDialog(true) end, back_icon = "close",', 1, true) ~= nil
             and nesrc:find('action = { "done", _("Done"), function() self:save() end, true }', 1, true) ~= nil,
-            "editor (touch, full page): the drawing screen's top bar: ← (not guarded) … ✎ # ⋮ Done (guarded); Done saves")
-        check(nesrc:find('if self.immich then icons[#icons + 1] = { "photos", "photos", function() self:addPhotos() end, true } end', 1, true) ~= nil
+            "editor (touch, full page): the drawing screen's top bar: ✕ (not guarded, asks) … ✎ 🖼 # 🗂 🔒 ⋮ Done (guarded); Done saves")
+        check(nesrc:find('for _i, ic in ipairs(NoteBar.noteIcons(self:noteIconActions())) do icons[#icons + 1] = ic end', 1, true) ~= nil
+            and nesrc:find('photos = self.immich and function()', 1, true) ~= nil
             and nesrc:find("local bar_icons = self.save_top", 1, true) ~= nil
             and nesrc:find("if self.immich and not bar_icons then", 1, true) ~= nil
             and nesrc:find("if not bar_icons then\n        row[#row + 1] = self:canDraw() and tapTarget(chip", 1, true) ~= nil
@@ -9144,7 +9145,7 @@ print("Notes (Memos v0.31)")
             ;(function()
                 -- the bar built without a back button and with a note at the right (stand-in widgets)
                 local nbsrc = io.open(PLUGIN .. "/gzreader_notebar.lua"):read("*a")
-                check(nbsrc:find('local back = o.back and iconButton("back", "back", o.back, false) or HorizontalSpan:new{ width = S(8) }', 1, true) ~= nil
+                check(nbsrc:find('local back = o.back and iconButton("back", o.back_icon or "back", o.back, false) or HorizontalSpan:new{ width = S(8) }', 1, true) ~= nil
                     and nbsrc:find("if o.note then", 1, true) ~= nil,
                     "the bar: no ← without a touch screen; a grey word at the right for the key that has the rest")
             end)()
@@ -10441,7 +10442,8 @@ print("Notes (Memos v0.31)")
                 and dsrcs:find('if under and UIManager:getTopmostVisibleWidget() == self then return under:handleEvent(event) end', 1, true) ~= nil,
                 "journal: its drawing is the whole drawing screen (every tool, pinch, pan) in a pane under the prompt, not a box with a few tools; touches above go to the entry")
             check(dsrcs:find('add({ id = "done", label = self.journal and _("Save") or _("Done") }', 1, true) ~= nil
-                and dsrcs:find('if self.journal then icons[#icons + 1] = { id = "typing", label = _("Aa") } end', 1, true) ~= nil
+                and dsrcs:find('if self.journal then table.insert(icons, 2, { id = "typing", label = _("Aa") }) end', 1, true) ~= nil
+                and dsrcs:find('add({ id = "cancel", icon = self.journal and "back" or "close"', 1, true) ~= nil
                 and dsrcs:find('self.flyout = nil; self.after = "entry"; self:done()', 1, true) ~= nil
                 and jsrc:find('if after == "save" then', 1, true) ~= nil
                 and dsrcs:find('if not (self.pane and page and page.w > 0) or self.journal then return end', 1, true) ~= nil,
@@ -10706,9 +10708,44 @@ print("Notes (Memos v0.31)")
             and esrc:find('rows[#rows + 1] = { { text = _("Discard changes"), align = "left", callback = run(function() self:discard() end) } }', 1, true) ~= nil
             and esrc:find("self:keepDrafts()", 1, true) ~= nil,
             "editor: Saving… at once; Back saves the full page; ⋮ → Discard changes; drafts kept while writing")
-        check(dsrc_s:find('elseif t.id == "cancel" and not t.row and self.changed then', 1, true) ~= nil
+        check(not dsrc_s:find('elseif t.id == "cancel" and not t.row and self.changed then', 1, true)
+            and dsrc_s:find('dialog = ButtonDialog:new{ title = _("Save this drawing?"), buttons = {', 1, true) ~= nil
             and dsrc_s:find('if p.modified then box = require("gzreader_saving").show(); break end', 1, true) ~= nil,
-            "drawing screen: ← with changes saves (⋮ → Close without saving doesn't); Saving… while pages are made into pictures")
+            "drawing screen: ✕ with changes asks Save, Discard changes or Keep drawing (the owner, 2026-11-19); Saving… while pages are made into pictures")
+        -- the same note icons in both bars (the owner, 2026-11-19): photo, tag, space, who can see it
+        do
+            package.loaded["gzreader_notebar"] = nil
+            local dev_screen = require("device").screen
+            local was_scale = dev_screen.scaleBySize
+            dev_screen.scaleBySize = function(_s, v) return v end
+            local okb, NB = pcall(require, "gzreader_notebar")
+            if okb then
+                local f = function() end
+                local all = NB.noteIcons({ photos = f, tag = f, space = f, visibility = "PUBLIC", pick_visibility = f })
+                local ids = {}
+                for i, ic in ipairs(all) do ids[i] = ic[1] .. ":" .. ic[2] end
+                local none = NB.noteIcons({ tag = f, visibility = "PRIVATE", pick_visibility = f })
+                check(table.concat(ids, ",") == "photos:photos,tag:tag,space:space,visibility:vis-public"
+                    and #none == 2 and none[2][2] == "vis-private",
+                    "the note's icons, in both bars: photo, tag, space, who can see it (its icon shows which); no Immich or no spaces: those left out ("
+                        .. table.concat(ids, ",") .. ")")
+                check(NB.fit(9, 1000, 80, 200) < 9 and NB.fit(3, 1860, 80, 200) == 3 and NB.fit(5, 100, 80, 0) == 0,
+                    "a bar too narrow for every icon keeps the name room; the rest are in ⋮")
+                for _i, name in ipairs({ "close", "space", "vis-private", "vis-protected", "vis-public", "vis-space" }) do
+                    local fh = io.open(PLUGIN .. "/icons/draw/" .. name .. ".svg", "rb")
+                    check(fh ~= nil, "icon: " .. name .. ".svg")
+                    if fh then fh:close() end
+                end
+            else
+                check(false, "gzreader_notebar loads: " .. tostring(NB))
+            end
+            dev_screen.scaleBySize = was_scale
+            package.loaded["gzreader_notebar"] = nil
+        end
+        check(dsrc_s:find('local note = self.note_icons and self.note_icons(self) or nil', 1, true) ~= nil
+            and esrc:find('note_icons = function(screen) return self:noteIconActions(screen) end,', 1, true) ~= nil
+            and esrc:find("if ask ~= true and (not self.floating", 1, true) ~= nil,
+            "the drawing screen's bar has the note's icons (the editor behind does them); the editor's ✕ asks, the Back key saves")
     end)()
 
     -- disconnect

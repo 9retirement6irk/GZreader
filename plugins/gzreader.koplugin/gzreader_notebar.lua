@@ -9,7 +9,7 @@ editor, an opened note), so all three look and work alike:
 The drawing screen paints its own (gzreader_drawscreen.lua); this builds the
 same thing from widgets, with the same icons (icons/draw/).
 
-  NoteBar.build{ width, height, title, hint, back = fn,
+  NoteBar.build{ width, height, title, hint, back = fn, back_icon = "close",
       icons = { { id, icon, fn, guarded }, … }, action = { id, text, fn, guarded },
       tap = function(widget, fn, guarded) … end }
   Without a touch screen: no `back`, no icons; `note` is a grey word at the
@@ -60,14 +60,19 @@ function NoteBar.build(o)
         return t
     end
     -- (no `back`: a Kindle without a touch screen, where keys do what the buttons do)
-    local back = o.back and iconButton("back", "back", o.back, false) or HorizontalSpan:new{ width = S(8) }
+    local back = o.back and iconButton("back", o.back_icon or "back", o.back, false) or HorizontalSpan:new{ width = S(8) }
     local right = HorizontalGroup:new{ align = "center" }
     if o.note then
         -- (…and at the right, in grey, the key that has the rest)
         right[#right + 1] = TextWidget:new{ text = o.note, face = Font:getFace("cfont", 13), fgcolor = Blitbuffer.COLOR_DARK_GRAY }
         right[#right + 1] = HorizontalSpan:new{ width = S(6) }
     end
-    for _i, ic in ipairs(o.icons or {}) do right[#right + 1] = iconButton(ic[1], ic[2], ic[3], ic[4]) end
+    -- (as many as leave the name room: the rest are in ⋮, see NoteBar.fit)
+    local icons = o.icons or {}
+    local room = NoteBar.fit(#icons, sw, bh, o.action and S(110) or 0)
+    for i, ic in ipairs(icons) do
+        if i <= room or ic.always then right[#right + 1] = iconButton(ic[1], ic[2], ic[3], ic[4]) end
+    end
     if o.action then
         local a = o.action
         right[#right + 1] = HorizontalSpan:new{ width = S(4) }
@@ -93,6 +98,32 @@ function NoteBar.build(o)
             RightContainer:new{ dimen = Geom:new{ w = sw, h = h - line }, right } },
         LineWidget:new{ background = Blitbuffer.COLOR_BLACK, dimen = Geom:new{ w = sw, h = line } } }
     return bar, buttons
+end
+
+--- The note's own icons, the same in the note editor's bar and the drawing
+--- screen's (the owner, 2026-11-19): a photo from Immich, a tag, the note's
+--- space and who can see it. `o`: photos, tag, space (fns; nil: not offered),
+--- visibility (PRIVATE, PROTECTED, PUBLIC or SPACE), pick_visibility (fn).
+--- → { { id, icon, fn }, … } in that order.
+NoteBar.VIS_ICON = { PRIVATE = "vis-private", PROTECTED = "vis-protected", PUBLIC = "vis-public", SPACE = "vis-space" }
+function NoteBar.noteIcons(o)
+    local out = {}
+    if o.photos then out[#out + 1] = { "photos", "photos", o.photos, true } end
+    if o.tag then out[#out + 1] = { "tag", "tag", o.tag, true } end
+    if o.space then out[#out + 1] = { "space", "space", o.space, true } end
+    if o.pick_visibility then
+        out[#out + 1] = { "visibility", NoteBar.VIS_ICON[o.visibility] or "vis-private", o.pick_visibility, true }
+    end
+    return out
+end
+
+--- How many of `n` icons (each `bh` wide) fit in a bar `width` wide beside
+--- ✕ and the name (at least NAME_MIN), `reserve` more taken (Done).
+NoteBar.NAME_MIN = 120
+function NoteBar.fit(n, width, bh, reserve)
+    local left = S(4) + bh + S(6)
+    local free = width - left - S(NoteBar.NAME_MIN) - (reserve or 0) - S(12)
+    return math.max(0, math.min(n, math.floor(free / (bh + S(2)))))
 end
 
 --- A note's name for the bar: its first line of text (heading marks, list

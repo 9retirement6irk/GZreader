@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Notes and drawings: ✕ at the top asks Save or Discard; both bars have photo, tag, space and who can see it", text = "The note editor and the drawing screen now have the same top bar. At the top left is ✕ instead of ←: when you've changed something it asks Save, Discard or Keep writing (Keep drawing), instead of saving as you leave. The Back key on a keyboard Kindle still saves. Both bars now carry the note's own icons: a picture from Immich (when it's connected; on the drawing screen it goes on the page), a tag, the note's space (a folder, when you have spaces) and who can see it (a lock for Private, a person for signed-in users, a globe for Public, people for space members); tap it to choose. On the drawing screen they act on the note you're drawing for, so you no longer go back to the editor to change them. On a narrow screen, what doesn't fit is in ⋮." },
+        },
+    },
+    {
         version = "1.34.0",
         changes = {
             { short = "Quick panel: Send books is now Connect", text = "The quick panel's Send books tile at Home is now called Connect, with its own icon, because the page it opens does much more than send books: it sets up Grimmory, Notes, Calendar and Music from your phone or computer. It opens that page at its first tab; Send books is one tap away there. If you'd hidden the tile it stays hidden." },

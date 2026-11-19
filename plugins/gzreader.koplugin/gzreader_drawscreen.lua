@@ -444,6 +444,49 @@ DrawScreen.SHORTCUT_NAMES = { eraser = _("Eraser"), pen = _("Pen"), pencil = _("
 --- tab under it that folds it away; the tools down one side under a round
 --- button that folds them into one; the page buttons at the bottom; and a
 --- panel open beside what was tapped. `self.buttons`: { tool, rect, group }.
+--- The top bar's icons, right to left (⋮ first, by Done), as the note editor's
+--- (gzreader_notebar.noteIcons): who can see it, its space, a tag, a photo from
+--- Immich; then the drawing's own: paper, all pages; a note's Delete and
+--- Archive (also in ⋮). What doesn't fit the screen's width is left to ⋮.
+function DrawScreen:topIcons()
+    local icons = { { id = "options", icon = "more", label = _("Options") } }
+    local note = self.note_icons and self.note_icons(self) or nil
+    if note then
+        local NoteBar = require("gzreader_notebar")
+        local list = NoteBar.noteIcons(note)
+        for i = #list, 1, -1 do
+            local ic = list[i]
+            local labels = { photos = _("Picture from Immich…"), tag = _("Tags"), space = _("Space"), visibility = _("Who can see it") }
+            icons[#icons + 1] = { id = "note-" .. ic[1], icon = ic[2], label = labels[ic[1]], fn = ic[3] }
+        end
+        -- (a new drawing: its tags in the panel, as before)
+        if self.meta then
+            for _i, t in ipairs(icons) do if t.id == "note-tag" then t.id, t.fn = "tag", nil end end
+        end
+    else
+        if self.meta then icons[#icons + 1] = { id = "tag", icon = "tag", label = _("Tags") } end
+        if DrawScreen.immich and not self.journal then
+            icons[#icons + 1] = { id = "immich", icon = "photos", label = _("Picture from Immich…") }
+        end
+    end
+    icons[#icons + 1] = { id = "paper", icon = "paper", label = _("Paper") }
+    icons[#icons + 1] = { id = "pages", icon = "pages", label = _("All pages") }
+    if self.note_actions then
+        -- (a note that's already there: Archive and Delete in the bar, as an opened note has; also in ⋮)
+        icons[#icons + 1] = { id = "delete-note", icon = "trash", label = _("Delete note…") }
+        icons[#icons + 1] = { id = "archive-note", icon = "archive", label = _("Archive note") }
+    end
+    if self.journal then table.insert(icons, 2, { id = "typing", label = _("Aa") }) end -- (back to typing the entry)
+    return icons
+end
+
+--- The note's space, who can see it or its tags changed (the editor behind): the bar again.
+function DrawScreen:barChanged()
+    if self._closed then return end
+    self:layoutBar()
+    UIManager:setDirty(self, "ui")
+end
+
 function DrawScreen:layoutBar()
     local sw, sh = self.dimen.w, self.dimen.h
     local ts, pad, gap = self.tool_sz, S(3), S(8)
@@ -465,23 +508,20 @@ function DrawScreen:layoutBar()
         self.frames.top = Geom:new{ x = 0, y = 0, w = sw, h = self.top_h }
         local bh = self.top_h - S(8)
         -- (a journal entry's drawing: back to the entry, and Save saves the entry)
-        add({ id = "cancel", icon = "back", label = self.journal and _("Back to the entry") or _("Close") }, S(4), S(4), bh, bh, "top")
+        -- (✕ closes, asking Save or Discard when something changed; a journal entry's: ← back to it)
+        add({ id = "cancel", icon = self.journal and "back" or "close", label = self.journal and _("Back to the entry") or _("Close") },
+            S(4), S(4), bh, bh, "top")
         local done_w = S(84)
         local x = sw - done_w - S(6)
         add({ id = "done", label = self.journal and _("Save") or _("Done") }, x, S(6), done_w, self.top_h - S(12), "top")
-        local icons = { { id = "options", icon = "more", label = _("Options") } }
-        if self.note_actions then
-            -- (a note that's already there: Archive and Delete in the bar, as an opened note has; also in ⋮)
-            icons[#icons + 1] = { id = "delete-note", icon = "trash", label = _("Delete note…") }
-            icons[#icons + 1] = { id = "archive-note", icon = "archive", label = _("Archive note") }
-        end
-        if self.meta then icons[#icons + 1] = { id = "tag", icon = "tag", label = _("Tags") } end
-        icons[#icons + 1] = { id = "paper", icon = "paper", label = _("Paper") }
-        icons[#icons + 1] = { id = "pages", icon = "pages", label = _("All pages") }
-        if self.journal then icons[#icons + 1] = { id = "typing", label = _("Aa") } end -- (back to typing the entry)
-        for _i, t in ipairs(icons) do
-            x = x - bh - S(2)
-            anchors[t.id] = add(t, x, S(4), bh, bh, "top")
+        local icons = self:topIcons()
+        -- (as many as leave the name room, right to left; the rest are in ⋮)
+        local room = require("gzreader_notebar").fit(#icons - 1, x, bh, 0)
+        for i, t in ipairs(icons) do
+            if i == 1 or i - 1 <= room then
+                x = x - bh - S(2)
+                anchors[t.id] = add(t, x, S(4), bh, bh, "top")
+            end
         end
         -- the drawing's name (a new drawing's: tap to change it)
         local left = S(4) + bh + S(6)
@@ -2157,11 +2197,6 @@ function DrawScreen:use(t)
     elseif t.id == "cancel" and self.journal and not t.row then
         -- a journal entry's drawing: back to the whole entry, the drawing kept
         self.flyout = nil; self.after = "entry"; self:done()
-    elseif t.id == "cancel" and not t.row and self.changed then
-        -- ← with something drawn: saved as you leave (as the Kindle's own notebooks do);
-        -- ⋮ → Close without saving still asks and leaves without it
-        Log.info("drawing: left with changes: saved")
-        self.flyout = nil; self:done()
     elseif t.id == "cancel" then self.flyout = nil; self:layoutBar(); self:cancel()
     elseif t.id == "typing" then
         -- a journal entry's drawing: back to typing (the drawing kept)
@@ -2194,7 +2229,12 @@ function DrawScreen:use(t)
     elseif t.id == "prev" then if self.index > 1 then self:showPage(self.index - 1) end
     elseif t.id == "next" then if self.index < #self.pages then self:showPage(self.index + 1) end
     elseif t.id == "newpage" or t.id == "newpage2" then self.flyout = nil; self:newPage()
-    elseif t.id == "immich" then self:setFlyout(nil); self:pickPictures() end
+    elseif t.id == "immich" then self:setFlyout(nil); self:pickPictures()
+    elseif t.fn and t.id:sub(1, 5) == "note-" then
+        -- (the note's own icons: the editor behind does it, as in its bar)
+        self:setFlyout(nil)
+        t.fn()
+    end
 end
 
 -- ------------------------------------------------------------------ pages
@@ -2386,14 +2426,21 @@ function DrawScreen:cancel()
         if self.on_cancel then self.on_cancel() end
         return
     end
+    -- (✕ with something drawn: Save, Discard or Keep drawing, as the note editor's ✕)
     local dialog
-    dialog = ButtonDialog:new{ title = _("Leave without keeping these changes?"), buttons = {
+    dialog = ButtonDialog:new{ title = _("Save this drawing?"), buttons = {
+        { { text = _("Save"), align = "left", callback = function()
+            UIManager:close(dialog)
+            Log.info("drawing: closed with changes: saved")
+            self:done()
+        end } },
         { { text = _("Discard changes"), align = "left", callback = function()
             UIManager:close(dialog); self:close()
             if self.on_cancel then self.on_cancel() end
         end } },
         { { text = _("Keep drawing"), align = "left", callback = function() UIManager:close(dialog) end } },
     } }
+    self.leave_dialog = dialog
     UIManager:show(dialog)
 end
 
@@ -2603,6 +2650,7 @@ function DrawScreen.show(opts)
         pane = opts.pane,
         journal = opts.journal, -- { under }: a journal entry's drawing, in `pane` under its prompt (the entry: `under`)
         note_actions = opts.note_actions, -- { archive(screen), delete(screen) }: a note that's already there
+        note_icons = opts.note_icons, -- fn(screen) → the note's icons' actions (gzreader_notebar.noteIcons)
         on_done = on_done and function(res)
             for _i, p in ipairs(gone) do res[#res + 1] = p end
             -- (a journal entry's: what comes next, "entry", "typing" or "save")
