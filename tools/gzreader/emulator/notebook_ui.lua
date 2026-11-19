@@ -43,6 +43,24 @@ add({ fn = function(E)
         on_done = function(res) done = res end, on_cancel = function() end }
 end, after = 3 })
 add({ shot = "1-notebook", after = 0.5 })
+-- drawing keeps the Kindle awake: KOReader's "InputEvent" hook (AutoSuspend's idle timer) runs while the pen draws
+add({ fn = function(E)
+    local hook = UIM().event_hook
+    local orig = hook.execute
+    hook.execute = function(h, name, ...)
+        if name == "InputEvent" then E.awake = (E.awake or 0) + 1 end
+        return orig(h, name, ...)
+    end
+    local d = screen()
+    E.awake, d._awake_at = 0, nil
+    draw(E, { { W * 0.4, H * 0.8 }, { W * 0.5, H * 0.82 }, { W * 0.6, H * 0.8 } })
+end, after = 3 })
+add({ fn = function(E)
+    local d = screen()
+    check((E.awake or 0) >= 1 and (E.awake or 0) <= 2 and #d.sketch:live() == 1,
+        "a stroke: KOReader told the Kindle is in use (AutoSuspend's idle timer; " .. tostring(E.awake) .. " time(s), not at every point), the stroke drawn")
+    d.sketch:undo(); d:redrawAll()
+end, after = 2 })
 add({ fn = function(E)
     local d = screen()
     check(ids("top") == "cancel,done,options,tag,paper,pages,title" and d.canvas.y == 0 and d.canvas.h == H,
