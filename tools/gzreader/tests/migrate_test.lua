@@ -89,9 +89,10 @@ do
     check(read(R .. "/books/Dog Days.sdr/metadata.epub.lua"):find('"doc_path"] = "' .. R .. '/books/Dog Days.epub"', 1, true) ~= nil,
         "a book's own settings: where the book is")
     check(not exists(R .. "/app/settings/docprops_cache.sqlite"), "caches kept by path: dropped (made again)")
-    check(not exists(home .. "/extensions/koreader") and exists(home .. "/extensions/gzreader/bin/start.sh")
-        and read(home .. "/extensions/gzreader/menu.json"):find("/mnt/us/extensions/gzreader/bin/start.sh", 1, true),
-        "KUAL: GZreader's own entry (extensions/gzreader); its old one in KOReader's place gone")
+    local kual = read(home .. "/extensions/gzreader/menu.json") or ""
+    check(not exists(home .. "/extensions/koreader") and kual:find('"/mnt/us/GZreader/app/koreader.sh"', 1, true)
+        and not kual:find("start.sh", 1, true) and M.kualReady(home),
+        "KUAL: GZreader's own entry (extensions/gzreader), starting GZreader/app/koreader.sh itself; its old one in KOReader's place gone")
     check(not exists(home .. "/launchpad/koreader.ini") and read(home .. "/launchpad/gzreader.ini"):find("/mnt/us/GZreader/app/koreader.sh", 1, true),
         "launchpad: gzreader.ini, to GZreader/app")
     check(read(home .. "/documents/GZreader.sh"):find("APP=/mnt/us/GZreader/app", 1, true) ~= nil, "the home-screen item: to GZreader/app")
@@ -246,6 +247,11 @@ do -- moved by a beta that left the reading history behind (1.34.0-beta.2bcfc79)
         .. '    [2] = { ["file"] = "' .. R .. '/Read Again.epub", ["time"] = 1795000000 },\n'
         .. '    [3] = { ["file"] = "' .. R .. '/Old One.epub", ["time"] = 1794000000 },\n'
         .. '    [4] = { ["file"] = "/mnt/elsewhere/Other.epub", ["time"] = 1793000000 },\n}\n')
+    -- (and KUAL's entry as that beta wrote it: through bin/start.sh, which a Kindle 3 couldn't start GZreader from)
+    write(home .. "/extensions/gzreader/menu.json", '{"items":[{"name":"GZreader","items":[{"action":"/mnt/us/extensions/gzreader/bin/start.sh"}]}]}')
+    write(home .. "/extensions/gzreader/config.xml", "<extension/>")
+    os.execute("mkdir -p '" .. A .. "/plugins/gzreader.koplugin' && cp -r '" .. REPO .. "/plugins/gzreader.koplugin/launchers' '"
+        .. A .. "/plugins/gzreader.koplugin/'")
     local cmd = string.format("cd '%s' && GZ_MOVE_HOME='%s' luajit -e \"package.path='%s/frontend/?.lua;%s/?.lua;'..package.path; "
         .. "package.cpath='%s/?.so;%s/libs/?.so;'..package.cpath; "
         .. "if not pcall(require,'libs/libkoreader-lfs') then package.preload['libs/libkoreader-lfs']=function() return require('lfs') end end; "
@@ -260,6 +266,8 @@ do -- moved by a beta that left the reading history behind (1.34.0-beta.2bcfc79)
         and not hist:find('"' .. R .. '/Old One.epub"', 1, true) and again == 1 and hist:find("/mnt/elsewhere/Other.epub", 1, true) ~= nil
         and exists(A .. "/" .. M.HISTORY_FIXED),
         "moved by a beta that missed the reading history: its books' places put right at the next start, a book read again since kept once (" .. out:gsub("\n", " ") .. ")")
+    check(M.kualReady(home) and not (read(home .. "/extensions/gzreader/menu.json") or ""):find("start.sh", 1, true),
+        "…and KUAL's entry written again, starting GZreader/app/koreader.sh itself (not through bin/start.sh)")
     write(A .. "/history.lua", 'return {\n    [1] = { ["file"] = "' .. R .. '/Later.epub", ["time"] = 1 },\n}\n')
     h = io.popen(cmd); if h then h:read("*a"); h:close() end
     check((read(A .. "/history.lua") or ""):find(R .. "/Later.epub", 1, true) ~= nil, "…once only (a marker in its settings)")
