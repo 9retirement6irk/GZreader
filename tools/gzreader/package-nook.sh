@@ -22,7 +22,8 @@ GZ_VERSION=${GZ_VERSION:-$(tr -d ' \n' < "$REPO/GZREADER_VERSION")}
 unzip -q "$SRC_ZIP" -d "$STAGE/src"
 G="$STAGE/gzreader"
 mkdir -p "$G"
-mv "$STAGE/src/koreader" "$G/koreader"
+# (the Kindle package keeps GZreader in GZreader/app since 1.35; the Nook keeps it in gzreader/koreader)
+if [ -d "$STAGE/src/GZreader/app" ]; then mv "$STAGE/src/GZreader/app" "$G/koreader"; else mv "$STAGE/src/koreader" "$G/koreader"; fi
 KO="$G/koreader"
 # Kindle-only parts
 rm -f "$KO/fbink" "$KO/koreader.sh" "$KO/libkohelper.sh" "$KO/wmctrl"
