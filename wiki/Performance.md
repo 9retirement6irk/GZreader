@@ -146,7 +146,7 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
   every cover to the exact size of where it's shown; on the Kindle 3 that took
   ~4 s of CPU per Home screen (the cover strip), and its memory cache starts
   empty after every restart. GZreader keeps each final-size cover as a raw
-  bitmap in `koreader/cache/gz-covers/` (used only while the book file is
+  bitmap in `GZreader/app/cache/gz-covers/` (used only while the book file is
   unchanged), learns the sizes ZenOS uses, and a low-priority background
   process (`gzreader_coverwarm.lua`) makes them for every downloaded book a
   minute after start, after downloads and when a new size shows up. Books

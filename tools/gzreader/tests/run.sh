@@ -228,6 +228,12 @@ echo "== Wi-Fi power saving off while downloading"
 (cd "$T" && luajit wifips_test.lua "$REPO") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
 
+echo "== GZreader in a folder of its own: the move from KOReader's folder"
+MIGRATE_WORK=$(mktemp -d)
+(cd "$T" && luajit migrate_test.lua "$REPO" "$KOBASE" "$MIGRATE_WORK") 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+rm -rf "$MIGRATE_WORK"
+
 echo "== beta branch (labelled pull requests combined)"
 (timeout 120 python3 "$T/beta_resolve_test.py" && timeout 120 python3 "$T/beta_combine_test.py" && timeout 120 python3 "$T/publish_updates_test.py") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))

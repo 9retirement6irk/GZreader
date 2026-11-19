@@ -105,7 +105,7 @@ only the newest three `gzreader-log-<date>.txt` next to the GZreader folder
 
 ## Where sign-ins are kept
 
-On a Kindle, KOReader's settings are on the USB drive (`koreader/settings`),
+On a Kindle, GZreader's settings are on the USB drive (`GZreader/app/settings`),
 which any computer the Kindle is plugged into can read. GZreader keeps its
 sign-ins somewhere else: the CalDAV password, the Grimmory, Memos, Plex and
 Home Assistant tokens, the Immich key, the Access key and Cloudflare token,
@@ -115,7 +115,7 @@ shared over USB; GZreader's settings on the drive hold everything else.
 Sign-ins saved by an earlier version move there by themselves a few seconds
 after GZreader starts (the settings' backup copy is cleaned too). Going
 back to an earlier version afterwards means connecting again. On a Kobo the
-settings are on its USB drive too (`.adds/koreader/settings`), and the
+settings are on its USB drive too (`GZreader/app/settings`), and the
 sign-ins are kept in `/usr/local/gzreader/secrets.lua` on its own disk (a
 Kobo firmware update can clear it: GZreader then asks to connect again). On a Nook,
 GZreader's settings are already on its own disk (`/data/gzreader`).

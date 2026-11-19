@@ -82,7 +82,8 @@ function Usb.setActive(on)
 end
 
 function Usb.dir(plugin)
-    local dir = plugin:libraryDir() .. "/" .. Usb.FOLDER
+    -- (at the top of the GZreader folder, beside books/ and app/; before 1.35 the GZreader folder was the books')
+    local dir = (require("gzreader_places").root() or plugin:libraryDir()) .. "/" .. Usb.FOLDER
     if lfs.attributes(dir, "mode") ~= "directory" then lfs.mkdir(dir) end
     return dir
 end
@@ -370,7 +371,7 @@ function Usb.have(plugin)
         end
     end
     for id in pairs(plugin.store.audiobooks or {}) do
-        if isFile(plugin:libraryDir() .. "/" .. require("gzreader_abfolder").STORE .. "/" .. tostring(id) .. "/audiobook.json") then
+        if isFile(require("gzreader_audiobook").dir(plugin, id) .. "/audiobook.json") then
             audiobooks[#audiobooks + 1] = tonumber(id) or id
         end
     end

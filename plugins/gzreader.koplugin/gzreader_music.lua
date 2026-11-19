@@ -60,7 +60,8 @@ function Music.plex(plugin)
     return p
 end
 
-function Music.root(plugin) return plugin:libraryDir() .. "/" .. Music.STORE end
+--- (GZreader/music; before 1.35, the hidden .music in the GZreader folder: gzreader_places)
+function Music.root(plugin) return require("gzreader_places").music(plugin:libraryDir() .. "/" .. Music.STORE) end
 
 local function safe(s) return (tostring(s or ""):gsub("[^%w%-]", "_")) end
 

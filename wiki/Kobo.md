@@ -8,7 +8,7 @@ A Kobo is used as a touch Kindle: tap or swipe to turn pages, swipe down from th
 - **Light:** the quick panel's slider, and a warmth slider on Kobos with a warm light (Clara HD and newer, Forma, Libra, Sage).
 - **Wi‑Fi:** KOReader's own Wi‑Fi for Kobos, with GZreader's On / Off / Auto: [Wi‑Fi](Wi-Fi).
 - **Clock:** the Kobo's own. If it's plainly wrong (a Kobo whose battery ran down), GZreader sets it from the internet once Wi‑Fi connects.
-- **Updates:** Settings → General → Software update, as on a Kindle. An update brings the Kobo's own start script (`.adds/koreader/koreader.sh`), never a Kindle's.
+- **Updates:** Settings → General → Software update, as on a Kindle. An update brings the Kobo's own start script (`GZreader/app/koreader.sh`), never a Kindle's. From a version before 1.35 (installed in `.adds/koreader`), the first start after the update moves GZreader into `GZreader/app`, with your books, music, audiobooks and notes, and points the NickelMenu and KFMon entries there.
 
 ## What's different
 
@@ -22,9 +22,10 @@ A Kobo is used as a touch Kindle: tap or swipe to turn pages, swipe down from th
 
 | | |
 | --- | --- |
-| `.adds/koreader/` | GZreader (settings in `.adds/koreader/settings`, logs `.adds/koreader/gzreader.log` and `crash.log`) |
+| `GZreader/app/` | GZreader (settings in `GZreader/app/settings`, logs `GZreader/app/gzreader.log` and `crash.log`) |
 | `.adds/nm/gzreader` | NickelMenu's GZreader item |
 | `.adds/kfmon/config/gzreader.ini`, `gzreader.png` | KFMon's GZreader book |
-| `GZreader/` | your books, audiobooks and pictures from GZreader |
+| `GZreader/books`, `music`, `audiobooks`, `notes` | your books, what you downloaded, your notes |
+| `.adds/koreader/` | KOReader, if you have it: GZreader leaves it alone |
 
 Uninstalling: [Updating and uninstalling](Updating-and-Uninstalling#uninstalling).

@@ -8,8 +8,12 @@
 #   koreader-kindlepw2-vX.zip      touch Kindles on firmware 5.6.1 – 5.16.2
 #
 # Outputs, in out-dir:
-#   gzreader-<platform>-<version>.zip   full install (koreader, extensions[, launchpad]
-#                                       [, documents/GZreader.sh: firmware 5])
+#   gzreader-<platform>-<version>.zip   full install: GZreader/app (GZreader in a folder
+#                                       of its own, beside KOReader), extensions/gzreader
+#                                       (KUAL)[, launchpad/gzreader.ini][, documents/
+#                                       GZreader.sh: firmware 5]; KOReader's own
+#                                       koreader/, extensions/koreader and
+#                                       launchpad/koreader.ini aren't in it
 #   gzreader-update.zip                 what the in-app updater installs: Lua
 #                                       only, the same for every Kindle (the
 #                                       packages share one LuaJIT version, so
@@ -48,11 +52,16 @@ GZ_VERSION=${GZ_VERSION:-$(tr -d ' \n' < "$REPO/GZREADER_VERSION")}
 #    keyboard, read aloud, sleep screen…). 2. Plugins: only the keep-list.
 gz_overlay "$KO" platform/kindle/koreader.sh
 
-# 3. Launchers: KUAL menu and launchpad shortcuts say "GZreader".
-cp "$REPO/platform/kindle/extensions/koreader/menu.json" \
-   "$REPO/platform/kindle/extensions/koreader/config.xml" "$STAGE/extensions/koreader/"
+# 3. Launchers: GZreader's own (KUAL's extensions/gzreader, the launchpad's
+#    gzreader.ini), to GZreader/app, beside KOReader's (plugins/gzreader.koplugin/
+#    launchers: the move from koreader/ installs them too, gzreader_migrate.lua).
+LAUNCH="$REPO/plugins/gzreader.koplugin/launchers/kindle"
+rm -rf "$STAGE/extensions/koreader"
+mkdir -p "$STAGE/extensions"
+cp -r "$LAUNCH/extensions/gzreader" "$STAGE/extensions/gzreader"
+chmod 755 "$STAGE/extensions/gzreader/bin/start.sh"
 # (launchpad: the Kindle 2/3/DX's own launcher; firmware 5 has only KUAL)
-if [ -d "$STAGE/launchpad" ]; then cp "$REPO/platform/kindle/launchpad/koreader.ini" "$STAGE/launchpad/"; fi
+if [ -d "$STAGE/launchpad" ]; then rm -f "$STAGE/launchpad/koreader.ini"; cp "$LAUNCH/launchpad/gzreader.ini" "$STAGE/launchpad/"; fi
 # Touch Kindles (Kindle Touch, Paperwhite and newer): the "GZreader" item on
 # the Kindle's own home screen (a scriptlet: documents/GZreader.sh, ZenOS's
 # kindle-launcher), there from the start instead of after GZreader's first
@@ -80,7 +89,11 @@ echo "$GZ_VERSION" > "$KO/gzreader-version"
 
 OUT="$OUT_DIR/gzreader-${PLATFORM}-${GZ_VERSION}.zip"
 rm -f "$OUT"
-(cd "$STAGE" && zip -qr -9 "$OUT" koreader extensions $( [ -d launchpad ] && echo launchpad ) $( [ -d documents ] && echo documents ))
+# (GZreader/app: the program, in the GZreader folder with the books: gzreader_places.lua)
+mkdir -p "$STAGE/full/GZreader"
+cp -a "$KO" "$STAGE/full/GZreader/app"
+for d in extensions launchpad documents; do [ -d "$STAGE/$d" ] && cp -a "$STAGE/$d" "$STAGE/full/"; done
+(cd "$STAGE/full" && zip -qr -9 "$OUT" GZreader extensions $( [ -d launchpad ] && echo launchpad ) $( [ -d documents ] && echo documents ))
 echo "$OUT"
 du -h "$OUT"
 

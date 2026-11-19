@@ -21,6 +21,18 @@ io.write([[
 -- Set up Lua and ffi search paths
 require("setupkoenv")
 
+-- GZreader: once, after the update to 1.35, GZreader moves out of KOReader's
+-- folder into its own (GZreader/app, books, music, audiobooks, notes), before
+-- anything has opened a file; the start goes on from there (gzreader_migrate.lua)
+-- (moved: GZreader starts again at once, as after an update, so every library it
+-- loads from now on comes from the new folder: exit 85, koreader.sh's restart)
+pcall(function()
+    if dofile("plugins/gzreader.koplugin/gzreader_migrate.lua").early() then
+        io.stdout:flush()
+        os.exit(85)
+    end
+end)
+
 -- GZreader: load Lua modules from compiled bytecode (cached on first use)
 pcall(function() require("gzbytecode").install() end)
 

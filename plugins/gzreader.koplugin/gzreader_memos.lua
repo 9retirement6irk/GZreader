@@ -106,7 +106,9 @@ process, which can't change the plugin's settings), and asked again after
 that, or when you connect again (Memos:me): a server updated meanwhile. ]]
 Memos.LACKS_TTL = 6 * 3600
 
-function Memos.lacksPath() return DataStorage:getSettingsDir() .. "/gzreader-memos-lacks.json" end
+function Memos.lacksPath()
+    return require("gzreader_places").notes("memos-lacks.json", DataStorage:getSettingsDir() .. "/gzreader-memos-lacks.json")
+end
 
 local function readLacks()
     local f = io.open(Memos.lacksPath(), "rb")
@@ -565,7 +567,10 @@ end
 
 ---------------------------------------------------------------- the cache
 
-function Memos.cachePath() return DataStorage:getSettingsDir() .. "/gzreader-notes.json" end
+--- (GZreader/notes/notes.json; before 1.35, in the app's settings: gzreader_places)
+function Memos.cachePath()
+    return require("gzreader_places").notes("notes.json", DataStorage:getSettingsDir() .. "/gzreader-notes.json")
+end
 
 function Memos.loadCache()
     local f = io.open(Memos.cachePath(), "rb")
@@ -585,7 +590,7 @@ function Memos.saveCache(data)
 end
 
 function Memos.filesDir()
-    local dir = DataStorage:getDataDir() .. "/cache/gzreader-notes"
+    local dir = require("gzreader_places").notes("files", DataStorage:getDataDir() .. "/cache/gzreader-notes")
     lfs.mkdir(DataStorage:getDataDir() .. "/cache")
     lfs.mkdir(dir)
     return dir

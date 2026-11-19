@@ -1,7 +1,7 @@
 --[[--
 Passwords, tokens, keys and calendar links kept off the Kindle's USB drive.
 
-On a Kindle, KOReader's settings live on the USB drive (/mnt/us/koreader/
+On a Kindle, GZreader's settings live on the USB drive (/mnt/us/GZreader/app/
 settings): any computer the Kindle is plugged into can read them. GZreader's
 state (settings/gzreader.lua, and gzreader_recent.lua between full saves)
 held the sign-ins in it: the CalDAV password, the Home Assistant, Memos and

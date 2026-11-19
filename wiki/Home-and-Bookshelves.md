@@ -85,7 +85,7 @@ the book once you open one.
     player (a red walkman with orange headphones, a blue CD player with
     yellow ones). Grey screens show them in greys;
   - **your own ornaments**: connect the Kindle to a computer and put PNG or
-    SVG pictures in `koreader/settings/gzreader/ornaments` (Settings shows
+    SVG pictures in `GZreader/app/settings/gzreader/ornaments` (Settings shows
     the folder and makes it). A picture's bottom edge stands on the plank;
     keep its background transparent. Bold, dark shapes read best on e-ink.
     A shaded picture should be a PNG: the Kindle draws an SVG's gradients

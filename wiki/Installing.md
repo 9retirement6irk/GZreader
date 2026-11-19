@@ -21,7 +21,23 @@ You'll need a computer with a USB cable, and about 100 MB free on the device.
 
 **The first start.** A setup guide runs. Its first page, **Set up from your browser**, shows a QR code: scan it with your phone, or type the address under it into any browser on the same Wi‑Fi and enter the PIN, to connect Grimmory, Notes (Memos) and Calendar, or to send books, or pick *Skip for now*. You can come back to it any time: the quick panel → **Send books** (Menu, or on a touch Kindle swipe down from the top). The guide then asks about the library view, tabs, sleep screen, clock and whether to send debug reports. → [Setup page and connections](Setup-Page-and-Connections)
 
-Books you download or send go to the **GZreader** folder at the top of the Kindle's drive; the **Downloads** tab shows them.
+Books you download or send go to **GZreader/books** on the Kindle's drive; the **Downloads** tab shows them.
+
+### Where GZreader keeps things
+
+Everything is in one **GZreader** folder at the top of the drive, beside KOReader (if you have it), never in its place:
+
+| | |
+| --- | --- |
+| `GZreader/app` | GZreader itself: its settings, its logs (`gzreader.log`, `crash.log`) |
+| `GZreader/books` | your books, each with its `.sdr` folder (reading position, highlights) |
+| `GZreader/music` | music you downloaded |
+| `GZreader/audiobooks` | audiobooks you downloaded |
+| `GZreader/notes` | your notes kept on the device, their attachments, drawings waiting to go to Memos |
+
+Sign-ins (passwords, tokens, calendar links) are kept on the device's own disk instead, where a computer can't read them. KOReader keeps `koreader/`, its own KUAL entry and its settings; GZreader has its own (`extensions/gzreader`, the **GZreader** item), so you can use both.
+
+**Updating from a version before 1.35** (GZreader was installed in KOReader's place, `koreader/`): the first start after the update moves everything into the GZreader folder by itself: GZreader, your books (with their reading positions, history and collections), music, audiobooks and notes. It takes a moment and starts again once; a message says it's done. The `koreader` folder is then free for KOReader.
 
 Kindle 2 and DX (no Wi‑Fi): the setup is done from a computer instead. → [Sync with a computer](Sync-with-a-Computer)
 
@@ -29,7 +45,7 @@ Updating, uninstalling: [Updating and uninstalling](Updating-and-Uninstalling).
 
 ## If something goes wrong
 
-- **GZreader isn't in KUAL:** check that `extensions/koreader` is on the drive (not `extensions/extensions/koreader` or inside another folder).
-- **It flashes and returns to the Kindle's home screen:** most likely the package for another Kindle or firmware; take the one from the table above. `koreader/crash.log` on the drive says why.
+- **GZreader isn't in KUAL:** check that `extensions/gzreader` is on the drive (not `extensions/extensions/gzreader` or inside another folder).
+- **It flashes and returns to the Kindle's home screen:** most likely the package for another Kindle or firmware; take the one from the table above. `GZreader/app/crash.log` on the drive says why.
 - **The setup page doesn't open:** the phone or computer must be on the same Wi‑Fi as the Kindle, and the Kindle's Wi‑Fi must be on. Type the address exactly as the Kindle shows it (with `:8642` if it shows one), starting `http://` if the browser insists on `https://`.
 - **Something else:** quick panel → **Diagnostics** → **Send to the developer**, or *Save to the Kindle* and attach the file to an [issue](https://github.com/9retirement6irk/GZreader/issues). → [Diagnostic log](Privacy-and-Diagnostics#diagnostic-log)

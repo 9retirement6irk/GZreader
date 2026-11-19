@@ -81,7 +81,7 @@ report a Wi‑Fi Kindle sends with **Send to the developer**:
   (and any reports the Kindle saved). With diagnostic logging on, pressing
   **Sync** in the Kindle's quick panel exports a fresh, complete log first
   (`.gzsync/reports/latest.txt`), and the page sends that one; otherwise it
-  reads `koreader/gzreader.log` and the tail of `crash.log` from the drive.
+  reads `GZreader/app/gzreader.log` and the tail of `crash.log` from the drive.
   Use this when the Kindle can't get as far as its menus.
 
 Passwords and tokens are never in the log; it can name books and files.

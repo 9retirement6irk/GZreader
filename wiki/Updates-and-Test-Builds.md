@@ -44,7 +44,7 @@ only with a full package.
 
 Kobos update the same way, from the same `gzreader-update.zip`: it carries
 the Kobo's own start script (`koreader/kobo-koreader.sh`), which a Kobo
-installs as its `.adds/koreader/koreader.sh` (never the Kindle's), and
+installs as its `GZreader/app/koreader.sh` (never the Kindle's), and
 KOReader's Kobo device code. The Kobo's programs stay as installed; a new
 KOReader version needs the full Kobo package unzipped again. Test builds
 don't make a Kobo package: install it from a release first.

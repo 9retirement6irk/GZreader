@@ -1,7 +1,7 @@
 --[[--
 Plain-text diagnostic log for the Grimmory plugin.
 
-Written to <koreader dir>/gzreader.log (on a Kindle: /mnt/us/koreader/gzreader.log,
+Written to <koreader dir>/gzreader.log (on a Kindle: /mnt/us/GZreader/app/gzreader.log,
 visible over USB). Rotates to gzreader.log.1 at ~512 KB. Secrets are redacted
 before anything is written: passwords, access/refresh tokens, OIDC codes,
 PKCE verifiers, states and the pairing URL token never reach the file.

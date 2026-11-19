@@ -120,7 +120,8 @@ local Folder = require("gzreader_abfolder")
 Audiobook.STORE = Folder.STORE -- hidden; see the note at the top
 
 function Audiobook.dir(plugin, book_id)
-    return plugin:libraryDir() .. "/" .. Audiobook.STORE .. "/" .. tostring(book_id)
+    -- (GZreader/audiobooks; before 1.35, the hidden .audiobooks in the GZreader folder: gzreader_places)
+    return require("gzreader_places").audiobooks(plugin:libraryDir() .. "/" .. Audiobook.STORE) .. "/" .. tostring(book_id)
 end
 
 local function extOf(name, fallback)

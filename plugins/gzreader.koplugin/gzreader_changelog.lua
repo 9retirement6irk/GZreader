@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "GZreader has a folder of its own, beside KOReader: GZreader/app, books, music, audiobooks, notes", text = "GZreader used to take KOReader's place on the drive (the koreader folder, or .adds/koreader on a Kobo), so you couldn't have both. Everything GZreader keeps is now in one GZreader folder: app (GZreader itself, its settings and logs), books (your books and their reading positions), music and audiobooks (what you downloaded, no longer in hidden folders) and notes (the notes kept on the device, drawings waiting to be sent, attachments). The koreader folder is left free, so KOReader can be installed beside GZreader. When you update, GZreader moves everything there itself at its first start: your books with their reading positions, highlights and history, your music, audiobooks and notes, and the program, then starts again (a few seconds longer than usual, once) and says what it did. The Kindle's KUAL menu and the Kobo's NickelMenu and KFMon entries are changed to start it from its new place. Sign-ins stay on the Kindle's own disk, as before. The Nook keeps its layout." },
+        },
+    },
+    {
         version = "1.34.0",
         changes = {
             { short = "Quick panel: Send books is now Connect", text = "The quick panel's Send books tile at Home is now called Connect, with its own icon, because the page it opens does much more than send books: it sets up Grimmory, Notes, Calendar and Music from your phone or computer. It opens that page at its first tab; Send books is one tap away there. If you'd hidden the tile it stays hidden." },

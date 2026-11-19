@@ -117,7 +117,7 @@ end
 function Storage.audiobooks(plugin, lib)
     local known = plugin.store.audiobooks or {}
     local items = {}
-    local root = lib .. "/.audiobooks"
+    local root = require("gzreader_places").audiobooks(lib .. "/.audiobooks")
     local ok, iter, obj = pcall(lfs.dir, root)
     if ok then
         for name in iter, obj do
@@ -136,7 +136,7 @@ end
 --- Music: each album or playlist in .music, plus the stand-ins.
 function Storage.music(plugin, lib)
     local items = {}
-    local root = lib .. "/.music"
+    local root = require("gzreader_places").music(lib .. "/.music")
     local Music
     pcall(function() Music = require("gzreader_music") end)
     local ok, iter, obj = pcall(lfs.dir, root)
@@ -171,7 +171,8 @@ end
 function Storage.notes(data_dir, settings_dir)
     local Memos
     pcall(function() Memos = require("gzreader_memos") end)
-    local cache_file = settings_dir .. "/gzreader-notes.json"
+    local Places = require("gzreader_places")
+    local cache_file = Places.notes("notes.json", settings_dir .. "/gzreader-notes.json")
     local items = {}
     local cache = Memos and Memos.loadCache and Memos.loadCache() or nil
     for _i, m in ipairs(cache and cache.notes or {}) do
@@ -182,7 +183,7 @@ function Storage.notes(data_dir, settings_dir)
         end
         items[#items + 1] = { name = Storage.noteName(m.content), bytes = bytes }
     end
-    local files = Storage.dirSize(data_dir .. "/cache/gzreader-notes")
+    local files = Storage.dirSize(Places.notes("files", data_dir .. "/cache/gzreader-notes"))
         + Storage.dirSize(data_dir .. "/cache/gzreader-notes-small") -- (big pictures' small copies: gzreader_sticky.lua)
     return { bytes = fileSize(cache_file) + files, count = #items, items = largest(items) }
 end
