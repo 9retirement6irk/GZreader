@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Drawing: the eraser keeps up on a full page", text = "The eraser looked for the stroke under it by testing every point of every stroke on the page, several times for each move of the pen. On a page full of handwriting (hundreds of strokes) that was hundreds of thousands of tests a moment, and the eraser fell behind. It now first checks where each stroke is, and each run of 16 of its points, and only tests the points near the eraser: on a page of 300 strokes about 45 times quicker, with the same strokes rubbed out. (Thanks to pierspad's Notebook plugin for KOReader, which does this.)" },
+        },
+    },
+    {
         version = "1.34.0",
         changes = {
             { short = "Quick panel: Send books is now Connect", text = "The quick panel's Send books tile at Home is now called Connect, with its own icon, because the page it opens does much more than send books: it sets up Grimmory, Notes, Calendar and Music from your phone or computer. It opens that page at its first tab; Send books is one tap away there. If you'd hidden the tile it stays hidden." },
