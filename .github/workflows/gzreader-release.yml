@@ -5,8 +5,11 @@
 #                                          5.16.3+ (Paperwhite 3 / 7th gen and later)
 #   gzreader-kindlepw2-<version>.zip       full install: touch Kindles on firmware
 #                                          5.6.1 – 5.16.2
-#   gzreader-update.zip                    what Kindles download to update (Lua only,
-#                                          the same for all of them)
+#   gzreader-kobo-<version>.zip            full install: Kobos (unzipped onto the
+#                                          drive: .adds/koreader, NickelMenu and
+#                                          KFMon entries)
+#   gzreader-update.zip                    what Kindles, Kobos and Nooks download to
+#                                          update (Lua only, the same for all of them)
 # Kindles also update from a release without these (they fall back to the
 # release's source code zip); attaching them keeps the download small.
 name: GZreader release packages
@@ -59,6 +62,15 @@ jobs:
           done
       - name: Attach to the release
         run: gh release upload "$TAG" out/gzreader-kindle-legacy-*.zip out/gzreader-kindle-[0-9]*.zip out/gzreader-kindlehf-*.zip out/gzreader-kindlepw2-*.zip out/gzreader-update.zip --clobber
+      - name: Kobo
+        # KOReader's Kobo package (its own binaries) + this release's Lua; a
+        # failure here doesn't hold up the Kindle packages above
+        continue-on-error: true
+        run: |
+          VERSION="${TAG#v}"; VERSION="${VERSION#.}"
+          gh release download "$KOREADER_TAG" --repo koreader/koreader --pattern "koreader-kobo-v*.zip" --dir dl
+          GZ_VERSION="$VERSION" tools/gzreader/package-kobo.sh dl/koreader-kobo-v*.zip out
+          gh release upload "$TAG" out/gzreader-kobo-*.zip --clobber
       - name: The update for the sync page (Kindles without Wi-Fi)
         # A web page can't read GitHub's release downloads (no CORS), but it
         # can read raw.githubusercontent.com: the update and latest.json go

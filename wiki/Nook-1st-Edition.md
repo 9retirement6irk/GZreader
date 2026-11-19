@@ -49,7 +49,7 @@ exiting or restarting the Nook.
 - **The page buttons** on both sides turn pages; **n** (under the colour
   screen) is Home; **power** puts the Nook to sleep and wakes it.
 
-**Settings → Interface → Colour screen** chooses what shows when: while
+**Settings → Display and light → Colour screen** chooses what shows when: while
 reading (reading info, cover, controls or nothing), elsewhere (controls,
 clock or nothing), when typing (colour keyboard, or the e-ink keyboard with
 the arrows), whether a touch brings up the controls and for how long, swipe

@@ -23,6 +23,7 @@
 7 frontend/luasettings.lua
 1 frontend/pluginloader.lua
 1 frontend/readhistory.lua
+9 frontend/socketutil.lua
 6 frontend/ui/elements/common_info_menu_table.lua
 1 frontend/ui/elements/filemanager_menu_order.lua
 1 frontend/ui/elements/page_overlap.lua
@@ -114,7 +115,7 @@
 17 plugins/zenos.koplugin/modules/settings/sections/about_settings.lua
 7 plugins/zenos.koplugin/modules/settings/sections/advanced_settings.lua
 7 plugins/zenos.koplugin/modules/settings/sections/general_settings.lua
-9 plugins/zenos.koplugin/modules/settings/sections/global_settings.lua
+19 plugins/zenos.koplugin/modules/settings/sections/global_settings.lua
 19 plugins/zenos.koplugin/modules/settings/sections/interface_settings.lua
 8 plugins/zenos.koplugin/modules/settings/sections/library_settings.lua
 11 plugins/zenos.koplugin/modules/settings/sections/library_settings/home_settings.lua
@@ -122,7 +123,7 @@
 3 plugins/zenos.koplugin/modules/settings/sections/reader_settings.lua
 3 plugins/zenos.koplugin/modules/settings/sections/updates_settings.lua
 3 plugins/zenos.koplugin/modules/settings/zen_bugreporter.lua
-100 plugins/zenos.koplugin/modules/settings/zen_settings.lua
+28 plugins/zenos.koplugin/modules/settings/zen_settings.lua
 2 plugins/zenos.koplugin/modules/settings/zen_settings_page.lua
 12 plugins/zenos.koplugin/modules/settings/zen_updater.lua
 6 reader.lua

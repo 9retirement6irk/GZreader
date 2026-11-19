@@ -15,7 +15,10 @@ strokes inside, which memos opens as a drawing you can go on editing.
 
 - A pen Kindle (the Scribe) draws with the pen only, and ignores the hand
   while the pen is near (palm rejection); the pen's other end rubs out.
-  Every other touch Kindle draws with one finger.
+  Its toolbar's pen / finger button switches to drawing with one finger
+  (and back), kept for next time. Every other touch Kindle draws with one
+  finger. The toolbar's hand moves a zoomed page with the pen (or a finger);
+  so do two fingers (on a pen Kindle drawing with the pen, one).
 - The screen reads the touch screen's contacts itself while it's on top
   (it stands in for KOReader's gesture detector, which gets them back when
   the screen closes or a dialog covers it): `gzreader_sketch.lua` turns them
@@ -107,6 +110,8 @@ DrawScreen.SIDE_TOOLS = {
     { id = "eraser", icon = "eraser", label = _("Eraser") },
     { id = "lasso", icon = "lasso", label = _("Lasso") },
     { id = "hand", icon = "hand", label = _("Move the page") },
+    -- (pen Kindles only: draw with the pen, or with a finger; gzreader_draw_with_finger)
+    { id = "fingers", icon = "stylus", pen_device = true, label = _("Draw with the pen or a finger") },
     { id = "sep", sep = true, passive = true },
     { id = "undo", icon = "undo", label = _("Undo") },
     { id = "redo", icon = "redo", label = _("Redo") },
@@ -155,6 +160,11 @@ function DrawScreen.savePenRange(before)
     G_reader_settings:saveSetting("gzreader_pen_range", { p_seen = r.p_seen, t_seen = r.t_seen, n = math.min(r.n, 100000) })
     -- (numbers only: what the pen's range is, for a report)
     Log.info("drawing: pen pressure up to", r.p_seen, "of", Sketch.pressureTop(r), "tilt up to", r.t_seen, "of", Sketch.tiltTop(r), "samples", r.n)
+    -- (how the pen is held: its usual lean while drawing, in degrees, to tell where "laid over" should start)
+    if (r.lean_n or 0) > 0 then
+        Log.info("drawing: pen lean while drawing: average", math.floor(r.lean_sum / r.lean_n + 0.5), "degrees, most", math.floor(r.lean_max + 0.5),
+            "; counts as laid over from", Sketch.TILT_FROM, "to", Sketch.TILT_DEGREES)
+    end
 end
 
 --- The writing tool new drawings start with (the last one chosen: Sketch.TOOL_IDS).
@@ -202,9 +212,12 @@ function DrawScreen:init()
         self.covers_fullscreen = false -- (the book or the entry is beside it, and is painted)
         self._pane_slots = {}
     end
-    self.pen_only = Sketch.penDevice(Device)
+    -- a pen Kindle (the Scribe): the pen draws and a hand can rest on the screen,
+    -- or (the toolbar's pen / finger button) a finger draws, as on the other Kindles
+    self.has_pen = Sketch.penDevice(Device)
+    self.pen_only = self.has_pen and not (G_reader_settings and G_reader_settings:isTrue("gzreader_draw_with_finger"))
     -- (the Scribe: its display driver's pen mode, for ink that keeps up with the pen; gzreader_penmode)
-    self.pen_fast = self.pen_only and require("gzreader_penmode").supported(Device)
+    self.pen_fast = self.has_pen and require("gzreader_penmode").supported(Device)
     self.top_h = S(52)
     self.bar_h = self.top_h
     self.top_hidden = false -- (folded away by the tab under it)
@@ -236,6 +249,8 @@ function DrawScreen:init()
     self.has_color = DrawScreen.hasColor()
     -- a Kindle with a pen: its pressure and tilt make the line heavier (a choice in the pen's panel)
     self.pressure_on = DrawScreen.pressureOn()
+    -- draw and hold: a rough shape becomes a clean one (on unless turned off in the Shapes panel)
+    self.snap_shapes = not (G_reader_settings and G_reader_settings:isFalse("gzreader_drawing_snap"))
     local was = DrawScreen.loadPenRange()
     self._pen_range_was = { p_seen = was.p_seen, t_seen = was.t_seen, n = was.n }
     self.color = DrawScreen.lastColor()
@@ -338,6 +353,7 @@ function DrawScreen:syncTool()
     sk.shape = self.shape
     sk.eraser_width = self.eraser_width
     sk.pressure_on = self.pressure_on
+    sk.snap_shapes = self.snap_shapes
     -- the lasso: how near a corner of the frame counts as its handle; another tool lets go of what's chosen
     sk.lasso_handle, sk.lasso_pad = S(26), S(10)
     if self.tool ~= "lasso" then
@@ -359,7 +375,7 @@ function DrawScreen:flyoutRows(which)
         end
         rows[#rows + 1] = { id = "widths", cells = "width" }
         if self.has_color then rows[#rows + 1] = { id = "colors", cells = "color" } end
-        if self.pen_only then
+        if self.has_pen then
             rows[#rows + 1] = { id = "pressure", row = true, switch = self.pressure_on, label = _("Pressure and tilt") }
         end
     elseif which == "highlighter" then
@@ -370,6 +386,8 @@ function DrawScreen:flyoutRows(which)
         for _i, id in ipairs(Sketch.SHAPES) do
             rows[#rows + 1] = { id = "s-" .. id, row = true, shape = id, icon = id, label = DrawScreen.SHAPE_NAMES[id] }
         end
+        -- (or with any pen: draw it roughly and hold the pen still at the end: gzreader_shapesnap.lua)
+        rows[#rows + 1] = { id = "snap", row = true, switch = self.snap_shapes, label = _("Draw and hold: clean shapes") }
     elseif which == "eraser" then
         for k, w in ipairs(Sketch.ERASER_WIDTHS) do
             rows[#rows + 1] = { id = "e" .. tostring(w), row = true, eraser_width = w, bar = k, hollow = true, label = DrawScreen.WIDTH_NAMES[k] }
@@ -377,7 +395,7 @@ function DrawScreen:flyoutRows(which)
         rows[#rows + 1] = { id = "clear", row = true, label = _("Erase page") }
     elseif which == "more" then
         rows[#rows + 1] = { id = "side", row = true, label = self.toolbar_side == "left" and _("Move to right side") or _("Move to left side") }
-        if self.pen_only then
+        if self.has_pen then
             rows[#rows + 1] = { id = "shortcut", row = true,
                 label = T(_("Stylus shortcut: %1"), DrawScreen.SHORTCUT_NAMES[DrawScreen.shortcut()] or DrawScreen.shortcut()) }
             -- (the Scribe: the display's own pen mode, on unless turned off here)
@@ -452,6 +470,11 @@ function DrawScreen:layoutBar()
         local x = sw - done_w - S(6)
         add({ id = "done", label = self.journal and _("Save") or _("Done") }, x, S(6), done_w, self.top_h - S(12), "top")
         local icons = { { id = "options", icon = "more", label = _("Options") } }
+        if self.note_actions then
+            -- (a note that's already there: Archive and Delete in the bar, as an opened note has; also in ⋮)
+            icons[#icons + 1] = { id = "delete-note", icon = "trash", label = _("Delete note…") }
+            icons[#icons + 1] = { id = "archive-note", icon = "archive", label = _("Archive note") }
+        end
         if self.meta then icons[#icons + 1] = { id = "tag", icon = "tag", label = _("Tags") } end
         icons[#icons + 1] = { id = "paper", icon = "paper", label = _("Paper") }
         icons[#icons + 1] = { id = "pages", icon = "pages", label = _("All pages") }
@@ -482,9 +505,11 @@ function DrawScreen:layoutBar()
         local sy = ty + ts + S(8)
         local y = sy + pad
         for _k, t in ipairs(tools) do
+          if not t.pen_device or self.has_pen then
             local h = t.sep and S(12) or ts
             anchors[t.id] = add(t, tx + pad, y, ts, h, "toolbar")
             y = y + h
+          end
         end
         self.frames.toolbar = Geom:new{ x = tx, y = sy, w = ts + 2 * pad, h = y - sy + pad }
     end
@@ -584,6 +609,7 @@ function DrawScreen:selected(t)
         return false
     end
     if t.id == "pen" or t.id == "highlighter" or t.id == "shape" or t.id == "eraser" or t.id == "text" or t.id == "hand" or t.id == "lasso" then return self.tool == t.id end
+    if t.id == "fingers" then return not self.pen_only end
     if t.id == "more" or t.id == "options" then return self.flyout == t.id end
     if t.id == "tag" then return self.flyout == "tags" end
     return false
@@ -621,6 +647,9 @@ function DrawScreen:hint()
         for i, name in ipairs(self.meta.tags) do out[i] = "#" .. name end
         return table.concat(out, " ")
     end
+    if self.tool == "lasso" and self.sketch.selection then
+        return _("Drag inside the frame to move, a corner to resize; tap elsewhere when it's in place")
+    end
     if self.tool == "text" then
         return self.text_sel and _("Drag the box to move it, its corner to resize it; tap it to change its words")
             or _("Tap where a text box goes; tap a box to choose it")
@@ -652,6 +681,7 @@ end
 --- The picture of the tool in hand (the toolbar's buttons, and the round one when they're folded away).
 function DrawScreen:toolIcon(id)
     if id == "pen" then return Sketch.toolStyle(self.writing).icon end
+    if id == "fingers" then return self.pen_only and "stylus" or "finger" end
     if id == "shape" then return self.shape or "shapes" end
     return id == "highlighter" and "highlighter" or id == "eraser" and "eraser" or id
 end
@@ -714,7 +744,7 @@ function DrawScreen:paintButton(bb, x, y, b)
     elseif t.icon then
         local isz = t.small and math.floor(r.h * 0.9) or math.floor(r.h * 0.56)
         -- (the toolbar's pen shows the writing tool in hand; Shapes, the shape)
-        local icon = (t.id == "pen" or t.id == "shape") and self:toolIcon(t.id) or t.icon
+        local icon = (t.id == "pen" or t.id == "shape" or t.id == "fingers") and self:toolIcon(t.id) or t.icon
         self:icon(icon, isz, not on):paintTo(bb, bx + math.floor((r.w - isz) / 2), by + math.floor((r.h - isz) / 2))
         if t.id == "pen" then
             -- the pen's width, as a dot in the corner
@@ -782,6 +812,7 @@ function DrawScreen:paintTo(bb, x, y)
     bb:blitFrom(self.canvas_bb, x + c.x, y + c.y, 0, 0, c.w, c.h)
     self:paintSelection(bb, x + c.x, y + c.y)
     self:paintLasso(bb, x + c.x, y + c.y)
+    self:paintShapePreview(bb, x + c.x, y + c.y)
     self:paintBar(bb, x, y)
     self._shown = { undo = self.sketch:canUndo(), redo = self.sketch:canRedo() }
 end
@@ -930,9 +961,10 @@ local function strokeSegments(sk, st)
     for i = 1, #pts do
         local a, b = pts[math.max(1, i - 1)], pts[i]
         -- (a stroke with a pen's pressure: as wide as it was pressed, as its tool draws it)
-        local pr = Sketch.toolRadius(st.kind, r, b[3] and (a[3] and (a[3] + b[3]) / 2 or b[3]) or nil)
-        out[#out + 1] = { a[1] + c.x, a[2] + c.y, b[1] + c.x, b[2] + c.y, pr, st.color, gray,
-            Sketch.grainDensity(st.kind, b[3] and (a[3] and (a[3] + b[3]) / 2 or b[3]) or nil) }
+        local w = b[3] and (a[3] and (a[3] + b[3]) / 2 or b[3]) or nil
+        local t = b[4] and (a[4] and (a[4] + b[4]) / 2 or b[4]) or nil -- (…and as far as it was laid over)
+        local pr = Sketch.toolRadius(st.kind, r, w, t)
+        out[#out + 1] = { a[1] + c.x, a[2] + c.y, b[1] + c.x, b[2] + c.y, pr, st.color, gray, Sketch.grainDensity(st.kind, w, t) }
     end
     return out
 end
@@ -1303,7 +1335,7 @@ function DrawScreen:hook()
     end)
     -- A Kindle with a pen: its pressure and tilt from the digitizer itself, when
     -- the device KOReader reads the pen from doesn't pass them on (gzreader_penraw).
-    if self.pen_only and not self.penraw then
+    if self.has_pen and not self.penraw then
         local PenRaw = require("gzreader_penraw")
         local raw, why = PenRaw.open()
         self.penraw = raw
@@ -1483,6 +1515,18 @@ function DrawScreen:apply(out)
         UIManager:setDirty(self, "ui")
     end
     if out.sel_preview then UIManager:setDirty(self, "ui") end
+    if out.shape_preview then
+        -- (a shape's outline following the pen: black on the page, so the quick refresh, and only where it is and was)
+        local a = out.shape_preview
+        local c = self.canvas
+        local x0, y0 = math.max(c.x, c.x + a.x0 - 1), math.max(c.y, c.y + a.y0 - 1)
+        local x1, y1 = math.min(c.x + c.w, c.x + a.x1 + 1), math.min(c.y + c.h, c.y + a.y1 + 1)
+        if x1 > x0 and y1 > y0 then
+            local region = Geom:new{ x = x0 + (self.ox or 0), y = y0 + (self.oy or 0), w = x1 - x0, h = y1 - y0 }
+            self.shape_refreshes = (self.shape_refreshes or 0) + 1
+            UIManager:setDirty(self, function() return "fast", region end)
+        end
+    end
     if out.sel_changed then
         -- (chosen, let go of, moved: the loop goes, the frame and its buttons are where they belong)
         self._loop_phase = nil
@@ -1491,7 +1535,7 @@ function DrawScreen:apply(out)
         self:layoutBar()
         UIManager:setDirty(self, "ui")
         local sel = self.sketch.selection
-        Log.info("drawing: lasso,", sel and #sel.strokes or 0, "strokes chosen")
+        Log.info("drawing: lasso,", sel and #sel.strokes or 0, "strokes and", sel and #(sel.pictures or {}) or 0, "pictures chosen")
     end
     if out.stroke_done then self:flushInk(true) end
     if out.stroke_done then
@@ -1617,6 +1661,31 @@ end
 
 --- What the lasso chose: a dashed frame with a handle at each corner (where
 --- it's being dragged to, while it is). On the screen only, never in the PNG.
+--- A shape being dragged out: its outline as it is now, in the pen's width (on the
+--- screen only; the shape itself is drawn on the page when the pen lifts).
+function DrawScreen:paintShapePreview(bb, x, y)
+    local sk = self.sketch
+    local p = sk and sk.shape_preview
+    if not p or #p.points < 2 then return end
+    local c = self.canvas
+    local r = Sketch.toolRadius(nil, sk:radius(p.width), nil)
+    local rows = self:disc(r)
+    for i = 2, #p.points do
+        local a, b = p.points[i - 1], p.points[i]
+        for _j, q in ipairs(Sketch.stamps(a[1], a[2], b[1], b[2], r)) do
+            for dy = -r, r do
+                local dx = rows[dy]
+                local px, py = q[1] - dx, q[2] + dy
+                -- (kept on the page: not over the bars)
+                if py >= 0 and py < c.h then
+                    local x0, x1 = math.max(0, px), math.min(c.w, px + 2 * dx + 1)
+                    if x1 > x0 then bb:paintRect(x + x0, y + py, x1 - x0, 1, Blitbuffer.COLOR_BLACK) end
+                end
+            end
+        end
+    end
+end
+
 function DrawScreen:paintLasso(bb, x, y)
     local sk = self.sketch
     local sel = sk and sk.selection
@@ -1858,6 +1927,19 @@ function DrawScreen:setColor(hex)
     self:syncTool()
 end
 
+--- A pen Kindle: draw with a finger (true), as the Kindles without a pen do, or
+--- with the pen (false: fingers don't draw, a hand can rest on the screen, and
+--- a finger moves a zoomed page). Kept for next time.
+function DrawScreen:setDrawWithFinger(on)
+    if not self.has_pen then return end
+    self.pen_only = not on
+    if self.sketch then self.sketch.pen_only = self.pen_only end
+    if G_reader_settings then G_reader_settings:saveSetting("gzreader_draw_with_finger", on == true) end
+    Log.info("drawing: draw with", on and "a finger" or "the pen")
+    self:layoutBar()
+    UIManager:setDirty(self, "ui")
+end
+
 --- The tool in hand ("pen", "highlighter", "shape", "eraser"), and the pen's width.
 function DrawScreen:setTool(tool, width)
     if tool ~= "text" and self.text_sel then self.text_sel = nil; UIManager:setDirty(self, "ui") end
@@ -1999,6 +2081,12 @@ function DrawScreen:use(t)
     elseif t.id == "newtag" then self:newTag()
     elseif t.id == "tag" then self:setFlyout(self.flyout ~= "tags" and "tags" or nil)
     elseif t.id == "title" then self:setFlyout(nil); self:rename()
+    elseif t.id == "snap" then
+        self.snap_shapes = not self.snap_shapes
+        keep("gzreader_drawing_snap", self.snap_shapes)
+        self:syncTool()
+        Log.info("drawing: draw and hold for clean shapes", self.snap_shapes and "on" or "off")
+        self:setFlyout("shape")
     elseif t.id == "pressure" then
         self.pressure_on = not self.pressure_on
         keep("gzreader_drawing_pressure", self.pressure_on)
@@ -2054,6 +2142,8 @@ function DrawScreen:use(t)
         self.before_hand = self.tool
         self:setTool("hand"); self:setFlyout(nil)
         Log.info("drawing: the hand tool")
+    elseif t.id == "fingers" then
+        self:setDrawWithFinger(self.pen_only)
     elseif t.id == "text" then
         self:setTool("text"); self:setFlyout(nil)
         Log.info("drawing: the text tool")
@@ -2094,6 +2184,11 @@ function DrawScreen:use(t)
     elseif t.id == "cancel" and self.journal and not t.row then
         -- a journal entry's drawing: back to the whole entry, the drawing kept
         self.flyout = nil; self.after = "entry"; self:done()
+    elseif t.id == "cancel" and not t.row and self.changed then
+        -- ← with something drawn: saved as you leave (as the Kindle's own notebooks do);
+        -- ⋮ → Close without saving still asks and leaves without it
+        Log.info("drawing: left with changes: saved")
+        self.flyout = nil; self:done()
     elseif t.id == "cancel" then self.flyout = nil; self:layoutBar(); self:cancel()
     elseif t.id == "typing" then
         -- a journal entry's drawing: back to typing (the drawing kept)
@@ -2228,7 +2323,7 @@ function DrawScreen:addPictures(files)
     for i, f in ipairs(files) do sizes[i] = { w = f.w, h = f.h } end
     local places = Sketch.placePictures(sizes, view)
     local b64 = require("ffi/sha2").bin_to_base64
-    local added = 0
+    local added, els = 0, {}
     for i, f in ipairs(files) do
         local fh = io.open(f.path, "rb")
         local data = fh and fh:read("*a")
@@ -2236,13 +2331,17 @@ function DrawScreen:addPictures(files)
         os.remove(f.path) -- (its pixels are in the drawing now)
         if data and #data > 0 then
             local pl = places[i]
-            sk:addPicture("data:" .. (f.type or "image/jpeg") .. ";base64," .. b64(data), f.type or "image/jpeg", pl.w, pl.h, pl.cx, pl.cy)
+            els[#els + 1] = sk:addPicture("data:" .. (f.type or "image/jpeg") .. ";base64," .. b64(data), f.type or "image/jpeg", pl.w, pl.h, pl.cx, pl.cy)
             added = added + 1
         end
     end
     if added > 0 then
         self:touched()
-        Log.info("drawing:", added, "picture(s) from Immich placed")
+        Log.info("drawing:", added, "picture(s) from Immich placed, chosen with the lasso to move and size")
+        -- chosen with the lasso: drag to move them, a corner to make them bigger or smaller
+        self:setTool("lasso"); self:setFlyout(nil)
+        sk:selectPictures(els)
+        self:layoutBar()
         self:redrawAll()
     end
     return added
@@ -2432,6 +2531,12 @@ end
 --- of its own unless it had one; emptied: removed, when it's in Memos).
 function DrawScreen:done()
     local results = {}
+    -- "Saving…" at once when pages are to be made into pictures (a second or more on a big screen)
+    local box
+    for _i, p in ipairs(self.pages) do
+        if p.modified then box = require("gzreader_saving").show(); break end
+    end
+    local function closeBox() if box then require("gzreader_saving").close(box); box = nil end end
     for i, p in ipairs(self.pages) do
         if not p.modified then
             -- left as it was (this time): as it came
@@ -2447,6 +2552,7 @@ function DrawScreen:done()
                 local res, err = self:save()
                 if not res then
                     Log.warn("drawing: couldn't save page", i, tostring(err))
+                    closeBox()
                     UIManager:show(require("ui/widget/infomessage"):new{ text = _("Couldn't save the drawing."), timeout = 3 })
                     return
                 end
@@ -2462,6 +2568,8 @@ function DrawScreen:done()
     results.reordered = self.reordered or nil
     self:close()
     if self.on_done then self.on_done(results) end
+    -- (the note's own Saving… follows when it's saved from here: this one goes once that's up)
+    if box then UIManager:scheduleIn(0.2, closeBox) end
 end
 
 --- opts: pages ({ att, path, filename, changed, removed }: the note's

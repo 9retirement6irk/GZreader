@@ -42,6 +42,11 @@ function M.build(ctx)
         text_func = function()
             return (GzSettings.aboutLines(GzSettings.gzreaderVersion()))
         end,
+        -- (GZreader: tapped seven times, as Android's version number: a little game)
+        callback = function()
+            local ok, Egg = pcall(require, "gzreader_easteregg")
+            if ok then Egg.versionTapped() end
+        end,
         keep_menu_open = true,
     })
     table.insert(items, {
@@ -161,7 +166,7 @@ function M.build(ctx)
     table.insert(items, {
         icon_glyph = icons.settings_bug,
         text      = _("Report a bug"),
-        help_text = _("Asks what happened, then sends it with the diagnostic log to GZreader's developer (the same as Settings → About → Advanced → Send diagnostic log to the developer)."),
+        help_text = _("Asks what happened, then sends it with the diagnostic log to GZreader's developer (what Settings → Privacy and diagnostics → Report a problem does; Settings shows it there)."),
         callback  = function(touchmenu)
             local g = GzSettings.gzreader()
             if not (g and type(g.sendLogToDeveloper) == "function") then return end

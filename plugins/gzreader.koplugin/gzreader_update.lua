@@ -36,6 +36,12 @@ Nook's scripts then replace theirs next to koreader/: the start script
 script keeps reading its old copy; the new one runs from the next start
 (the helper: from the Nook's next restart).
 
+On a Kobo (GZreader in .adds/koreader) the same update is installed with
+the Kobo's own start script: the package's koreader/kobo-koreader.sh (the
+repository's platform/kobo/koreader.sh) becomes koreader.sh there, never
+the Kindle's. A package without one (made before GZreader ran on Kobos)
+leaves the Kobo's koreader.sh as it is.
+
 Installing never touches settings/, the books, their .sdr folders, history or
 the GZreader folder. Each replaced folder is renamed aside first and put back
 if anything fails, then GZreader restarts.
@@ -61,6 +67,12 @@ local Update = {
     request = nil,      -- function(url, sink_or_nil) -> code, body_or_nil, headers
     root = nil,         -- koreader dir (default: current dir)
 }
+
+--- What every request says it is: GZreader/<version> (socketutil.USER_AGENT; "GZreader" where that can't be loaded).
+local function userAgent()
+    local ok, su = pcall(require, "socketutil")
+    return ok and type(su) == "table" and su.USER_AGENT or "GZreader"
+end
 
 local function root() return Update.root or (lfs.currentdir() or ".") end
 
@@ -189,7 +201,7 @@ function Update.get(u, path, accept)
                 url = u, method = "GET", sink = sink, redirect = false, create = create,
                 -- downloads accept anything: GitHub's API answers 415 to
                 -- "application/octet-stream" for a release's source code zip
-                headers = { ["User-Agent"] = "GZreader", ["Accept"] = accept or (path and "*/*" or "application/vnd.github+json") },
+                headers = { ["User-Agent"] = userAgent(), ["Accept"] = accept or (path and "*/*" or "application/vnd.github+json") },
             })
         end)
         socketutil:reset_timeout()
@@ -431,6 +443,15 @@ end
 local NOOK_SCRIPTS = { ["nook-gzreader.sh"] = "gzreader.sh", ["nook-launcher.sh"] = "launcher.sh" }
 local NOOK_SCRIPT = "nook-gzreader.sh" -- (the start script: a Nook install has it)
 
+--- The Kobo's start script in an update (installed as koreader.sh on a Kobo only).
+local KOBO_SCRIPT = "kobo-koreader.sh"
+
+--- Is this a Kobo? (a test replaces it)
+function Update.isKobo()
+    local ok, Device = pcall(require, "device")
+    return ok and type(Device) == "table" and Device.isKobo ~= nil and Device:isKobo() == true
+end
+
 --- The Nook's start script next to koreader/ (nil: not a Nook install).
 local function nookScript(base)
     local p = base .. "/../gzreader.sh"
@@ -449,6 +470,7 @@ end
 local function sourceTarget(rel, base)
     if rel == "reader.lua" then return "reader.lua" end
     if rel == "platform/kindle/koreader.sh" then return "koreader.sh" end
+    if rel == "platform/kobo/koreader.sh" then return KOBO_SCRIPT end
     if rel == "platform/nook/gzreader.sh" then return NOOK_SCRIPT end
     if rel == "platform/nook/launcher.sh" then return "nook-launcher.sh" end
     if rel:match("^frontend/") then return rel end
@@ -523,6 +545,18 @@ function Update.apply(zip, opts)
             or not exists(src .. "/gzreader-version") then
         rmTree(stage)
         return nil, "the package doesn't look like a GZreader update"
+    end
+    -- A Kobo: its own start script as koreader.sh, never the Kindle's.
+    if Update.isKobo() then
+        os.remove(src .. "/koreader.sh")
+        if exists(src .. "/" .. KOBO_SCRIPT) then
+            if not os.rename(src .. "/" .. KOBO_SCRIPT, src .. "/koreader.sh") then
+                rmTree(stage)
+                return nil, "could not unpack the Kobo's start script"
+            end
+        else
+            Log.info("update: no Kobo start script in the package; koreader.sh kept as it is")
+        end
     end
     -- Work out what to replace.
     local items = {}

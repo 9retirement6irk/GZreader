@@ -137,7 +137,7 @@ add({ shot = "keeps-home" })
 -- 2. the quick panel (the Menu key, or a swipe down from the top)
 add({ fn = function(E) openPanel(E) end, after = 5 })
 add({ fn = function(E)
-    check(topName() == "gzreader quick panel" and hasTile("Send books") and hasTile("Restart") and hasTile("Settings"),
+    check(topName() == "gzreader quick panel" and hasTile("Connect") and hasTile("Restart") and hasTile("Settings"),
         (TOUCH[E.model] and "a swipe down at Home: the quick panel" or "Menu key at Home: the quick panel") .. " (top: " .. topName() .. ")")
     check(hasTile("Exit to " .. KINDLE_WORD), "names: \"Exit to " .. KINDLE_WORD .. "\"")
     check(not hasTile("Contents"), "…with Home's tiles, not a book's")
@@ -148,9 +148,9 @@ end, after = 1 })
 add({ shot = "keeps-menu" })
 add({ fn = function() closeTop() end, after = 3 })
 
--- 3. Settings: ZenOS's page with GZreader's Connections
+-- 3. Settings: ZenOS's page arranged by GZreader (Wi-Fi at the top, Accounts and services)
 add({ fn = function() require("gzreader_homemenu").settings() end, after = 6 })
-add({ fn = function() check(has("Connections", 1), "Settings page has Connections (Grimmory, Memos)") end, after = 1 })
+add({ fn = function() check(has("Accounts and services", 1) and has("General", 1), "Settings page has General and Accounts and services (Books, Notes, …)") end, after = 1 })
 add({ fn = function() closeTop() end, after = 3 })
 
 -- 5. the Nook's colour screen
@@ -189,7 +189,7 @@ end, after = 5 })
 add({ fn = function(E)
     check(topName() == "gzreader quick panel" and hasTile("Contents") and hasTile("Bookmarks") and hasTile("Fit pictures"),
         "in a book, the quick panel: the book's tiles (top: " .. topName() .. ")")
-    check(not hasTile("Send books") and not hasTile("Continue"), "…and not Home's (Continue, Send books)")
+    check(not hasTile("Connect") and not hasTile("Continue"), "…and not Home's (Continue, Connect)")
     check(hasTile("Font") and hasTile("Layout") and not hasTile("More"), "…with Font and Layout (fonts and layout on every Kindle), no More")
     if E.model == "kt" then check(hasTile("Read aloud"), "Kindle Touch: Read aloud in the quick panel") end
     E.shot("keeps-panel-book")

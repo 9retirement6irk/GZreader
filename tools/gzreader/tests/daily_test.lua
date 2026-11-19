@@ -271,10 +271,37 @@ check(got == 2 and ped.sections[1].items[1].img == "2026-11-17-1.jpg" and ped.se
 check(ped.sections[1].items[2].img == nil and ped.sections[2].items[2].img == nil, "one that didn't come, or wasn't a picture: the story goes without")
 check(not dkjson.encode(ped):find("SECRET", 1, true) and not dkjson.encode(ped):find("https:", 1, true), "the edition keeps no picture address")
 local many_p = { day = "d", sections = { { topic = "World", items = {} } } }
-for i = 1, 20 do many_p.sections[1].items[i] = { title = "T" .. i, image = "https://img.example.com/" .. i .. ".jpg" } end
+for i = 1, 40 do many_p.sections[1].items[i] = { title = "T" .. i, image = "https://img.example.com/" .. i .. ".jpg" } end
 check(Daily.addPictures(many_p, "/dir", function() return JPG end, function() return true end) == Daily.MAX_PICTURES, Daily.MAX_PICTURES .. " pictures an edition at most")
 check(Daily.picturePath({ img = "../../etc/passwd" }) == nil and Daily.picturePath({ img = "none.jpg" }) == nil and Daily.picturePath({}) == nil,
     "a picture's file: only a plain name in the pictures' folder, only when it's there")
+
+print("== pictures in an opened story")
+check(Daily.MAX_PICTURES >= 20 and Daily.PAGE_PICTURES < Daily.MAX_PICTURES, "more stories get their picture than show one on the pages (" .. Daily.MAX_PICTURES .. " / " .. Daily.PAGE_PICTURES .. ")")
+check(Daily.pagePicture({ img = "2026-11-18-1.jpg" }) and Daily.pagePicture({ img = "2026-11-18-" .. Daily.PAGE_PICTURES .. ".png" })
+    and not Daily.pagePicture({ img = "2026-11-18-" .. (Daily.PAGE_PICTURES + 1) .. ".jpg" }) and not Daily.pagePicture({}) and not Daily.pagePicture({ img = "odd.jpg" }),
+    "the first " .. Daily.PAGE_PICTURES .. " also show on the paper's pages; the rest in their opened story only")
+local slow_p = { day = "d", sections = { { topic = "World", items = {} } } }
+for i = 1, 10 do slow_p.sections[1].items[i] = { title = "T" .. i, image = "https://img.example.com/" .. i .. ".jpg" } end
+local pic_tick = 0
+check(Daily.addPictures(slow_p, "/dir", function() pic_tick = pic_tick + 70; return JPG end, function() return true end, 180, function() return pic_tick end) == 3
+    and slow_p.sections[1].items[4].img == nil and slow_p.sections[1].items[4].image == nil, "fetching pictures stops when its time is up (180 s); the rest go without, and no address stays")
+local Art = require("gzreader_article")
+check(Art.leadImage('<html><head><meta charset="utf-8"><meta property="og:image" content="https://img.example.com/lead.jpg?w=1200&amp;h=630"></head><body></body></html>')
+    == "https://img.example.com/lead.jpg?w=1200&h=630", "a page's own picture: og:image")
+check(Art.leadImage("<head><META NAME='twitter:image' CONTENT='//img.example.com/t.png'></head>") == "https://img.example.com/t.png"
+    and Art.leadImage('<head><meta content="https://img.example.com/first.jpg" property="og:image"/></head>') == "https://img.example.com/first.jpg",
+    "… twitter:image, single quotes, either order, //… gets https:")
+check(Art.leadImage('<head><meta property="og:image:width" content="1200"><meta property="og:title" content="https://x.example.com/a.jpg"></head>') == nil
+    and Art.leadImage('<head><meta property="og:image" content="data:image/png;base64,AAAA"></head>') == nil and Art.leadImage("<html></html>") == nil and Art.leadImage(nil) == nil,
+    "no picture named, or not at an http(s) address: none")
+local og = { day = "d", sections = { { topic = "World", items = {
+    { title = "No picture in the feed", text = "s", link = "https://w.example.com/a" },
+    { title = "The feed's own", text = "s", link = "https://w.example.com/b", image = "https://img.example.com/feed.jpg" },
+    { title = "Whole already", text = string.rep("long ", 800), link = "https://w.example.com/c" } } } } }
+Daily.addFullText(og, function() return '<html><head><meta property="og:image" content="https://img.example.com/page.jpg"></head><body><p>x</p></body></html>', "text/html" end)
+check(og.sections[1].items[1].image == "https://img.example.com/page.jpg" and og.sections[1].items[2].image == "https://img.example.com/feed.jpg" and og.sections[1].items[3].image == nil,
+    "a story whose feed names no picture takes its page's; the feed's own is kept; a page that isn't fetched gives none")
 
 print("== the paper's day")
 local function at(h, m) return os.time{ year = 2026, month = 11, day = 17, hour = h, min = m or 0 } end
@@ -502,25 +529,22 @@ L = Paper.homeLayout(576, 90, sizes)
 check(L.lead and L.rows == 1, "a lower row: the lead and one row")
 L = Paper.homeLayout(576, 50, sizes)
 check(not L.lead and L.rows == 0, "a very low row: the name alone")
-local items = { nil, nil, { callback = function() Paper.article(plugin, stories[1].item) end } }
-shown = {}
-package.loaded["ui/widget/textviewer"] = { new = function(_s, o) o.kind = "viewer"; return o end }
-items[3].callback()
-local viewer = shown[#shown]
-check(viewer and viewer.kind == "viewer" and viewer.title == "First story & more" and viewer.text:find("Para one is here.", 1, true)
-    and viewer.text:find("^Mine · " .. os.date("%A, %B ", os.time() - 2 * 3600)), "a story opens as text, its source and day first")
-check(viewer.buttons_table[1][1].text == "QR code" and viewer.buttons_table[1][2].text == "Close", "with its link as a QR code, and Close")
-package.loaded["ui/widget/qrmessage"] = { new = function(_s, o) o.kind = "qr"; return o end }
-viewer.buttons_table[1][1].callback()
-check(shown[#shown].kind == "qr" and shown[#shown].text == "https://news.example.com/1?a=1&b=2", "the QR code is the story's link")
-local no_link = Paper.article(plugin, { title = "T", text = "x" })
-check(#no_link.buttons_table[1] == 1 and no_link.buttons_table[1][1].text == "Close" and no_link.text == "x", "a story without a link: no QR code")
+-- a story opens as text that scrolls (the widget: emulator/daily_article.lua); what it shows and its buttons
+local text1 = Paper.articleText(stories[1].item)
+check(text1:find("Para one is here.", 1, true) and text1:find("^Mine · " .. os.date("%A, %B ", os.time() - 2 * 3600)),
+    "a story opens as text, its source and day first")
+check(table.concat(Paper.articleButtons(stories[1].item), ",") == "type,qr,close", "with Aa for its type, its link as a QR code, and ✕")
+check(table.concat(Paper.articleButtons({ title = "T", text = "x" }), ",") == "type,close" and Paper.articleText({ title = "T", text = "x" }) == "x",
+    "a story without a link: no QR code")
+check(Paper.pulledDown({ direction = "south", pos = { x = 10, y = 5 } }) and not Paper.pulledDown({ direction = "south", pos = { x = 10, y = 5000 } })
+    and not Paper.pulledDown({ direction = "west", pos = { x = 10, y = 5 } }) and not Paper.pulledDown(nil),
+    "a swipe down from the top (on the paper or a story): the quick panel; lower down, or another way: not")
 check(Paper.articleText({ title = "T", text = "short", link = "https://x.example.com/1", source = "S" }):find("only a summary", 1, true),
     "a short text says it's the feed's summary")
 Daily.edition, Daily.loaded = nil, true
 check(Paper.statusText(plugin) == "comes when Wi-Fi is on", "… and Home says when it comes")
 
-print("== Settings → Home → Daily paper")
+print("== Settings → Accounts and services → Daily paper")
 local home = { rows = { order = { "datetime", "featured" }, enabled = { datetime = true, featured = true } }, modules = {} }
 local units = { datetime = 1, featured = 4, daily_paper = 3 }
 local saved_home, redrawn = 0, 0
@@ -551,7 +575,7 @@ check(row("Daily paper").checked_func() == false and row("Feeds").enabled_func()
 check(row("Daily paper").help_text:find("internet address", 1, true), "the switch says what a feed's site learns")
 shown = {}
 Paper.show(plugin)
-check(shown[#shown] and shown[#shown].kind == "info" and shown[#shown].text:find("Settings → Home → Daily paper", 1, true), "opening the paper while it's off says where to turn it on")
+check(shown[#shown] and shown[#shown].kind == "info" and shown[#shown].text:find("Settings → Accounts and services → Daily paper", 1, true), "opening the paper while it's off says where to turn it on")
 saves = 0
 check(Paper.onShelf(plugin) == false and Paper.shelfItem(plugin, {}, 300, 150) == nil, "off: no newspaper on the shelf")
 row("Daily paper").callback()
@@ -619,6 +643,280 @@ rows = Paper.settingsItems(plugin)
 check(#rows == 1 and rows[1].enabled == false and rows[1].text:find("Wi-Fi", 1, true), "a Kindle without Wi-Fi: Settings says the paper needs it")
 net.usb = false
 
+print("== a story's text from its own page")
+local Article = require("gzreader_article")
+local P1 = "The lighthouse keeper counted the ships again on Tuesday morning, and again there were seven where the harbour log had six. He wrote it down, as he had the day before, and went to put the kettle on while he thought about it."
+local P2 = "Nobody on the island could say where the seventh had come from, though several people had a theory by lunchtime. The baker held that it was a trick of the light; the schoolmistress, that it was a visitor too shy to land."
+local P3 = "By evening the council had sent a boat out, which came back with the news that the seventh ship was a rock. It had been there for some thousands of years, the boatman said, and nobody had counted it before."
+local PAGE = [==[<!DOCTYPE html><HTML><head><title>Seven ships</title><style>p { color: red }</style>
+<script>var x = "<p>not this, it is inside a script and quite long enough to count as a paragraph of text otherwise.</p>";</script></head>
+<body><header><p>Example World: the news from the island, every day of the week, since 1904 and still going.</p></header>
+<NAV><ul><li><a href="/">Home</a></li><li><a href="/world">World news from everywhere.</a></li></ul></NAV>
+<main><article class="story"><header><h1>Seven ships seen</h1><p>By A. Reporter</p></header>
+<p class="lead">]==] .. P1 .. [==[</p>
+<p>Advertisement</p>
+<figure><img src="https://img.example.com/a.jpg"><figcaption>The lighthouse, seen from the north on a clear day last week.</figcaption></figure>
+<P>]==] .. P2 .. [==[ It&rsquo;s &ldquo;odd&rdquo;.</P>
+<h2>What the council did</h2>
+<p>]==] .. P3 .. [==[
+<p>Unclosed paragraphs are read too, up to the next one, as browsers do with them.</p>
+<ul><li>Short item</li><li>The harbour master said the log would be corrected by Friday at the latest.</li></ul>
+<aside><p>Related: six other stories about ships that you might like to read after this one, with pictures.</p></aside>
+<p>Share this</p><p>Sign up for our newsletter</p>
+<form><p>Type your email address here to get the news from the island every single morning.</p></form>
+<h3>More on this story</h3>
+</article></main>
+<footer><p>Copyright Example World. All rights reserved. Registered at the island post office as a newspaper.</p></footer></body></HTML>]==]
+local story = Article.extract(PAGE, "text/html; charset=utf-8")
+check(story and story:find(P1, 1, true) and story:find(P2 .. " It\u{2019}s \u{201C}odd\u{201D}.", 1, true) and story:find(P3, 1, true),
+    "the article's paragraphs, in order, entities read")
+check(story:find("\n\nWhat the council did\n\n", 1, true) and story:find("Unclosed paragraphs are read too", 1, true)
+    and story:find("\u{2022} The harbour master said", 1, true), "its sub-headings, unclosed paragraphs, and list items that are sentences")
+local clean = true
+for _i, not_story in ipairs({ "not this", "since 1904", "World news from everywhere", "Advertisement", "seen from the north", "Related:", "Share this", "Sign up",
+        "Type your email", "More on this story", "All rights reserved", "Short item", "By A. Reporter", "color: red" }) do
+    if story:find(not_story, 1, true) then clean = false; print("    still there: " .. not_story) end
+end
+check(clean, "none of the page's furniture: script, style, header, menu, ad line, caption, sidebar, share and sign-up lines, form, footer")
+check(not story:find("\n\n\n", 1, true) and not story:find("<", 1, true) and story:sub(1, #P1) == P1, "plain paragraphs, an empty line between")
+local teaser, why_not = Article.extract("<html><body><article><p>" .. P1 .. "</p><p>Subscribe to read the rest.</p></article></body></html>")
+check(teaser == nil and why_not == "no article", "a paywall's teaser isn't an article: nothing (the feed's summary stays)")
+check(Article.extract('<html><body><div id="root"></div><script src="/app.js"></script></body></html>') == nil, "a page built by scripts: nothing")
+check(Article.extract("") == nil and Article.extract(nil) == nil and Article.extract("%PDF-1.4 binary") == nil and select(2, Article.extract("{\"json\":true}")) == "not html",
+    "not a web page: nothing")
+local plain = Article.extract("<html><body><div><p>" .. P1 .. "</p><div><p>" .. P2 .. "</p></div><p>" .. P3 .. "</p><p>Read more: other things</p></div></body></html>")
+check(plain == P1 .. "\n\n" .. P2 .. "\n\n" .. P3, "a page without <article>: the body's paragraphs")
+local two = Article.extract("<html><body><article><p>A short card about something else on the page.</p></article><article><p>" .. P1 .. "</p><p>" .. P2 .. "</p><p>" .. P3 .. "</p></article></body></html>")
+check(two == P1 .. "\n\n" .. P2 .. "\n\n" .. P3, "several <article>s: the one with the most text")
+local latin = Article.extract("<html><head><meta charset=\"iso-8859-1\"></head><body><p>" .. P1 .. " Caf\233.</p><p>" .. P2 .. "</p><p>" .. P3 .. "</p></body></html>")
+check(latin and latin:find("Café.", 1, true), "a Latin-1 page read as UTF-8 (from its meta tag; or from the answer's content type)")
+check(Article.extract("<html><body><p>" .. P1 .. " Caf\233.</p><p>" .. P2 .. "</p><p>" .. P3 .. "</p></body></html>", "text/html; charset=ISO-8859-1"):find("Café.", 1, true), "… the content type")
+check(select(2, Article.extract("<html>" .. string.rep("x", Article.MAX_HTML) .. "</html>")) == "too big", "a page over " .. (Article.MAX_HTML / 1024 / 1024) .. " MB isn't read")
+check(Article.extract("<html><body><p>" .. P1 .. "</p><p>" .. P1 .. "</p><p>" .. P2 .. "</p><p>" .. P3 .. "</p></body></html>") == P1 .. "\n\n" .. P2 .. "\n\n" .. P3, "a paragraph the page has twice is kept once")
+
+print("== whole stories with the paper")
+local long_text = string.rep("This feed carries the whole story already. ", 80)
+local fed = { day = "d", sections = {
+    { topic = "World", items = { { title = "Short", text = "One line.", link = "https://w.example.com/short?utm=SECRET" },
+        { title = "Whole", text = long_text, link = "https://w.example.com/whole" }, { title = "No link", text = "x" } } },
+    { topic = "Science", items = { { title = "Paywall", text = "A teaser of fair length from the feed itself.", link = "https://s.example.com/paywall" },
+        { title = "Gone", text = "y", link = "https://s.example.com/gone" }, { title = "Shorter page", text = string.rep("Feed text. ", 200), link = "https://s.example.com/shorter" } } } } }
+local page_asks = {}
+local function page(url)
+    page_asks[#page_asks + 1] = url
+    if url:find("/short", 1, true) and not url:find("shorter", 1, true) then return PAGE, "text/html" end
+    if url:find("paywall", 1, true) then return "<html><body><article><p>" .. P1 .. "</p><p>Subscribe to read the rest.</p></article></body></html>", "text/html" end
+    if url:find("shorter", 1, true) then return "<html><body><p>" .. P1 .. "</p><p>" .. P2 .. "</p><p>" .. P3 .. "</p><p>" .. P1 .. " Again, differently.</p><p>" .. P2 .. " Again.</p><p>" .. P3 .. " Again.</p><p>" .. P1 .. " Thrice.</p><p>" .. P2 .. " Thrice.</p><p>" .. P3 .. " Thrice.</p></body></html>", "text/html" end
+    if url:find("gone", 1, true) then error("socket closed") end
+    return nil, "unreachable"
+end
+local filled, asked_n = Daily.addFullText(fed, page)
+check(filled == 1 and fed.sections[1].items[1].full == true and fed.sections[1].items[1].text:find(P3, 1, true), "a story with a line from its feed gets its page's article")
+check(fed.sections[1].items[2].text == long_text and fed.sections[1].items[2].full == nil and not table.concat(page_asks, " "):find("/whole", 1, true),
+    "a story the feed carries whole: its page isn't fetched")
+check(fed.sections[2].items[1].text:find("^A teaser") and fed.sections[2].items[1].full == nil and fed.sections[2].items[2].text == "y",
+    "a paywall, a page that fails: the feed's text stays")
+check(fed.sections[2].items[3].full == nil and fed.sections[2].items[3].text:find("^Feed text"), "a page's text that isn't clearly longer than the feed's: the feed's stays")
+check(asked_n == 4 and #page_asks == 4 and page_asks[1]:find("/short", 1, true) and page_asks[2]:find("paywall", 1, true), "pages asked for in the front page's order; none for a story without a link … " .. asked_n)
+local tick_now = 0
+local slow = { day = "d", sections = { { topic = "World", items = {} } } }
+for i = 1, 60 do slow.sections[1].items[i] = { title = "T" .. i, text = "s", link = "https://w.example.com/short" .. i } end
+filled, asked_n = Daily.addFullText(slow, function() tick_now = tick_now + 100; return PAGE, "text/html" end, 300, function() return tick_now end)
+check(asked_n == 3 and filled == 3 and slow.sections[1].items[4].full == nil, "it stops when its time is up (300 s): the rest keep their summaries")
+filled, asked_n = Daily.addFullText(slow, function() return PAGE, "text/html" end, 300, function() return 0 end)
+check(asked_n == Daily.MAX_FULL - 0 and filled == Daily.MAX_FULL - 3 + 0 or asked_n == Daily.MAX_FULL, Daily.MAX_FULL .. " pages an edition at most … " .. asked_n)
+local huge = { day = "d", sections = { { topic = "World", items = { { title = "Long", text = "s", link = "https://w.example.com/long" } } } } }
+Daily.addFullText(huge, function()
+    local t = { "<html><body>" }
+    for i = 1, 400 do t[#t + 1] = "<p>" .. P1 .. " Paragraph number " .. i .. " of this very long story.</p>" end
+    return table.concat(t) .. "</body></html>", "text/html"
+end)
+check(huge.sections[1].items[1].full and #huge.sections[1].items[1].text <= Daily.MAX_TEXT + 3 and huge.sections[1].items[1].text:sub(-3) == "\u{2026}",
+    "a very long story is cut at " .. Daily.MAX_TEXT .. " bytes, at a word")
+-- through the paper's own fetch
+plugin = { store = { daily = { enabled = true, pictures = false, feeds = { { url = "https://ok.example.com/rss?key=SECRET", name = "Mine" } } } }, save = function() end }
+for _i, f in ipairs(Daily.DEFAULT_FEEDS) do Daily.setDefaultOn(plugin, f, false) end
+http.answers["https://ok.example.com/rss?key=SECRET"] = { body = '<rss><channel><item><title>Seven ships</title><link>https://news.example.com/seven?ref=SECRET</link><description>One line.</description></item></channel></rss>' }
+http.answers["https://news.example.com/seven?ref=SECRET"] = { body = "GZ:" .. PAGE, headers = { ["content-encoding"] = "gzip", ["content-type"] = "text/html; charset=utf-8" } }
+Daily.edition, Daily.loaded, Daily.tried_at = nil, true, nil
+logged = {}
+Daily.refresh(plugin)
+local whole = Daily.edition and Daily.edition.sections[1].items[1]
+check(whole and whole.full and whole.text:find(P2, 1, true) and Daily.edition.full == 1 and Daily.edition.pages == 1, "fetched with the day's paper (a compressed page unpacked), and counted")
+local scall
+for _i, c in ipairs(http.calls) do if c.url:find("news.example.com/seven", 1, true) then scall = c end end
+check(scall and scall.opts.log_url:find("news.example.com", 1, true) and scall.opts.log_url:find("(story)", 1, true) and not scall.opts.log_url:find("SECRET", 1, true)
+    and not scall.opts.log_url:find("seven", 1, true) and scall.opts.timeouts[2] <= 30, "the log gets the story's site, never its address; with a time limit")
+leaked = false
+for _i, line in ipairs(logged) do if line:find("SECRET", 1, true) or line:find("/seven", 1, true) then leaked = true end end
+check(not leaked and logged[#logged]:find("1 whole stories from 1 pages", 1, true), "… and the day's line counts them … " .. show(logged[#logged]))
+http.answers["https://news.example.com/seven?ref=SECRET"] = { body = "%PDF-1.4", headers = { ["content-type"] = "application/pdf" } }
+Daily.edition.day = ""
+Daily.refresh(plugin)
+check(Daily.edition.sections[1].items[1].text == "One line." and not Daily.edition.sections[1].items[1].full, "a link that isn't a web page: the summary stays")
+plugin.store.daily.full = false
+local before_calls = #http.calls
+Daily.edition.day = ""
+Daily.refresh(plugin)
+local story_calls = 0
+for i = before_calls + 1, #http.calls do if http.calls[i].url:find("news.example.com", 1, true) then story_calls = story_calls + 1 end end
+check(story_calls == 0 and not Daily.fullStories(plugin), "Whole stories off: no page is asked for")
+plugin.store.daily.full = nil
+rows = Paper.settingsItems(plugin)
+check(row("Whole stories").checked_func() == true and row("Whole stories").help_text:find("paywall", 1, true) and row("Whole stories").help_text:find("internet address", 1, true),
+    "Settings → Accounts and services → Daily paper → Whole stories: on, and says what it does, what it can't, and who sees the Kindle")
+row("Whole stories").callback()
+check(plugin.store.daily.full == false and row("Whole stories").checked_func() == false, "unticked")
+row("Whole stories").callback()
+check(plugin.store.daily.full == nil, "ticked again")
+check(Paper.articleText({ title = "T", text = "x", link = "https://x.example.com/1", full = true }):find("From the story's own page", 1, true), "a whole story says where its text is from")
+check(Daily.MAX_TEXT >= 12000, "a feed that carries whole stories is no longer cut at 4,000 bytes")
+
+print("== a story's picture, whole")
+local fw, fh = Paper.fitSize(1200, 800, 600, 500)
+check(fw == 600 and fh == 400, "a big picture: as wide as the column, its shape kept")
+fw, fh = Paper.fitSize(800, 1600, 600, 500)
+check(fw == 250 and fh == 500, "a tall one: never taller than its room")
+fw, fh = Paper.fitSize(100, 50, 600, 500)
+check(fw == 200 and fh == 100, "a small one: at most twice its size (not blown up to the column)")
+local dsp = read(PLUGIN .. "/gzreader_dailyscreen.lua")
+check(dsp:find("Paper.pictureWhole(pic_path, inner", 1, true) and dsp:find("Daily().pictures(self.plugin) and Daily().picturePath(it)", 1, true),
+    "an opened story shows its picture under the headline (when Pictures is on and it has one)")
+check(dsp:find("D.pagePicture(story.item) and D.picturePath(story.item)", 1, true), "the pages show only the first few")
+
+print("== a story's type")
+plugin = { store = { daily = { enabled = true } }, save = function() saves = saves + 1 end }
+local sf = Paper.storyFont(plugin)
+check(sf.face.id == "serif" and sf.size == 12 and sf.spacing.id == "normal" and sf.face.regular == "NotoSerif-Regular.ttf", "as it comes: Serif, 12, Normal spacing")
+saves = 0
+local rebuilt = 0
+Paper.story = { rebuild = function() rebuilt = rebuilt + 1 end }
+check(Paper.setStoryFont(plugin, "size", 16) == true and Paper.storyFont(plugin).size == 16 and saves == 1 and rebuilt == 1, "a size chosen: kept, and the open story set again")
+check(Paper.setStoryFont(plugin, "size", 16) == false and saves == 1 and rebuilt == 1, "the same again: nothing to do")
+Paper.setStoryFont(plugin, "size", 999)
+check(Paper.storyFont(plugin).size == Paper.SIZE_MAX, "never bigger than " .. Paper.SIZE_MAX)
+Paper.setStoryFont(plugin, "size", -4)
+check(Paper.storyFont(plugin).size == Paper.SIZE_MIN, "never smaller than " .. Paper.SIZE_MIN)
+check(Paper.setStoryFont(plugin, "face", "sans") and Paper.storyFont(plugin).face.bold == "NotoSans-Bold.ttf" and Paper.setStoryFont(plugin, "spacing", "wide")
+    and Paper.storyFont(plugin).spacing.em > 0.3, "a typeface and a line spacing chosen")
+check(Paper.setStoryFont(plugin, "face", "comic") == false and Paper.setStoryFont(plugin, "spacing", "huge") == false and Paper.setStoryFont(plugin, "colour", "red") == false
+    and Paper.storyFont(plugin).face.id == "sans", "one that isn't offered changes nothing")
+plugin.store.daily.font = { face = "gone", size = "x", spacing = 7 }
+check(Paper.storyFont(plugin).face.id == "serif" and Paper.storyFont(plugin).size == 12 and Paper.storyFont(plugin).spacing.id == "normal", "kept values that make no sense: as it comes")
+Paper.story = { closed = true, rebuild = function() rebuilt = rebuilt + 100 end }
+Paper.setStoryFont(plugin, "size", 14)
+check(rebuilt < 100, "no story open: none is set again")
+Paper.story = nil
+local ids = {}
+for _i, c in ipairs(Paper.FACES) do ids[#ids + 1] = Paper.faceLabel(c.id) end
+check(table.concat(ids, ",") == "Serif,Sans,Classic,Typewriter", "four typefaces: " .. table.concat(ids, ", "))
+local fonts_ok = true
+for _i, c in ipairs(Paper.FACES) do
+    for _j, file in ipairs({ c.regular, c.bold }) do
+        local found = false
+        for _k, dir in ipairs({ "noto", "freefont", "droid" }) do
+            local f = io.open(REPO .. "/fonts/" .. dir .. "/" .. file, "rb") or io.open((arg[4] or "") .. "/fonts/" .. dir .. "/" .. file, "rb")
+            if f then f:close(); found = true end
+        end
+        if not found and arg[4] then fonts_ok = false; print("    missing font: " .. file) end
+    end
+end
+check(fonts_ok, "each is a font GZreader ships" .. (arg[4] and "" or " (not checked: no KOReader tree given)"))
+local trows = Paper.typeRows(plugin)
+check(#trows == 3 and trows[1][1].text == "A\u{2212}" and trows[1][2].text == "Size 14" and trows[1][2].enabled == false and trows[1][3].text == "A+"
+    and #trows[2] == 4 and trows[2][1].on == true and #trows[3] == 3 and trows[3][2].on == true, "the Aa box: A−, the size, A+; the typefaces; the spacings; the chosen ones marked")
+check(trows[1][3].run() == true and Paper.storyFont(plugin).size == 15 and trows[2][2].run() == true and Paper.storyFont(plugin).face.id == "sans", "A+ makes it one bigger; a typeface's button chooses it")
+Paper.setStoryFont(plugin, "size", Paper.SIZE_MAX)
+check(Paper.typeRows(plugin)[1][3].enabled == false and Paper.typeRows(plugin)[1][1].enabled == true, "at the biggest, A+ is greyed")
+rows = Paper.settingsItems(plugin)
+local frows = Paper.fontItems(plugin)
+check(row("Story text") and #frows == 3 and frows[1].text_func() == "Typeface: Sans" and frows[2].text_func() == "Size: " .. Paper.SIZE_MAX and frows[3].text_func() == "Line spacing: Normal",
+    "Settings → Daily paper → Story text: typeface, size, line spacing")
+frows[2].sub_item_table[4].callback()
+check(Paper.storyFont(plugin).size == 12 and frows[2].sub_item_table[4].checked_func() == true and frows[2].sub_item_table[5].checked_func() == false, "a size picked there")
+frows[1].sub_item_table[3].callback()
+frows[3].sub_item_table[1].callback()
+check(Paper.storyFont(plugin).face.id == "classic" and Paper.storyFont(plugin).spacing.id == "tight", "a typeface and a spacing picked there")
+local dsrc = read(PLUGIN .. "/gzreader_dailyscreen.lua")
+check(dsrc:find("line_height = font.spacing.em", 1, true) and dsrc:find("face(font.face.regular, font.size", 1, true) and dsrc:find('ShowType = { { "Menu" } }', 1, true),
+    "the story is set in the type chosen; Menu opens the box on a Kindle with keys")
+
+print("== the type of the paper's own pages")
+plugin = { store = { daily = { enabled = true } }, save = function() saves = saves + 1 end }
+local pf = Paper.frontFont(plugin)
+check(pf.face.id == "serif" and pf.size.id == "normal" and pf.scale == 1, "as it comes: Serif, Normal")
+saves = 0
+local reloaded = 0
+Paper.instance = { reload = function() reloaded = reloaded + 1 end }
+check(Paper.setFrontFont(plugin, "size", "large") == true and Paper.frontFont(plugin).scale == 1.2 and saves == 1 and reloaded == 1, "Large chosen: kept, and the open paper laid out again")
+check(Paper.setFrontFont(plugin, "size", "large") == false and reloaded == 1, "the same again: nothing to do")
+check(Paper.setFrontFont(plugin, "face", "sans") == true and Paper.frontFont(plugin).face.regular == "NotoSans-Regular.ttf" and reloaded == 2, "a typeface chosen")
+check(Paper.setFrontFont(plugin, "size", "huge") == false and Paper.setFrontFont(plugin, "face", "comic") == false and Paper.setFrontFont(plugin, "spacing", "wide") == false
+    and Paper.frontFont(plugin).size.id == "large", "one that isn't offered changes nothing")
+check(Paper.storyFont(plugin).face.id == "serif" and Paper.storyFont(plugin).size == 12, "the pages' type and a story's are separate choices")
+plugin.store.daily.front = { face = 3, size = "gone" }
+check(Paper.frontFont(plugin).face.id == "serif" and Paper.frontFont(plugin).scale == 1, "kept values that make no sense: as it comes")
+Paper.instance = { closed = true, reload = function() reloaded = reloaded + 100 end }
+Paper.setFrontFont(plugin, "size", "small")
+check(reloaded < 100 and Paper.frontFont(plugin).scale < 1, "no paper open: none is laid out again")
+Paper.instance = nil
+local prows = Paper.frontRows(plugin)
+local sizes_t = {}
+for _i, b in ipairs(prows[1]) do sizes_t[#sizes_t + 1] = (b.on and "*" or "") .. b.text end
+check(table.concat(sizes_t, ",") == "*Small,Normal,Large,Larger" and #prows[2] == 4 and prows[2][1].on == true, "the pages' Aa box: four sizes, the typefaces, the chosen ones marked")
+check(prows[1][4].run() == true and Paper.frontFont(plugin).size.id == "larger", "a size's button chooses it")
+rows = Paper.settingsItems(plugin)
+local prs = Paper.frontItems(plugin)
+check(row("The paper's pages") and #prs == 2 and prs[1].text_func() == "Typeface: Serif" and prs[2].text_func() == "Size: Larger", "Settings → Daily paper → The paper's pages: typeface, size")
+prs[2].sub_item_table[2].callback()
+prs[1].sub_item_table[4].callback()
+check(Paper.frontFont(plugin).size.id == "normal" and Paper.frontFont(plugin).face.id == "typewriter" and prs[2].sub_item_table[2].checked_func() == true, "picked there")
+check(Paper.weatherDays(0.85) == 4 and Paper.weatherDays(1) == 4 and Paper.weatherDays(1.2) == 3 and Paper.weatherDays(1.45) == 2, "bigger type: fewer days in the weather box, so each still fits")
+check(row("The paper's pages").help_text:find("fewer stories on a page", 1, true), "the setting says bigger type means more pages")
+local fsrc = read(PLUGIN .. "/gzreader_dailyscreen.lua")
+check(fsrc:find("local head_face = face(ff.face.bold, fz(lead and 17 or 12)", 1, true) and fsrc:find("local body_face = face(ff.face.regular, fz(10)", 1, true)
+    and fsrc:find('GzType = { { "Menu" } }', 1, true) and fsrc:find('return "type"', 1, true), "headlines and stories' beginnings are set in it; Aa at the foot and Menu open the box")
+
+print("== a story rests where the finger leaves it")
+local LS = require("gzreader_livescroll")
+local fdx, fdy = LS.freeEnd({ rel_x = 0, rel_y = -340, moved_x = 0, moved_y = 300 }, { direction = "north", distance = 900 })
+check(fdx == 0 and fdy == 40, "a drag ending as a swipe: the page goes the 40 px the finger went since its last step, not a screenful")
+fdx, fdy = LS.freeEnd({ rel_x = 0, rel_y = 200, moved_x = 0, moved_y = -200 }, { direction = "south", distance = 500 })
+check(fdx == 0 and fdy == 0, "already where the finger left it: it stays")
+fdx, fdy = LS.freeEnd({}, { direction = "north", distance = 120 })
+check(fdx == 0 and fdy == 120 and select(2, LS.freeEnd({}, { direction = "south", distance = 80 })) == -80 and select(2, LS.freeEnd({}, { direction = "northeast", distance = 100 })) == 70,
+    "a flick too quick to be seen as a drag: its own length, never a screenful")
+local moved_by = {}
+local function scroller()
+    return { _is_scrollable = true, _scrolling = false, _scroll_offset_x = 0, _scroll_offset_y = 1000, _max_scroll_offset_x = 0, _max_scroll_offset_y = 5000,
+        dimen = { x = 0, y = 0, w = 600, h = 800 }, show_parent = {},
+        _scrollBy = function(self, _dx, dy) moved_by[#moved_by + 1] = dy; self._scroll_offset_y = math.max(0, math.min(self._max_scroll_offset_y, self._scroll_offset_y + dy)) end,
+        onScrollablePan = function(self) self._scrolling = true; return true end,
+        onScrollablePanRelease = function(self) self._scrolling = false; return true end,
+        onScrollableSwipe = function(self, _a, ges) self:_scrollBy(0, ges.direction == "north" and 800 or -800); return true end }
+end
+local fake = scroller()
+package.loaded["ui/uimanager"].setDirty = function() end
+local clock = 0
+LS.now = function() clock = clock + 1; return clock end
+LS.on(fake, { free = true })
+local pos = { intersectWith = function() return true end }
+fake:onScrollablePan(nil, { relative = { x = 0, y = -100 } })
+fake:onScrollablePan(nil, { relative = { x = 0, y = -230 } })
+fake:onScrollablePan(nil, { relative = { x = 0, y = -235 } })
+check(fake._scroll_offset_y == 1230, "the page follows the finger in steps (230 px so far; the last 5 px wait)")
+fake:onScrollableSwipe(nil, { direction = "north", distance = 240, pos = pos })
+check(fake._scroll_offset_y == 1235 and fake._scrolling == false, "the finger lifts still moving: the page rests 235 px on, where the finger was (was: a screenful further) … " .. fake._scroll_offset_y)
+fake:onScrollablePan(nil, { relative = { x = 0, y = 60 } })
+fake:onScrollablePanRelease(nil, {})
+check(fake._gz_live.rel_y == nil or fake._scrolling == false, "the next drag starts afresh")
+local snapper = scroller()
+LS.on(snapper)
+snapper:onScrollablePan(nil, { relative = { x = 0, y = -100 } })
+snapper:onScrollableSwipe(nil, { direction = "north", distance = 120, pos = pos })
+check(snapper._scroll_offset_y == 1800, "where it isn't asked for (the notes), a swipe still moves a screenful … " .. snapper._scroll_offset_y)
+check(dsrc:find('require("gzreader_livescroll").on(self.scroller, { free = true })', 1, true), "the story asks for it")
+
 print("== today's calendar events on the front page")
 local function tm(day, h, m) return os.time{ year = 2026, month = 11, day = day, hour = h, min = m or 0 } end
 local evs = {
@@ -650,7 +948,7 @@ plugin = { store = { daily = { enabled = true } }, save = function() saves = sav
 check(Paper.calendarOn(plugin) == true, "on unless unticked")
 rows = Paper.settingsItems(plugin)
 row("Today's calendar events").callback()
-check(Paper.calendarOn(plugin) == false and plugin.store.daily.calendar == false and row("Today's calendar events").checked_func() == false, "Settings → Home → Daily paper → Today's calendar events: unticked")
+check(Paper.calendarOn(plugin) == false and plugin.store.daily.calendar == false and row("Today's calendar events").checked_func() == false, "Settings → Accounts and services → Daily paper → Today's calendar events: unticked")
 row("Today's calendar events").callback()
 check(Paper.calendarOn(plugin) == true and plugin.store.daily.calendar == nil, "… and ticked again")
 check(row("Today's calendar events").help_text:find("nothing about them leaves the Kindle", 1, true), "the setting says the events stay on the Kindle")
@@ -747,7 +1045,7 @@ check(Daily.edition and Daily.edition.day ~= "" and Daily.edition.weather == nil
 rows = Paper.settingsItems(plugin)
 local wrows = Paper.weatherItems(plugin)
 check(row("Weather") and #wrows == 3 and wrows[1].checked_func() == true and wrows[3].text_func() == "Degrees: Fahrenheit" and wrows[2].text_func():find("Town", 1, true),
-    "Settings → Home → Daily paper → Weather: the switch, the town, the degrees")
+    "Settings → Accounts and services → Daily paper → Weather: the switch, the town, the degrees")
 wrows[3].callback()
 check(W.store(plugin).unit == "C" and wrows[3].text_func() == "Degrees: Celsius", "degrees switched")
 wrows[1].callback()
@@ -809,6 +1107,7 @@ Daily.pageSave(plugin, form)
 local st2 = plugin.store.daily
 check(ps.weather and ps.weather.on == true and ps.weather.source == nil and html:find('name="weather" value="1" checked', 1, true) and html:find('name="town"', 1, true)
     and html:find('name="unit"', 1, true) and W.store(plugin).off == true, "Weather: its tick, the town and the degrees on the page; unticked when Save comes without it")
+check(st2.full == false and ps.full == true and html:find('name="full" value="1" checked', 1, true), "Whole stories: ticked on the page; unticked when Save comes without it")
 check(st2.calendar == false and ps.calendar == true and html:find('name="calendar" value="1" checked', 1, true), "Today's calendar events: ticked on the page; unticked when Save comes without it")
 check(st2.pictures == false and ps.pictures == true and html:find('name="pictures" value="1" checked', 1, true), "With pictures: ticked on the page; unticked when Save comes without it")
 check(st2.enabled == true and st2.shelf == false and st2.feeds[1].enabled == false and st2.feeds[2].enabled == nil, "Save: the switches and your feeds' ticks as sent (an unticked box isn't sent)")
@@ -838,14 +1137,16 @@ plugin.store.daily.enabled = true
 local opened
 package.loaded["gzreader_phone"] = { open = function(_p, opts) opened = opts end }
 row("Set up from a browser").callback()
-check(opened and opened.section == "paper", "Settings → Home → Daily paper → Set up from a browser opens the page at Daily paper")
+check(opened and opened.section == "paper", "Settings → Accounts and services → Daily paper → Set up from a browser opens the page at Daily paper")
 
 print("== wired in")
 local main = read(PLUGIN .. "/main.lua")
-check(main:find('section == "home"', 1, true) and main:find('require("gzreader_dailyscreen").settingsItems(self)', 1, true), "the plugin gives Settings → Home its Daily paper row")
+check(main:find("function Grimmory:dailySettingsItems()", 1, true) and main:find('return require("gzreader_dailyscreen").settingsItems(self)', 1, true), "the plugin gives Settings → Accounts and services its Daily paper page")
 check(main:find('require("gzreader_dailyscreen").install(self)', 1, true), "the plugin registers Home's widget at start")
 local zs = read(REPO .. "/plugins/zenos.koplugin/modules/settings/zen_settings.lua")
-check(zs:find('gz_section("home")', 1, true), "ZenOS's Settings asks GZreader for Home's rows")
+local tree = read(REPO .. "/plugins/zenos.koplugin/common/gz_settings_tree.lua")
+check(tree:find('row(_("Daily paper"), _("Feeds"), "dailySettingsItems", "history")', 1, true) ~= nil,
+    "Settings → Accounts and services has the daily paper (with the other things fetched from the web)")
 local sh = read(REPO .. "/plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/shelf.lua")
 check(sh:find('rawget(_G, "__GZ_SHELF_PAPER")', 1, true) and sh:find("opts.gz_home", 1, true) and sh:find("gz_paper = true", 1, true),
     "ZenOS's shelf asks for the newspaper, on Home's first shelf only")

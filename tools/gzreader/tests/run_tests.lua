@@ -942,7 +942,7 @@ print("House tab (Home Assistant): connecting, rooms, switching, Settings, the p
     tab:refresh(false)
     check(tab.err == nil and not texts():find("Couldn't reach", 1, true), "House tab: back again on the next refresh")
 
-    -- Settings → Connections → Home Assistant
+    -- Settings → Accounts and services → House
     local items = House.settingsItems(plugin)
     local labels = {}
     for _i, it in ipairs(items) do labels[#labels + 1] = it.text or it.text_func() end
@@ -2525,6 +2525,15 @@ print("Sign-ins kept off the Kindle's USB drive")
     local ran_ok, ran_err = pcall(function()
         Secrets.on = nil
         check(not Secrets.active(), "settings not on the USB drive (a Nook, the emulator): nothing changes")
+        -- a Kobo: settings on its drive (/mnt/onboard), sign-ins on its own disk (/usr/local/gzreader)
+        local sdir = require("datastorage"):getSettingsDir()
+        local places = Secrets.PLACES
+        Secrets.PLACES = { { drive = "/mnt/us/", dir = WORK .. "/not-this" }, { drive = sdir:match("^(.*/)"), dir = WORK .. "/kobo-own-disk" } }
+        Secrets.on = nil
+        check(Secrets.active() and Secrets.DIR == WORK .. "/kobo-own-disk", "settings on the second place's drive (a Kobo's): sign-ins kept in its folder")
+        Secrets.PLACES = places
+        check(places[1].drive == "/mnt/us/" and places[1].dir == "/var/local/gzreader" and places[2].drive == "/mnt/onboard/"
+            and places[2].dir == "/usr/local/gzreader", "…a Kindle: /mnt/us → /var/local/gzreader; a Kobo: /mnt/onboard → /usr/local/gzreader")
         Secrets.on, Secrets.DIR, Secrets.written = true, WORK .. "/var-local-gzreader", nil
         os.execute("rm -rf '" .. Secrets.DIR .. "'; mkdir -p '" .. Secrets.DIR .. "'")
         state.refresh_token, state.access_token = "rt-SECRET-1", "at-SECRET-1"
@@ -2653,8 +2662,16 @@ do
     check(not no_diag:match("Diagnostics") and labels(Panel.controls(hplug)):match("|Diagnostics|"), "Diagnostics tile only while diagnostics is on")
     hplug.store.logging_disabled = saved_ld
     local home = labels(Panel.homeTiles(hplug, nil))
-    check(home:match("|Continue|") and home:match("|Send books|") and home:match("|Sort|") and not home:match("|More|")
-        and not home:match("Manage") and not home:match("Contents"), "panel at Home: Continue, Send books, Sort (no More); Manage only with a book… " .. home)
+    check(home:match("|Continue|") and home:match("|Connect|") and not home:match("|Send books|") and home:match("|Sort|") and not home:match("|More|")
+        and not home:match("Manage") and not home:match("Contents"), "panel at Home: Continue, Connect (was Send books), Sort (no More); Manage only with a book… " .. home)
+    do -- Connect opens the page for a phone or computer at its first tab (Send books is one of its tabs)
+        local asked = "none"
+        local kept = hplug.openPhonePage
+        hplug.openPhonePage = function(_self, section) asked = section end
+        for _i, t in ipairs(Panel.homeTiles(hplug, nil)) do if t.label == "Connect" then t.run() end end
+        hplug.openPhonePage = kept
+        check(asked == nil, "Connect: the phone page at its first tab, not at Send books")
+    end
     -- Settings opens ZenOS's Settings page with the ZenOS plugin instance
     local opened = {}
     package.loaded["modules/settings/zen_settings_page"] = { show = function(z, o) opened[#opened + 1] = { z = z, o = o } end }
@@ -2664,14 +2681,14 @@ do
     end
     check(#opened == 1 and opened[1].z == "ZEN" and opened[1].o == nil, "Settings tile -> Settings page")
     package.loaded["modules/settings/zen_settings_page"] = nil; package.loaded["apps/filemanager/filemanager"] = nil
-    -- Settings → Interface → Quick panel: tiles shown or hidden, by group
+    -- Settings → Home and tabs → Quick panel: tiles shown or hidden, by group
     Panel.showAll()
     Panel.setShown("controls", "rotate", false)
     Panel.setShown("home", "sort", false)
     Panel.setShown("home", "send", false)
     for _i, id in ipairs({ "home", "settings", "exit" }) do Panel.setShown("controls", id, false) end
     local c2, h2 = labels(Panel.controls(hplug)), labels(Panel.homeTiles(hplug, nil))
-    check(not c2:match("|Rotate|") and c2:match("|Restart|") and not h2:match("|Sort|") and not h2:match("|Send books|") and h2:match("|Continue|"),
+    check(not c2:match("|Rotate|") and c2:match("|Restart|") and not h2:match("|Sort|") and not h2:match("|Connect|") and h2:match("|Continue|"),
         "hidden tiles aren't on the panel; the others are… " .. c2 .. " " .. h2)
     check(c2:match("|Home|") and c2:match("|Settings|") and c2:match("|Exit to Kindle|") and Panel.isShown("controls", "settings"),
         "Home, Settings and Exit to Kindle can't be hidden")
@@ -2766,7 +2783,7 @@ do
     for _i, r in ipairs(usb_item.sub_item_table[2].sub_item_table) do usb_rows[#usb_rows + 1] = r.text end
     usb_rows = "|" .. table.concat(usb_rows, "|") .. "|"
     NetM.usb = was_usb
-    check(usb_rows:match("|Sync|") and not usb_rows:match("|Updates|") and not usb_rows:match("|Send books|"),
+    check(usb_rows:match("|Sync|") and not usb_rows:match("|Updates|") and not usb_rows:match("|Connect|"),
         "a Kindle without Wi-Fi: only the tiles it can have are listed… " .. usb_rows)
     for _i, id in ipairs({ "continue", "search", "history", "view", "manage", "music", "audiobook", "tasks", "note" }) do Panel.setShown("home", id, false) end
     check(#Panel.homeTiles(hplug, { path = "/mnt/us/a.epub" }) == 0, "every Home tile hidden: an empty group (the panel leaves it out)")
@@ -2839,7 +2856,7 @@ print("Quick panel: how it opens (KOReader's Activate menu), KOReader's tap and 
     Touch.on = saved_on
     check(#rows == 2 and rows[1].text == "Open with a tap at the top" and rows[2].text == "Open with a swipe down from the top"
             and rows[2].separator and item.sub_item_table[1].text == rows[1].text and item.sub_item_table[2].text == rows[2].text,
-        "a touch Kindle: Settings → Interface → Quick panel starts with Open with a tap / with a swipe")
+        "a touch Kindle: Settings → Home and tabs → Quick panel starts with Open with a tap / with a swipe")
     local had_fm = package.loaded["apps/filemanager/filemanager"]
     local fm = { instance = { menu = {} } }
     package.loaded["apps/filemanager/filemanager"] = fm
@@ -3028,8 +3045,11 @@ do
         and not g:match("Downloads") and not g:match("Browse library") and not g:match("updates")
         and not g:match("Diagnostic") and not g:match("Read aloud") and not g:match("Pre%-size")
         and not g:match("Wi%-Fi only"), "Grimmory section: connection and sync only " .. g)
-    check(g:match("|Sync highlights and notes|Keep connections open %(experimental%)|Rebuild library|Reconnect"),
-        "Grimmory section: Keep connections open after the sync switches, then Rebuild library " .. g)
+    check(g:match("|Sync highlights and notes|Rebuild library|Reconnect") and not g:match("Keep connections open")
+            and not g:match("Copy from another GZreader"),
+        "Books (Grimmory): the sync switches, then Rebuild library; Keep connections open in General → Performance, Copy in General → Transfer " .. g)
+    check(g:match("|Single sign%-on %(SSO%)|Storage on this Kindle|Disconnect|$"),
+        "Books (Grimmory): Storage on this Kindle (a link to General → Storage), then Disconnect last " .. g)
     do -- Rebuild library: the index from Grimmory again, the saved lists forgotten, Wi-Fi on first
         local NetR = require("gzreader_net")
         local IndexR, LCR = require("gzreader_index"), require("gzreader_listcache")
@@ -3049,11 +3069,14 @@ do
     local gen = plugin:sectionItems("general")
     check(gen.wifi and gen.wifi.text == "Wi-Fi" and #gen.wifi.sub_item_table == 3, "General: Wi-Fi (On, Off, Auto)")
     local d = texts(gen.diagnostics)
-    check(d:match("|Diagnostic logging|Send debug reports automatically|Send diagnostic log to the developer|Send diagnostic log to a browser %(QR code%)|Save diagnostic log %(USB%)|"),
-        "General: logging, automatic debug reports, send (to the developer or a browser) and save the log (no usage statistics) " .. d)
-    check(texts(plugin:sectionItems("reader")) == "|Read aloud|Test audiobook playback|Pause when headphones are unplugged|Find the headphone jack|Lay out new books while charging|",
-        "Reader: Read aloud, Test audiobook playback, the headphones, laying out new books while charging")
-    check(texts(plugin:sectionItems("interface")) == "|Pre-size covers|", "Interface: Pre-size covers (the Menu key always opens GZreader's menu)")
+    check(d:match("|Diagnostic logging|Send debug reports automatically|Report a problem|Send diagnostic log to a browser %(QR code%)|Save diagnostic log %(USB%)|"),
+        "Privacy and diagnostics: logging, automatic debug reports, Report a problem, send to a browser and save the log (no usage statistics) " .. d)
+    check(texts(plugin:sectionItems("reader")) == "|Read aloud|Test audiobook playback|Pause when headphones are unplugged|Find the headphone jack|",
+        "Audio: Read aloud, Test audiobook playback, the headphones (laying out new books is in Performance)")
+    check(texts(plugin:sectionItems("interface")) == "||", "a Kindle: nothing for Display and light (Pre-size covers is in Performance)")
+    local perf = texts(plugin:sectionItems("performance"))
+    check(perf:match("^|Pre%-size covers|") and perf:match("|Keep connections open %(experimental%)|$"),
+        "General → Performance: Pre-size covers, (laying out new books while charging,) Keep connections open " .. perf)
     local test = plugin:sectionItems("reader")[2]
     check(test.keep_menu_open == true, "Test audiobook playback stays over Settings")
 end
@@ -3076,11 +3099,16 @@ do
         return "|" .. table.concat(t, "|") .. "|"
     end
     check(texts(plugin:sectionItems("reader")) == "||", "Paperwhite: no Read aloud or audiobook test in Settings")
-    check(texts(plugin:sectionItems("interface")) == "|Pre-size covers|", "Paperwhite: no Menu key setting")
+    check(texts(plugin:sectionItems("interface")) == "||", "Paperwhite: no Menu key setting, nothing for Display and light")
     local Browser = require("gzreader_browser")
     local root = texts(Browser.rootItems({ api = plugin.api, plugin = plugin }))
     check(root:match("|Grimmory|$") and not root:match("Audiobooks") and table.concat(require("gzreader_catalog").sections(), ",") == "books",
         "Paperwhite: the Catalog is the Books page alone (no Audiobooks or Music) " .. root)
+    do -- Settings → About: the version row takes taps (the easter egg: easteregg_test.lua, emulator/easter_egg.lua)
+        local asrc = io.open(PLUGIN .. "/../zenos.koplugin/modules/settings/sections/about_settings.lua"):read("*a")
+        check(asrc:find('local ok, Egg = pcall(require, "gzreader_easteregg")\n            if ok then Egg.versionTapped() end', 1, true) ~= nil,
+            "Settings → About: GZreader's version, tapped seven times, opens the easter egg")
+    end
     -- the launcher: GZreader's menu, the phone page, Send books (once)
     local cfg = { entries = {}, next_id = 0 }
     local saved_model = package.loaded["modules/menu/app_launcher/model"]
@@ -3125,8 +3153,8 @@ do
     Device.model = "KindleTouch"
     Device.hasKeys = function() return true end -- (its Home button)
     check(Touch.on() and Touch.audio() and Touch.tts() and not Touch.dpad(), "Kindle Touch: touch, audiobooks, read aloud")
-    check(texts(plugin:sectionItems("reader")) == "|Read aloud|Test audiobook playback|Pause when headphones are unplugged|Find the headphone jack|Lay out new books while charging|",
-        "Kindle Touch: Read aloud, the audiobook test, the headphones, laying out new books")
+    check(texts(plugin:sectionItems("reader")) == "|Read aloud|Test audiobook playback|Pause when headphones are unplugged|Find the headphone jack|",
+        "Kindle Touch: Read aloud, the audiobook test, the headphones")
     check(texts(Browser.rootItems({})):match("|Audiobooks|$"), "Kindle Touch: Audiobooks in the Grimmory tab")
     -- the Kindle 4: the 5-way and Menu, no keyboard, no touch, no audio
     Device.model = "Kindle4"
@@ -3134,13 +3162,13 @@ do
     check(Touch.dpad() and not Touch.on() and not Touch.keys() and not Touch.audio() and Touch.letter("Q") == nil,
         "Kindle 4: 5-way, no letters, no audio")
     check(Touch.text("Press N", "Tap New note", "Menu → New note") == "Menu → New note", "Kindle 4: 5-way wording")
-    check(texts(plugin:sectionItems("interface")) == "|Pre-size covers|", "Kindle 4: no Menu key setting (always GZreader's menu)")
+    check(texts(plugin:sectionItems("interface")) == "||", "Kindle 4: no Menu key setting (always GZreader's menu)")
     Device.lcd = {} -- (the Nook 1st Edition's colour touchscreen)
-    check(texts(plugin:sectionItems("interface")) == "|Colour screen|Pre-size covers|", "Nook: Colour screen settings first")
+    check(texts(plugin:sectionItems("interface")) == "|Colour screen|", "Nook: Colour screen settings (Display and light)")
     Device.lcd = nil
     local model_was = Device.model
     Device.model = "NookTouch"
-    check(texts(plugin:sectionItems("interface")) == "|Touch orientation|Pre-size covers|", "Nook Simple Touch: Touch orientation")
+    check(texts(plugin:sectionItems("interface")) == "|Touch orientation|", "Nook Simple Touch: Touch orientation")
     Device.model = model_was
     Device.isNook = function() return true end
     local html = require("gzreader_pairpage").gone()
@@ -3967,12 +3995,12 @@ print("The request helper (opt-in): connections kept between background processe
 ;(function()
     local Api = require("gzreader_api")
     local Helper = require("gzreader_reqhelper")
-    -- Settings → Connections → Grimmory → Keep connections open: off by default
+    -- Settings → General → Performance → Keep connections open: off by default
     local was_force = Helper.force
     Helper.force = nil
     check(not Helper.enabled() and not Helper.setting(), "the helper is off by default")
     local item
-    for _i, it in ipairs(plugin:menuItems()) do if it.text == "Keep connections open (experimental)" then item = it end end
+    for _i, it in ipairs(plugin:sectionItems("performance")) do if it.text == "Keep connections open (experimental)" then item = it end end
     local started, was_start = 0, Helper.start
     Helper.start = function() started = started + 1 end
     item.callback()
@@ -4151,7 +4179,9 @@ print("Requests queued together run in one background process")
     -- one alone, as before
     local alone
     Async.run(api, function() return "x", 2 end, function(a, second) alone = { a, second } end, "alone")
-    runLoop(function() return alone ~= nil end, 15)
+    -- (its answer comes as soon as the process writes it; the process is
+    -- collected, and Async.busy cleared, a moment later: wait for both)
+    runLoop(function() return alone ~= nil and not Async.busy end, 15)
     check(alone and alone[1] == "x" and alone[2] == 2 and not Async.busy and #Async.queue == 0, "a single request: as before")
     Async.sync = saved_sync
 end)()
@@ -4300,7 +4330,7 @@ print("Wi-Fi: on, off, auto")
     check(Net.nextMode("on") == "off" and Net.nextMode("off") == "auto" and Net.nextMode("auto") == "on",
         "the tile's order: on → off → auto → on")
 
-    -- choosing a mode (the tile, Settings → General → Wi-Fi)
+    -- choosing a mode (the tile, Settings → Wi-Fi)
     local switched, events = 0, {}
     local saved_switch, saved_bc = Net._switch, UIM.broadcastEvent
     Net._switch = function() switched = switched + 1; NET.connected = not NET.connected end
@@ -4429,7 +4459,7 @@ print("Wi-Fi: on, off, auto")
         for _i, g in ipairs(Panel.catalog()) do
             for _j, tl in ipairs(g.tiles) do if tl.id == "bluetooth" then cat_bt = tl end end
         end
-        check(cat_bt and cat_bt.available() == false, "…and Settings → Interface → Quick panel lists it as not on this Kindle")
+        check(cat_bt and cat_bt.available() == false, "…and Settings → Home and tabs → Quick panel lists it as not on this Kindle")
         fake.available = true
         check(cat_bt.available() == true, "a Kindle with Bluetooth: it's there")
         local c = ids(Panel.controls(nil))
@@ -4464,7 +4494,7 @@ print("Wi-Fi: on, off, auto")
         UIMp.close, UIMp.nextTick, UIMp.setDirty, UIMp.show = ui_saved.close, ui_saved.tick, ui_saved.dirty, ui_saved.show
     end)()
 
-    -- Settings → General → Wi-Fi
+    -- Settings → Wi-Fi
     local item = Net.menuItem()
     local names = {}
     for _i, it in ipairs(item.sub_item_table) do names[#names + 1] = it.text end
@@ -4895,7 +4925,7 @@ do
     check(b and #b == 1 and b[1].text == "Add to shelf", "not signed in: the book menu still has Add to shelf")
     captured.info = nil; S.menu = nil
     b[1].callback()
-    check(S.menu == nil and captured.info == "Sign in to Grimmory to continue: Settings → Connections → Grimmory.",
+    check(S.menu == nil and captured.info == "Sign in to Grimmory to continue: Settings → Accounts and services → Books.",
         "…which says to sign in to Grimmory to continue")
     rplugin.api = setmetatable({ offline = true, isPaired = function() return false end }, { __index = saved_api })
     buttons()[1].callback()
@@ -6147,12 +6177,12 @@ print("Read aloud on Kindles with Bluetooth: Amazon's Ivona voice (com.lab126.iv
     Touch._forgetIvona()
     os.remove(fake)
 
-    -- Settings → General → Audio on such a Kindle: Read aloud only; its dialog without Volume
+    -- Settings → Audio on such a Kindle: Read aloud only; its dialog without Volume
     local src = io.open(PLUGIN .. "/main.lua"):read("*a")
     check(src:find("if not Mod.Touch.player() and not Mod.Touch.tts() then return {} end", 1, true)
         and src:find("if not Mod.Touch.player() then return items end", 1, true)
         and src:find("if not Mod.Touch.audio() then return items end -- (Bluetooth Kindles: no headphone jack)", 1, true),
-        "Settings → General → Audio: without a speaker, Read aloud and (Bluetooth Kindles) the audiobook test; no headphone jack items")
+        "Settings → Audio: without a speaker, Read aloud and (Bluetooth Kindles) the audiobook test; no headphone jack items")
     check(src:find("Mod.TTS.volumeMax()", 1, true) and not src:find("if not bt then", 1, true) and src:find("Test the Kindle voice", 1, true),
         "its read aloud settings: Volume n / 8 (the Kindle's Bluetooth volume), \"Test the Kindle voice\"")
 
@@ -6450,6 +6480,58 @@ print("ZenOS's updater: not loaded (GZreader's in its place, on first use)")
         "the file browser: not loaded to ask when the plugin scan found none")
 end)()
 
+print("A Kobo's own words")
+do
+    local Kobo = require("gzreader_kobo")
+    local cases = {
+        { "Exit to Kindle", "Exit to Kobo" },
+        { "Delete “%1” from this Kindle?", "Delete “%1” from this Kobo?" },
+        { "3. Choose the Kindle's drive, enter its PIN and press Sync.", "3. Choose the Kobo's drive, enter its PIN and press Sync." },
+        { "This Kindle has no speaker, headphone jack or Bluetooth, so it can't play music. The Kindle 2, Keyboard, DX and Touch can",
+            "This Kobo has no speaker, headphone jack or Bluetooth, so it can't play music. The Kindle 2, Keyboard, DX and Touch can" },
+        { "Kindles with Bluetooth", "Kindles with Bluetooth" },
+        { "Kindle voice set.", "Kindle voice set." },
+        { "on a Kindle Paperwhite or a Kindle 3", "on a Kindle Paperwhite or a Kindle 3" },
+        { "Nothing to do", "Nothing to do" },
+    }
+    local bad = {}
+    for _i, c in ipairs(cases) do
+        local got = Kobo.words(c[1])
+        if got ~= c[2] then bad[#bad + 1] = c[1] .. " -> " .. got end
+    end
+    check(#bad == 0, "a Kobo's words: this/the Kindle become the Kobo; Kindle models and Kindle-only things stay" .. (#bad > 0 and (": " .. table.concat(bad, " | ")) or ""))
+    do
+        local was = Kobo.isKobo
+        Kobo.isKobo = function() return true end
+        local on_kobo = Kobo.noAudio()
+        Kobo.isKobo = function() return false end
+        local elsewhere = Kobo.noAudio()
+        Kobo.isKobo = was
+        check(type(on_kobo) == "string" and on_kobo:find("on a Kobo", 1, true) and elsewhere == nil,
+            "a Kobo: no audiobooks or music, and why (Kobo's Bluetooth is only for its own software); elsewhere the Kindle's message")
+    end
+    -- through KOReader's gettext (GZreader's hook), only once installed on a Kobo
+    local okg, GT = pcall(dofile, PLUGIN .. "/../../frontend/gettext.lua")
+    if okg and type(GT) == "table" then
+        local before = GT("Save to the Kindle (copy over USB)")
+        local was = Kobo.isKobo
+        Kobo.isKobo = function() return false end
+        package.loaded["gettext"], Kobo.installed = GT, nil
+        local not_kobo = Kobo.install()
+        Kobo.isKobo = function() return true end
+        local on_kobo = Kobo.install()
+        local after = GT("Save to the Kindle (copy over USB)")
+        GT.gzSetRewrite(nil)
+        local undone = GT("Save to the Kindle (copy over USB)")
+        package.loaded["gettext"], Kobo.isKobo, Kobo.installed = nil, was, nil
+        check(before == "Save to the Kindle (copy over USB)" and not not_kobo and on_kobo and after == "Save to the Kobo (copy over USB)"
+            and undone == before and GT("KOReader") == "KOReader",
+            "…installed on a Kobo only, through gettext (" .. tostring(after) .. ")")
+    else
+        check(false, "KOReader's gettext loads here: " .. tostring(GT))
+    end
+end
+
 print("Updates from GitHub releases")
 local Update = require("gzreader_update")
 check(Update.compare("1.10.0", "1.9.2") == 1 and Update.compare("v1.0.0", "1.0.0") == 0 and Update.compare("1.0.0-beta1", "1.0.0") == -1, "version comparison")
@@ -6613,6 +6695,41 @@ check(mok and rf(NK .. "/frontend/m.lua") == "mounted" and rf(NK .. "/frontend/c
 check(io.popen("ls -a '" .. NK .. "' '" .. NK .. "/plugins' | grep -c 'gzreader-update\\|gz-old'"):read("*a"):match("^0"), "…nothing left behind")
 Update.freeSpace, Update.cardDir = real_free, real_card
 Update.root = KO
+end
+do
+-- a Kobo (GZreader in .adds/koreader): the same update, with the Kobo's own start script as koreader.sh
+local KB = WORK .. "/kobo/.adds/koreader"
+os.execute("rm -rf '" .. WORK .. "/kobo' && mkdir -p '" .. KB .. "/frontend' '" .. KB .. "/plugins/gzreader.koplugin'")
+wf(KB .. "/koreader.sh", "#!/bin/sh\n# kobo old\n"); wf(KB .. "/gzreader-version", "1.2.0\n")
+wf(KB .. "/plugins/gzreader.koplugin/main.lua", "old main")
+local real_kobo = Update.isKobo
+Update.isKobo = function() return true end
+Update.root = KB
+PKG = { ["koreader/frontend/k.lua"] = "k", ["koreader/plugins/gzreader.koplugin/main.lua"] = "k main",
+    ["koreader/gzreader-version"] = "1.3.0\n", ["koreader/koreader.sh"] = "#!/bin/sh\n# kindle\n",
+    ["koreader/kobo-koreader.sh"] = "#!/bin/sh\n# kobo new\n", ["koreader/nook-gzreader.sh"] = "#!/system/bin/sh\n" }
+local kok, kerr = Update.apply("pkg.zip")
+check(kok and Update.currentVersion() == "1.3.0" and rf(KB .. "/frontend/k.lua") == "k", "on a Kobo: the same update installed (" .. tostring(kerr) .. ")")
+check(rf(KB .. "/koreader.sh") == "#!/bin/sh\n# kobo new\n" and rf(KB .. "/kobo-koreader.sh") == nil,
+    "…with the Kobo's start script as koreader.sh, not the Kindle's")
+check(rf(KB .. "/nook-gzreader.sh") == nil and rf(WORK .. "/kobo/.adds/gzreader.sh") == nil, "…and nothing of the Nook's")
+PKG = { ["koreader/frontend/k.lua"] = "k2", ["koreader/plugins/gzreader.koplugin/main.lua"] = "k main",
+    ["koreader/gzreader-version"] = "1.3.1\n", ["koreader/koreader.sh"] = "#!/bin/sh\n# kindle\n" }
+check(Update.apply("pkg.zip") and Update.currentVersion() == "1.3.1" and rf(KB .. "/koreader.sh") == "#!/bin/sh\n# kobo new\n",
+    "a package from before Kobos (no Kobo start script): the Kobo keeps its own koreader.sh")
+PKG = { [TOP .. "frontend/src.lua"] = "src", [TOP .. "reader.lua"] = "reader", [TOP .. "platform/kindle/koreader.sh"] = "#!/bin/sh\n# kindle src\n",
+    [TOP .. "platform/kobo/koreader.sh"] = "#!/bin/sh\n# kobo src\n", [TOP .. "plugins/gzreader.koplugin/main.lua"] = "src main" }
+check(Update.apply("src.zip", { source = true, version = "1.4.0" }) and rf(KB .. "/koreader.sh") == "#!/bin/sh\n# kobo src\n"
+    and rf(KB .. "/kobo-koreader.sh") == nil, "a release's source code zip on a Kobo: koreader.sh from platform/kobo/")
+-- and on a Kindle: the Kobo's script never installed
+Update.isKobo = function() return false end
+Update.root = KO
+PKG = { ["koreader/frontend/k.lua"] = "k", ["koreader/plugins/gzreader.koplugin/main.lua"] = "k main",
+    ["koreader/gzreader-version"] = "1.4.1\n", ["koreader/koreader.sh"] = "#!/bin/sh\n# kindle 2\n",
+    ["koreader/kobo-koreader.sh"] = "#!/bin/sh\n# kobo\n" }
+check(Update.apply("pkg.zip") and rf(KO .. "/koreader.sh") == "#!/bin/sh\n# kindle 2\n" and rf(KO .. "/kobo-koreader.sh") == nil,
+    "on a Kindle: the Kindle's koreader.sh, the Kobo's left out")
+Update.isKobo = real_kobo
 end
 captured.textviewer = nil
 preload("ui/widget/textviewer", { new = function(_, o) captured.textviewer = o; return o end })
@@ -7421,6 +7538,21 @@ print("Remote debugging (debug reports on)")
     R.onResume()
     R.periodicBeat()
     check(io.open(R.livePath()):read("*a"):match("^%d+ run "), "…and running again once it wakes")
+    -- the end of a crash.log cut short: NUL bytes, a letter cut in two (the feed answered 500 to it every time)
+    do
+        local clean = require("gzreader_textclean")
+        check(clean("ok \0\0caf\195") == "ok caf?" and clean("café ✓") == "café ✓" and clean("plain") == "plain"
+            and clean("\226\156") == "??", "report text: no NUL bytes, stray bytes as ?, the rest as it was")
+        os.execute("rm -f '" .. dir .. "'/spool/*")
+        R.event("cut short", "end of crash.log\0\0 caf\195")
+        local got
+        for n in lfs.dir(dir .. "/spool") do
+            if n:match("%.json$") then local f = io.open(dir .. "/spool/" .. n, "rb"); got = f:read("*a"); f:close() end
+        end
+        check(got and not got:find("\0", 1, true) and not got:find("u0000", 1, true) and got:find("caf?", 1, true),
+            "a queued report is cleaned before it's written for the watchdog")
+        os.execute("rm -f '" .. dir .. "'/spool/*")
+    end
     R.onSuspend()
     R.event("queued before turning it off", "x")
     R.setSetting(false) -- (Settings or the setup guide: off; stops it)
@@ -8619,9 +8751,21 @@ print("Notes (Memos v0.31)")
     check(Notes.pruneFiles(plugin) == 0, "no limit: nothing removed")
     Notes.prefs(plugin).files_mb = 25
     local items = NS.items(plugin)
-    check(#items == 6 and items[1].text_func():match("Will") and items[3].text_func():match("^Storage used: ")
-        and items[4].text_func() == "Layout: Two side by side, compact" and #items[4].sub_item_table == 7,
-        "Settings → Notes: connection, sync, storage, layout (4 + 2 choices, full screen), kept notes, attachment limit")
+    check(#items == 6 and items[1].text_func():match("Will") and items[6].text_func():match("^Storage used: ")
+        and items[3].text_func() == "Layout: Two side by side, compact" and #items[3].sub_item_table == 7
+        and items[2].separator == true and items[5].separator == true and type(items[6].callback) == "function" and not items[6].sub_item_table_func,
+        "Settings → Notes: connection, sync, layout (4 + 2 choices, full screen), kept notes, attachment limit, then storage (a link)")
+    ;(function()
+        local opened
+        local S = require("gzreader_storage")
+        local was = S.open
+        S.open = function(k) opened = k end
+        items[6].callback()
+        S.open = was
+        check(opened == "notes", "Notes' Storage used opens Settings → General → Storage → Notes")
+        local rows = NS.storageItems(plugin)
+        check(#rows == 5 and rows[4].text == "Free up space: remove downloaded attachments", "its Free up space rows are there (General → Storage → Notes)")
+    end)()
 
     -- a token that stopped working
     plugin.store.memos.token = "revoked"
@@ -8946,11 +9090,17 @@ print("Notes (Memos v0.31)")
             and nesrc:find("self.drawing_closed_at = Editor.now()", 1, true) ~= nil
             and select(2, nesrc:gsub("self:topTap%(", "")) == 5,
             "editor (touch, full page): Save at the top right, not in the row under the title; Draw, space, visibility and Save guarded")
-        check(nesrc:find("self.title_slot[1] = self.save_top and self:notebookBar(sw) or OverlapGroup:new{", 1, true) ~= nil
+        check(nesrc:find("self.title_slot[1] = (self.save_top or self.keys_bar) and self:notebookBar(sw) or OverlapGroup:new{", 1, true) ~= nil
             and nesrc:find('tap = function(w, fn, guarded) return guarded and self:topTap(w, fn) or tapTarget(w, fn) end', 1, true) ~= nil
             and nesrc:find('back = function() self:onCloseDialog() end', 1, true) ~= nil
             and nesrc:find('action = { "done", _("Done"), function() self:save() end, true }', 1, true) ~= nil,
             "editor (touch, full page): the drawing screen's top bar: ← (not guarded) … ✎ # ⋮ Done (guarded); Done saves")
+        check(nesrc:find('if self.immich then icons[#icons + 1] = { "photos", "photos", function() self:addPhotos() end, true } end', 1, true) ~= nil
+            and nesrc:find("local bar_icons = self.save_top", 1, true) ~= nil
+            and nesrc:find("if self.immich and not bar_icons then", 1, true) ~= nil
+            and nesrc:find("if not bar_icons then\n        row[#row + 1] = self:canDraw() and tapTarget(chip", 1, true) ~= nil
+            and io.open(PLUGIN .. "/icons/draw/photos.svg", "rb") ~= nil,
+            "editor (touch): Draw and Photos are the top bar's icons (✎, a picture), not chips in the row under it; keyboard Kindles keep the chips")
         ;(function() -- the same bar on an opened note (touch), and the bar's name for a note
             local NoteBar = require("gzreader_notebar")
             check(NoteBar.nameOf("# Weekend\n\nBike") == "Weekend" and NoteBar.nameOf("#plans #trip\n- [ ] milk") == "milk"
@@ -8958,7 +9108,47 @@ print("Notes (Memos v0.31)")
                 and NoteBar.nameOf(string.rep("word ", 20)):sub(-3) == "…",
                 "the bar's name: a note's first line of words (marks off, not a picture or a line of tags, 48 characters at most)")
             local vsrc = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
-            check(vsrc:find("Touch.on() and self:topBar(sw, title_h, space) or CenterContainer:new{", 1, true) ~= nil
+            -- an opened note's words formatted (gzreader_inline.lua; inline_test.lua has its reading and wrapping)
+            check(vsrc:find("for _i, w in ipairs(Inline.widgets(para, inner, Notes.PAGE_TEXT)) do add(w) end", 1, true) ~= nil
+                and vsrc:find("for _i, w in ipairs(Inline.widgets(sub_words, width - S(28), Notes.PAGE_TEXT)) do sub[#sub + 1] = w end", 1, true) ~= nil
+                and vsrc:find("Inline.text{ text = l.text, width = width - S(90), size = Notes.PAGE_TEXT,", 1, true) ~= nil
+                and vsrc:find("put(Inline.text{ text = l.text, width = width, size = Notes.PAGE_HEADING[l.level] or Notes.PAGE_TEXT, bold = true })", 1, true) ~= nil
+                and not vsrc:find("say(Sticky.plain(l.text))", 1, true),
+                "an opened note: its paragraphs, a folded section's, checklist items and headings drawn formatted (bold, italic, struck, code, links; quotes, lists, rules, tables)")
+            -- keyboard Kindles: the same bar without buttons on an opened note and in the editor; Alt+M the editor's menu
+            check(vsrc:find("            self:topBar(sw, title_h, space),", 1, true) ~= nil
+                and vsrc:find('note = Touch.keys() and _("M more") or _("Menu: more") }', 1, true) ~= nil
+                and not vsrc:find('TextWidget:new{ text = _("Note"), face = Font:getFace("smalltfont", 22), bold = true }', 1, true),
+                "an opened note without a touch screen: the bar with the note's name and its date (not just \"Note\"); M more at its right")
+            check(nesrc:find("self.keys_bar = not self.touch and not self.dpad and not self.floating or nil", 1, true) ~= nil
+                and nesrc:find('hint = table.concat(hint, " \\u{00B7} "), note = _("Alt+M more") })', 1, true) ~= nil
+                and nesrc:find('if k == "M" and self.keys_bar then self:barOptions(); return true end', 1, true) ~= nil,
+                "the editor on a keyboard Kindle: the bar with the note's name, who can see it, its space and tags; Alt+M: its menu (Archive, Delete)")
+            -- keyboard Kindles: the formatted page, typed on with the keys (emulator/notes_keyboard_rich.lua types on it)
+            local resrc2 = io.open(PLUGIN .. "/gzreader_richedit.lua"):read("*a")
+            check(nesrc:find("local keys_page = not self.touch and not self.dpad and not self.floating", 1, true) ~= nil
+                and nesrc:find("if (self.touch or keys_page) and NoteEditor.RICH and not self.floating then", 1, true) ~= nil
+                and nesrc:find("keys = self.keys_bar,", 1, true) ~= nil
+                and nesrc:find("function Editor:tools() return (self.rich and self.touch) and {} or NoteEditor.TOOLS end", 1, true) ~= nil
+                and nesrc:find("self.input:useTool(NoteEditor.RICH_ID[t.id] or t.id)", 1, true) ~= nil
+                and nesrc:find('if k == "X" and self.rich and self.keys_bar then return self.input:tickHere() end', 1, true) ~= nil,
+                "the editor on a keyboard Kindle: the formatted page (not the Kindle 4, not a quick note); its toolbar's tools and Alt+X act on the page")
+            check(resrc2:find("function RichEdit:onKeyPress(key)", 1, true) ~= nil
+                and resrc2:find("if not self.keys or not self.focused then return false end", 1, true) ~= nil
+                and resrc2:find('return require("ui/widget/inputtext").onKeyPress(self, key)', 1, true) ~= nil
+                and resrc2:find("if self.keys then\n        self.height = math.max(S(80), self.max_height or Screen:getHeight())", 1, true) ~= nil,
+                "the formatted page with `keys`: no on-screen keyboard, the page's whole height; the Kindle's keys type (touch Kindles: keys left alone)")
+            local NEk = require("gzreader_noteeditor")
+            check(NEk.RICH_ID.list == "bullet" and NEk.RICH_ID.check == "task" and NEk.RICH_ID.numbered == "ordered" and NEk.RICH_ID.heading == "heading"
+                and NEk.RICH_ID.bold == "bold" and NEk.RICH_ID.italic == "italic", "the toolbar's tools as the formatted page names them")
+            ;(function()
+                -- the bar built without a back button and with a note at the right (stand-in widgets)
+                local nbsrc = io.open(PLUGIN .. "/gzreader_notebar.lua"):read("*a")
+                check(nbsrc:find('local back = o.back and iconButton("back", "back", o.back, false) or HorizontalSpan:new{ width = S(8) }', 1, true) ~= nil
+                    and nbsrc:find("if o.note then", 1, true) ~= nil,
+                    "the bar: no ← without a touch screen; a grey word at the right for the key that has the rest")
+            end)()
+            check(vsrc:find("self:topBar(sw, title_h, space)", 1, true) ~= nil
                 and vsrc:find('{ "pin", m.pinned and "pinned" or "pin", function() self:onPin() end }', 1, true) ~= nil
                 and vsrc:find('{ "archive", "archive", function() self:onArchive(true) end }', 1, true) ~= nil
                 and vsrc:find('{ "delete", "trash", function() self:onDelete() end }', 1, true) ~= nil
@@ -8979,6 +9169,9 @@ print("Notes (Memos v0.31)")
                 and dsrc3:find('rows[#rows + 1] = { id = "archive-note", row = true, label = _("Archive note") }', 1, true) ~= nil
                 and dsrc3:find('rows[#rows + 1] = { id = "delete-note", row = true, label = _("Delete note…") }', 1, true) ~= nil,
                 "the editor's ⋮ and the drawing screen's ⋮ (a note that's there): Archive note (saved first), Delete note…")
+            check(dsrc3:find('icons[#icons + 1] = { id = "delete-note", icon = "trash", label = _("Delete note…") }', 1, true) ~= nil
+                and dsrc3:find('icons[#icons + 1] = { id = "archive-note", icon = "archive", label = _("Archive note") }', 1, true) ~= nil,
+                "the drawing screen's top bar (a note that's there): Archive and Delete beside ⋮, as an opened note has")
             -- an opened note under the editor goes when its note is archived or deleted
             local UIMq = require("ui/uimanager")
             local shown_was = UIMq._window_stack
@@ -9068,8 +9261,10 @@ print("Notes (Memos v0.31)")
             check(#ed:sheets() == 2 and ed:sheets()[1].page == 1 and ed:sheets()[2].path == "/tmp/new.canvas.png" and ed:drawingCount() == 2,
                 "…a page taken off isn't among them; a new one shows its waiting picture")
             check(ed:heading() == "Trip plan", "the drawing screen is titled with the note's first line (no Markdown marks): " .. tostring(ed:heading()))
-            check(#ed:tools() == 0 and #E.tools(setmetatable({ rich = false }, { __index = function(_t, k) return rawget(E, k) end })) == #NE.TOOLS,
-                "the formatted page has no toolbar row (its bar comes up at the selection); Markdown editing keeps its toolbar")
+            ed.touch = true
+            check(#ed:tools() == 0 and #E.tools(setmetatable({ rich = false }, { __index = function(_t, k) return rawget(E, k) end })) == #NE.TOOLS
+                and #E.tools(setmetatable({ rich = true, touch = false }, { __index = function(_t, k) return rawget(E, k) end })) == #NE.TOOLS,
+                "the formatted page on touch has no toolbar row (its bar comes up at the selection); Markdown editing and a keyboard Kindle's formatted page keep the toolbar")
             -- Kindles without a touch screen never draw
             ed.touch, ed.can_draw = false, true
             local no_touch = ed:canDraw()
@@ -9811,6 +10006,23 @@ print("Notes (Memos v0.31)")
         local top2 = Notes.onTop()
         UIM._window_stack = stack
         check(top1 and not top2, "the Notes tab is on top only when nothing is over it")
+    do -- auto brightness (autolight_test.lua has the curve; emulator/auto_light.lua the tile and the looks)
+        local psrc = io.open(PLUGIN .. "/gzreader_panel.lua"):read("*a")
+        local msrc_a = io.open(PLUGIN .. "/main.lua"):read("*a")
+        check(psrc:find('list[#list + 1] = require("gzreader_autolight").tile()', 1, true) ~= nil
+            and psrc:find('if not dragging then pcall(function() require("gzreader_autolight").userSet(v) end) end', 1, true) ~= nil
+            and msrc_a:find('require("gzreader_autolight").onSuspend()', 1, true) ~= nil
+            and msrc_a:find('require("gzreader_autolight").onResume()', 1, true) ~= nil
+            and msrc_a:find('require("gzreader_autolight").start()', 1, true) ~= nil,
+            "auto brightness: the quick panel's tile, the slider teaches it, no looks while asleep, it starts with GZreader")
+        local gsrc_a = io.open(PLUGIN .. "/../zenos.koplugin/modules/settings/sections/global_settings.lua"):read("*a")
+        check(gsrc_a:find("local rows = AutoLight.settingsItems{", 1, true) ~= nil
+            and gsrc_a:find("for i, row in ipairs(rows) do table.insert(brightness.sub_item_table, i, row) end", 1, true) ~= nil
+            and select(2, gsrc_a:gsub("gz_auto_light_off%(%) %-%-", "")) == 2,
+            "auto brightness: first in Settings → Brightness with its adjustments; the schedule and light / dark mode brightness turn it off")
+        local AL = require("gzreader_autolight")
+        check(AL.tile() == nil or AL.available(), "…no tile on a Kindle without a light sensor")
+    end
         -- a note's page in the editor's font, the sticky notes handwritten
         do
             local nsrc6 = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
@@ -9819,9 +10031,10 @@ print("Notes (Memos v0.31)")
             local b = nsrc6:find("\nfunction ", a + 10, true)
             local page = nsrc6:sub(a, b)
             local cards = nsrc6:sub(nsrc6:find("function StickyItem:draw()", 1, true), nsrc6:find("local NoteView = InputContainer", 1, true))
-            check(not page:find("Sticky.hand(", 1, true) and select(2, page:gsub("Notes%.pageFace%(", "")) == 6
+            check(not page:find("Sticky.hand(", 1, true) and select(2, page:gsub("Notes%.pageFace%(", "")) == 2
+                and select(2, page:gsub("Inline%.", "")) >= 4
                 and select(2, cards:gsub("Sticky%.hand%(", "")) >= 5,
-                "a note's page: the editor's font throughout; the Notes tab's sticky notes: still the handwriting font")
+                "a note's page: the editor's font throughout (its words by gzreader_inline.lua, in the same faces); the Notes tab's sticky notes: still the handwriting font")
             check(resrc:find("RichEdit.TEXT_SIZE = " .. Notes.PAGE_TEXT, 1, true) ~= nil
                 and resrc:find("RichEdit.HEADING_SIZE = { " .. table.concat(Notes.PAGE_HEADING, ", ") .. " }", 1, true) ~= nil
                 and nsrc6:find('Font:getFace(bold and "NotoSans-Bold.ttf" or "cfont", size)', 1, true) ~= nil,
@@ -10047,7 +10260,7 @@ print("Notes (Memos v0.31)")
         check(nsrc3:find("open_drawing = ((memo ~= nil and Notes.drawings(memo)[1] ~= nil) or (memo == nil and opts and opts.draw)", 1, true)
             and esrc2:find("e.drawing_first = opts.open_drawing and e:canDraw() or nil", 1, true)
             and esrc2:find("if e.drawing_first then e:openDrawing() end", 1, true)
-            and esrc2:find("if not self.drawing_first then self:keyboardSoon() end", 1, true),
+            and esrc2:find("if not self.drawing_first and not offered then self:keyboardSoon() end", 1, true),
             "Edit on a note with drawings opens them; Draw opens a page at once (touch Kindles), the drawing screen up with the editor (no text page first, no keyboard over it)")
         check(nsrc3:find("space = space, drawings = #list > 0 and list or nil, order = order })", 1, true) ~= nil
             and esrc2:find("out.order[#out.order + 1] = f", 1, true) ~= nil,
@@ -10103,7 +10316,7 @@ print("Notes (Memos v0.31)")
                 "pen: only pressure and tilt are taken from it (not its positions or keys)")
             local dsrcq = io.open(PLUGIN .. "/gzreader_drawscreen.lua"):read("*a")
             check(dsrcq:find('elseif raw and raw.pressure ~= nil and pen_slot ~= nil and tev.slot == pen_slot then', 1, true) ~= nil
-                and dsrcq:find('if self.pen_only and not self.penraw then', 1, true) ~= nil
+                and dsrcq:find('if self.has_pen and not self.penraw then', 1, true) ~= nil
                 and dsrcq:find('require("gzreader_penraw").close(self.penraw)', 1, true) ~= nil,
                 "drawing: the digitizer's pressure goes to the pen's slot when KOReader's event has none; read only on pen Kindles, closed with the screen")
         end)()
@@ -10187,8 +10400,13 @@ print("Notes (Memos v0.31)")
                 and dsrcs:find('if self.pane and not self.journal then pcall(function() require("gzreader_splitview").closed(self) end) end', 1, true) ~= nil
                 and dsrcs:find('x, y = ges.pos.x - self.ox, ges.pos.y - self.oy', 1, true) ~= nil,
                 "split view: the drawing screen passes the book's touches on, works from its pane's corner, and gives the book its screen back when it closes")
+            -- draw and hold (shapesnap_test.lua: the recogniser; sketch_test.lua: the hold; emulator/shape_snap.lua: on screen)
+            check(dsrcs:find('rows[#rows + 1] = { id = "snap", row = true, switch = self.snap_shapes, label = _("Draw and hold: clean shapes") }', 1, true) ~= nil
+                and dsrcs:find('self.snap_shapes = not (G_reader_settings and G_reader_settings:isFalse("gzreader_drawing_snap"))', 1, true) ~= nil
+                and dsrcs:find("sk.snap_shapes = self.snap_shapes", 1, true) ~= nil,
+                "drawing: draw and hold for clean shapes, on unless turned off in the Shapes panel")
             -- the Scribe's pen mode and the partial repaint (penmode_test.lua and emulator/pen_mode.lua, partial_repaint.lua check them working)
-            check(dsrcs:find('self.pen_fast = self.pen_only and require("gzreader_penmode").supported(Device)', 1, true) ~= nil
+            check(dsrcs:find('self.pen_fast = self.has_pen and require("gzreader_penmode").supported(Device)', 1, true) ~= nil
                 and dsrcs:find('fast = PenMode.ink(Screen, rects)', 1, true) ~= nil
                 and dsrcs:find('if self.pen_fast and require("gzreader_penmode").on then', 1, true) ~= nil
                 and dsrcs:find('UIManager:scheduleIn(DrawScreen.SETTLE, self._settle_timer)', 1, true) ~= nil
@@ -10198,6 +10416,15 @@ print("Notes (Memos v0.31)")
                 and dsrcs:find('if self:repaintArea(area) then self:refreshBar() else self:redrawAll() end', 1, true) ~= nil
                 and dsrcs:find('if not area or sk.zoomed then return false end', 1, true) ~= nil,
                 "drawing: a rubbed-out stroke, an Undo, a Redo draw and refresh only their part of the page (all of it when zoomed in)")
+            -- tilt per tool (sketch_test.lua has the numbers): the redraw uses each point's tilt as the live ink does
+            check(dsrcs:find("local t = b[4] and (a[4] and (a[4] + b[4]) / 2 or b[4]) or nil", 1, true) ~= nil
+                and dsrcs:find("local pr = Sketch.toolRadius(st.kind, r, w, t)", 1, true) ~= nil
+                and dsrcs:find("Sketch.grainDensity(st.kind, w, t) }", 1, true) ~= nil,
+                "drawing: a page drawn again gives each stroke the width and shade of its tilt, as when it was drawn")
+            -- a shape's outline follows the pen (sketch_test.lua has the model's part; emulator/shape_preview.lua the screen's)
+            check(dsrcs:find("self:paintShapePreview(bb, x + c.x, y + c.y)", 1, true) ~= nil
+                and dsrcs:find('UIManager:setDirty(self, function() return "fast", region end)', 1, true) ~= nil,
+                "drawing: a shape being dragged out is painted over the page and its part of the screen refreshed the quick way")
             -- the lasso (sketch_test.lua checks choosing, moving, growing, copying; emulator/lasso.lua checks it on the screen)
             check(dsrcs:find('{ id = "lasso", icon = "lasso", label = _("Lasso") },', 1, true) ~= nil
                 and dsrcs:find('{ id = "sel-copy", icon = "copy", label = _("Copy") },', 1, true) ~= nil
@@ -10267,8 +10494,30 @@ print("Notes (Memos v0.31)")
             "drawing: the page is the whole screen, the top bar and the tools fold away; a new drawing's name and tags come from the top bar and Done saves it")
         local ids = {}
         for _i, t in ipairs(require("gzreader_drawscreen").SIDE_TOOLS) do ids[#ids + 1] = t.id end
-        check(table.concat(ids, ",") == "pen,highlighter,shape,text,eraser,lasso,hand,sep,undo,redo,more",
-            "drawing: the tools down the side, as the Scribe's: " .. table.concat(ids, ","))
+        check(table.concat(ids, ",") == "pen,highlighter,shape,text,eraser,lasso,hand,fingers,sep,undo,redo,more",
+            "drawing: the tools down the side, as the Scribe's (pen / finger on pen Kindles): " .. table.concat(ids, ","))
+        -- the pen / finger button (pen Kindles): what draws, kept for next time
+        do
+            local DS = require("gzreader_drawscreen")
+            local tool
+            for _i, t in ipairs(DS.SIDE_TOOLS) do if t.id == "fingers" then tool = t end end
+            local was = G_reader_settings:readSetting("gzreader_draw_with_finger")
+            local fake = { has_pen = true, pen_only = true, sketch = { pen_only = true }, layoutBar = function() end }
+            local icon0, sel0 = DS.toolIcon(fake, "fingers"), DS.selected(fake, tool)
+            DS.setDrawWithFinger(fake, true)
+            local on = not fake.pen_only and not fake.sketch.pen_only and G_reader_settings:isTrue("gzreader_draw_with_finger")
+                and DS.toolIcon(fake, "fingers") == "finger" and DS.selected(fake, tool)
+            DS.setDrawWithFinger(fake, false)
+            local off = fake.pen_only and fake.sketch.pen_only and not G_reader_settings:isTrue("gzreader_draw_with_finger")
+            local nopen = { has_pen = false, pen_only = false, sketch = { pen_only = false }, layoutBar = function() end }
+            DS.setDrawWithFinger(nopen, false)
+            G_reader_settings:saveSetting("gzreader_draw_with_finger", was)
+            check(tool and tool.pen_device and icon0 == "stylus" and not sel0 and on and off and nopen.pen_only == false,
+                "drawing, pen Kindles: the pen / finger button draws with a finger (its icon a finger), then the pen again; kept; nothing on a Kindle without a pen")
+            check(dsrcp:find('self.pen_only = self.has_pen and not (G_reader_settings and G_reader_settings:isTrue("gzreader_draw_with_finger"))', 1, true) ~= nil
+                and dsrcp:find('if not t.pen_device or self.has_pen then', 1, true) ~= nil,
+                "…a drawing opens as it was left; the button only on pen Kindles")
+        end
         check(dsrcp:find("if opts.choose_paper and DrawScreen.asksPaper(opts.pages) then", 1, true) ~= nil
             and dsrcp:find("on_back = function() if opts.on_cancel then opts.on_cancel() end end", 1, true) ~= nil
             and esrc2:find("choose_paper = true, -- (a new drawing: which paper first)", 1, true) ~= nil
@@ -10453,7 +10702,18 @@ print("Notes (Memos v0.31)")
         local esrc = io.open(PLUGIN .. "/gzreader_noteeditor.lua"):read("*a")
         check(esrc:find('if text == "" and not self:hasDrawing() then', 1, true) and esrc:find("return self.touch and self.can_draw == true", 1, true),
             "editor: Draw on touch Kindles; a note with only a drawing can be saved")
-        check(esrc:find("self:dropDrawing(); UIManager:close(self, \"full\")", 1, true) ~= nil, "editor: Discard throws the drawing away")
+        check(esrc:find("Saving.dropDraft(self.draft_key); self:dropDrawing(); UIManager:close(self, \"full\")", 1, true) ~= nil,
+            "editor: Discard throws the drawing (and the draft) away")
+        -- saving (saving_test.lua has the drafts; emulator/note_autosave.lua the screens)
+        local dsrc_s = io.open(PLUGIN .. "/gzreader_drawscreen.lua"):read("*a")
+        check(esrc:find("local box = Saving.show()\n    UIManager:close(self, \"full\")", 1, true) ~= nil
+            and esrc:find("Log.info(\"notes: left the editor with changes: saved\")\n        self:save()", 1, true) ~= nil
+            and esrc:find('rows[#rows + 1] = { { text = _("Discard changes"), align = "left", callback = run(function() self:discard() end) } }', 1, true) ~= nil
+            and esrc:find("self:keepDrafts()", 1, true) ~= nil,
+            "editor: Saving… at once; Back saves the full page; ⋮ → Discard changes; drafts kept while writing")
+        check(dsrc_s:find('elseif t.id == "cancel" and not t.row and self.changed then', 1, true) ~= nil
+            and dsrc_s:find('if p.modified then box = require("gzreader_saving").show(); break end', 1, true) ~= nil,
+            "drawing screen: ← with changes saves (⋮ → Close without saving doesn't); Saving… while pages are made into pictures")
     end)()
 
     -- disconnect
@@ -10476,9 +10736,9 @@ print("Calendar tab: Calendar settings is ZenOS's Settings page")
     Cal.showSettingsMenu = function() old_menu = old_menu + 1 end
     local shown = Cal.showSettings(plugin)
     local cs_path = opened and opened.o.path or {}
-    check(shown == cs_page and opened.z == zen and #cs_path == 2 and cs_path[1].key == "text" and cs_path[1].value == "Connections"
-        and cs_path[2].value == "Calendar (CalDAV)" and old_menu == 0,
-        "Calendar settings: ZenOS's Settings page, opened at Connections → Calendar (CalDAV) (not KOReader's drop-down menu)")
+    check(shown == cs_page and opened.z == zen and #cs_path == 2 and cs_path[1].key == "text" and cs_path[1].value == "Accounts and services"
+        and cs_path[2].value == "Calendar" and old_menu == 0,
+        "Calendar settings: ZenOS's Settings page, opened at Accounts and services → Calendar (not KOReader's drop-down menu)")
     Cal.showSettings(plugin) -- (again: the page's close isn't wrapped twice)
     cs_page:onCloseWidget()
     check(closed_with == cs_page and redraws == 1, "Calendar settings closed: the calendar drawn again, once")
@@ -10543,7 +10803,15 @@ print("Calendar tab")
     check(Cal.periodLabel(plugin):match("\u{2013}"), "week label: " .. Cal.periodLabel(plugin))
     Cal.layout = "month"
     check(Cal.periodLabel(plugin):match("%d%d%d%d$"), "month label: " .. Cal.periodLabel(plugin))
-    check(#Cal.settingsItems(plugin) == 8, "Settings → Connections → Calendar: links, CalDAV account, calendars, holidays, layout, week start, range, storage")
+    ;(function()
+        local ci = Cal.settingsItems(plugin)
+        check(#ci == 8 and ci[1].text_func():match("^CalDAV account") and ci[2].text_func():match("^Calendar links")
+                and ci[4].text_func():match("^Holidays") and ci[8].text_func():match("^Storage used") and type(ci[8].callback) == "function" and not ci[8].sub_item_table_func
+                and ci[7].separator == true,
+            "Settings → Accounts and services → Calendar: the CalDAV account first, links, calendars, holidays, layout, week start, range, then storage (a link)")
+        local sr = Cal.storageItems(plugin)
+        check(#sr == 3 and sr[3].text == "Free up space: remove kept events", "Calendar's storage rows (General → Storage → Calendar): events kept, last synced, Free up space")
+    end)()
     do -- the bar next to an event is as tall as it's drawn, so a row centres it on the title
         -- (real geometry and HorizontalGroup here: the rest of this file has stand-ins)
         local REAL = { "ui/geometry", "ui/widget/eventlistener", "ui/widget/widget",
@@ -11142,7 +11410,7 @@ print("Music (Plex): the server, downloads, the player")
             and MusicTab.only(plex) == "1", "Plex: nothing chosen: the first music library (playlists and search kept to it, the server has two)")
         local ckey = tostring(plugin.store.server) .. "|" .. tostring(plugin.store.username) .. "|shop:mu_recent"
         Cache.put(ckey, { { type = "album", key = "201" } })
-        -- the choice, as Settings → Connections → Plex → Music library offers it
+        -- the choice, as Settings → Accounts and services → Music → Music library offers it
         local saved_net, saved_bd = require("gzreader_net").run, package.loaded["ui/widget/buttondialog"]
         local dlg, picked
         require("gzreader_net").run = function(fn) fn() end
@@ -11170,7 +11438,7 @@ print("Music (Plex): the server, downloads, the player")
             "Plex: a library chosen on another server, or one that's gone: the server's first")
         px.music_section, plugin.save = saved_ms, saved_save
     end
-    do -- audiobooks from a Plex library (Settings → Connections → Plex → Audiobooks)
+    do -- audiobooks from a Plex library (Settings → Accounts and services → Audiobooks)
         local MusicTab = require("gzreader_musictab")
         local PA = require("gzreader_plexaudio")
         local ABk = require("gzreader_audiobook")
@@ -11286,7 +11554,7 @@ print("Music (Plex): the server, downloads, the player")
             local function row(text)
                 for _i, it in ipairs(m.item_table) do if it.text == text then return it end end
             end
-            -- (ZenOS rows, as Settings → Connections → Plex: values on the right, a switch, Sign out)
+            -- (ZenOS rows, as Settings → Accounts and services → Music: values on the right, a switch, Sign out)
             local card = m.item_table
             local card_labels = {}
             for _i, it in ipairs(card) do card_labels[#card_labels + 1] = it.text end
@@ -11626,7 +11894,7 @@ print("Music (Plex): the server, downloads, the player")
     check(Music.find(plugin, "album", "202") == nil and #Music.downloaded(plugin) == 2, "Music: a download deleted")
     check(lfs.attributes(require("gzreader_musicfolder").entryDir(plugin) .. "/AAC Album.epub", "mode") == nil,
         "and its stand-in in Downloads → Music is gone")
-    -- Settings → Connections → Plex (Music)
+    -- Settings → Accounts and services → Music
     local function texts(list)
         local out = {}
         for _i, it in ipairs(list) do out[#out + 1] = it.text or (it.text_func and it.text_func()) or "" end
@@ -11634,9 +11902,11 @@ print("Music (Plex): the server, downloads, the player")
     end
     local si = Tab.settingsItems(plugin)
     local st = texts(si)
-    check(st:match("^Signed in as will | Plex server: Home Server | Music library: the server's first | Audiobooks: from Grimmory | Quality when converting: 192 kbps | Make bigger MP3 and AAC smaller | Downloaded music: 2 %(%d+ MB%) | Sign out of Plex"),
-        "Settings → Connections → Plex: account, server, music library, quality, downloads, sign out: " .. st)
-    local q = si[5].sub_item_table_func()
+    check(st:match("^Signed in as will | Plex server: Home Server | Music library: the server's first | Quality when converting: 192 kbps | Make bigger MP3 and AAC smaller | Music tab | Headphones and volume | Downloaded music: 2 %(%d+ MB%) | Sign out of Plex$"),
+        "Settings → Accounts and services → Music: account, server, music library, quality, the tab, downloads (a link), sign out last; no Audiobooks from: " .. st)
+    local mstore = Tab.storageItems(plugin)
+    check(#mstore == 1 and mstore[1].text == "Remove all downloaded music", "Remove all downloaded music: in General → Storage → Music")
+    local q = si[4].sub_item_table_func()
     q[3].callback()
     check(plugin.store.plex.bitrate == 320 and q[3].checked_func() and not q[2].checked_func() and texts(si):match("320 kbps"),
         "Settings → Plex: the conversion quality")
@@ -11653,10 +11923,10 @@ print("Music (Plex): the server, downloads, the player")
         "Settings → Plex, signed out: the sign-in rows keep their icons")
     plugin.store.plex = saved_plex
     ;(function()
-        -- the Music tab switch (both lists), as Settings → Interface → Navbar → Tabs
-        local last = si[#si - 1]
-        check(texts(si):match("| Sign out of Plex | Music tab | Headphones and volume$") and last.checked_func and last.icon_file:match("music%.svg$"),
-            "Settings → Plex, signed in: the Music tab switch, headphones behind a row of its own: " .. texts(si))
+        -- the Music tab switch (both lists), as Settings → Home and tabs → Tab bar → Tabs
+        local last = si[#si - 3]
+        check(texts(si):match("| Music tab | Headphones and volume | Downloaded music") and last.checked_func and last.icon_file:match("music%.svg$"),
+            "Settings → Music, signed in: the Music tab switch, headphones behind a row of its own: " .. texts(si))
         local saved = 0
         local zen = { config = { navbar = { show_tabs = { home = true, books = true }, tab_order = { "home", "books" }, custom_tabs = {} } },
             saveConfig = function() saved = saved + 1 end }
@@ -12911,7 +13181,7 @@ print("What's new after an update: GZreader's version and short points")
         "ZenOS's update screen shows GZreader's version and points, for GZreader's updates")
 end)()
 
-print("Flash on every page turn (Settings → General → Screen → E-ink settings)")
+print("Flash on every page turn (Settings → Display and light → Screen → E-ink settings)")
 ;(function()
     local Eink = require("gzreader_eink")
     local UIManager = require("ui/uimanager")
@@ -12950,7 +13220,7 @@ print("Flash on every page turn (Settings → General → Screen → E-ink setti
     local src = f and f:read("*a") or ""
     if f then f:close() end
     check(src:find('if Eink and Eink.flashPageTurns then\n        items[#items + 1] = IconItem.decorate({\n            text = _("Flash on every page turn"),', 1, true)
-        and src:find("Eink.pageTurnsTicked()", 1, true), "in Settings → General → Screen → E-ink settings, on every device")
+        and src:find("Eink.pageTurnsTicked()", 1, true), "in Settings → Display and light → Screen → E-ink settings, on every device")
     Eink.applies = real_applies
     UIManager.FULL_REFRESH_COUNT = keep_count
     for _i, k in ipairs(keys) do
@@ -12958,7 +13228,7 @@ print("Flash on every page turn (Settings → General → Screen → E-ink setti
     end
 end)()
 
-print("No Local reading stats widget on Home (Settings → Home → Widgets)")
+print("No Local reading stats widget on Home (Settings → Home and tabs → Home → Widgets)")
 ;(function()
     local saved_path = package.path
     package.path = PLUGIN .. "/../zenos.koplugin/?.lua;" .. package.path
@@ -12997,7 +13267,7 @@ print("No Local reading stats widget on Home (Settings → Home → Widgets)")
     if sf then sf:close() end
     local order = src:match("local DEFAULT_ORDER = (%b{})") or ""
     check(order:find('"grimmory_stats"', 1, true) and not order:find('"stats_triplet"', 1, true),
-        "Settings → Home → Widgets' default list has no Local reading stats")
+        "Settings → Home and tabs → Home → Widgets' default list has no Local reading stats")
     package.path = saved_path
 end)()
 
@@ -13806,6 +14076,41 @@ print("Sync through a computer (Kindles without Wi-Fi)")
     Usb.connect(fake)
     UIMq.quit, UIMq.flushSettings = orig_quit, orig_fs
     check(quit_code == 86, "Connect to computer: GZreader saves and steps aside (exit code 86)")
+    -- a Kobo: the same (KOReader's own USB storage mode: platform/kobo/koreader.sh), unless that's off in KOReader's settings
+    do
+        local Dk = require("device")
+        local was = { kindle = Dk.isKindle, kobo = Dk.isKobo, ms = Dk.canToggleMassStorage, model = Dk.model }
+        Dk.isKindle, Dk.isKobo = function() return false end, function() return true end
+        Dk.canToggleMassStorage, Dk.model = function() return true end, "Kobo_nova"
+        local orig_bd = package.loaded["ui/widget/buttondialog"]
+        local shown
+        package.loaded["ui/widget/buttondialog"] = { new = function(_self, o) shown = o; return o end }
+        local orig_ms = package.loaded["ui/elements/mass_storage"]
+        local ms_on = true
+        package.loaded["ui/elements/mass_storage"] = { isEnabled = function() return ms_on end }
+        Usb.show(fake)
+        local texts = {}
+        for _i, row in ipairs(shown and shown.buttons or {}) do texts[#texts + 1] = row[1].text end
+        local all = table.concat(texts, "|")
+        check(all:find("Connect to computer (USB drive)", 1, true) and shown.title:find("so the Kobo can share its USB drive", 1, true)
+            and shown.title:find("Plug the Kobo into a computer", 1, true) and not shown.title:find("Kindle", 1, true),
+            "a Kobo: Sync with a computer offers Connect to computer, in the Kobo's words")
+        ms_on = false
+        Usb.show(fake)
+        texts = {}
+        for _i, row in ipairs(shown and shown.buttons or {}) do texts[#texts + 1] = row[1].text end
+        check(not table.concat(texts, "|"):find("Connect to computer", 1, true) and shown.title:find("1. Exit GZreader", 1, true),
+            "…not when KOReader's USB storage is turned off: exit GZreader first, as elsewhere")
+        local Copy = require("gzreader_copy")
+        local name1 = Copy.modelName()
+        Dk.model = "Kobo_io"
+        local name2 = Copy.modelName()
+        check(name1 == "Kobo Clara HD" and name2 == "Kobo Libra 2" and Copy.deviceName(fake):match("^Kobo Libra 2 · %x%x%x%x$"),
+            "Kobos named as people know them (" .. name1 .. ", " .. name2 .. ")")
+        package.loaded["ui/widget/buttondialog"], package.loaded["ui/elements/mass_storage"] = orig_bd, orig_ms
+        Dk.isKindle, Dk.isKobo, Dk.canToggleMassStorage, Dk.model = was.kindle, was.kobo, was.ms, was.model
+        Usb.forgetCached() -- (the outbox written as a Kobo's)
+    end
     -- no Wi-Fi: no sending the log to a phone, no remote debugging, no Wi-Fi switch
     local gen = plugin:sectionItems("general")
     local labels = {}
@@ -13816,8 +14121,8 @@ print("Sync through a computer (Kindles without Wi-Fi)")
     plugin:showDiagnostics()
     package.loaded["ui/widget/buttondialog"] = orig_bd
     check(gen.wifi == nil and #labels == 3 and not table.concat(labels, "|"):match("browser") and not table.concat(labels, "|"):match("Remote")
-        and not table.concat(labels, "|"):match("automatically") and table.concat(labels, "|"):match("to the developer %(at the next sync%)")
-        and nbtn == 3, "no Wi-Fi: Settings and Diagnostics don't offer sending the log to a phone or automatic debug reports; Send to the developer goes at the next sync (" .. table.concat(labels, ", ") .. ")")
+        and not table.concat(labels, "|"):match("automatically") and table.concat(labels, "|"):match("Report a problem %(sent at the next sync%)")
+        and nbtn == 3, "no Wi-Fi: Settings and Diagnostics don't offer sending the log to a phone or automatic debug reports; Report a problem goes at the next sync (" .. table.concat(labels, ", ") .. ")")
     -- Send to the developer without Wi-Fi: the report waits in .gzsync/reports/ for the sync page (gzreader_usbreport.lua)
     do
         local Rep = require("gzreader_usbreport")
@@ -14162,7 +14467,7 @@ print("Immich: an album's pictures for the sleep screen and the Home wallpaper")
     check(Immich.inUse() and SleepMode.type(G_reader_settings, "", true) == "cover" and SleepMode.type(G_reader_settings, "", false) == "random_image"
         and dirs[1] == SleepMode.IMMICH_DIR and dirs[2] == "/mnt/us/screensavers",
         "sleep screen: the cover while reading, an Immich picture elsewhere (the folders after it)")
-    -- Settings → Connections → Immich (Photos)
+    -- Settings → Accounts and services → Photos
     local IS = require("gzreader_immichsettings")
     local function labels(items)
         local t = {}
@@ -14172,7 +14477,7 @@ print("Immich: an album's pictures for the sleep screen and the Home wallpaper")
     local im_items = IS.items(plugin)
     local lb = labels(im_items)
     check(lb:find("^Connected to 127%.0%.0%.1:%d+ · Will|Album: Trip|Sleep screen|Home wallpaper|Pictures kept on the Kindle: 20|Get new pictures now %(last: [%d-]+ [%d:]+%)|Disconnect$"),
-        "Settings → Connections → Immich: the connection, the album, what it's for, how many, get new ones, disconnect " .. lb)
+        "Settings → Accounts and services → Photos: the connection, the album, what it's for, how many, get new ones, disconnect " .. lb)
     local sub = im_items[3].sub_item_table
     check(sub[1].checked_func() and not sub[3].checked_func(), "…its Sleep screen: the cover and Immich, as chosen")
     sub[3].callback()
@@ -14183,7 +14488,7 @@ print("Immich: an album's pictures for the sleep screen and the Home wallpaper")
     check(labels(IS.items(plugin)) == "Connect with QR code|Connect by typing|About Immich", "not connected: how to connect")
     plugin.store.immich = was_im
 
-    -- the Home wallpaper (ZenOS's Settings → Interface → Wallpaper)
+    -- the Home wallpaper (ZenOS's Settings → Sleep and wallpaper → Home background)
     local W = dofile(PLUGIN .. "/../zenos.koplugin/common/gz_immich_wallpaper.lua")
     package.loaded["common/gz_immich_wallpaper"] = W
     local saves = 0
@@ -14202,7 +14507,7 @@ print("Immich: an album's pictures for the sleep screen and the Home wallpaper")
     check(not W.isOn() and bg.gz_before == nil, "wallpaper: an image chosen by hand isn't Immich's any more")
     bg.enabled, bg.path = false, ""
     check(W.toggle({ store = { immich = {} } }) == "no_album" and not W.isOn(), "wallpaper: without an album, nothing changes")
-    check(W.toggle(plugin) == "on" and W.isOn(), "wallpaper: turned on from Settings → Connections → Immich")
+    check(W.toggle(plugin) == "on" and W.isOn(), "wallpaper: turned on from Settings → Accounts and services → Photos")
 
     -- the setup page (Wi-Fi Kindles): Immich, sleep screen pictures
     local Phone = require("gzreader_phone")
@@ -14215,7 +14520,7 @@ print("Immich: an album's pictures for the sleep screen and the Home wallpaper")
     PS.new = function(_self, o) scr = o; return o end
     local closed
     Phone.open(plugin, { section = "immich", on_close = function(ch) closed = ch end })
-    check(scr and scr.url:match("/phone/%x+#immich$"), "setup page: opened at Immich (Settings → Connections → Immich → Connect with QR code)")
+    check(scr and scr.url:match("/phone/%x+#immich$"), "setup page: opened at Immich (Settings → Accounts and services → Photos → Connect with QR code)")
     local P = "http://127.0.0.1:" .. UI.zmqs[1].port .. scr.url:match("(/phone/%x+)")
     local function post(path, fields, extra)
         local args = { "-L", #fields == 0 and "-d ''" or nil }

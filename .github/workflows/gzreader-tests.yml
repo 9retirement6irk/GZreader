@@ -46,7 +46,7 @@ jobs:
           sudo pip install -q --break-system-packages radicale playwright   # (the CalDAV tests' server; the sync page's browser)
           sudo python3 -m playwright install-deps chromium
           python3 -m playwright install chromium
-          sudo mkdir -p /mnt/us && sudo chown "$USER" /mnt/us
+          sudo mkdir -p /mnt/us /mnt/onboard && sudo chown "$USER" /mnt/us /mnt/onboard
       - name: KOReader's Kindle 2/3/DX package (the binaries GZreader runs on)
         run: |
           TAG=$(tools/gzreader/upstream.sh current koreader)

@@ -1,12 +1,12 @@
 --[[--
 Copy connections from one GZreader device to another, over the Wi-Fi.
 
-On the device that has them: Send connections (Settings → Connections, its
+On the device that has them: Send connections (Settings → General → Transfer, its
 setup guide). It shows its name and a 6-digit PIN, answers mDNS for
 _gzreader._tcp (gzreader_mdns.lua) and runs a small copy server.
 
 On the device being set up: Copy from another GZreader (its setup guide,
-Settings → Connections, the Notes or Calendar tab while not connected). It
+Settings → General → Transfer, the Notes or Calendar tab while not connected). It
 lists the GZreader devices sending on the Wi-Fi (or takes an address typed
 in), asks for the PIN, shows what the other one has, and copies what's ticked:
 
@@ -59,7 +59,29 @@ local MODELS = {
     KindleTouch = "Kindle Touch", KindlePaperWhite = "Kindle Paperwhite", KindlePaperWhite2 = "Kindle Paperwhite 2",
     KindlePaperWhite3 = "Kindle Paperwhite 3", KindlePaperWhite4 = "Kindle Paperwhite 4", KindleVoyage = "Kindle Voyage",
     KindleOasis = "Kindle Oasis", KindleBasic = "Kindle", Nook1 = "Nook", NookTouch = "Nook Simple Touch",
+    -- the Kobos (KOReader's names are their code names)
+    Kobo = "Kobo", Kobo_trilogy_A = "Kobo Touch", Kobo_trilogy_B = "Kobo Touch", Kobo_trilogy_C = "Kobo Touch",
+    Kobo_pixie = "Kobo Mini", Kobo_daylight = "Kobo Aura One", Kobo_dahlia = "Kobo Aura H2O",
+    Kobo_dragon = "Kobo Aura HD", Kobo_kraken = "Kobo Glo", Kobo_phoenix = "Kobo Aura",
+    Kobo_snow = "Kobo Aura H2O Edition 2", Kobo_snow_r2 = "Kobo Aura H2O Edition 2",
+    Kobo_star = "Kobo Aura Edition 2", Kobo_star_r2 = "Kobo Aura Edition 2", Kobo_alyssum = "Kobo Glo HD",
+    Kobo_pika = "Kobo Touch 2.0", Kobo_nova = "Kobo Clara HD", Kobo_frost = "Kobo Forma",
+    Kobo_storm = "Kobo Libra H2O", Kobo_luna = "Kobo Nia", Kobo_europa = "Kobo Elipsa", Kobo_cadmus = "Kobo Sage",
+    Kobo_io = "Kobo Libra 2", Kobo_goldfinch = "Kobo Clara 2E", Kobo_condor = "Kobo Elipsa 2E",
+    Kobo_monza = "Kobo Libra Colour", Kobo_spaBW = "Kobo Clara BW", Kobo_spaColour = "Kobo Clara Colour",
 }
+
+--- "Kobo Clara HD", "Kindle Paperwhite 3": the model's everyday name.
+function Copy.modelName()
+    local model = MODELS[tostring(Device.model)]
+    if not model then
+        model = tostring(Device.model or "Kindle"):gsub("(%l)(%u)", "%1 %2"):gsub("(%a)(%d)", "%1 %2")
+        if Device.model == "Kindle2" and Device.screen and Device.screen.getWidth and Device.screen:getWidth() > 700 then
+            model = "Kindle DX"
+        end
+    end
+    return model
+end
 
 --- This device's lasting id (6 hex digits, made once).
 function Copy.deviceId(plugin)
@@ -73,14 +95,7 @@ end
 
 --- "Kindle Paperwhite 3 · 3F2A": what the other device lists.
 function Copy.deviceName(plugin)
-    local model = MODELS[tostring(Device.model)]
-    if not model then
-        model = tostring(Device.model or "Kindle"):gsub("(%l)(%u)", "%1 %2"):gsub("(%a)(%d)", "%1 %2")
-        if Device.model == "Kindle2" and Device.screen and Device.screen.getWidth and Device.screen:getWidth() > 700 then
-            model = "Kindle DX"
-        end
-    end
-    return model .. " · " .. Copy.deviceId(plugin):sub(1, 4):upper()
+    return Copy.modelName() .. " · " .. Copy.deviceId(plugin):sub(1, 4):upper()
 end
 
 ---------------------------------------------------------------- what there is
@@ -237,7 +252,7 @@ local function sendScreen(opts)
             TextBoxWidget:new{ text = _("Send connections to another GZreader"), face = Font:getFace("tfont", 24),
                 width = tw, alignment = "center" },
             gap,
-            TextBoxWidget:new{ text = _("On the other GZreader, choose Copy from another GZreader (in its setup guide, Settings → Connections, or the Notes or Calendar tab), pick this one and enter the PIN:"),
+            TextBoxWidget:new{ text = _("On the other GZreader, choose Copy from another GZreader (in its setup guide, Settings → General → Transfer, or the Notes or Calendar tab), pick this one and enter the PIN:"),
                 face = Font:getFace("cfont", 18), width = tw, alignment = "center" },
             gap,
             TextWidget:new{ text = opts.name, face = Font:getFace("cfont", 20), bold = true, max_width = tw },
@@ -718,7 +733,7 @@ function Copy.pick(plugin, opts)
         if searching then
             list[#list + 1] = { text = _("Looking on this Wi-Fi…"), gz_icon = "wifi_on", select_enabled = false }
         elseif #list == 0 then
-            list[#list + 1] = Rows.about(_("None found"), _("None found. On the other GZreader choose Send connections (Settings → Connections, or its setup guide), then look again."))
+            list[#list + 1] = Rows.about(_("None found"), _("None found. On the other GZreader choose Send connections (Settings → General → Transfer, or its setup guide), then look again."))
         end
         list[#list + 1] = { text = _("Look again"), gz_icon = "refresh", callback = function()
             stop()

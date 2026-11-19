@@ -382,13 +382,13 @@ with sync_playwright() as pw:
     picks = page.locator("#picks").inner_text()
     check(page.locator("#picks li").count() == 7 and "the Kindle's queue" in picks and "Book 05" in picks and "Book 33 — Audio Author (audiobook)" in picks
           and "FLAC Album" in picks, "coming with the next sync: the Kindle's queue, then the books, audiobook and albums chosen here")
-    # the music library chosen on the Kindle (Settings → Connections → Plex): its albums
+    # the music library chosen on the Kindle (Settings → Accounts and services → Music): its albums
     page.evaluate("() => { GZSync.K.out.music_library = { key: '4', title: 'Concerts' }; }")
     page.click("#b-cats button:has-text('Albums')")
     page.wait_for_selector("#b-results li:has-text('Live Album')")
     check(page.locator("#b-results li").count() == 1, "Music: Albums from the music library chosen on the Kindle")
     page.evaluate("() => { delete GZSync.K.out.music_library; }")
-    # audiobooks from a Plex library (the Kindle's Settings → Connections → Plex → Audiobooks): its albums, chosen like music
+    # audiobooks from a Plex library (the Kindle's Settings → Accounts and services → Audiobooks): its albums, chosen like music
     page.evaluate("() => { GZSync.K.out.audiobook_library = { key: '5', title: 'Audiobooks' }; }")
     page.click(".tabs button[data-tab=audio]")
     page.wait_for_selector("#b-results li:has-text('Two Part Book') button")
@@ -584,6 +584,19 @@ with sync_playwright() as pw:
     check(len(sent) == 3 and "What happened: (nothing typed)" in content and content.index("older log line") < content.index("newer log line")
           and "access_token=<redacted>" in content and "abc123" not in content and "with-comment" not in last.get("tags", []),
           "…without that export: the log files on the drive (crash.log's tail redacted), nothing typed")
+    kobo_logs = page.evaluate("""async () => {
+        const root = window.testRoot;
+        async function put(dir, name, text) { const w = await (await dir.getFileHandle(name, { create: true })).createWritable(); await w.write(text); await w.close(); }
+        await root.removeEntry('koreader', { recursive: true });
+        const ko = await (await root.getDirectoryHandle('.adds', { create: true })).getDirectoryHandle('koreader', { create: true });
+        await put(ko, 'gzreader.log', 'a Kobo log line\\n');
+        const r = await GZSync.Report.readLogs();
+        await root.removeEntry('.adds', { recursive: true });
+        const back = await root.getDirectoryHandle('koreader', { create: true });
+        await put(back, 'gzreader.log', 'newer log line\\n');
+        return r && r.text;
+    }""")
+    check(kobo_logs is not None and "a Kobo log line" in kobo_logs, "a Kobo's drive: the log files in .adds/koreader")
     cut = page.evaluate("""() => {
         const text = 'é'.repeat(300000) + 'tail';   // (600 KB of two-byte characters)
         const r = GZSync.Report.parts(text);

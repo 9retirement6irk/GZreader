@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>GZreader – Grimmory and KOReader for Kindle</title>
-<meta name="description" content="GZreader puts your Grimmory (BookLore) library on a jailbroken Kindle or rooted Nook, from the Kindle 2 and Nook 1 to the Kindle Scribe: a KOReader build that downloads and reads your books and keeps your place, bookmarks, highlights and notes in sync. Send books from your browser, listen to audiobooks and Plex music, write and draw Memos notes with a rich text editor and the Scribe's pen, see CalDAV calendars. No Wi-Fi? The Kindle 2 and DX sync over USB through a page on your computer.">
+<title>GZreader – Grimmory and KOReader for Kindle and Kobo</title>
+<meta name="description" content="GZreader puts your Grimmory (BookLore) library on a jailbroken Kindle, a Kobo or a rooted Nook, from the Kindle 2 and Nook 1 to the Kindle Scribe: a KOReader build that downloads and reads your books and keeps your place, bookmarks, highlights and notes in sync. Send books from your browser, listen to audiobooks and Plex music, write and draw Memos notes with a rich text editor and the Scribe's pen, see CalDAV calendars. No Wi-Fi? The Kindle 2 and DX sync over USB through a page on your computer.">
 <meta name="keywords" content="Grimmory, BookLore, Kindle, Plex music on Kindle, Kindle audiobooks, KOReader, KOReader plugin, Kindle jailbreak, KUAL, Kindle Keyboard, Kindle 3, Kindle 2, Kindle DX, Kindle without Wi-Fi, USB sync, Paperwhite, e-ink, self-hosted, ebook sync, audiobooks, Memos, CalDAV">
 <link rel="canonical" href="https://9retirement6irk.github.io/GZreader/">
 <meta property="og:type" content="website">
-<meta property="og:title" content="GZreader – Grimmory and KOReader for Kindle">
-<meta property="og:description" content="Your Grimmory library on a Kindle, from the Kindle 2 and Nook 1 to the Scribe: read and keep your place, bookmarks, highlights and notes in sync; audiobooks, Plex music, Memos notes with drawing, calendars.">
+<meta property="og:title" content="GZreader – Grimmory and KOReader for Kindle and Kobo">
+<meta property="og:description" content="Your Grimmory library on a Kindle or Kobo, from the Kindle 2 and Nook 1 to the Scribe: read and keep your place, bookmarks, highlights and notes in sync; audiobooks, Plex music, Memos notes with drawing, calendars.">
 <meta property="og:url" content="https://9retirement6irk.github.io/GZreader/">
 <meta property="og:image" content="https://9retirement6irk.github.io/GZreader/social-preview.png">
 <meta name="twitter:card" content="summary_large_image">
@@ -118,7 +118,7 @@
   <header>
     <img class="logo" src="gzreader-logo.svg" alt="GZreader logo" width="96" height="96">
     <h1>GZreader</h1>
-    <p class="tag">Your <strong>Grimmory</strong> library on a <strong>Kindle</strong>, from the Kindle 2 and Nook 1
+    <p class="tag">Your <strong>Grimmory</strong> library on a <strong>Kindle</strong> or <strong>Kobo</strong>, from the Kindle 2 and Nook 1
       to the Scribe. Read, and keep your place, bookmarks, highlights and notes in sync; send books from your browser;
       listen to audiobooks and Plex music; write and draw notes; see your calendars.</p>
     <div class="cta">
@@ -141,7 +141,7 @@
     <a href="https://github.com/xZenLabs/zen-os">ZenOS</a> interface and a built-in connection to your self-hosted
     <a href="https://grimmory.org">Grimmory</a> (formerly BookLore) book server. It runs on e-readers from the Kindle 2 and Nook 1 to the Scribe:
     jailbroken Kindles, from the Kindle 2 and Kindle Keyboard to the Paperwhite and the Kindle Scribe with its pen,
-    and, as test builds, rooted Nooks: the Nook 1st Edition and the Nook Simple Touch.</p>
+    and, as test builds, Kobos (no jailbreak: NickelMenu or KFMon starts it) and rooted Nooks: the Nook 1st Edition and the Nook Simple Touch.</p>
 
   <h2 id="catalog">One Catalog: books, audiobooks and music</h2>
   <p>The Catalog tab has three pages: swipe between them, or use the page-turn keys. Each is laid out like a shop,
@@ -256,6 +256,7 @@
       <tr><td>Kindle 4, Kindle Touch</td><td><a href="https://github.com/9retirement6irk/GZreader/wiki/Install-Kindle"><code>gzreader-kindle</code></a></td></tr>
       <tr><td>Firmware 5.16.3 or newer: Paperwhite 3 and later, Kindle Scribe, Kindle 2019–2024, Oasis, Colorsoft</td><td><a href="https://github.com/9retirement6irk/GZreader/wiki/Install-Kindle-HF"><code>gzreader-kindlehf</code></a></td></tr>
       <tr><td>Paperwhite 2 and newer on firmware 5.16.2 or older</td><td><a href="https://github.com/9retirement6irk/GZreader/wiki/Install-Kindle-PW2"><code>gzreader-kindlepw2</code></a></td></tr>
+      <tr><td>Kobos (Touch to Clara Colour, Libra Colour, Sage, Elipsa) — test build</td><td><a href="https://github.com/9retirement6irk/GZreader/wiki/Install-Kobo"><code>gzreader-kobo</code></a></td></tr>
       <tr><td>Nook 1st Edition (2009, with the colour touchscreen) — test build</td><td><a href="https://github.com/9retirement6irk/GZreader/wiki/Install-Nook-1st-Edition"><code>gzreader-nook-1st-edition</code></a></td></tr>
       <tr><td>Nook Simple Touch, with or without GlowLight — test build</td><td><a href="https://github.com/9retirement6irk/GZreader/wiki/Install-Nook-Simple-Touch"><code>gzreader-nook</code></a></td></tr>
     </tbody>
@@ -266,12 +267,14 @@
   <h2>Install</h2>
   <ol>
     <li>Jailbreak the Kindle (and install KUAL on the Kindle 2, 3, DX, 4 and Touch), or root the Nook:
-      <a href="https://github.com/9retirement6irk/GZreader/wiki/Jailbreaking-and-Rooting">jailbreaking and rooting</a>.</li>
+      <a href="https://github.com/9retirement6irk/GZreader/wiki/Jailbreaking-and-Rooting">jailbreaking and rooting</a>.
+      A Kobo needs neither, only <a href="https://pgaskin.net/NickelMenu/">NickelMenu</a> or KFMon.</li>
     <li>Download your package from the <a href="https://github.com/9retirement6irk/GZreader/releases/latest">latest release</a>.</li>
     <li>Kindles: unzip it and copy its folders to the top of the Kindle's USB drive, then eject.
+      Kobos: unzip it onto the Kobo's drive, with <a href="https://github.com/9retirement6irk/GZreader/wiki/Install-Kobo">NickelMenu or KFMon</a> installed.
       Nooks: unzip it and copy it to the Nook with adb (<a href="https://github.com/9retirement6irk/GZreader/wiki/Install-Nook-1st-Edition">1st Edition</a>,
       <a href="https://github.com/9retirement6irk/GZreader/wiki/Install-Nook-Simple-Touch">Simple Touch</a>).</li>
-    <li>Start GZreader from KUAL, from the GZreader item on a touch Kindle's home screen, or from its icon on the Nook 1st Edition. The setup guide shows a QR code
+    <li>Start GZreader from KUAL, from the GZreader item on a touch Kindle's home screen, from NickelMenu or KFMon on a Kobo, or from its icon on the Nook 1st Edition. The setup guide shows a QR code
       (on a Kindle 2 or DX, how to <a href="#sync">sync with your computer</a> instead).</li>
   </ol>
 

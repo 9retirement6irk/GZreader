@@ -8,7 +8,7 @@ Wi‑Fi.
 
 ## Turning it on
 
-**Settings → Home → Daily paper**, and tick **Daily paper**. A folded
+**Settings → Accounts and services → Daily paper**, and tick **Daily paper**. A folded
 newspaper appears on Home's bookshelf, standing on its side at the start of
 the first shelf like the books beside it, nearly as tall as they are: you see
 its fold with the paper's name running up it, the day's lead headline, and
@@ -38,12 +38,43 @@ and how it begins.
 - **More pages**: swipe left, press a page-turn key, or tap the arrow at the
   foot of the page.
 - **A story**: tap it (with keys: move the frame with the 5-way and press).
-  It opens as text, a page at a time; **QR code** shows the story's link as a
-  code for your phone, for the rest of it or its pictures.
+  It opens as text that scrolls with your finger and stays exactly where
+  your finger leaves it, also when you lift while still moving; the page
+  keys, or ▲ ▼ on a keyboard Kindle, move it most of a screen. At the top,
+  **Aa** sets the story's text (below), **QR code** shows the story's link as
+  a code for your phone, for the rest of it or its pictures, and **✕** closes
+  it.
+- **Story text**: **Aa** at the top of a story (**Menu** on a Kindle with
+  keys) opens a box with **A−** / **A+** for the size, the typeface (Serif,
+  Sans, Classic, Typewriter) and the line spacing (Tight, Normal, Wide). The
+  story behind is set again at each tap, at the same place, so you can try
+  them; **Done** closes the box. The choices are kept, and are also in the
+  daily paper's settings under **Story text**. They set opened stories; the
+  paper's own pages have their own (next).
+- **The paper's pages**: **Aa** at the foot of the paper (**Menu** on a
+  Kindle with keys) sets the type of the pages themselves: the headlines, how
+  each story begins, the weather and TODAY boxes. Four sizes (Small, Normal,
+  Large, Larger) and the same typefaces. Bigger type puts fewer stories on a
+  page, so the paper has more pages, and shows fewer days in the weather box.
+  Also in the daily paper's settings under **The paper's pages**. The paper's
+  name keeps its own face.
 - **Close**: the cross in the corner, or Back.
+- **The quick panel**: swipe down from the top of the paper or of a story,
+  as anywhere else.
 
-The paper shows what a feed carries. Some feeds carry whole stories; many
-carry only a sentence or two, and the paper says so under such a story.
+**Whole stories**: many feeds carry only a sentence or two of each story.
+For those, GZreader also fetches the story's own web page with the day's
+paper and takes the article out of it, as a browser's reader view does, so
+you read the whole story with Wi‑Fi off. Feeds that carry whole stories are
+used as they are (up to about 2,500 words a story).
+
+- It makes the day's fetch longer: a page for each short story, in the
+  background, five minutes at most; stories it didn't get to keep their
+  summary.
+- A story behind a paywall, or on a page built by scripts, keeps the feed's
+  summary, and says so at its end.
+- **Settings → Accounts and services → Daily paper → Whole stories** turns it off (a faster
+  fetch, summaries only).
 
 **Weather**: a box under the date shows now, today and the next two days,
 each with a small drawing of its sky, the high and low, and the chance of
@@ -52,7 +83,7 @@ rain on a wet day. It comes with the day's paper:
 - from your **Home Assistant** when the [House](House) tab's is connected (its
   first weather entity); nothing leaves your network;
 - otherwise from **Open‑Meteo** (open-meteo.com: free, no account) for the
-  town you set in **Settings → Home → Daily paper → Weather → Town**, or on
+  town you set in **Settings → Accounts and services → Daily paper → Weather → Town**, or on
   the setup page's Daily paper tab. **Degrees** switches Fahrenheit and
   Celsius (it starts as the town's country uses).
 
@@ -64,13 +95,16 @@ front page has a **TODAY** box under the date with today's events, all-day
 ones first, then by time. They're the events the Calendar tab last synced,
 kept on the Kindle: nothing is fetched for it and nothing about them leaves
 the Kindle. Tap the box for the Calendar tab. A day without events has no
-box; **Settings → Home → Daily paper → Today's calendar events** turns it off.
+box; **Settings → Accounts and services → Daily paper → Today's calendar events** turns it off.
 
-**Pictures**: the lead story's picture runs across the front page, a few more
-stories have theirs in the columns (eight an edition at most), and the lead's
-is on the newspaper's front page on the shelf. They are fetched with the
-paper, kept until the next edition and shown in grey. A story opened as text
-has no picture. **Settings → Home → Daily paper → Pictures** turns them off
+**Pictures**: an opened story shows its picture, whole, under its headline
+(up to 24 stories an edition have one). The lead story's picture also runs
+across the front page, a few more stories have theirs in the columns, and the
+lead's is on the newspaper's front page on the shelf. They are the pictures
+the feeds name for their stories (or, failing that, the one the story's own
+page names), fetched with the paper, kept until the next edition and shown in
+grey. Pictures between a story's paragraphs aren't shown.
+**Settings → Accounts and services → Daily paper → Pictures** turns them off
 (the paper is fetched faster without them).
 
 ## When it's fetched
@@ -81,7 +115,7 @@ Once a day, the first time Home (or the paper) is on the screen after
 - With [Wi‑Fi](Wi-Fi) on **Auto**, GZreader turns Wi‑Fi on for it and off
   again afterwards. On **On** it's fetched straight away. On **Off** nothing
   is fetched until you ask: **Fetch today's paper** at the foot of the
-  paper (or **Settings → Home → Daily paper → Fetch now**), which turns
+  paper (or **Settings → Accounts and services → Daily paper → Fetch now**), which turns
   Wi‑Fi on for that.
 - If the feeds can't be reached, yesterday's paper stays (the widget says
   which day it's from) and GZreader tries again half an hour later.
@@ -96,14 +130,14 @@ A feed is a site's list of its newest stories (RSS or Atom); most news sites
 and blogs have one.
 
 **From your phone or computer** (the easy way to paste addresses):
-**Settings → Home → Daily paper → Set up from a browser (QR code)** opens the
+**Settings → Accounts and services → Daily paper → Set up from a browser (QR code)** opens the
 [setup page](Setup-Page-and-Connections) at its **Daily paper** tab. Scan the
 code, or open the address shown on a computer on the same Wi‑Fi. There you
 can turn the paper on or off, take it off the bookshelf, tick the feeds
 GZreader comes with, paste your own (one per line, as in `feeds.txt` below),
 and remove them. **Save**, then press Back on the Kindle.
 
-**On the Kindle**: **Settings → Home → Daily paper → Feeds**:
+**On the Kindle**: **Settings → Accounts and services → Daily paper → Feeds**:
 
 - GZreader comes with a few to tick, by section: BBC News (World, Technology,
   Science), NPR, Ars Technica, NASA, Literary Hub, Atlas Obscura, NPR Strange
@@ -133,6 +167,10 @@ GZreader asked. Nothing else is sent: no account, no cookies, nothing about
 you or what you read. Nothing goes through anyone else's server. With
 **Pictures** on, a story's picture is fetched the same way from wherever the
 feed says it is, often a picture server on another site than the feed's.
+With **Whole stories** on, each short story's own page is fetched too. It's
+usually on the feed's site, but not always (Hacker News links anywhere); that
+site then sees the Kindle's internet address as well. Story addresses are not
+written to the log.
 For the weather, Open‑Meteo is sent the town's name once (to find where it
 is) and after that only its coordinates rounded to two decimals, about a
 kilometre, with each day's request; it sees the Kindle's internet address

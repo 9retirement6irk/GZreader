@@ -9,7 +9,7 @@ that you tap, turns to show its cover; tap it again, Press or its letter opens
 it, and holding it opens Manage book (Open, Delete from this Kindle, then
 the book's menu). The book you're reading (top of Home) is
 drawn as a book too: its pages behind the cover and a drop shadow.
-Covers have square corners in this view: Settings → Home → Appearance →
+Covers have square corners in this view: Settings → Home and tabs → Downloads tab → Appearance →
 Covers → Rounded cover corners is greyed out while it's on, and your choice
 for the tiles and lists comes back when you switch to one of them.
 
@@ -26,8 +26,7 @@ the book once you open one.
   spines with a tab on top. A book that finishes downloading while
   Downloads is on screen appears in it straight away. Its title bar says
   *Downloads* between the clock and the battery, as the other tabs name
-  themselves (or the tab's own name, if you renamed it in Settings →
-  Interface → Navbar); inside a folder it shows the folder's name.
+  themselves (or the tab's own name, if you renamed it in Settings → Home and tabs → Tab bar); inside a folder it shows the folder's name.
 - **Home** has one shelf of your most recent books; the DX and the Kindle
   Scribe (any screen more than 5 inches across) have two (the first filled
   before the second). On the Scribe, the Downloads tab has four shelves a
@@ -43,7 +42,7 @@ the book once you open one.
   A book's number in its series is level at the foot of the spine. The books
   cast a soft shadow on the wall behind them, and the board shows its top.
 
-- **Theme and ornaments** (Settings → Home → Appearance → **Bookshelf
+- **Theme and ornaments** (Settings → Home and tabs → Downloads tab → Appearance → **Bookshelf
   theme**), for Home's shelf, Downloads and the Catalog's ledges:
   - the plank: **Oak** (to begin with; Bookshelf's oak plank, in greys),
     **Walnut** (darker) or **Plain** (flat greys);
@@ -125,7 +124,7 @@ the book once you open one.
 Home shows **Grimmory reading stats** by default: three numbers on a notebook
 page, counted over every device that reads with your Grimmory account
 (GZreader on each Kindle and Grimmory's web reader send their reading
-sessions; Grimmory adds them up). Choose the three in Settings → Home →
+sessions; Grimmory adds them up). Choose the three in Settings → Home and tabs → Home →
 Widgets → Grimmory reading stats → Stat slot 1–3:
 
 - Read this week (time), Books this week
@@ -140,7 +139,7 @@ permissions); without it the widget shows dashes and the diagnostic log says
 why.
 
 The earlier **Local reading stats** widget (pages and time today, this
-Kindle only) is gone from Home and from Settings → Home → Widgets; a Home that
+Kindle only) is gone from Home and from Settings → Home and tabs → Home → Widgets; a Home that
 still showed it keeps its other widgets.
 
 The book you're reading shows its progress as the book's page edges, read
@@ -159,7 +158,7 @@ Daily paper**. → [Daily paper](Daily-Paper)
 While a book is open: its cover. From Home and menus: a random picture from
 the USB drive's `screensavers` folder (created by the setup guide), falling
 back to the Kindle's own sleep pictures. Chosen in the setup guide, or in
-**Settings → General → Sleep → Wallpaper**: each sleep screen is a tile
+**Settings → Sleep and wallpaper → Sleep → Wallpaper**: each sleep screen is a tile
 showing what it looks like (this one, the last book's cover, a picture from
 the screensavers folder, reading progress, book status, or the screen left
 as it is); tap one, or press its letter on a Kindle with keys. The cover's
@@ -178,8 +177,7 @@ greyed out.
 ### Pictures from Immich
 
 With an [Immich](https://immich.app) album you can have your own photos on
-the sleep screen and as the Home wallpaper. Set it up in **Settings →
-Connections → Immich (Photos)** (or on the [setup page](Setup-Page-and-Connections#immich)
+the sleep screen and as the Home wallpaper. Set it up in **Settings → Accounts and services → Photos** (or on the [setup page](Setup-Page-and-Connections#immich)
 in your phone's browser; Kindles without Wi‑Fi on the
 [sync page](Sync-with-a-Computer)):
 
@@ -193,10 +191,10 @@ in your phone's browser; Kindles without Wi‑Fi on the
   you; photos only, no videos).
 - **Sleep screen**: *Book cover while reading, an Immich picture elsewhere*,
   or *An Immich picture, always*. These are also two more tiles in
-  **Settings → General → Sleep → Wallpaper** once an album is chosen. With no
+  **Settings → Sleep and wallpaper → Sleep → Wallpaper** once an album is chosen. With no
   pictures yet, the screensavers folder's show.
 - **Home wallpaper**: a picture from the album behind Home and the tabs
-  (the same as **Settings → Interface → Wallpaper → Picture from Immich**).
+  (the same as **Settings → Sleep and wallpaper → Home background → Picture from Immich**).
   Turning it off puts back the wallpaper you had before; choosing an image
   by hand there turns it off.
 - **Pictures kept on the Kindle**: 10, 20 or 50. They're made to fit the

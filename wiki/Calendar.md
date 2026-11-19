@@ -15,13 +15,13 @@ iCal address, Outlook's published ICS…) and/or a **CalDAV account**, read-only
   Dates are worked out without the Kindle's clock (which reaches only 1901 to
   2037), so iCloud's shared links (their time zones start in 1883), birthdays
   from before 1901 and events repeating past 2037 are read too.
-  Settings → Connections → Calendar → Calendar links: show / rename / remove,
+  Settings → Accounts and services → Calendar → Calendar links: show / rename / remove,
   or the same on the setup page (*Add or edit links with QR code*), which
   also replaces a link that changed.
 
 - **Holidays:** a calendar of their own, worked out on the Kindle (no link,
   account or Wi‑Fi: the Kindle 2 and DX have them too), off until turned on:
-  Settings → Connections → Calendar → **Holidays** (*Show holidays*, and the
+  Settings → Accounts and services → Calendar → **Holidays** (*Show holidays*, and the
   country: United States, Canada or United Kingdom), *Show holidays* on the
   tab's first screen, or the setup page's **Holidays** box. They show all day
   in every layout, as "Holidays (United States)"; Calendars shown hides them
@@ -63,7 +63,7 @@ Fastmail (`https://caldav.fastmail.com`), Google
   GZreader's time zone.
 - **Wi‑Fi:** only to sync, when the tab opens (at most every 15 minutes) and
   with M → Refresh. Events are kept on the Kindle (`settings/gzreader-calendar.json`).
-- **Settings → Connections → Calendar (CalDAV):** connection, calendars shown,
+- **Settings → Accounts and services → Calendar:** connection, calendars shown,
   the layout it opens in, week start (Sunday / Monday), sync range, storage.
   M → Calendar settings in the tab opens this same Settings page; the
   calendar is drawn again when you close it.

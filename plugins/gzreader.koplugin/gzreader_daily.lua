@@ -11,7 +11,7 @@ gzreader_dailyscreen.lua); a tap opens the whole paper.
   Technology
     …
 
-- Off until it's turned on (Settings → Home → Daily paper): the feeds are
+- Off until it's turned on (Settings → Accounts and services → Daily paper): the feeds are
   other people's sites, and each fetch tells them this Kindle's address.
   Nothing else is sent: no account, no cookies, nothing about you.
 - An edition is made when the day's first look at Home (or the paper) finds
@@ -25,8 +25,9 @@ gzreader_dailyscreen.lua); a tap opens the whole paper.
 The edition (settings/gzreader-daily.json):
   { day = "2026-11-17", at = seconds, sections = { { topic = "World",
     items = { { title, text, link, at, source, img } } } }, failed = { names } }
-`img`: a story's picture, a file in cache/gzreader-daily/ (the lead's and a
-few more: MAX_PICTURES, each MAX_PICTURE_BYTES at most; Settings can turn
+`full`: the story's text is its own page's (Daily.addFullText), not the
+feed's. `img`: a story's picture, a file in cache/gzreader-daily/ (MAX_PICTURES of
+them for the opened stories, the first PAGE_PICTURES also on the pages, each MAX_PICTURE_BYTES at most; Settings can turn
 pictures off). Pictures often come from another site than the feed's.
 ]]
 
@@ -38,12 +39,18 @@ local Daily = {
     ROW_ID = "daily_paper",
     PER_FEED = 5,        -- stories taken from one feed
     PER_SECTION = 8,     -- stories in one section
-    MAX_TEXT = 4000,     -- bytes of a story's text kept
+    MAX_TEXT = 16000,    -- bytes of a story's text kept (about 2,500 words)
+    FULL_ENOUGH = 2500,  -- a feed's text this long is taken as the whole story: its page isn't fetched
+    MAX_PAGE_BYTES = 2 * 1024 * 1024, -- a story's page bigger than this isn't read
+    MAX_FULL = 40,       -- stories whose page is fetched in one edition
+    FULL_SECONDS = 300,  -- … and how long that may take altogether
     MAX_BYTES = 1536 * 1024, -- a feed bigger than this isn't read
     MAX_FEEDS = 24,
     FRESH = 36 * 3600,   -- stories older than this stay out (when the feed dates them)
     RETRY = 30 * 60,
-    MAX_PICTURES = 8,    -- stories that get their picture (the lead, then each section's first, …)
+    MAX_PICTURES = 24,   -- stories that get their picture (the lead, then each section's first, …), for the opened story
+    PAGE_PICTURES = 8,   -- … of which the first few also show on the paper's pages
+    PICTURE_SECONDS = 180, -- how long fetching the pictures may take altogether
     MAX_PICTURE_BYTES = 700 * 1024,
     EDITION_HOUR = 5,    -- a day's paper is made from this hour on (the Kindle's clock)
     TOPICS = { "World", "Technology", "Science", "Books", "Curiosities" },
@@ -198,7 +205,7 @@ function Daily.pageState(plugin)
         own[#own + 1] = { n = i, name = f.name, site = Daily.site(f.url), topic = f.topic, on = f.enabled ~= false }
     end
     local edition = Daily.load()
-    return { enabled = st.enabled == true, shelf = st.shelf ~= false, pictures = st.pictures ~= false, calendar = st.calendar ~= false,
+    return { enabled = st.enabled == true, shelf = st.shelf ~= false, pictures = st.pictures ~= false, calendar = st.calendar ~= false, full = st.full ~= false,
         weather = (function()
             local W = require("gzreader_weather")
             local w = W.store(plugin)
@@ -217,6 +224,7 @@ function Daily.pageSave(plugin, form)
     st.enabled = form.enabled == "1" or nil
     if form.shelf == "1" then st.shelf = nil else st.shelf = false end
     if form.pictures == "1" then st.pictures = nil else st.pictures = false end
+    if form.full == "1" then st.full = nil else st.full = false end
     if form.calendar == "1" then st.calendar = nil else st.calendar = false end
     local w = require("gzreader_weather").store(plugin)
     w.off = (form.weather ~= "1") or nil
@@ -267,6 +275,12 @@ end
 --- The paper's day: a new one starts at EDITION_HOUR (reading past midnight
 --- doesn't fetch "tomorrow's" paper with the evening's stories).
 function Daily.day(t) return os.date("%Y-%m-%d", (t or os.time()) - Daily.EDITION_HOUR * 3600) end
+
+--- What every request says it is: GZreader/<version> (socketutil.USER_AGENT; "GZreader" where that can't be loaded).
+local function userAgent()
+    local ok, su = pcall(require, "socketutil")
+    return ok and type(su) == "table" and su.USER_AGENT or "GZreader"
+end
 
 local function key(item)
     return (item.title or ""):lower():gsub("[%s%p]+", " ")
@@ -382,7 +396,7 @@ function Daily.fetch(url)
         headers = {
             ["Accept"] = "application/rss+xml, application/atom+xml, application/xml, text/xml, */*",
             ["Accept-Encoding"] = Gzip.available() and "gzip" or "identity",
-            ["User-Agent"] = "GZreader (daily paper; +https://github.com/9retirement6irk/GZreader)",
+            ["User-Agent"] = userAgent(),
         },
         sink = sink, timeouts = { 15, 45 }, log_url = "https://" .. Daily.site(url) .. "/\u{2026} (feed)",
     }) }
@@ -400,6 +414,78 @@ function Daily.fetch(url)
     end
     if raw == "" then return nil, "empty" end
     return raw
+end
+
+---------------------------------------------------------------- full stories
+
+--- Whole stories wanted? (On unless turned off.) Many feeds carry only a
+--- sentence or two; with this on, such a story's own page is fetched with
+--- the paper and its article taken out of it (gzreader_article.lua).
+function Daily.fullStories(plugin)
+    return Daily.store(plugin).full ~= false
+end
+
+--- A story's page: its HTML and content type, or nil and why. Its address
+--- isn't logged (its site only).
+function Daily.fetchPage(url)
+    local Api = require("gzreader_api")
+    local Gzip = require("gzreader_gzip")
+    local chunks, size, too_big = {}, 0, false
+    local function sink(chunk)
+        if chunk then
+            size = size + #chunk
+            if size > Daily.MAX_PAGE_BYTES then too_big = true; return nil, "too big" end
+            chunks[#chunks + 1] = chunk
+        end
+        return 1
+    end
+    local answer = { Api.rawRequest("GET", url, {
+        headers = { ["Accept"] = "text/html, application/xhtml+xml", ["Accept-Encoding"] = Gzip.available() and "gzip" or "identity",
+            ["User-Agent"] = userAgent() },
+        sink = sink, timeouts = { 10, 25 }, log_url = "https://" .. Daily.site(url) .. "/\u{2026} (story)",
+    }) }
+    if too_big then return nil, "too big" end
+    local code, headers = answer[1], type(answer[3]) == "table" and answer[3] or {}
+    if type(code) ~= "number" then return nil, "unreachable" end
+    if code >= 400 then return nil, "http_" .. code end
+    local raw = table.concat(chunks)
+    local enc = headers["content-encoding"] or headers["Content-Encoding"]
+    if type(enc) == "string" and enc:lower():find("gzip", 1, true) and raw ~= "" then
+        raw = Gzip.inflate(raw)
+        if not raw then return nil, "gzip" end
+        if #raw > Daily.MAX_PAGE_BYTES * 3 then return nil, "too big" end
+    end
+    local kind = headers["content-type"] or headers["Content-Type"]
+    if type(kind) == "string" and not kind:lower():find("html", 1, true) then return nil, "not html" end
+    return raw, kind
+end
+
+--- Give the edition's short stories their whole text, from their own
+--- pages: in the front page's order, MAX_FULL at most, until `seconds` have
+--- gone. A story keeps the feed's text unless the page's is clearly longer.
+--- `fetch(url)` → html, content type (or nil); `clock()` → seconds (for tests).
+--- Returns how many stories were filled, and how many pages were asked for.
+function Daily.addFullText(edition, fetch, seconds, clock)
+    local Article = require("gzreader_article")
+    clock = clock or os.time
+    local started, filled, asked = clock(), 0, 0
+    for _i, f in ipairs(Daily.front(edition, Daily.count(edition))) do
+        local item = f.item
+        if asked >= Daily.MAX_FULL or clock() - started >= (seconds or Daily.FULL_SECONDS) then break end
+        if item.link and #(item.text or "") < Daily.FULL_ENOUGH then
+            asked = asked + 1
+            local ok, html, kind = pcall(fetch, item.link)
+            -- (a story whose feed names no picture: the one its page names as its own)
+            if ok and html and not item.image then item.image = Article.leadImage(html) end
+            local text = ok and html and Article.extract(html, kind) or nil
+            if text and #text >= Article.MIN_BYTES and #text > #(item.text or "") * 1.3 then
+                item.text = Feeds.cut(text, Daily.MAX_TEXT)
+                item.full = true
+                filled = filled + 1
+            end
+        end
+    end
+    return filled, asked
 end
 
 ---------------------------------------------------------------- pictures
@@ -436,7 +522,7 @@ function Daily.fetchPicture(url)
     end
     local answer = { Api.rawRequest("GET", url, {
         headers = { ["Accept"] = "image/jpeg, image/png, image/webp, image/gif", ["Accept-Encoding"] = "identity",
-            ["User-Agent"] = "GZreader (daily paper; +https://github.com/9retirement6irk/GZreader)" },
+            ["User-Agent"] = userAgent() },
         sink = sink, timeouts = { 10, 30 }, log_url = "https://" .. Daily.site(url) .. "/\u{2026} (picture)",
     }) }
     if too_big then return nil, "too big" end
@@ -460,7 +546,9 @@ end
 --- one has `img`, its file's name. Every story's `image` address is dropped
 --- from the edition (not kept, not logged). `fetch(url)` → bytes or nil.
 --- `write(path, data)` → true (for tests; a plain file otherwise).
-function Daily.addPictures(edition, dir, fetch, write)
+function Daily.addPictures(edition, dir, fetch, write, seconds, clock)
+    clock = clock or os.time
+    local started = clock()
     write = write or function(path, data)
         local f = io.open(path, "wb")
         if not f then return false end
@@ -470,6 +558,7 @@ function Daily.addPictures(edition, dir, fetch, write)
     end
     local got = 0
     for n, item in ipairs(Daily.pictureWanted(edition)) do
+        if clock() - started >= (seconds or Daily.PICTURE_SECONDS) then break end
         local data = fetch(item.image)
         local kind = Daily.pictureKind(data)
         if kind then
@@ -499,6 +588,13 @@ function Daily.clearPictures(keep)
     for name in lfs.dir(dir) do
         if name ~= "." and name ~= ".." and not (keep and keep[name]) then os.remove(dir .. "/" .. name) end
     end
+end
+
+--- Does a story's picture also show on the paper's pages? (The first
+--- PAGE_PICTURES fetched: its file is named <day>-<n>.<kind>.)
+function Daily.pagePicture(item)
+    local n = type(item) == "table" and type(item.img) == "string" and tonumber(item.img:match("%-(%d+)%.%a+$"))
+    return n ~= nil and n ~= false and n <= Daily.PAGE_PICTURES
 end
 
 --- A story's picture file, when it has one that's there.
@@ -571,6 +667,7 @@ function Daily.refresh(plugin, on_done)
     Daily.changed()
     local pictures = Daily.pictures(plugin)
     local weather_plan = require("gzreader_weather").plan(plugin)
+    local full = Daily.fullStories(plugin)
     require("gzreader_async").run({}, function()
         local edition, err = Daily.build(feeds, now, Daily.fetch)
         if not edition then return nil, err end
@@ -579,6 +676,10 @@ function Daily.refresh(plugin, on_done)
             local okw, weather = pcall(require("gzreader_weather").fetch, weather_plan, now)
             edition.weather = okw and weather or nil
             if not edition.weather then Log.warn("daily paper: no weather") end
+        end
+        -- (whole stories: the short ones' own pages, after the weather and before the pictures)
+        if full then
+            edition.full, edition.pages = Daily.addFullText(edition, Daily.fetchPage)
         end
         -- (pictures: after the stories, into the cache folder; a new edition's replace the old one's)
         if pictures then
@@ -600,10 +701,10 @@ function Daily.refresh(plugin, on_done)
         Daily.last_error = nil
         Daily.keep(edition)
         Log.info("daily paper:", Daily.count(edition), "stories in", #edition.sections, "sections;", #(edition.failed or {}), "feeds failed;",
-            tonumber(edition.pictures) or 0, "pictures")
+            tonumber(edition.pictures) or 0, "pictures;", tonumber(edition.full) or 0, "whole stories from", tonumber(edition.pages) or 0, "pages")
         Daily.changed()
         on_done(true)
-    end, "daily paper", { timeout = 300 })
+    end, "daily paper", { timeout = 300 + Daily.FULL_SECONDS + 120 })
 end
 
 --- Today's edition, if it's due and wasn't tried a moment ago: with Wi-Fi
@@ -631,7 +732,7 @@ end
 --- Why there's no paper, in words.
 function Daily.why(err)
     if err == "usb" then return _("The daily paper needs Wi-Fi, and this Kindle syncs through a computer.") end
-    if err == "no feeds" then return _("No feeds are ticked: Settings → Home → Daily paper → Feeds.") end
+    if err == "no feeds" then return _("No feeds are ticked: Settings → Accounts and services → Daily paper → Feeds.") end
     if err == "busy" then return _("Already fetching today's paper…") end
     if err == "empty" then return _("The feeds answered, but had no stories.") end
     if err == "timeout" then return _("The feeds took too long to answer.") end

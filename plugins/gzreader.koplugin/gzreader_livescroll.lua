@@ -62,6 +62,27 @@ function LiveScroll.settle(widget, region)
     require("ui/uimanager"):setDirty(widget, function() return LiveScroll.SETTLE_REFRESH, region end)
 end
 
+--- How much further the page has to move when a drag ends as a swipe, so
+--- it rests where the finger left it: `live` = { rel_x, rel_y (the finger's
+--- last seen distance from where it came down), moved_x, moved_y (how far
+--- the page went meanwhile) }. With no drag seen before the swipe (a very
+--- quick flick), the swipe's own length in its direction.
+function LiveScroll.freeEnd(live, ges)
+    if live.rel_y or live.rel_x then
+        return -(live.rel_x or 0) - (live.moved_x or 0), -(live.rel_y or 0) - (live.moved_y or 0)
+    end
+    local d = tonumber(ges and ges.distance) or 0
+    local dir = ges and ges.direction or ""
+    local diag = math.floor(d * 0.7 + 0.5)
+    if dir == "north" then return 0, d end
+    if dir == "south" then return 0, -d end
+    if dir == "west" then return d, 0 end
+    if dir == "east" then return -d, 0 end
+    local dx = dir:find("west", 1, true) and diag or dir:find("east", 1, true) and -diag or 0
+    local dy = dir:find("north", 1, true) and diag or dir:find("south", 1, true) and -diag or 0
+    return dx, dy
+end
+
 local function seconds()
     local ok, time = pcall(require, "ui/time")
     if ok and time then return time.to_s(time.now()) end
@@ -72,8 +93,12 @@ LiveScroll.now = seconds
 --- `scroller` (a ScrollableContainer) follows the finger. What was moved
 --- while dragging is taken back just before KOReader's own handlers move
 --- it by the whole drag (a lift) or by a swipe, so nothing counts twice.
-function LiveScroll.on(scroller)
+--- opts.free: a drag that ends with the finger still moving (KOReader
+--- calls it a swipe, and answers it by moving a whole screenful) leaves the
+--- page exactly where the finger left it instead: no jump after the lift.
+function LiveScroll.on(scroller, opts)
     if not scroller or scroller._gz_live then return scroller end
+    local free = type(opts) == "table" and opts.free == true
     local function fresh() return { x = {}, y = {}, moved_x = 0, moved_y = 0 } end
     scroller._gz_live = fresh()
     local pan, release, swipe = scroller.onScrollablePan, scroller.onScrollablePanRelease, scroller.onScrollableSwipe
@@ -89,6 +114,8 @@ function LiveScroll.on(scroller)
         if handled and self._scrolling and ges.relative then
             if not was then self._gz_live = fresh() end
             local live, now = self._gz_live, LiveScroll.now()
+            -- (where the finger is now, for a lift that comes as a swipe)
+            live.rel_x, live.rel_y = ges.relative.x or 0, ges.relative.y or 0
             local dy = LiveScroll.step(live.y, ges.relative.y or 0, now)
             local dx = self._max_scroll_offset_x > 0 and LiveScroll.step(live.x, ges.relative.x or 0, now) or 0
             if dx ~= 0 or dy ~= 0 then
@@ -115,6 +142,16 @@ function LiveScroll.on(scroller)
     end
     function scroller:onScrollableSwipe(arg, ges)
         local rough = self._gz_live.rough
+        if free and self._is_scrollable and ges.pos and ges.pos:intersectWith(self.dimen) then
+            -- to where the finger was last seen, less what the steps already moved
+            local live = self._gz_live
+            local dx, dy = LiveScroll.freeEnd(live, ges)
+            self._scrolling, self._scroll_relative_x, self._scroll_relative_y = false, nil, nil
+            self._gz_live = fresh()
+            if dx ~= 0 or dy ~= 0 then self:_scrollBy(dx, dy) end
+            settle(self, true)
+            return true
+        end
         if self._is_scrollable and ges.pos and ges.pos:intersectWith(self.dimen) then takeBack(self) end
         local r = swipe(self, arg, ges)
         settle(self, rough)

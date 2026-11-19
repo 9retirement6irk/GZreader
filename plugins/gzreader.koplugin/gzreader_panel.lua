@@ -4,7 +4,7 @@ the top of the screen. Square tiles, in two groups:
 
   Controls   Wi-Fi (on, off, auto), Night mode, Rotate, Auto-rotate, Restart, Sleep, Home, Updates,
              Settings, Diagnostics (with diagnostic logging on), Exit
-  Home       Manage “book” (the one highlighted), Continue, Send books,
+  Home       Manage “book” (the one highlighted), Continue, Connect,
              Search, History, View, Sort, Quick note, Music, Audiobook
   This book  Sync with Grimmory, Contents, Bookmark, Bookmarks, Go to page,
              Search book, Font, Layout, Fit pictures, Read aloud, Quick note,
@@ -31,7 +31,7 @@ Touch Kindles with sound (the Kindle Touch; Bluetooth Kindles) get a volume
 slider under those: TTS.volume, the speaker's 0 to 15 or the Kindle's
 Bluetooth volume 1 to 8 (the Kindle 2, 3 and DX: their volume buttons).
 
-Settings → Interface → Quick panel shows or hides each tile (Panel.CATALOG;
+Settings → Home and tabs → Quick panel shows or hides each tile (Panel.CATALOG;
 the hidden ones in G_reader_settings "gzreader_panel_hidden", as
 "<group>:<id>"). Home, Settings and Exit to Kindle are always there; a group
 with every tile hidden isn't drawn. Letters follow the tiles shown.
@@ -180,6 +180,7 @@ function Panel.catalog()
             { id = "night", label = _("Night mode"), available = function() return not nightGuarded() end },
             { id = "rotate", label = _("Rotate") },
             { id = "autorotate", label = _("Auto-rotate"), note = _("Kindles that turn the screen by themselves"), available = function() return require("gzreader_rotation").hasAuto() end },
+            { id = "autolight", label = _("Auto light"), note = _("Kindles with a light sensor"), available = function() return require("gzreader_autolight").available() end },
             { id = "restart", label = _("Restart") },
             { id = "sleep", label = _("Sleep") },
             { id = "home", label = _("Home"), fixed = true },
@@ -191,7 +192,7 @@ function Panel.catalog()
         { id = "home", title = _("Home"), tiles = {
             { id = "manage", label = _("Manage book"), note = _("the book highlighted") },
             { id = "continue", label = _("Continue") },
-            { id = "send", label = _("Send books"), available = function() return not usbOnly() end },
+            { id = "send", label = _("Connect"), note = _("your phone or computer: send books, set up"), available = function() return not usbOnly() end },
             { id = "search", label = _("Search") },
             { id = "history", label = _("History") },
             { id = "view", label = _("View") },
@@ -261,7 +262,7 @@ local function shown(group, list)
     return out
 end
 
---- Settings → Interface → Quick panel: a tick per tile, by group.
+--- Settings → Home and tabs → Quick panel: a tick per tile, by group.
 --- How the quick panel opens on a touch Kindle: a tap at the top, a swipe
 --- down from the top, or both. It's KOReader's "Activate menu" (G_reader_settings
 --- activate_menu: "swipe_tap", the default, "tap" or "swipe"), which opens the
@@ -417,6 +418,7 @@ function Panel.controls(plugin)
     end
     list[#list + 1] = { id = "rotate", icon = "rotate", label = _("Rotate"), run = function() dispatch("iterate_rotation") end }
     list[#list + 1] = require("gzreader_rotation").autoTile() -- (Kindles with an accelerometer: Oasis, Scribe)
+    list[#list + 1] = require("gzreader_autolight").tile() -- (Kindles with a light sensor: Voyage, Oasis, Scribe…)
     list[#list + 1] = { id = "restart", icon = "restart", label = _("Restart"), run = function() dispatch("restart") end }
     list[#list + 1] = { id = "sleep", icon = "sleep", label = _("Sleep"), run = function() dispatch("suspend") end }
     list[#list + 1] = { id = "home", icon = "home", label = _("Home"), run = function() require("gzreader_tabs").goHome() end }
@@ -496,7 +498,8 @@ function Panel.homeTiles(plugin, book)
     end
     list[#list + 1] = { id = "continue", icon = "continue", label = _("Continue"), run = function() dispatch("open_previous_document") end }
     if not require("gzreader_net").usb then -- (no Wi-Fi: Sync, in Controls)
-        list[#list + 1] = { id = "send", icon = "send", label = _("Send books"), run = function() plugin:openPhonePage("books") end }
+        -- (Connect: the page your phone or computer opens, at its first tab; Send books is one of them)
+        list[#list + 1] = { id = "send", icon = "connect", label = _("Connect"), run = function() plugin:openPhonePage(nil) end }
     end
     list[#list + 1] = { id = "search", icon = "search", label = _("Search"), run = function() dispatch("file_search") end }
     list[#list + 1] = { id = "history", icon = "history", label = _("History"), full = true, run = function() dispatch("history") end }
@@ -957,6 +960,8 @@ function PanelWidget:setLight(v, dragging)
     local powerd, min, max = self:lightInfo()
     v = math.max(min, math.min(max, math.floor(v + 0.5)))
     powerd:setIntensity(v)
+    -- (auto brightness on: where you leave it is remembered as how you like it)
+    if not dragging then pcall(function() require("gzreader_autolight").userSet(v) end) end
     self:sliderDirty("light", dragging)
 end
 

@@ -807,7 +807,7 @@ end
 --- behind that is wrong: set to it plus a minute (unplugging and starting).
 --- Returns true when the clock was set.
 Usb.setClock = function(t)
-    if not Device:isKindle() then return false end
+    if not (Device:isKindle() or Usb.isKobo()) then return false end
     os.execute(string.format("date -u %s >/dev/null 2>&1 && (hwclock -u -w >/dev/null 2>&1 || true)", os.date("!%m%d%H%M%Y.%S", t)))
     return true
 end
@@ -1123,7 +1123,7 @@ function Usb.takeTestBuilds(inbox)
     return true
 end
 
---- The music library chosen in Settings → Connections → Plex ({ key,
+--- The music library chosen in Settings → Accounts and services → Music ({ key,
 --- title }), or nil (the server's first).
 function Usb.musicLibrary(store)
     local m = type(store) == "table" and type(store.plex) == "table" and store.plex.music_section
@@ -1276,17 +1276,17 @@ function Usb.show(plugin)
     pcall(function() require("gzreader_usbreport").exportForPage(plugin) end)
     local updates, notes = Usb.waiting(plugin)
     local q = queue(plugin)
-    local kindle = Device:isKindle()
+    local kindle = Usb.canStepAside()
     local lines = {
         _("Sync with a computer"),
         "",
-        kindle and _("1. Press Connect to computer: GZreader steps aside so the Kindle can share its USB drive (it can't while GZreader runs).")
+        kindle and T(_("1. Press Connect to computer: GZreader steps aside so the %1 can share its USB drive (it can't while GZreader runs)."), Usb.deviceWord())
             or _("1. Exit GZreader (the USB drive only works while it isn't running)."),
-        _("2. Plug the Kindle into a computer and open this page in Chrome or Edge:"),
+        T(_("2. Plug the %1 into a computer and open this page in Chrome or Edge:"), Usb.deviceWord()),
         "   " .. Usb.PAGE_URL:gsub("^https://", ""),
-        _("3. Choose the Kindle's drive, enter its PIN and press Sync."),
-        kindle and _("4. Eject the Kindle and unplug it: GZreader starts again by itself and takes in the new books.")
-            or _("4. Eject the Kindle and start GZreader: it takes in the new books."),
+        T(_("3. Choose the %1's drive, enter its PIN and press Sync."), Usb.deviceWord()),
+        kindle and T(_("4. Eject the %1 and unplug it: GZreader starts again by itself and takes in the new books."), Usb.deviceWord())
+            or T(_("4. Eject the %1 and start GZreader: it takes in the new books."), Usb.deviceWord()),
         "",
     }
     local status = {}
@@ -1330,19 +1330,45 @@ function Usb.show(plugin)
     return dialog
 end
 
---- Step aside for the Kindle's USB drive mode: save everything (the outbox
---- included), then quit with exit code 86. koreader.sh (platform/kindle)
+--- Is this a Kobo?
+function Usb.isKobo() return Device.isKobo ~= nil and Device:isKobo() == true end
+
+--- "Kindle", "Kobo" or "Nook": what the device is called in the sync's steps.
+function Usb.deviceWord()
+    if Usb.isKobo() then return "Kobo" end
+    if Device.isNook and Device:isNook() then return "Nook" end
+    return "Kindle"
+end
+
+--- Can GZreader step aside for the USB drive and come back by itself? A
+--- Kindle (platform/kindle/koreader.sh) and a Kobo (KOReader's own USB
+--- storage mode: platform/kobo/koreader.sh, unless turned off in KOReader's
+--- settings) can.
+function Usb.canStepAside()
+    if Device:isKindle() then return true end
+    if Usb.isKobo() then
+        local ok, MassStorage = pcall(require, "ui/elements/mass_storage")
+        return Device:canToggleMassStorage() and (not ok or MassStorage:isEnabled())
+    end
+    return false
+end
+
+--- Step aside for the USB drive mode: save everything (the outbox included),
+--- then quit with exit code 86. On a Kindle koreader.sh (platform/kindle)
 --- lets the Kindle's USB service run again, waits while the drive is shared
---- and starts GZreader again once it's back.
+--- and starts GZreader again once it's back; on a Kobo koreader.sh
+--- (platform/kobo) shares the drive itself (KOReader's USB storage mode) and
+--- starts GZreader again once it's ejected.
 function Usb.connect(plugin)
     local UIManager = require("ui/uimanager")
     local InfoMessage = require("ui/widget/infomessage")
     local Event = require("ui/event")
     local _ = require("gettext")
+    local T = require("ffi/util").template
     pcall(Usb.finishCfis, plugin)
     plugin:save()
-    Log.info("sync: stepping aside for the Kindle's USB drive mode")
-    UIManager:show(InfoMessage:new{ text = _("Plug the Kindle into the computer.\n\nGZreader starts again after you eject it."), timeout = 0 })
+    Log.info("sync: stepping aside for the USB drive mode")
+    UIManager:show(InfoMessage:new{ text = T(_("Plug the %1 into the computer.\n\nGZreader starts again after you eject it."), Usb.deviceWord()), timeout = 0 })
     UIManager:forceRePaint()
     UIManager:flushSettings()
     UIManager:broadcastEvent(Event:new("Close"))

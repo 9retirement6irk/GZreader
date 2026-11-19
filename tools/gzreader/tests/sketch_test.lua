@@ -356,6 +356,71 @@ print("== the lasso: choose, move, resize, copy, cut, paste")
     Lasso.clipboard = nil
 end)()
 
+print("== pictures with the lasso: placed chosen, moved, resized, copied, deleted")
+;(function()
+    local Lasso = require("gzreader_lasso")
+    Lasso.clipboard = nil
+    local sk = Sketch.new{ canvas = CANVAS, pen_only = true, pen_slot = PEN_SLOT, per_unit = 2 }
+    local cx0, cy0 = CANVAS.x, CANVAS.y
+    local function lasso(frames, t)
+        local res = {}
+        for i, fr in ipairs(frames) do
+            local o = sk:frame(fr, t + i * 0.4)
+            for k, v in pairs(o) do if k ~= "segments" and k ~= "taps" and v then res[k] = v end end
+        end
+        return res
+    end
+    local function near(a, b) return math.abs(a - b) < 1e-6 end
+    -- a picture 100 x 50 (scene units) with its middle at (200, 200): on the canvas 300..500 across, 350..450 down
+    local pic = sk:addPicture("data:image/png;base64,AAAA", "image/png", 100, 50, 200, 200)
+    -- the page's paper: a picture too, but never chosen
+    local paper = { type = "image", x = 0, y = 0, width = 800, height = 1000, locked = true, fileId = "paper" }
+    table.insert(sk.locked, 1, paper)
+    check(sk:selectPictures({ pic }) and sk.tool == "lasso" and sk.selection.pictures[1] == pic, "a picture just put on the page: chosen with the lasso")
+    local b = sk:selectionBox()
+    check(b and b.x0 <= 300 and b.x0 > 280 and b.x1 >= 500 and b.y0 <= 350 and b.y1 >= 450 and b.y1 < 470, "…its frame around it")
+    -- dragged from inside: moved as far as the pen went
+    local o = lasso({ { hover(400 + cx0, 400 + cy0) }, { pen(400 + cx0, 400 + cy0) }, { pen(450 + cx0, 430 + cy0) }, { pen(500 + cx0, 460 + cy0) }, { hover(500 + cx0, 460 + cy0) } }, 10)
+    check(o.redraw and o.area and near(pic.x, 200) and near(pic.y, 205) and near(pic.width, 100) and o.area.y0 <= 350 and o.area.y1 >= 510,
+        "dragged 100 right and 60 down (pixels, 2 a unit): the picture 50 and 30 units on, its old and new place drawn again (" .. pic.x .. ", " .. pic.y .. ")")
+    check(sk:undo() and near(pic.x, 150) and near(pic.y, 175) and sk:redo() and near(pic.x, 200), "Undo: back where it was; Redo: moved again")
+    -- a corner: bigger, in proportion, from the opposite corner
+    sk:selectPictures({ pic })
+    b = sk:selectionBox()
+    local pad = sk.lasso_pad or 0
+    local bx1, by1 = b.x1 - pad, b.y1 - pad
+    lasso({ { hover(bx1 + cx0, by1 + cy0) }, { pen(bx1 + cx0, by1 + cy0) }, { pen(bx1 + 100 + cx0, by1 + cy0) }, { pen(bx1 + 200 + cx0, by1 + 10 + cy0) },
+        { hover(bx1 + 200 + cx0, by1 + 10 + cy0) } }, 20)
+    check(near(pic.width, 200) and near(pic.height, 100) and near(pic.x, 200) and near(pic.y, 205),
+        "the bottom right handle dragged out by its width: twice the size, its top left corner where it was (" .. pic.width .. " x " .. pic.height .. ")")
+    check(sk:undo() and near(pic.width, 100) and near(pic.height, 50), "Undo: its size back")
+    check(pic.version and pic.version > 1, "moved or resized: Memos is told it changed (its version)")
+    -- a loop round its middle chooses it (not the paper under everything)
+    lasso({ { hover(900 + cx0, 900 + cy0) }, { pen(900 + cx0, 900 + cy0) }, { hover(900 + cx0, 900 + cy0) } }, 30)
+    local pb = sk:pictureBox(pic)
+    local mx, my = (pb.x0 + pb.x1) / 2, (pb.y0 + pb.y1) / 2
+    local sel_o = lasso({ { hover(mx - 60 + cx0, my - 40 + cy0) }, { pen(mx - 60 + cx0, my - 40 + cy0) }, { pen(mx + 60 + cx0, my - 40 + cy0) }, { pen(mx + 60 + cx0, my + 40 + cy0) },
+        { pen(mx - 60 + cx0, my + 40 + cy0) }, { pen(mx - 60 + cx0, my - 30 + cy0) }, { hover(mx - 60 + cx0, my - 30 + cy0) } }, 40)
+    check(sel_o.sel_changed and sk.selection and #sk.selection.pictures == 1 and sk.selection.pictures[1] == pic and #sk.selection.strokes == 0,
+        "a loop round the picture's middle: the picture chosen, not the paper")
+    -- copied and pasted: a new picture, chosen; Undo takes it away
+    check(sk:lassoCopy() and Lasso.clipboard and #Lasso.clipboard.pictures == 1 and near(Lasso.clipboard.w, 100), "Copy: the picture kept, at its size")
+    local n0 = #sk.locked
+    local ok = sk:lassoPaste(700 + cx0, 300 + cy0)
+    local new = sk.selection and sk.selection.pictures and sk.selection.pictures[1]
+    check(ok and new and new ~= pic and #sk.locked == n0 + 1 and near(new.width, 100) and near(new.x + 50, 350) and near(new.y + 25, 150)
+        and sk.base.files[new.fileId] and sk.base.files[new.fileId].dataURL == "data:image/png;base64,AAAA",
+        "Paste: a new picture, its middle where the tap was, chosen")
+    check(sk:undo() and #sk.locked == n0, "Undo takes the pasted picture back")
+    -- deleted, and back
+    sk:selectPictures({ pic })
+    check(sk:lassoDelete() and #sk:movablePictures() == 0, "Delete: the picture off the page")
+    local in_scene = false
+    for _i, el in ipairs(sk.base.elements) do if el == pic then in_scene = true end end
+    check(not in_scene and sk:undo() and #sk:movablePictures() == 1, "…not saved with the drawing; Undo brings it back")
+    Lasso.clipboard = nil
+end)()
+
 print("== pinch to zoom")
 ;(function()
     local W, H = CANVAS.w, CANVAS.h
@@ -844,9 +909,24 @@ print("== pen pressure and tilt (a Kindle with a pen)")
     local half = Sketch.weight(R, 2048)
     check(math.abs(half - 0.5) < 0.01 and Sketch.weight(R, 4095) == 1 and Sketch.weight(R, 100) == 0.05,
         "pressure alone: half pressure is the chosen thickness, full is the heaviest, the lightest touch still leaves a line")
-    check(Sketch.weight(R, 2048, 60, 0) > 0.94 and Sketch.weight(R, 2048, 30, 0) > half and Sketch.weight(R, 2048, 0, -60) > 0.94
-        and Sketch.weight(R, 4095, 60, 60) == 1,
-        "tilt: the pen laid over makes the line heavier, whichever way it leans (as shading with the side of a pencil)")
+    check(Sketch.weight(R, 2048, 60, 0) == half, "the weight is the pressure alone (tilt is its own number)")
+    -- tilt: how far the pen is laid over, and what each tool does with it
+    check(Sketch.tilt(R, nil, nil) == nil and Sketch.tilt(R, 0, 0) == 0 and Sketch.tilt(R, 35, 0) == 0 and Sketch.tilt(R, 0, -40) == 0,
+        "tilt: none told, none; a pen held to write (up to 40 degrees over) counts as upright")
+    check(math.abs(Sketch.tilt(R, 50, 0) - 0.5) < 0.01 and Sketch.tilt(R, 0, -60) == 1 and Sketch.tilt(R, 63, 20) == 1
+        and math.abs(Sketch.tilt(R, 36, 36) - 0.546) < 0.01,
+        "…from there to 60 degrees: 0 to 1, whichever way it leans (both axes together)")
+    check(Sketch.toolRadius("pencil", 10, 0.5, 0) == Sketch.toolRadius("pencil", 10, 0.5) and math.abs(Sketch.toolRadius("pencil", 10, 0.5, 1) - 4 * Sketch.toolRadius("pencil", 10, 0.5)) <= 2
+        and Sketch.toolRadius("pencil", 10, 0.5, 0.5) > 2 * Sketch.toolRadius("pencil", 10, 0.5),
+        "the pencil laid over: up to four times as wide (the side of the lead)")
+    check(Sketch.grainDensity("pencil", 0.5, 1) < 0.6 * Sketch.grainDensity("pencil", 0.5) and Sketch.grainDensity("pencil", 0.5, 0) == Sketch.grainDensity("pencil", 0.5)
+        and Sketch.grainDensity("pencil", 1, 1) > Sketch.grainDensity("pencil", 0.2, 1),
+        "…and lighter (shading), darker again the harder it's pressed")
+    check(Sketch.toolRadius("marker", 10, nil, 1) == 2 * Sketch.toolRadius("marker", 10, nil) and Sketch.toolRadius("marker", 10, nil, 0) == Sketch.toolRadius("marker", 10, nil),
+        "the marker laid over: twice as wide (its chisel tip)")
+    check(Sketch.toolRadius(nil, 10, 0.5, 1) == Sketch.toolRadius(nil, 10, 0.5) and Sketch.toolRadius("fountain", 10, 0.5, 1) == Sketch.toolRadius("fountain", 10, 0.5)
+        and Sketch.toolRadius("highlighter", 10, nil, 1) == Sketch.toolRadius("highlighter", 10, nil),
+        "the pen, the fountain pen and the highlighter: the same at any angle")
     check(Sketch.weightRadius(10, nil) == 10 and Sketch.weightRadius(10, 0.5) == 10 and Sketch.weightRadius(10, 1) == 16
         and Sketch.weightRadius(10, 0.05) == 5 and Sketch.weightRadius(1, 0.05) == 1,
         "the line's width: the chosen thickness at half weight, 0.4 to 1.6 of it across the range")
@@ -859,7 +939,7 @@ print("== pen pressure and tilt (a Kindle with a pen)")
     Sketch.noteRange(R, 1023, 0, 0)
     check(early == 4095 and Sketch.pressureTop(R) == 1023 and R.t_seen == 8, "a pen that never comes near it (1024 levels): after 300 samples, its own top")
     Sketch.noteRange(R, 500, -4200, 100)
-    check(Sketch.tiltTop(R) == 6000 and math.abs(Sketch.weight(R, 512, 3000, 0) - 0.5 * 1.45) < 0.02,
+    check(Sketch.tiltTop(R) == 6000 and math.abs(Sketch.tilt(R, 5000, 0) - 0.5) < 0.01 and Sketch.tilt(R, 3000, 0) == 0 and Sketch.tilt(R, 6300, 0) == 1,
         "a pen that reports tilt in hundredths of a degree is read that way")
     -- strokes
     Sketch.range = { p_seen = 0, t_seen = 0, n = 0 }
@@ -895,11 +975,34 @@ print("== pen pressure and tilt (a Kindle with a pen)")
     draw({ { pen(100, 500, 2048, 0) }, { pen(200, 500, 2048, 0) }, { pen(300, 500, 2048, 55) }, { pen(400, 500, 2048, 55) },
         { pen(500, 500, 2048, 55) }, { pen(600, 500, 2048, 55) }, { up() } })
     local tilted = sk:live()[2]
-    check(tilted.points[#tilted.points][3] > tilted.points[1][3] + 0.25, "laying the pen over part way through a stroke widens it from there")
+    check(tilted.points[#tilted.points][3] == tilted.points[1][3] and tilted.points[1][4] == nil,
+        "the pen: laying it over part way through a stroke changes nothing (and no tilt is kept on its points)")
+    -- …with the pencil: wider from there, kept in the drawing, and read back
+    sk.writing = "pencil"
+    draw({ { pen(100, 600, 2048, 0) }, { pen(200, 600, 2048, 0) }, { pen(300, 600, 2048, 60) }, { pen(400, 600, 2048, 60) },
+        { pen(500, 600, 2048, 60) }, { pen(600, 600, 2048, 60) }, { up() } })
+    sk.writing = "pen"
+    local shade = sk:live()[3]
+    local first_r, last_r = segs[1][5], segs[#segs][5]
+    check(shade.kind == "pencil" and shade.points[1][4] == 0 and shade.points[#shade.points][4] > 0.7 and last_r > 2.5 * first_r,
+        "the pencil: laying it over part way through a stroke widens it from there, gradually (" .. first_r .. " to " .. last_r .. " pixels)")
+    local scene2 = Drawing.decode(Drawing.encode(sk:scene()))
+    local el2
+    for _i, e in ipairs(scene2.elements) do if e.type == "freedraw" and e.customData and e.customData.gzTool == "pencil" then el2 = e end end
+    check(el2 and type(el2.customData.gzTilt) == "table" and #el2.customData.gzTilt == #el2.points and el2.customData.gzTilt[1] == 0
+        and el2.customData.gzTilt[#el2.points] > 0.7, "…kept in the drawing beside its points (customData.gzTilt, one each)")
+    local el1
+    for _i, e in ipairs(scene2.elements) do if e.type == "freedraw" and not e.customData then el1 = e end end
+    check(el1 ~= nil, "…a stroke that was never laid over has none")
+    local back = Sketch.fromScene(scene2, { canvas = CANVAS, per_unit = 2 })
+    local sb
+    for _i, x in ipairs(back:live()) do if x.kind == "pencil" then sb = x end end
+    check(sb and sb.points[1][4] == 0 and math.abs(sb.points[#sb.points][4] - shade.points[#shade.points][4]) < 0.01,
+        "…and read back: an opened drawing shows the shading as wide as it was")
     -- turned off: uniform, as a pen without pressure
     sk.pressure_on = false
     draw({ { pen(100, 700, 600) }, { pen(300, 700, 4095) }, { pen(500, 700, 4095) }, { up() } })
-    local flat = sk:live()[3]
+    local flat = sk:live()[4]
     local off_scene = sk:scene()
     local off_el = off_scene.elements[#off_scene.elements]
     check(flat.points[1][3] == nil and segs[1][5] == base and segs[#segs][5] == base and off_el.simulatePressure == true,
@@ -1013,11 +1116,62 @@ end)()
     check(st and #st.points == 5 and st.points[3][1] == 300 and st.points[3][2] == 250 and st.kind == nil and st.width == 2
         and #outs[2].segments == 0 and outs[4].redraw and outs[4].stroke_done,
         "the shape tool: nothing drawn on the way, a square from where the pen landed to where it lifted (a stroke in the pen's ink)")
+    -- (its outline follows the pen: shown, not drawn, and only its own part of the page asked for)
+    check(type(outs[2].shape_preview) == "table" and outs[2].shape_preview.x1 >= 200 and outs[2].shape_preview.x0 <= 100 and outs[3].shape_preview == nil
+        and sk.shape_preview == nil and outs[4].area and outs[4].area.x0 <= 100 and outs[4].area.x1 >= 300 and outs[4].area.x1 < 320,
+        "…its outline shown as the pen goes (not at every sample: " .. Sketch.SHAPE_INTERVAL .. " s apart); gone at the lift, when only the shape's part of the page is drawn again")
+    do
+        local sk3 = sketch()
+        sk3.tool, sk3.shape, sk3.width = "shape", "circle", 2
+        sk3:frame({ { slot = 0, id = 1, x = 100, y = 100 } }, 5)
+        local o1 = sk3:frame({ { slot = 0, id = 1, x = 200, y = 180 } }, 5.2)
+        local p1 = sk3.shape_preview
+        local o2 = sk3:frame({ { slot = 0, id = 1, x = 400, y = 300 } }, 5.4)
+        local p2 = sk3.shape_preview
+        check(p1 and #p1.points >= 25 and p2 and p2 ~= p1 and o1.shape_preview.x1 < 220 and o2.shape_preview.x0 <= 100 and o2.shape_preview.x1 >= 400
+            and #sk3:live() == 0 and #o1.segments == 0,
+            "a circle dragged out: the outline as it is at each step (nothing on the page yet); each step asks for where it is and where it was")
+        sk3:frame({ { slot = 0, id = -1 } }, 5.5)
+        check(sk3.shape_preview == nil and #sk3:live() == 1, "…lifted: the circle on the page, the outline put away")
+    end
     check(sk:canUndo() and sk:undo() and #sk:live() == 0 and sk:redo() and #sk:live() == 1, "…undone and redone like any stroke")
     local scene = sk:scene()
     local el
     for _i, e in ipairs(scene.elements) do if e.type == "freedraw" then el = e end end
     check(el and #el.points == 5, "…sent to Memos as a stroke along its outline")
+    -- draw and hold: a rough circle, held still at the end, becomes a clean one (gzreader_shapesnap.lua)
+    do
+        local function roughCircle(skx, hold, t0)
+            local n = 40
+            for i = 0, n do
+                local a = 2 * math.pi * i / n
+                skx:frame({ { slot = 0, id = 1, x = 300 + 100 * math.cos(a) + (i % 3) * 2, y = 400 + 100 * math.sin(a) - (i % 2) * 3 } }, t0 + i * 0.01)
+            end
+            local t = t0 + n * 0.01
+            if hold then
+                for k = 1, 8 do skx:frame({ { slot = 0, id = 1, x = 400 + (k % 2), y = 400 } }, t + k * 0.1) end
+                t = t + 0.85
+            end
+            return skx:frame({ { slot = 0, id = -1 } }, t + 0.01)
+        end
+        local a = sketch(); a.snap_shapes = true
+        local out = roughCircle(a, true, 10)
+        local st = a:live()[1]
+        local wobbly = false
+        for _i, p in ipairs(st.points) do
+            local r = math.sqrt((p[1] - 300) ^ 2 + (p[2] - 400) ^ 2)
+            if r < 95 or r > 107 then wobbly = true end
+        end
+        check(out.snapped == "circle" and not wobbly and out.redraw and out.area and #a:live() == 1,
+            "draw and hold: a rough circle held at its end becomes a round one, in its place (redrawn there)")
+        check(a:canUndo() and a:undo() and #a:live() == 0, "…one Undo takes it away")
+        local b = sketch(); b.snap_shapes = true
+        local out2 = roughCircle(b, false, 20)
+        check(out2.snapped == nil and #b:live()[1].points > 30, "lifted at once: left as drawn")
+        local c = sketch(); c.snap_shapes = false
+        local out3 = roughCircle(c, true, 30)
+        check(out3.snapped == nil, "the switch off (Shapes panel): left as drawn, even held")
+    end
     local sk2 = sketch()
     sk2.tool, sk2.shape = "shape", "line"
     drag(sk2, 100, 100, 102, 101, 1)

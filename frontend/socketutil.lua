@@ -2,14 +2,11 @@
 This module contains miscellaneous helper functions specific to our usage of LuaSocket/LuaSec.
 ]]
 
-local Device = require("device")
-local Version = require("version")
 local http = require("socket.http")
 local https = require("ssl.https")
 local ltn12 = require("ltn12")
 local socket = require("socket")
-local ffiUtil = require("ffi/util")
-local T = ffiUtil.template
+-- (GZreader: no KOReader version, device or template here: the user agent is GZreader's)
 
 local socketutil = {
     -- Init to the default LuaSocket/LuaSec values
@@ -17,10 +14,19 @@ local socketutil = {
     total_timeout = -1,
 }
 
---- Builds a sensible UserAgent that fits Wikipedia's UA policy <https://foundation.wikimedia.org/wiki/Policy:Wikimedia_Foundation_User-Agent_Policy>
-local socket_ua = http.USERAGENT
-socketutil.USER_AGENT = T("KOReader/%1 (%2; %3; %4; https://github.com/koreader/koreader) %5",
-    Version:getShortVersion(), Device.model, jit.os, jit.arch, socket_ua:gsub(" ", "/"))
+--- GZreader: every request says it's GZreader and which version ("GZreader/1.33.0", from
+--- gzreader-version beside reader.lua; "GZreader/dev" in a build without one), not
+--- KOReader's version or LuaSocket's own name (the owner, 2026-11-18).
+function socketutil.gzUserAgent(version)
+    if not version then
+        local f = io.open("gzreader-version", "rb")
+        version = f and f:read("*l")
+        if f then f:close() end
+    end
+    version = version and version:match("^%s*v?([%w%.%-]+)") or "dev"
+    return "GZreader/" .. version
+end
+socketutil.USER_AGENT = socketutil.gzUserAgent()
 -- Monkey-patch it in LuaSocket, as it already takes care of inserting the appropriate header to its requests.
 http.USERAGENT = socketutil.USER_AGENT
 

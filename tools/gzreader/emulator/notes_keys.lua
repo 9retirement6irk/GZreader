@@ -137,8 +137,9 @@ add({ fn = function(E)
         if w.widget.on_save and w.widget.input then ed = w.widget end
         if w.widget.name == "gz_drawscreen" then draw = w.widget end
     end
-    check(ed ~= nil and draw == nil and ed:canDraw() == false and #ed:sheets() == 2 and not ed.rich,
-        "Edit: the note's text (Markdown), not the drawing screen; its sheets stay as they are")
+    -- (a keyboard Kindle: the formatted page; the Kindle 4: the Markdown box)
+    check(ed ~= nil and draw == nil and ed:canDraw() == false and #ed:sheets() == 2 and (ed.rich == true) == (not K4),
+        "Edit: the note's text, not the drawing screen; its sheets stay as they are")
     ed.input:addChars(" Measured twice.")
 end, after = 2 })
 add({ fn = function(E)

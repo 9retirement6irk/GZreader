@@ -734,7 +734,7 @@ function TTS.findVoice(on_done)
         TTS.testing = false
         if not template then
             Log.warn("tts: discovery failed:", tostring(why))
-            UIManager:show(InfoMessage:new{ text = T(_("The Kindle's speech service didn't accept any request:\n%1\n\nSave the diagnostic log (Settings → General) and send it so this can be fixed."),
+            UIManager:show(InfoMessage:new{ text = T(_("The Kindle's speech service didn't accept any request:\n%1\n\nSave the diagnostic log (Settings → Privacy and diagnostics) and send it so this can be fixed."),
                 tostring(why):sub(1, 300)) })
             return
         end
@@ -752,7 +752,7 @@ function TTS.findVoice(on_done)
             end,
             cancel_callback = function()
                 Log.warn("tts: accepted but not heard", template.target.prop, TTS.hashText(template.fields))
-                UIManager:show(InfoMessage:new{ text = _("Check the volume (the Kindle's speaker or headphones), then try again. If it stays silent, save the diagnostic log (Settings → General) and send it.") })
+                UIManager:show(InfoMessage:new{ text = _("Check the volume (the Kindle's speaker or headphones), then try again. If it stays silent, save the diagnostic log (Settings → Privacy and diagnostics) and send it.") })
             end,
         })
         -- say it once more while the question is up
@@ -763,7 +763,7 @@ end
 --- Why the Ivona voice can't be heard now (no Bluetooth audio device), or nil.
 function TTS.ivonaBlocked()
     if TTS.bluetoothAudio() == false then
-        return _("Connect Bluetooth headphones or a speaker first (Settings → General → Bluetooth): this Kindle reads aloud through Bluetooth.")
+        return _("Connect Bluetooth headphones or a speaker first (Settings → Audio → Bluetooth): this Kindle reads aloud through Bluetooth.")
     end
 end
 
@@ -779,7 +779,7 @@ function TTS.testIvona(on_done)
         UIManager:close(busy)
         TTS.testing = false
         if not up then
-            UIManager:show(InfoMessage:new{ text = _("The Kindle's voice didn't start. Try again in a moment; if it stays silent, save the diagnostic log (Settings → General) and send it.") })
+            UIManager:show(InfoMessage:new{ text = _("The Kindle's voice didn't start. Try again in a moment; if it stays silent, save the diagnostic log (Settings → Privacy and diagnostics) and send it.") })
             return
         end
         TTS.applySettings()
@@ -795,7 +795,7 @@ function TTS.testIvona(on_done)
             end,
             cancel_callback = function()
                 Log.warn("tts: Amazon's voice not heard")
-                UIManager:show(InfoMessage:new{ text = _("Check that the Bluetooth device is connected and its volume is up, then try again. If it stays silent, save the diagnostic log (Settings → General) and send it.") })
+                UIManager:show(InfoMessage:new{ text = _("Check that the Bluetooth device is connected and its volume is up, then try again. If it stays silent, save the diagnostic log (Settings → Privacy and diagnostics) and send it.") })
             end,
         })
     end)

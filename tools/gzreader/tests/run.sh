@@ -26,6 +26,10 @@ export TZ=America/New_York
 echo "== luacheck"
 (cd "$REPO" && luacheck -q plugins/gzreader.koplugin plugins/zenos.koplugin tools/gzreader/emulator frontend/device/nook frontend/device.lua) || failed=$((failed + 1))
 
+echo "== every request says GZreader/<version> (its user agent)"
+(cd "$T" && luajit useragent_test.lua "$REPO" "$WORK/useragent") 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+
 echo "== GZreader's changes to upstream files kept"
 python3 "$T/keeps.py" || failed=$((failed + 1))
 
@@ -77,8 +81,16 @@ echo "== the Kindle Scribe's pen mode (ink that keeps up with the pen)"
 (cd "$T" && luajit penmode_test.lua "$REPO/plugins/gzreader.koplugin") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
 
+echo "== saving a note: Saving…, and drafts kept while writing"
+(cd "$T" && luajit saving_test.lua "$REPO/plugins/gzreader.koplugin" "$KOBASE" "$WORK/saving") 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+
 echo "== mark up a PDF (its pages as drawing pages)"
 (cd "$T" && luajit pdfmarkup_test.lua "$REPO/plugins/gzreader.koplugin" "$T/lib" "$KOBASE" "$WORK/pdfmarkup") 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+
+echo "== Settings' easter egg (the version tapped seven times: the 15 puzzle)"
+(cd "$T" && luajit easteregg_test.lua "$REPO/plugins/gzreader.koplugin") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
 
 echo "== notes formatted (Memos' rich editor: reading and writing its Markdown; the formatted page)"
@@ -86,13 +98,19 @@ echo "== notes formatted (Memos' rich editor: reading and writing its Markdown; 
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
 (cd "$T" && luajit richedit_test.lua "$REPO/plugins/gzreader.koplugin") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+(cd "$T" && luajit inline_test.lua "$REPO/plugins/gzreader.koplugin") 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+
+echo "== shapes cleaned up: draw and hold (the Newton's way)"
+(cd "$T" && luajit shapesnap_test.lua "$REPO/plugins/gzreader.koplugin") 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
 
 echo "== journal entries (written as the Memos fork's journaling mode writes them)"
 (cd "$T" && luajit journal_test.lua "$REPO/plugins/gzreader.koplugin" "$T/lib") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
 
 echo "== the daily paper (feeds read, an edition a day, Home's widget and Settings)"
-(cd "$T" && luajit daily_test.lua "$REPO" "$T/lib" "$WORK/daily") 2>&1 | grep -E "FAIL|passed"
+(cd "$T" && luajit daily_test.lua "$REPO" "$T/lib" "$WORK/daily" "$KOBASE") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
 
 echo "== screen rotation (Auto-rotate tile, Home keeps the rotation, notes turn with the screen)"
@@ -200,6 +218,10 @@ timeout 60 python3 "$T/release_notes_test.py" 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
 echo "== Nook: GZreader's files on the card"
 timeout 120 python3 "$T/nook_app_test.py" 2>&1 | grep -E "FAIL|passed|shell"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+
+echo "== auto brightness (the light follows the room: Kindles with a light sensor)"
+(cd "$T" && luajit autolight_test.lua "$REPO/plugins/gzreader.koplugin") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
 
 echo "== Wi-Fi power saving off while downloading"

@@ -1,9 +1,9 @@
-How you drive GZreader on each device: the quick panel (the same on all of them), then keys, the 5-way and touch. The Nooks: [Nook 1st Edition](Nook-1st-Edition), [Nook Simple Touch](Nook-Simple-Touch).
+How you drive GZreader on each device: the quick panel (the same on all of them), then keys, the 5-way and touch. Kobos are used as touch Kindles: [Kobo](Kobo). The Nooks: [Nook 1st Edition](Nook-1st-Edition), [Nook Simple Touch](Nook-Simple-Touch).
 
 ## The quick panel
 
-One panel of square tiles, on every Kindle and Nook: **Menu** opens it (on a
-touch Kindle, a tap at the top or a swipe down from the top; [which of
+One panel of square tiles, on every Kindle, Kobo and Nook: **Menu** opens it (on a
+touch Kindle or a Kobo, a tap at the top or a swipe down from the top; [which of
 them](Using-GZreader#how-it-opens)). Each tile has a letter for the
 keyboard; the 5-way moves between them too. A highlighted tile shows white on
 black when it's on (Wi‑Fi, night mode, a bookmark on this page).
@@ -14,8 +14,8 @@ keep each tile under an inch wide (seven on a Scribe, eight turned sideways).
   and DX: **Sync**, [with a computer](Sync-with-a-Computer)), [Bluetooth](Bluetooth) (Kindles with Bluetooth: a tap turns it
   on or off, the panel staying open; a hold opens Bluetooth devices), Night mode, Rotate, Restart, Sleep, Home,
   Updates, Settings, Diagnostics (while diagnostic logging is on, Settings →
-  General) and Exit to Kindle (Exit to Nook).
-- **Home:** Manage book (the highlighted book), Continue, Send books, Search,
+  Privacy and diagnostics) and Exit to Kindle (Exit to Kobo, Exit to Nook).
+- **Home:** Manage book (the highlighted book), Continue, Connect (your phone or computer: send books, set up), Search,
   History, View and Sort; **Quick note** while [Memos](Notes) is connected;
   **Music** and **Audiobook** while one plays or is
   paused (they open its player: music and audiobooks are browsed in the
@@ -32,7 +32,7 @@ holding a book at Home or in Downloads opens Manage book.
 
 ### How it opens
 
-On a touch Kindle, **Settings → Interface → Quick panel** starts with **Open
+On a touch Kindle, **Settings → Home and tabs → Quick panel** starts with **Open
 with a tap at the top** and **Open with a swipe down from the top** (both by
 default; in a book too). Untick one to keep only the other: one always stays
 ticked. They're KOReader's "Activate menu", which no longer shows in Settings →
@@ -47,7 +47,7 @@ the edge. While the panel is open the keyboard steps aside.
 
 ### Choosing the tiles
 
-**Settings → Interface → Quick panel** lists the tiles of each group
+**Settings → Home and tabs → Quick panel** lists the tiles of each group
 (**Controls**, **Home**, **This book**): untick one to take it off the panel,
 tick it to put it back, or **Show every tile** to bring them all back.
 **Home**, **Settings** and **Exit to Kindle** are always there. Tiles that
@@ -63,7 +63,7 @@ hidden isn't shown.
 **Rotate** (in Controls) turns the screen a quarter turn. Home and books stay
 turned: going Home from a book read sideways keeps the screen sideways, and
 the next book opens the same way. (That's KOReader's **Keep current rotation
-across views**, ticked by GZreader; untick it in Settings → About → Advanced
+across views**, ticked by GZreader; untick it in Settings → Privacy and diagnostics → Advanced
 → KOReader settings → Screen → Rotation to give Home and each book their own
 rotation again.)
 
@@ -74,6 +74,31 @@ screen too: a note open from the Notes tab, the note editor (what you've
 typed, its tags, space and drawings stay), a quick note's window and a
 journal entry are laid out again for the new shape, and so is the Notes tab
 when you go back to it. The drawing screen keeps the shape it opened with.
+
+On a Kindle with a light sensor (Voyage, Oasis 2 and 3, Paperwhite 5
+Signature, Scribe, Colorsoft), Controls also has **Auto light** (off until
+you turn it on). On, the front light follows the room: dim in the dark,
+brighter in a bright room, changing gently every 15 seconds or so while the
+Kindle is awake, and at once when it wakes. Move the light's slider yourself
+while it's on and it remembers how much brighter or dimmer you like it. A
+light you've turned off stays off.
+
+**Settings → General → Schedules → Brightness** has Auto light too, at the
+top, with its adjustments:
+
+- **Brighter or dimmer**: from −40% to +40% of the light's range, or as the
+  room asks. (The slider sets this as well.)
+- **Never dimmer than** and **Never brighter than**: a level it keeps
+  between, e.g. never brighter than 12 at night in bed.
+- **Follows the room**: slowly (every 30 seconds, small steps), normally
+  (every 15) or quickly (every 5; a little more battery).
+- **Forget my adjustments**: back to as the room asks, the light's whole
+  range and normal speed.
+- **Now**: what the sensor reads (in lux) and the light's level; tap it to
+  read again.
+
+Auto light and the brightness schedule (or Light mode / Dark mode
+brightness) turn each other off: both would set the light.
 
 ## Keyboard (Kindle 2, 3, DX)
 
@@ -162,11 +187,11 @@ notes: [Notes](Notes)):
   quick panel and shows how to open and close it, Settings and the Home
   tiles (on the first book, if it didn't run at Home: This book's tiles). It
   closes the panel when it ends. On the first book, a tip then shows the
-  swipe up for the page browser. Both come again after Settings → About →
+  swipe up for the page browser. Both come again after Settings → General →
   Setup Guide.
 - **Audio:** the Kindle Touch plays audiobooks; the player has buttons for
   chapters, ±30 s, play / pause, sleep timer, volume, the description and
-  close (Settings → General → Audio → Test audiobook playback finds what works on
+  close (Settings → Audio → Test audiobook playback finds what works on
   its firmware). It also reads aloud with the Kindle's voice: in a book,
   swipe down from the top and tap **Listen** in the quick panel (again to
   stop); the first time, a short test finds the Kindle's voice. The
@@ -174,3 +199,13 @@ notes: [Notes](Notes)):
 - Everything is sized for the screen (the Paperwhite's 1072 × 1448 at 300
   dpi): Home's text is the same size as on a Kindle 3. The Kindle's own time zone is used (the time zone setting is for the
   Kindles without one).
+
+## A secret
+
+As on an Android phone, tap GZreader's version in **Settings → About**
+seven times (from the fourth tap it counts down). A game opens: the
+**15 puzzle**. Slide the tiles back into order: tap a tile in the gap's
+row or column (it and any between slide over), or on a Kindle without a
+touch screen use the 5-way (▲ slides the tile below the gap up, and so
+on). Tiles in their right place turn grey. It counts your moves and keeps
+your best; ✕ (or Back) closes it.

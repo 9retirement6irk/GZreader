@@ -50,6 +50,11 @@ local GetText_mt = {
 -- Labels that open KOReader's own menus keep its name.
 local GZ_KEEP = { ["KOReader"] = true, ["KOReader menu"] = true, ["KOReader settings"] = true }
 local gz_branded = {} -- UI strings are a fixed set: brand each one once
+-- GZreader: a device's own words (a Kobo: gzreader_kobo.lua): fn(text) -> text
+function GetText.gzSetRewrite(fn)
+    GetText.gz_rewrite = fn
+    gz_branded = {}
+end
 GetText.wrapUntranslated_nowrap = function(text)
     if type(text) ~= "string" then return text end
     local done = gz_branded[text]
@@ -58,6 +63,7 @@ GetText.wrapUntranslated_nowrap = function(text)
     if not GZ_KEEP[text] and (text:find("KOReader", 1, true) or text:find("ZenOS", 1, true)) then
         done = (text:gsub("KOReader", "GZreader"):gsub("ZenOS", "GZreader"))
     end
+    if GetText.gz_rewrite then done = GetText.gz_rewrite(done) end
     if #text < 400 then gz_branded[text] = done end -- skip long one-off texts
     return done
 end

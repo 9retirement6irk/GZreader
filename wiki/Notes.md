@@ -5,7 +5,7 @@ The Notes tab (it took Favorites' place in the tab bar, V) shows your
 page in the usual layout: see Layouts below). Written against Memos v0.31 (`/api/v1`); newer servers that moved the
 API to `/api` are found too.
 
-- **Favorites** is still in Settings → Interface → Navbar → Tabs, turned
+- **Favorites** is still in Settings → Home and tabs → Tab bar → Tabs, turned
   off; turn it on there (or on the setup guide's Navbar Tabs page, which also
   offers Notes) to have both.
 - **Connect:** the first time, the tab offers *Connect with QR code* (the
@@ -42,7 +42,7 @@ API to `/api` are found too.
   notes in that order (`order_by`), and the Kindle sorts what it keeps the same
   way (notes written here and not sent yet, a sync through a computer).
 - **Layouts** (as in the Memos web app): **L** on the board (Layout on a touch
-  Kindle, Menu → Layout on a Kindle 4, or Settings → Connections → Memos
+  Kindle, Menu → Layout on a Kindle 4, or Settings → Accounts and services → Notes
   (Notes) → Layout) chooses how many notes side by side, and how long each is:
   - **List** (one note under another), **Two side by side** (the default),
     **Three side by side**, or **Auto**: as many side by side as fit the
@@ -86,14 +86,21 @@ API to `/api` are found too.
   **⋮** and **Restore** instead. (The note editor's **⋮** and, for a note
   that's already there, the drawing screen's **⋮** have **Archive note**
   and **Delete note…** too: Archive saves what you changed first; Delete
-  asks, and drops what wasn't saved.) Below it, the text
+  asks, and drops what wasn't saved. The drawing screen also has both in
+  its top bar, beside **⋮**: a note that is only a drawing opens straight on
+  that screen.) Below it, the text
   in the note editor's font (the sticky notes on the
-  Notes tab stay handwritten, in Patrick Hand), checklist items with letter keys
+  Notes tab stay handwritten, in Patrick Hand) and formatted as Memos shows
+  it: bold, italic, struck words, `code` and links (underlined), quotes
+  with a bar at their left, bulleted and numbered lists, rules, and tables
+  with their lines (the head in bold; long cells wrap); checklist items with letter keys
   (press one to tick or untick it; the change goes to Memos), pictures from
   the note shown inline, its tags and place, and its attachments (PDFs and
   other documents open in the reader, pictures in the image viewer; each is
   downloaded once into `cache/gzreader-notes`). **Alt+E** edits, **Alt+P**
-  pins, page keys scroll a long note.
+  pins, page keys scroll a long note. The top of the screen has the
+  note's name, and under it its date, its space and whether it's pinned, as
+  on the touch Kindles (which have buttons there too).
 - **Archive and delete:** a note's **More** (**M** on keyboard Kindles,
   Menu on a Kindle 4) has **Archive** (the note goes into Memos' archive:
   off the board, kept) and **Delete…** (asks first; gone for good, in Memos
@@ -160,12 +167,14 @@ API to `/api` are found too.
     The button in use is black. The bar stays for another button; a tap on
     the text, or typing, puts it away. (It sits above the selection, or
     under it on the first line, where it covers the next line until it goes.)
-  - The row under the title shows the note's **sheets** (its drawings) as
-    small pictures: tap one to draw on it; **✎ Draw** adds the first.
+  - The row under the title shows the note's **sheets** (its drawings) and
+    its photos as small pictures: tap a sheet to draw on it. **✎** in the top
+    bar draws (a new note's first sheet), and the picture beside it adds
+    photos, as on the drawing screen and an opened note.
   - **The top bar is the drawing screen's:** **←** (leave; asks whether to
     save when something changed), the note's name (its first line; under it
     who can see it, its space and its tags), then **✎** (draw: its sheets),
-    **#** (add a tag), **⋮** (**Who can see it**, a tap for the next choice;
+    a picture (**Photos** from Immich, when it's connected), **#** (add a tag), **⋮** (**Who can see it**, a tap for the next choice;
     **Space**; **Draw**; **Close**) and **Done**, which saves. For a moment
     after the drawing screen's **Done**, a tap on this bar is ignored, so a
     second tap on a slow Done doesn't save the note before you meant to.
@@ -181,15 +190,31 @@ API to `/api` are found too.
   (for tags) and the arrow keys **← ↑ ↓ →** (hold ← → for the start or end
   of the line, ↑ ↓ to scroll), on every page of the keyboard. The letters
   page then has a **comma** before the full stop, and a wider space bar.
-- **Editor (keyboard Kindles):** a full page with a toolbar at the bottom: List, Check, Num,
-  Head, *I*, **B**, # Tag and Save. **Menu** jumps to the toolbar from
+- **Editor (keyboard Kindles):** the note formatted, as on the touch
+  Kindles: headings big, bold and italic words shown so, links underlined,
+  list items with their bullets and numbers, checklist items with their
+  boxes, pictures shown, a folded section as one row. You type with the
+  Kindle's keys. A toolbar at the bottom has List, Check, Num, Head, *I*,
+  **B**, # Tag and Save; a tool acts on the line or the word the cursor is
+  on (or what's selected). **Menu** jumps to the toolbar from
   anywhere in the text (on the tool used last) and the cursor stays where it
-  is, so the tool applies there; Menu again (or ▲) goes back to the text. ▼
+  is; Menu again (or ▲) goes back to the text. ▼
   from the last line also reaches the toolbar; ◀ ▶ choose, Press applies. Shortcuts:
   Alt+L list, Alt+C checklist, Alt+N numbered, Alt+H heading, Alt+K italic,
-  Alt+B bold, Alt+G tag, Alt+S save, Alt+V who can see it, Alt+A its space.
+  Alt+B bold, Alt+G tag, Alt+S save, Alt+V who can see it, Alt+A its space,
+  **Alt+X** ticks or unticks the checklist item the cursor is on.
+  **Shift + the 5-way** selects (for bold or italic over several words).
+  **Press** is a new line; on a folded section's row it opens the section
+  (and folds it again).
+  **Alt+M** opens a menu with who can see it, its space, **Archive note**,
+  **Delete note…** and Close. The top of the screen has the note's name, and
+  under it who can see it, its space and its tags.
+  Tables, code and quotes are shown in grey as they're written, and saved
+  exactly as they were.
   Alt + the top row types 1–0 here. New notes are **private** unless you
-  change it. Back asks whether to save.
+  change it. Back saves (Alt+M → Discard changes leaves without saving).
+  (The Kindle 4 and the quick note's window have a box of Markdown
+  instead, with the same toolbar.)
 - **Pictures in a note** show at the size and place they were given in
   Memos' web editor (dragged smaller, or set left, center or right): the
   same share of the page as of Memos' column. One never sized there shows
@@ -221,12 +246,13 @@ API to `/api` are found too.
     web app shows them (a tap opens one full screen); PDFs and other files
     stay as rows.
   - **In the editor**, the note's photos show as small pictures in the row
-    under the title, after Draw; one shown in the text has a thick frame
+    under the title, after its sheets; one shown in the text has a thick frame
     (**+n** beyond three: a list of them all). Tap one for **Put it in the
     text, at the cursor** (or **Take it out of the text**, keeping it
     attached), **Remove it from the note…** (deleted in Memos when you
     save; its picture leaves the text too) and **Show it**.
-  - **+ Photos** (in that row, when Immich is connected): photos from your
+  - **Photos** (the picture in the editor's top bar, beside ✎, when Immich
+    is connected; keyboard Kindles: **+ Photos** in the row): photos from your
     Immich. It opens your albums (**All photos** first); tap an album for a
     grid of its photos, tap the ones you want (each gets a thick frame and
     its number in the order picked; tap again to let one go), turn pages
@@ -241,8 +267,11 @@ API to `/api` are found too.
     grid; the photos you pick are placed **in the middle of the page you
     see**, at most 60 % of it (never enlarged), several fanned out a step
     down and to the right, as the fork's drawing sheet places them. They're
-    part of the drawing, under your ink; **Undo** takes one off. Memos can
-    move or resize them there (on the Kindle they stay where placed).
+    part of the drawing, under your ink; **Undo** takes one off. Placed,
+    they're chosen with the **lasso**: drag inside the frame to move them,
+    a corner to make them bigger or smaller, then tap elsewhere. Later, a
+    lasso loop round a picture's middle chooses it again (Memos can move
+    or resize them too).
   - What's sent is Immich's **preview** of each photo (a JPEG up to 1440
     pixels a side, quick over the Kindle's Wi‑Fi), named like the photo
     (`IMG_1234.jpg`). Immich is reached through your **Memos fork's own
@@ -262,10 +291,9 @@ API to `/api` are found too.
   moment later (Wi‑Fi on Auto turns on for it; on Off it waits), and only the
   note is sent: the board's list isn't fetched while you read, so the Notes
   tab syncs the next time you open it. On a Kindle syncing through a
-  computer it goes with the next sync. Hide the tile in **Settings →
-  Interface → Quick panel**.
+  computer it goes with the next sync. Hide the tile in **Settings → Home and tabs → Quick panel**.
 - **Drawings** (touch Kindles, Memos over Wi‑Fi): tap **Draw** on the Notes
-  tab, or **✎ Draw** in a note's editor, for a page to draw on. A note can
+  tab, or **✎** in a note's editor (its top bar), for a page to draw on. A note can
   be just drawings.
   - **The drawing screen is laid out as the Kindle Scribe's notebook.** The
     page is the whole screen; the bar at the top and the tools at the side
@@ -299,9 +327,15 @@ API to `/api` are found too.
       writing, in five widths of its own.
     - **Shapes:** **Square**, **Circle**, **Triangle**, **Line** and
       **Arrow**. Put the pen down at one corner and lift it at the other;
-      the shape appears when you lift. It's drawn in the pen's thickness
+      the shape's outline follows the pen, and it's put on the page when you lift. It's drawn in the pen's thickness
       and colour, and is undone and rubbed out like a stroke (Memos gets
       it as a stroke along the outline).
+      **Draw and hold:** with any pen, draw a line, circle, oval, triangle
+      or box roughly and keep the pen still for a moment at the end: when
+      you lift, it becomes a clean one in the same place (as on the Apple
+      Newton). Lifted at once, or smaller than a fingertip, it stays as you
+      drew it. The Shapes panel's **Draw and hold: clean shapes** switch
+      turns it off.
     - **Text:** typed text boxes. Tap the page where one goes and type its
       words (**Add**). The box is chosen: a frame with a handle at its
       bottom right corner. **Drag the box** to move it; **drag its corner**
@@ -320,13 +354,20 @@ API to `/api` are found too.
       **Paste** appears there (the copy is kept for other drawings too,
       until the Kindle restarts). A tap outside the frame, or another tool,
       lets go. It chooses anything drawn on the Kindle (strokes and
-      shapes); text boxes are moved with the Text tool, and shapes made in
-      Memos stay where they are.
+      shapes) and pictures (from Immich or Memos: when the loop goes round
+      a picture's middle), which move, resize, copy and delete with the
+      rest; text boxes are moved with the Text tool, and shapes made in
+      Memos stay where they are. The page's paper is never chosen.
     - **Hand:** the pen (or a finger, where fingers draw) takes hold of the
       page and moves it; nothing is drawn. For a page you've zoomed in on.
       **Pen ↔ hand in one tap:** the top bar's hand takes it; that button
       then shows the tool you had, and a tap goes straight back to it. The
       hand in the toolbar, tapped again, does the same.
+    - **Pen / finger** (Kindle Scribe): what draws. Its icon is a pen while
+      the pen draws (fingers don't, and your hand can rest on the screen);
+      tap it and it shows a finger: one finger draws, as on the other
+      Kindles (the pen still draws too, but a resting hand would draw).
+      Tap it again for the pen. Kept for next time.
     - **Undo**, **Redo**, and **⋮**: **Move to right side** (for the other
       hand; kept) and, with a pen, **Stylus shortcut** (what the pen's side
       button does; each tap takes the next tool) and, on the Kindle Scribe,
@@ -424,9 +465,16 @@ API to `/api` are found too.
     black-and-white screen shows it in black.
   - **Pressure and tilt** (a Kindle with a pen): the line is as wide as
     the pen is pressed. Half pressure draws the thickness you chose, a
-    light touch down to 0.4 of it, full pressure up to 1.6 of it; laying the
-    pen over makes it heavier too, as shading with the side of a pencil.
-    Memos gets each point's pressure and draws the stroke by it. The pen's
+    light touch down to 0.4 of it, full pressure up to 1.6 of it.
+    **Tilt** does what it does with the real tool: laid over, the
+    **pencil** draws up to four times as wide and lighter (shading with
+    the side of the lead; press harder for darker), and the **marker** up
+    to twice as wide (the broad side of its tip). The pen, the fountain pen
+    and the highlighter write the same at any angle. A pen held as you
+    write (up to about 40 degrees from upright) counts as upright; the
+    effect grows from there to 60 degrees.
+    Memos gets each point's pressure and draws the stroke by it (tilt is
+    kept for the Kindle; the note's picture shows the shading). The pen's
     choices (tap the pen again) have **Pressure and tilt: on / off** for an
     even line. Pens report different numbers, so the range is learned as
     you draw: the very first strokes can look lighter or heavier than later
@@ -440,7 +488,8 @@ API to `/api` are found too.
     finger has to land within a third of a second of the first (later, it's
     ignored as before); on the Scribe, two fingers zoom when the pen is
     away, and a whole hand, or any touch while the pen is near, doesn't.
-  - **With a pen** (Kindle Scribe): only the pen draws. Fingers on the page
+  - **With a pen** (Kindle Scribe): only the pen draws (unless the toolbar's
+    pen / finger button is on finger). Fingers on the page
     draw nothing, and while the pen is near the screen, and for a moment
     after it leaves, your hand can rest anywhere on it: it's ignored (palm
     rejection), even a whole hand while you write (before 1.32, a hand's
@@ -523,7 +572,7 @@ API to `/api` are found too.
   Kindle (Memos v0.31 can't filter by them).
   **Space…** (when your Memos has spaces): **No space** or one of your
   spaces, with how many notes each has; the board's title says which.
-- **Settings → Connections → Memos (Notes):** the Memos connection (connect again, disconnect);
+- **Settings → Accounts and services → Notes:** the Memos connection (connect again, disconnect);
   **Sync** all notes or only notes with chosen tags (Memos has no notebooks,
   so tags are the way to pick, and Filter → Space… for spaces; the list comes from Memos' tag
   counts, `users/<id>:getStats`, and the filter is `tag in [...]`);
@@ -540,3 +589,18 @@ API to `/api` are found too.
   without Wi‑Fi wait in a queue and are sent the next time the Notes tab can
   reach Memos ("not sent yet" on the note meanwhile). The Notes tab keeps
   Wi‑Fi up while it's open (Wi‑Fi on Auto).
+
+## Saving
+
+- **Saving…** shows in the middle of the screen while a note or a drawing
+  is saved, so the Kindle never looks stuck.
+- **Back saves.** Leaving the note editor (Back, ←) or the drawing screen
+  (←) with changes saves them. To leave without saving: the editor's
+  **⋮ → Discard changes** (Alt+M on a keyboard Kindle), or the drawing
+  screen's **⋮ → Close without saving**. The quick note's window still asks
+  (a tap outside it is often by chance).
+- **Drafts.** While you write, the note is kept on the Kindle every few
+  seconds. If the Kindle restarts, crashes or runs flat before you save,
+  opening that note again (or a new note, for a new one) offers **Put them
+  back**. Drafts never leave the Kindle, and go once the note is saved,
+  when you choose **Start from the saved note**, or after two weeks.

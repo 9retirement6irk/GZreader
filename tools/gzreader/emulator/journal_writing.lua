@@ -94,7 +94,8 @@ add({ fn = function(E)
     for _i, id in ipairs({ "pen", "highlighter", "shape", "text", "eraser", "hand", "undo", "redo", "more", "paper", "pages", "options", "typing", "cancel" }) do
         if not button(id) then all = false end
     end
-    check(all, "…the drawing screen's tools: pen, highlighter, shapes, text, eraser, hand, undo, redo, more; paper, pages, options; Aa; ←")
+    check(all and (button("fingers") ~= nil) == PEN,
+        "…the drawing screen's tools: pen, highlighter, shapes, text, eraser, hand, " .. (PEN and "pen / finger, " or "") .. "undo, redo, more; paper, pages, options; Aa; ←")
     local save
     for _i, b in ipairs(d.buttons) do if b.tool.id == "done" then save = b.tool.label end end
     check(save == "Save", "…its Save saves the entry (" .. tostring(save) .. ")")

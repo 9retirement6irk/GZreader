@@ -2324,18 +2324,14 @@ function NoteView:build()
     self.picks = {}
     add(VerticalSpan:new{ width = S(14) })
     local space = Notes.spaceTitle(self.plugin, m.space)
-    if not Touch.on() then
-        -- (touch: the date and the rest are under the note's name in the top bar)
-        add(iconLine("date", Sticky.when(m.created) .. (space and ("   \u{00B7}   " .. T(_("in %1"), space)) or "")
-            .. (m.pinned and ("   \u{00B7}   " .. _("pinned")) or "")
-            .. (m.pending and ("   \u{00B7}   " .. _("not sent yet")) or ""), Font:getFace("cfont", 15), false, Blitbuffer.COLOR_DARK_GRAY))
-        add(VerticalSpan:new{ width = S(10) })
-    end
+    -- (the date and the rest are under the note's name in the top bar, on every Kindle)
     local para = {}
+    -- (the lines gathered, as Memos shows them: bold, italic, struck, code and links drawn so, quotes,
+    -- list items, rules and tables; gzreader_inline.lua)
+    local Inline = require("gzreader_inline")
     local function flush()
-        local t = table.concat(para, "\n"):gsub("^%s+", ""):gsub("%s+$", "")
+        for _i, w in ipairs(Inline.widgets(para, inner, Notes.PAGE_TEXT)) do add(w) end
         para = {}
-        if t ~= "" then add(TextBoxWidget:new{ text = t, face = Notes.pageFace(Notes.PAGE_TEXT), width = inner }) end
     end
     -- a journal entry's mood: its face (as the web shows it by the note's time) and the step's name
     local mood = Notes.moodOf(m)
@@ -2383,13 +2379,13 @@ function NoteView:build()
                     HorizontalGroup:new{ align = "center", sc or HorizontalSpan:new{ width = Touch.keys() and S(26) or 0 }, HorizontalSpan:new{ width = Touch.keys() and S(10) or 0 },
                         TextWidget:new{ text = l.done and "\u{2611}" or "\u{2610}", face = Font:getFace("cfont", 26) },
                         HorizontalSpan:new{ width = S(8) },
-                        TextWidget:new{ text = Sticky.plain(l.text), face = Notes.pageFace(Notes.PAGE_TEXT), max_width = width - S(90),
-                            fgcolor = l.done and Blitbuffer.COLOR_DARK_GRAY or Blitbuffer.COLOR_BLACK } } }))
+                        -- (its words formatted, and wrapped when they're long)
+                        Inline.text{ text = l.text, width = width - S(90), size = Notes.PAGE_TEXT,
+                            color = l.done and Blitbuffer.COLOR_DARK_GRAY or Blitbuffer.COLOR_BLACK } } }))
             elseif l.kind == "heading" then
                 done()
                 put(VerticalSpan:new{ width = S(6) })
-                put(TextBoxWidget:new{ text = Sticky.plain(l.text), face = Notes.pageFace(Notes.PAGE_HEADING[l.level] or Notes.PAGE_TEXT, true),
-                    width = width })
+                put(Inline.text{ text = l.text, width = width, size = Notes.PAGE_HEADING[l.level] or Notes.PAGE_TEXT, bold = true })
             elseif l.kind == "image" then
                 done()
                 local pic = Notes.pictureFor(self.plugin, m, l.src, width, math.floor(sh * 0.45), function()
@@ -2441,9 +2437,8 @@ function NoteView:build()
                     local sub = VerticalGroup:new{ align = "left" }
                     local sub_words = {}
                     local function sub_done()
-                        local t = table.concat(sub_words, "\n"):gsub("^%s+", ""):gsub("%s+$", "")
+                        for _i, w in ipairs(Inline.widgets(sub_words, width - S(28), Notes.PAGE_TEXT)) do sub[#sub + 1] = w end
                         sub_words = {}
-                        if t ~= "" then sub[#sub + 1] = TextBoxWidget:new{ text = t, face = Notes.pageFace(Notes.PAGE_TEXT), width = width - S(28) } end
                     end
                     lay(l.items, width - S(28), where, function(w) sub[#sub + 1] = w end,
                         function(t) sub_words[#sub_words + 1] = t end, sub_done)
@@ -2453,7 +2448,7 @@ function NoteView:build()
                     n_check = n_check + Sticky.pageChecks(l.items) -- (Sticky.toggle counts them)
                 end
             else
-                say(Sticky.plain(l.text))
+                say(l.text)
             end
         end
         done()
@@ -2553,7 +2548,7 @@ function NoteView:build()
     local hint = (#self.picks > 0 and (KEYS[1] .. (#self.picks > 1 and ("\u{2013}" .. KEYS[math.min(#self.picks, #KEYS)]) or "") .. "  "
         .. (n_check > 0 and _("tick / open") or _("open")) .. "     ") or "")
         .. _("Alt+E edit     Alt+P pin     M more     Back board")
-    local title_h, footer_h = S(46), S(34)
+    local title_h, footer_h = require("gzreader_notebar").height(), S(34)
     local footer
     if not Touch.on() then
         if not Touch.keys() then -- (Kindle 4: the 5-way and Menu)
@@ -2584,15 +2579,15 @@ function NoteView:build()
     self[1] = FrameContainer:new{
         width = sw, height = sh, padding = 0, bordersize = 0, background = Blitbuffer.COLOR_WHITE,
         VerticalGroup:new{
-            Touch.on() and self:topBar(sw, title_h, space) or CenterContainer:new{ dimen = Geom:new{ w = sw, h = title_h },
-                TextWidget:new{ text = _("Note"), face = Font:getFace("smalltfont", 22), bold = true } },
+            self:topBar(sw, title_h, space),
             self.scroller,
             footer,
         },
     }
 end
 
---- Touch: the drawing screen's top bar (gzreader_notebar.lua), as the editor has:
+--- The drawing screen's top bar (gzreader_notebar.lua), as the editor has (without a
+--- touch screen: the name and the line under it, "M more" at the right; keys do the rest):
 ---   ←  The note's name                     📌  🗃  🗑  ⋮  [Edit]
 ---      when · its space · pinned · not sent yet
 --- ← back to the board, the pin pins or unpins, 🗃 archives, 🗑 deletes (asks
@@ -2608,6 +2603,13 @@ function NoteView:topBar(sw, h, space)
     self.bar_title = heading and NoteBar.nameOf(heading) or NoteBar.nameOf(m.content) or _("Note")
     if m.archived then hint[#hint + 1] = _("archived") end
     self.bar_hint = table.concat(hint, " \u{00B7} ")
+    if not Touch.on() then
+        -- (no touch screen: the note's name and that line, as on the others; the keys are at the foot)
+        local bar = NoteBar.build{ width = sw, height = h, title = self.bar_title, hint = self.bar_hint,
+            note = Touch.keys() and _("M more") or _("Menu: more") }
+        self.bar_buttons = {}
+        return bar
+    end
     -- (an archived note: Delete, More, and Restore where Edit is)
     local icons, action = {}, { "edit", _("Edit"), function() self:onEdit() end }
     if m.archived then

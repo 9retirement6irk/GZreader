@@ -3,7 +3,7 @@ Remote debugging: GZreader reports to the developer's feed (Tianji
 /open/feed/<id>/send and /state/upsert) so problems are visible even when
 the Kindle can't be reached afterwards.
 
-On with "Send debug reports automatically" (Settings → About, or the
+On with "Send debug reports automatically" (Settings → Privacy and diagnostics, or the
 setup guide's Debug Reports page; off unless chosen), on Kindles with
 Wi-Fi. (Until 1.28.1 it came with Full usage statistics; GZreader sends no
 usage statistics since: R.setting carries a Full choice over.) Releases report to one feed,
@@ -128,8 +128,8 @@ end
 --- What it sends (the Settings item's help, the setup guide's page).
 R.WHAT_IS_SENT = require("gettext")("When GZreader starts, how the previous run ended; warnings and errors from its log; freezes and crashes. Sent to the developer only while Wi-Fi is on. Log lines can name the book or file GZreader was working on; never passwords, tokens or your Wi-Fi network's name.")
 
---- Settings → About: "Send debug reports automatically" (nil on a Kindle
---- without Wi-Fi: Send diagnostic log to the developer still works there,
+--- Settings → Privacy and diagnostics: "Send debug reports automatically" (nil on a Kindle
+--- without Wi-Fi: Report a problem still works there,
 --- at the next sync).
 function R.menuItem()
     if not R.possible() then return nil end
@@ -199,6 +199,10 @@ function R.queue(kind, msg)
     msg.tags = msg.tags or {}
     table.insert(msg.tags, 1, "gzreader")
     table.insert(msg.tags, 2, R.device)
+    -- (valid UTF-8 without NUL bytes: the feed refused a report with them, HTTP 500, every time)
+    local clean = require("gzreader_textclean")
+    for k, v in pairs(msg) do if type(v) == "string" then msg[k] = clean(v) end end
+    for i, v in ipairs(msg.tags) do msg.tags[i] = clean(v) end
     local ok, body = pcall(JSON.encode, msg)
     if not ok then return end
     writeFile(string.format("%s/spool/%d%04d-m-%s.json", R.dir(), os.time(), R.seq % 10000, kind), body)
@@ -504,7 +508,7 @@ function R.sendLogs(path, note, post)
             return select(2, http.request{
                 url = u, method = "POST",
                 headers = { ["Content-Type"] = "application/json", ["Content-Length"] = tostring(#body),
-                    ["User-Agent"] = "GZreader/" .. version },
+                    ["User-Agent"] = socketutil.USER_AGENT },
                 source = ltn12.source.string(body), sink = ltn12.sink.null(),
             })
         end)
@@ -518,11 +522,12 @@ function R.sendLogs(path, note, post)
         note ~= "" and note or "(nothing typed)")
     local summary = note:gsub("%s+", " ")
     if #summary > 80 then summary = (summary:sub(1, 79):match("^(.*) ") or summary:sub(1, 79)) .. "…" end
+    local clean = require("gzreader_textclean") -- (valid UTF-8, no NUL bytes: else the feed answers 500)
     for k, part in ipairs(parts) do
         local body = JSON.encode({
-            eventName = string.format("Debug report from %s (%d/%d)%s", device, k, #parts,
-                (k == 1 and summary ~= "") and (": " .. summary) or ""),
-            eventContent = (k == 1 and (head .. "\n\n") or "") .. part,
+            eventName = clean(string.format("Debug report from %s (%d/%d)%s", device, k, #parts,
+                (k == 1 and summary ~= "") and (": " .. summary) or "")),
+            eventContent = clean((k == 1 and (head .. "\n\n") or "") .. part),
             tags = { "gzreader", device, "debug-log", R.testBuild(version) and "test-build" or "release",
                 note ~= "" and "with-comment" or nil },
             source = "gzreader",

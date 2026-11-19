@@ -1,6 +1,6 @@
 -- Wi-Fi: On, Off, Auto (gzreader_net.lua). Home's status bar on Auto (the
 -- "A" after the Wi-Fi icon), the quick panel's Wi-Fi tile in each mode, and
--- Settings → General → Wi-Fi (On, Off, Auto, Networks). The emulator has no
+-- Settings → Wi-Fi (On, Off, Auto, Networks). The emulator has no
 -- Wi-Fi to switch: the mode is set as Net.setMode saves it, and Net._switch
 -- does nothing. Shots: home-auto, panel-auto, panel-on, panel-off,
 -- general, general-wifi. Prints "[emu] wifi: …".
@@ -79,8 +79,8 @@ return {
     { shot = "panel-off" },
     { fn = closePanel(), after = 3 },
     { fn = mode("auto"), after = 2 },
-    { fn = settings({ "General" }), after = 6 },
-    { shot = "general" },
-    { fn = settings({ "General", "Wi-Fi" }), after = 6 },
-    { shot = "general-wifi" },
+    { fn = settings({}), after = 6 },
+    { shot = "settings" },
+    { fn = settings({ "Wi-Fi" }), after = 6 },
+    { shot = "settings-wifi" },
 }

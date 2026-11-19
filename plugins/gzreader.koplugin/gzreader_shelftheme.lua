@@ -674,7 +674,7 @@ end
 
 ---------------------------------------------------------------- Settings
 
---- Settings → Home → Appearance → Bookshelf theme.
+--- Settings → Home and tabs → Downloads tab → Appearance → Bookshelf theme.
 function Theme.settingsItem()
     -- (the theme screen, gzreader_shelfpreview.lua: each choice a tile with a
     -- picture of it, a preview of the shelf at the top)

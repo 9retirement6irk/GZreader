@@ -68,7 +68,7 @@ function PairPage.pin(st)
             .. (st.wrong and ('<p class="err">That isn\'t the PIN. ' .. (st.tries_left == 1 and "1 try left." or (esc(st.tries_left) .. " tries left.")) .. "</p>") or "")
             .. '<button type="submit">Continue</button></form>'
             .. (st.log and '<p class="note">The PIN is under the QR code on the Kindle\'s screen, while it\'s sending the log.</p>'
-                or '<p class="note">The PIN is under the QR code on the Kindle\'s screen, while setup is open there (Send books in its quick panel).</p>')
+                or '<p class="note">The PIN is under the QR code on the Kindle\'s screen, while setup is open there (Connect in its quick panel).</p>')
     end
     -- (st.log: the diagnostic log's page, GZreader → Send the diagnostic log)
     return shell(st.log and "Diagnostic log" or "Kindle setup", (st.log and "<h1>Get the diagnostic log</h1>" or "<h1>Set up your Kindle</h1>")
@@ -225,7 +225,7 @@ local function houseSection(st, base)
     local h = st.house
     if not h then return "" end
     local parts = { '<section id="house" class="tab"><h2>House (Home Assistant)</h2>',
-        '<p class="what">The House tab shows your <a href="https://www.home-assistant.io">Home Assistant</a> rooms with their lights, switches, thermostats, locks and scenes, to switch from the Kindle. Turn the tab on in Settings → Connections → Home Assistant.</p>' }
+        '<p class="what">The House tab shows your <a href="https://www.home-assistant.io">Home Assistant</a> rooms with their lights, switches, thermostats, locks and scenes, to switch from the Kindle. Turn the tab on in Settings → Accounts and services → House.</p>' }
     if h.connected then
         parts[#parts + 1] = status(true, "Connected to <b>" .. esc(h.name or "Home Assistant") .. "</b> · " .. esc(h.host))
         parts[#parts + 1] = form(base .. "/house/disconnect",
@@ -260,7 +260,8 @@ local function paperSection(st, base)
     parts[#parts + 1] = status(p.enabled, p.enabled and (p.stories and ("On · the last paper has " .. esc(p.stories) .. " stories") or "On · no paper fetched yet") or "Off")
     if p.error then parts[#parts + 1] = '<p class="err">' .. esc(p.error) .. "</p>" end
     local rows = { tick("enabled", p.enabled, "<b>Daily paper</b>"), tick("shelf", p.shelf, "Show it on Home's bookshelf"),
-        tick("pictures", p.pictures, "With pictures (the lead story's and a few more)"),
+        tick("full", p.full, "Whole stories (each short story's own page is fetched too)"),
+        tick("pictures", p.pictures, "With pictures (in opened stories, and a few on the pages)"),
         tick("calendar", p.calendar, "Today's calendar events on the front page") }
     local wx = p.weather or {}
     rows[#rows + 1] = tick("weather", wx.on, "Weather on the front page")
@@ -411,7 +412,7 @@ local function musicSection(st, base)
     local m = st.plex
     if not m then return "" end
     local parts = { '<section id="music" class="tab"><h2>Music (Plex)</h2>',
-        '<p class="what">Albums and playlists from your Plex Media Server, to play while you read (the Music tab; turn it on in Settings → Connections → Plex (Music) → Music tab).</p>' }
+        '<p class="what">Albums and playlists from your Plex Media Server, to play while you read (the Music tab; turn it on in Settings → Accounts and services → Music → Music tab).</p>' }
     if m.error then parts[#parts + 1] = '<p class="err">' .. esc(m.error) .. "</p>" end
     if m.connected then
         parts[#parts + 1] = status(true, "Signed in as <b>" .. esc(m.username) .. "</b> · " .. esc(m.server))
@@ -514,7 +515,7 @@ local function sleepSection(st, base)
         radios[#radios + 1] = radio("mode", "immich", SLEEP_LABELS.immich, mode == "immich")
     end
     if not SLEEP_LABELS[mode or ""] then
-        radios[#radios + 1] = '<p class="note" style="margin:0 0 12px">Now: another sleep screen, chosen on the Kindle (Settings → General → Sleep → Wallpaper).</p>'
+        radios[#radios + 1] = '<p class="note" style="margin:0 0 12px">Now: another sleep screen, chosen on the Kindle (Settings → Sleep and wallpaper → Sleep → Wallpaper).</p>'
     end
     parts[#parts + 1] = form(base .. "/sleep/mode", table.concat(radios) .. '<button class="alt small" type="submit">Use this sleep screen</button>', "Saving…")
     -- adding pictures (made here: the Kindle's size, grey, PNG)

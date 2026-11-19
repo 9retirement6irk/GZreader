@@ -12,12 +12,17 @@ touch lands on the frame (`hit`), moving and scaling, the clipboard (kept
 for the session, in the drawing's own units: pasted into another page or
 drawing, or at another zoom, it's the same size on the page).
 
+Pictures put on the page (from Immich, or in Memos) are chosen too, when
+the loop goes round their middle, and move, resize, copy and go with the
+strokes (gzreader_sketch.lua keeps them: they're scene elements).
+
 gzreader_sketch.lua calls these from its contacts (`tool == "lasso"`);
 gzreader_drawscreen.lua draws the loop, the frame and the buttons.
 ]]
 
 local Lasso = {
-    --- What's copied: { strokes = { { points (scene units, from the frame's corner), width, color, kind } }, w, h }.
+    --- What's copied: { strokes = { { points (scene units, from the frame's corner), width, color, kind } },
+--- pictures = { { x, y, w, h, mime, data } }, w, h }.
     clipboard = nil,
     --- A stroke is chosen when more than this share of its points are inside the loop.
     SHARE = 0.5,
@@ -78,7 +83,7 @@ function Lasso.snapshot(strokes)
     local snap = {}
     for _i, st in ipairs(strokes) do
         local pts = {}
-        for j, p in ipairs(st.points) do pts[j] = { p[1], p[2], p[3] } end
+        for j, p in ipairs(st.points) do pts[j] = { p[1], p[2], p[3], p[4] } end
         snap[st] = pts
     end
     return snap
@@ -90,7 +95,7 @@ function Lasso.restore(strokes, snap)
         local pts = snap[st]
         if pts then
             local own = {}
-            for j, p in ipairs(pts) do own[j] = { p[1], p[2], p[3] } end
+            for j, p in ipairs(pts) do own[j] = { p[1], p[2], p[3], p[4] } end
             st.points = own
         end
     end
@@ -124,7 +129,7 @@ end
 function Lasso.move(strokes, snap, dx, dy)
     for _i, st in ipairs(strokes) do
         local pts = {}
-        for j, p in ipairs(snap[st] or st.points) do pts[j] = { p[1] + dx, p[2] + dy, p[3] } end
+        for j, p in ipairs(snap[st] or st.points) do pts[j] = { p[1] + dx, p[2] + dy, p[3], p[4] } end
         st.points = pts
     end
 end
@@ -133,31 +138,37 @@ end
 function Lasso.scale(strokes, snap, f, ax, ay)
     for _i, st in ipairs(strokes) do
         local pts = {}
-        for j, p in ipairs(snap[st] or st.points) do pts[j] = { ax + (p[1] - ax) * f, ay + (p[2] - ay) * f, p[3] } end
+        for j, p in ipairs(snap[st] or st.points) do pts[j] = { ax + (p[1] - ax) * f, ay + (p[2] - ay) * f, p[3], p[4] } end
         st.points = pts
     end
 end
 
---- `strokes` copied (kept in `Lasso.clipboard`): their points in scene
---- units from the corner of the rectangle around them. `to_scene(x, y)`:
---- the sketch's, from canvas pixels.
-function Lasso.copy(strokes, to_scene)
-    local list = {}
+--- `strokes` (and `pictures`: { { x, y, w, h, mime, data } } in scene
+--- units) copied (kept in `Lasso.clipboard`): in scene units from the
+--- corner of the rectangle around them. `to_scene(x, y)`: the sketch's,
+--- from canvas pixels.
+function Lasso.copy(strokes, to_scene, pictures)
+    local list, pics = {}, {}
     local x0, y0, x1, y1 = math.huge, math.huge, -math.huge, -math.huge
+    for _i, p in ipairs(pictures or {}) do
+        pics[#pics + 1] = { x = p.x, y = p.y, w = p.w, h = p.h, mime = p.mime, data = p.data }
+        x0, y0, x1, y1 = math.min(x0, p.x), math.min(y0, p.y), math.max(x1, p.x + p.w), math.max(y1, p.y + p.h)
+    end
     for _i, st in ipairs(strokes) do
         local pts = {}
         for j, p in ipairs(st.points) do
             local sx, sy = to_scene(p[1], p[2])
-            pts[j] = { sx, sy, p[3] }
+            pts[j] = { sx, sy, p[3], p[4] }
             x0, y0, x1, y1 = math.min(x0, sx), math.min(y0, sy), math.max(x1, sx), math.max(y1, sy)
         end
         list[#list + 1] = { points = pts, width = st.width, color = st.color, kind = st.kind }
     end
-    if #list == 0 then return nil end
+    if #list == 0 and #pics == 0 then return nil end
     for _i, st in ipairs(list) do
         for _j, p in ipairs(st.points) do p[1], p[2] = p[1] - x0, p[2] - y0 end
     end
-    Lasso.clipboard = { strokes = list, w = x1 - x0, h = y1 - y0 }
+    for _i, p in ipairs(pics) do p.x, p.y = p.x - x0, p.y - y0 end
+    Lasso.clipboard = { strokes = list, pictures = pics, w = x1 - x0, h = y1 - y0 }
     return Lasso.clipboard
 end
 
@@ -169,9 +180,19 @@ function Lasso.fromClip(clip, sx, sy, to_canvas)
         local pts = {}
         for j, p in ipairs(st.points) do
             local cx, cy = to_canvas(ox + p[1], oy + p[2])
-            pts[j] = { cx, cy, p[3] }
+            pts[j] = { cx, cy, p[3], p[4] }
         end
         out[#out + 1] = { points = pts, width = st.width, color = st.color, kind = st.kind }
+    end
+    return out
+end
+
+--- The pictures of `clip`, its middle at scene point (sx, sy): { { x, y, w, h, mime, data } } in scene units.
+function Lasso.clipPictures(clip, sx, sy)
+    local out = {}
+    local ox, oy = sx - clip.w / 2, sy - clip.h / 2
+    for _i, p in ipairs(clip.pictures or {}) do
+        out[#out + 1] = { x = ox + p.x, y = oy + p.y, w = p.w, h = p.h, mime = p.mime, data = p.data }
     end
     return out
 end

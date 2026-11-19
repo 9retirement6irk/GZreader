@@ -45,6 +45,7 @@ check(run(".github/workflows/gzreader-beta-combine.yml", "tools/gzreader/beta-co
 check(run(".github/workflows/gzreader-wiki.yml", "wiki/Home.md", "wiki/_Sidebar.md", "GZREADER.md", "README.md") == "skip",
       "the wiki and its workflow, the guide: no emulator runs")
 check(run(*ci, "tools/gzreader/package-kindle.sh") == "needed" and run("tools/gzreader/package-nook.sh") == "needed"
+      and run("tools/gzreader/package-kobo.sh") == "needed" and run("tools/gzreader/package-common.sh") == "needed"
       and run("tools/gzreader/nook-runtime.sh") == "needed" and run("tools/gzreader/nook-softfloat/build-koreader.sh") == "needed",
       "…but what a device installs (the packaging scripts, the Nook's build): it runs")
 check(run(*ci, ".github/workflows/gzreader-tests.yml") == "needed" and run(".github/workflows/build.yml") == "needed",

@@ -1,6 +1,6 @@
 -- The daily paper (gzreader_daily.lua): turned on, an edition made from two
 -- feeds given here (no network), the newspaper on Home's bookshelf (empty,
--- then beside books: GZ_EMU_BOOK = an EPUB; with pictures: GZ_EMU_PICTURE), the optional headlines row, the paper's front page and second page, a story, and Settings → Home → Daily paper → Feeds. Any model.
+-- then beside books: GZ_EMU_BOOK = an EPUB; with pictures: GZ_EMU_PICTURE), the optional headlines row, the paper's front page and second page, a story (it scrolls; the quick panel from the top), and Settings → Accounts and services → Daily paper → Feeds. Any model.
 --   GZ_EMU_TREE=<tree>/koreader ./run.sh daily_paper.lua <out>
 -- Checks in <out>/daily-checks.txt.
 local s = { start = 14 }
@@ -24,8 +24,8 @@ local function item(title, text, hours)
         .. '<enclosure url="https://img.example.com/' .. title:gsub("%W", "-") .. '.png" type="image/png"/>' .. "<description><![CDATA["
         .. text .. "]]></description><pubDate>" .. os.date("!%a, %d %b %Y %H:%M:%S GMT", os.time() - hours * 3600) .. "</pubDate></item>"
 end
-local long = "<p>" .. string.rep("The lighthouse keeper counted the ships again, and again there were seven. ", 12) .. "</p><p>"
-    .. string.rep("Nobody on the island could say where the seventh had come from. ", 10) .. "</p>"
+local long = string.rep("<p>" .. string.rep("The lighthouse keeper counted the ships again, and again there were seven. ", 12) .. "</p><p>"
+    .. string.rep("Nobody on the island could say where the seventh had come from. ", 10) .. "</p>", 5) -- (longer than a screen: it scrolls)
 local BODIES = {
     world = "<rss><channel><title>Example World</title>"
         .. item("Seven ships seen off the northern lighthouse, where six were expected by everyone", long, 2)
@@ -158,6 +158,42 @@ add({ fn = function(E)
     check(E, inside, "every story is inside the page, above the foot")
     page:turn(1)
 end, after = 8 })
+-- the pages' type: Aa at the foot; Large + Sans, laid out again
+add({ fn = function(E)
+    local Paper = require("gzreader_dailyscreen")
+    local page = Paper.instance
+    page.page, page.starts = 1, { 1 }
+    page:build()
+    E.front_blocks = #page.blocks
+    E.front_h = page.blocks[2] and page.blocks[2].h or 0
+    check(E, page:at(page.foot.type.x + 4, page.foot.y + 6) == "type", "Aa at the foot of the paper")
+    page:onGzTap(nil, { pos = { x = page.foot.type.x + 4, y = page.foot.y + 6 } })
+    check(E, Paper.front_dialog ~= nil, "…opens the pages' type box")
+    Paper.frontRows(plugin())[1][3].run()
+    Paper.frontRows(plugin())[2][2].run()
+    Paper.frontDialog(plugin())
+end, after = 6 })
+add({ shot = "daily-3b-front-type" })
+add({ fn = function(E)
+    local Paper = require("gzreader_dailyscreen")
+    local UIManager = require("ui/uimanager")
+    if Paper.front_dialog then UIManager:close(Paper.front_dialog); Paper.front_dialog = nil end
+    local page = Paper.instance
+    check(E, page.page == 1 and page.blocks[2] and page.blocks[2].h > E.front_h, "Large, Sans: the page is laid out again with bigger type (a story's block " .. tostring(page.blocks[2] and page.blocks[2].h) .. " > " .. tostring(E.front_h) .. " px)")
+    local inside = true
+    for _i, b in ipairs(page.blocks) do
+        if b.x < 0 or b.x + b.w > page.dimen.w or b.y + math.min(b.h, b.clip or b.h) > page.foot.y then inside = false end
+    end
+    check(E, inside and #page.blocks <= E.front_blocks, "…everything still inside the page, fewer or as many stories on it (" .. #page.blocks .. " ≤ " .. E.front_blocks .. ")")
+    page:turn(1)
+end, after = 6 })
+add({ shot = "daily-3c-front-large" })
+add({ fn = function()
+    local Paper = require("gzreader_dailyscreen")
+    Paper.setFrontFont(plugin(), "size", "normal")
+    Paper.setFrontFont(plugin(), "face", "serif")
+    Paper.instance:turn(1)
+end, after = 4 })
 add({ shot = "daily-3-page2" })
 add({ fn = function(E)
     local page = require("gzreader_dailyscreen").instance
@@ -176,8 +212,73 @@ add({ shot = "daily-4-story" })
 add({ fn = function(E)
     local UIManager = require("ui/uimanager")
     local top = UIManager:getTopmostVisibleWidget()
-    check(E, top and top.title and top.title:find("Seven ships", 1, true) ~= nil, "a story opened as text")
-    if top then UIManager:close(top) end
+    check(E, top and top.name == "gz_daily_article" and top.item.title:find("Seven ships", 1, true) ~= nil, "a story opened as text")
+    if os.getenv("GZ_EMU_PICTURE") then check(E, top and top.picture ~= nil and top.picture:getSize().w > 100, "…with its picture under the headline") end
+    E.story = top
+    -- it scrolls freely: a long story is taller than the screen, and the page key moves it part of a screen
+    local sc = top and top.scroller
+    if sc then sc:initState() end
+    E.y0 = sc and sc._scroll_offset_y or 0
+    if top then top:onPageDown() end
+end, after = 3 })
+add({ fn = function(E)
+    local sc = E.story and E.story.scroller
+    local moved = sc and (sc._scroll_offset_y or 0) - E.y0 or 0
+    check(E, sc ~= nil and sc._scrollBy ~= nil, "…in a scrolling view (a ScrollableContainer, not pages)")
+    check(E, moved > 0 or (sc and (sc._max_scroll_offset_y or 0) == 0), "…the page key moves it on (" .. tostring(moved) .. " px)")
+    -- a swipe down from the top of a story: the quick panel
+    local opened = E.story:onPullPanel(nil, { direction = "south", pos = { x = 100, y = 10 } })
+    local Panel = require("gzreader_panel")
+    check(E, opened and Panel.open ~= nil, "a swipe down from the top of a story: the quick panel")
+    if Panel.open then require("ui/uimanager"):close(Panel.open) end
+end, after = 4 })
+-- the story's type: Aa, bigger, another typeface, wider lines; the story is set again at the same place
+add({ fn = function(E)
+    local Paper = require("gzreader_dailyscreen")
+    local sc = E.story.scroller
+    E.at0 = (sc._max_scroll_offset_y or 0) > 0 and sc._scroll_offset_y / sc._max_scroll_offset_y or 0
+    E.max0 = sc._max_scroll_offset_y or 0
+    E.story:onShowType()
+    check(E, Paper.type_dialog ~= nil, "Aa opens the story's type box")
+    local rows = Paper.typeRows(plugin())
+    rows[1][3].run(); Paper.typeRows(plugin())[1][3].run(); Paper.typeRows(plugin())[1][3].run()
+    Paper.typeRows(plugin())[2][2].run()
+    Paper.typeRows(plugin())[3][3].run()
+    Paper.typeDialog(plugin())
+end, after = 5 })
+add({ shot = "daily-4b-story-type" })
+add({ fn = function(E)
+    local Paper = require("gzreader_dailyscreen")
+    local UIManager = require("ui/uimanager")
+    local font = Paper.storyFont(plugin())
+    check(E, font.size == 15 and font.face.id == "sans" and font.spacing.id == "wide", "three taps on A+, Sans, Wide: kept")
+    if Paper.type_dialog then UIManager:close(Paper.type_dialog); Paper.type_dialog = nil end
+    local sc = E.story.scroller
+    check(E, sc ~= nil and (sc._max_scroll_offset_y or 0) > E.max0, "the story is set again, bigger (it's longer now: " .. tostring(sc and sc._max_scroll_offset_y) .. " > " .. tostring(E.max0) .. ")")
+    local at = (sc._max_scroll_offset_y or 0) > 0 and sc._scroll_offset_y / sc._max_scroll_offset_y or 0
+    check(E, math.abs(at - E.at0) < 0.05, "…at the same place in the story (" .. string.format("%.2f", at) .. " ~ " .. string.format("%.2f", E.at0) .. ")")
+    -- a drag that ends with the finger still moving rests where the finger was
+    local y0 = sc._scroll_offset_y
+    local pos = require("ui/geometry"):new{ x = 200, y = 400, w = 0, h = 0 }
+    sc:onScrollableTouch(nil, { pos = pos })
+    sc:onScrollablePan(nil, { pos = pos, relative = { x = 0, y = 150 }, direction = "south" })
+    sc:onScrollableSwipe(nil, { pos = pos, direction = "south", distance = 170 })
+    check(E, y0 - sc._scroll_offset_y == math.min(150, y0), "a flick down 150 px moves the story 150 px, not a screenful (" .. tostring(y0 - sc._scroll_offset_y) .. ")")
+end, after = 4 })
+add({ shot = "daily-4c-story-big" })
+add({ fn = function(E)
+    local UIManager = require("ui/uimanager")
+    if E.story then UIManager:close(E.story) end
+    local Paper = require("gzreader_dailyscreen")
+    -- …and from the top of the paper itself
+    local page = Paper.instance
+    local opened = page and page:onGzSwipe(nil, { direction = "south", pos = { x = 100, y = 10 } })
+    local Panel = require("gzreader_panel")
+    check(E, opened and Panel.open ~= nil, "a swipe down from the top of the paper: the quick panel")
+    if Panel.open then UIManager:close(Panel.open) end
+end, after = 4 })
+add({ fn = function(E)
+    local UIManager = require("ui/uimanager")
     local Paper = require("gzreader_dailyscreen")
     if Paper.instance then UIManager:close(Paper.instance) end
 end, after = 6 })
@@ -186,7 +287,7 @@ add({ fn = function(E)
     check(E, Paper.instance == nil, "the paper closed")
     pcall(function() require("modules/settings/zen_settings_page").closeActive() end)
     require("modules/settings/zen_settings_page").show(require("apps/filemanager/filemanager").instance.zenos,
-        { path = { { key = "text", value = "Home" }, { key = "text", value = "Daily paper" } } })
+        { path = { { key = "text", value = "Accounts and services" }, { key = "text", value = "Daily paper" } } })
 end, after = 10 })
 add({ shot = "daily-5-settings" })
 add({ fn = function(E)

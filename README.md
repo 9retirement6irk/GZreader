@@ -5,9 +5,9 @@
 <h1 align="center">GZreader</h1>
 
 <p align="center">
-  <b>Grimmory + ZenOS + KOReader for Kindles</b><br>
+  <b>Grimmory + ZenOS + KOReader for Kindles, Kobos and Nooks</b><br>
   Your <a href="https://grimmory.org">Grimmory</a> (formerly BookLore) library on an e-reader,
-  from the Kindle 2 and Nook 1 to the Scribe: read, and keep your place, bookmarks,
+  from the Kindle 2 and Nook 1 to the Scribe, and on Kobos: read, and keep your place, bookmarks,
   highlights and notes in sync with Grimmory; send books from your browser; listen to
   audiobooks and Plex music; write and draw Memos notes; see your calendars.
 </p>
@@ -26,8 +26,8 @@ reading, with the [ZenOS](https://github.com/xZenLabs/zen-os) interface and a
 built-in connection to your self-hosted **Grimmory** book server.
 
 It runs on Kindles with a keyboard, a 5-way, a touchscreen or a pen, from the
-Kindle 2 to the Kindle Scribe, and as test builds on the Nook 1st Edition and
-Nook Simple Touch: which ones have been tried is in
+Kindle 2 to the Kindle Scribe, and as test builds on Kobos, the Nook 1st Edition
+and the Nook Simple Touch: which ones have been tried is in
 [device compatibility](https://github.com/9retirement6irk/GZreader/wiki/Device-Compatibility).
 
 <table>
@@ -93,8 +93,7 @@ Nook Simple Touch: which ones have been tried is in
   agenda, day, week, month.
 - 🎵 **Music** *(Kindles with audio or Bluetooth)*: albums and playlists from **Plex**, played
   while you read, in a portable CD player with its queue on the back of the case. The
-  quick panel gets a Music tile while it plays. A Music tab of its own is in Settings →
-  Interface → Navbar → Tabs.
+  quick panel gets a Music tile while it plays. A Music tab of its own is in Settings → Home and tabs → Tab bar → Tabs.
 - 🏠 **House:** your [Home Assistant](https://www.home-assistant.io) rooms on a
   tab: switch lights (and dim them), switches, thermostats, locks, garage doors and
   scenes, straight over your Wi‑Fi.
@@ -131,14 +130,19 @@ All the details are in **[the wiki](https://github.com/9retirement6irk/GZreader/
 
    The firmware version is in the Kindle's Settings → Device Info.
 
+   **Kobos** (test build): `gzreader-kobo-<version>.zip`, for every Kobo KOReader runs on.
+   No jailbreak: install [NickelMenu](https://pgaskin.net/NickelMenu/) or KFMon, unzip the package
+   onto the Kobo's drive, eject, and start **GZreader** from NickelMenu (or the GZreader book with KFMon):
+   [Kobo](https://github.com/9retirement6irk/GZreader/wiki/Install-Kobo) in the wiki.
+
 3. **Unzip** it and copy its folders to the top of the Kindle's USB drive, merging
    with what's there (your books stay). Eject.
 4. **Start** it: KUAL → **GZreader → Start GZreader**, or on a Paperwhite or
    newer the **GZreader** item on the Kindle's home screen. The setup
    guide shows a QR code for your phone, and an address and PIN for any browser.
 
-Updates come by themselves (Settings → General → Updates). Step-by-step help
-for each package, uninstalling and the Nooks: [Installing](https://github.com/9retirement6irk/GZreader/wiki/Installing) in the wiki.
+Updates come by themselves (Settings → General → Software update). Step-by-step help
+for each package, uninstalling, Kobos and the Nooks: [Installing](https://github.com/9retirement6irk/GZreader/wiki/Installing) in the wiki.
 
 ## Privacy
 

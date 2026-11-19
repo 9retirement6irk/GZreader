@@ -14,7 +14,7 @@ The daily paper on the screen (the edition itself: gzreader_daily.lua).
   behind (swipe, the page keys, or the arrows at the foot). A tap on a story
   (the 5-way: move the frame, press) opens it as text to page through, with
   a QR code of its link for the rest of it on a phone.
-- Settings → Home → Daily paper: on/off, on the bookshelf, as a row, the feeds.
+- Settings → Accounts and services → Daily paper: on/off, on the bookshelf, as a row, the feeds.
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
@@ -112,6 +112,39 @@ function Paper.pictureWidget(path, w, max_h)
     return pic
 end
 
+--- A story's picture whole, for the opened story: as wide as the column
+--- when it's big enough (never more than twice its own size), never taller
+--- than `max_h`, its shape kept. Returns the widget (its own size) or nil.
+function Paper.pictureWhole(path, max_w, max_h)
+    local ok, bb = pcall(function()
+        local RenderImage = require("ui/renderimage")
+        local src = RenderImage:renderImageFile(path, false)
+        if not src then return nil end
+        local sw, sh = src:getWidth(), src:getHeight()
+        if sw < 8 or sh < 8 then src:free(); return nil end
+        local tw, th = Paper.fitSize(sw, sh, max_w, max_h)
+        if tw == sw and th == sh then return src end
+        return RenderImage:scaleBlitBuffer(src, tw, th, true)
+    end)
+    if not ok or not bb then return nil end
+    local w, h = bb:getWidth(), bb:getHeight()
+    local pic = drawn(w, h, function(out, x, y)
+        if not bb then return end
+        out:blitFrom(bb, x, y, 0, 0, w, h)
+        out:paintBorder(x, y, w, h, 1, Blitbuffer.COLOR_GRAY)
+    end)
+    pic.free = function()
+        if bb then bb:free(); bb = nil end
+    end
+    return pic
+end
+
+--- The size a `sw` × `sh` picture is shown at inside max_w × max_h.
+function Paper.fitSize(sw, sh, max_w, max_h)
+    local scale = math.min(max_w / math.max(1, sw), max_h / math.max(1, sh), 2)
+    return math.max(1, math.floor(sw * scale + 0.5)), math.max(1, math.floor(sh * scale + 0.5))
+end
+
 --- A `sw` × `sh` picture scaled to `w` wide.
 function Paper.pictureSize(sw, sh, w)
     return w, math.max(1, math.floor(sh * w / math.max(1, sw) + 0.5))
@@ -152,7 +185,7 @@ function Paper.homeWidget(plugin, ctx)
     local mast = TextWidget:new{ text = _("The Daily Paper"), face = serifBold(14) }
     local small = serifItalic(8)
     local date = TextWidget:new{ text = Paper.dateText(now), face = small, fgcolor = Blitbuffer.COLOR_DARK_GRAY }
-    local status = TextWidget:new{ text = on and Paper.statusText(plugin, now) or _("off: Settings → Home → Daily paper"),
+    local status = TextWidget:new{ text = on and Paper.statusText(plugin, now) or _("off: Settings → Accounts and services → Daily paper"),
         face = small, fgcolor = Blitbuffer.COLOR_DARK_GRAY }
     local lead_face, line_face = serifBold(11), serif(9)
     local probe_lead = TextWidget:new{ text = "Ag", face = lead_face }
@@ -697,6 +730,7 @@ local function pageClass()
                 GzFocusNext = { { { "Down", "Right" } } },
                 GzFocusPrev = { { { "Up", "Left" } } },
                 GzPress = { { "Press" } },
+                GzType = { { "Menu" } },
             }
         end
         if Device:isTouchDevice() then
@@ -723,32 +757,38 @@ local function pageClass()
             parts[#parts + 1] = { widget = widget, y = h }
             h = h + widget:getSize().h + (gap or 0)
         end
+        -- (the front page's type: Paper.frontFont)
+        local ff = Paper.frontFont(self.plugin)
+        local function fz(n) return math.max(5, math.floor(n * ff.scale + 0.5)) end
+        local head_face = face(ff.face.bold, fz(lead and 17 or 12), "smallinfofontbold")
+        local body_face = face(ff.face.regular, fz(10), "smallinfofont")
         if story.kicker then
-            add(TextWidget:new{ text = D.topicLabel(story.topic):upper(), face = Font:getFace("smallinfofontbold", 8), max_width = w }, S(1))
+            add(TextWidget:new{ text = D.topicLabel(story.topic):upper(), face = Font:getFace("smallinfofontbold", fz(8)), max_width = w }, S(1))
         end
-        local head = TextBoxWidget:new{ text = story.item.title, face = serifBold(lead and 17 or 12), width = w, alignment = "left" }
+        local head = TextBoxWidget:new{ text = story.item.title, face = head_face, width = w, alignment = "left" }
         local max_lines = lead and 3 or 4
         if head:getSize().h > head:getLineHeight() * max_lines then
             local lh = head:getLineHeight()
             head:free()
-            head = TextBoxWidget:new{ text = story.item.title, face = serifBold(lead and 17 or 12), width = w, alignment = "left",
+            head = TextBoxWidget:new{ text = story.item.title, face = head_face, width = w, alignment = "left",
                 height = lh * max_lines, height_adjust = true, height_overflow_show_ellipsis = true }
         end
         add(head, S(2))
         if story.item.source and story.item.source ~= "" then
-            add(TextWidget:new{ text = story.item.source, face = serifItalic(8), max_width = w, fgcolor = Blitbuffer.COLOR_DARK_GRAY }, S(2))
+            add(TextWidget:new{ text = story.item.source, face = ff.face.id == "serif" and serifItalic(fz(8)) or face(ff.face.regular, fz(8), "smallinfofont"),
+                max_width = w, fgcolor = Blitbuffer.COLOR_DARK_GRAY }, S(2))
         end
-        local pic_path = D.pictures(self.plugin) and D.picturePath(story.item)
+        local pic_path = D.pictures(self.plugin) and D.pagePicture(story.item) and D.picturePath(story.item)
         local pic = pic_path and Paper.pictureWidget(pic_path, w, math.floor(w * (lead and 0.3 or 0.5)))
         if pic then add(pic, S(4)) end
         local text = Paper.excerpt(story.item.text, lead and 700 or 420)
         if text ~= "" and text ~= story.item.title then
-            local body = TextBoxWidget:new{ text = text, face = serif(10), width = w, alignment = "left", justified = true }
+            local body = TextBoxWidget:new{ text = text, face = body_face, width = w, alignment = "left", justified = true }
             local lines = (lead and 4 or 5) - (pic and 2 or 0)
             if body:getSize().h > body:getLineHeight() * lines then
                 local lh = body:getLineHeight()
                 body:free()
-                body = TextBoxWidget:new{ text = text, face = serif(10), width = w, alignment = "left", justified = true,
+                body = TextBoxWidget:new{ text = text, face = body_face, width = w, alignment = "left", justified = true,
                     height = lh * lines, height_adjust = true, height_overflow_show_ellipsis = true }
             end
             add(body)
@@ -786,11 +826,14 @@ local function pageClass()
             self.rules[#self.rules + 1] = { y = y, h = 1 }
             y = y + S(6)
         end
+        local pfont = Paper.frontFont(self.plugin)
+        local function pz(n) return math.max(5, math.floor(n * pfont.scale + 0.5)) end
         -- the weather box: now and the next days, each with its sky's engraving
         self.weather = nil
         local Wx = require("gzreader_weather")
         if first and edition and Wx.on(self.plugin) then
-            local cells = Wx.cells(edition.weather, nil, 4)
+            -- (bigger type: fewer days, so each day's line still fits)
+            local cells = Wx.cells(edition.weather, nil, Paper.weatherDays(pfont.scale))
             if #cells > 0 then
                 local label = TextWidget:new{ text = _("WEATHER"), face = Font:getFace("smallinfofontbold", 8) }
                 local lw = label:getSize().w + S(10)
@@ -799,13 +842,13 @@ local function pageClass()
                 local cell_w = math.floor((inner_w - lw) / #cells)
                 local built = {}
                 for i, c in ipairs(cells) do
-                    local day = TextWidget:new{ text = c.head, face = Font:getFace("smallinfofontbold", 9), max_width = cell_w - icon - S(12) }
-                    local line = TextWidget:new{ text = c.line, face = serif(10), max_width = cell_w - icon - S(12) }
+                    local day = TextWidget:new{ text = c.head, face = Font:getFace("smallinfofontbold", pz(9)), max_width = cell_w - icon - S(12) }
+                    local line = TextWidget:new{ text = c.line, face = face(pfont.face.regular, pz(10), "smallinfofont"), max_width = cell_w - icon - S(12) }
                     self.widgets[#self.widgets + 1] = day
                     self.widgets[#self.widgets + 1] = line
                     built[i] = { head = day, line = line, kind = c.kind }
                 end
-                local box_h = icon + S(8)
+                local box_h = math.max(icon, built[1].head:getSize().h + built[1].line:getSize().h) + S(8)
                 self.weather = { x = margin, y = y, w = inner_w, h = box_h, label = label, label_w = lw, cells = built, cell_w = cell_w, icon = icon }
                 y = y + box_h + S(7)
             end
@@ -817,11 +860,11 @@ local function pageClass()
             if #list > 0 then
                 local label = TextWidget:new{ text = _("TODAY"), face = Font:getFace("smallinfofontbold", 8) }
                 local lw = label:getSize().w + S(10)
-                local text = TextBoxWidget:new{ text = Paper.diaryText(list), face = serif(10), width = inner_w - lw - S(12), alignment = "left" }
+                local text = TextBoxWidget:new{ text = Paper.diaryText(list), face = face(pfont.face.regular, pz(10), "smallinfofont"), width = inner_w - lw - S(12), alignment = "left" }
                 if text:getSize().h > text:getLineHeight() * 3 then
                     local lh = text:getLineHeight()
                     text:free()
-                    text = TextBoxWidget:new{ text = Paper.diaryText(list), face = serif(10), width = inner_w - lw - S(12), alignment = "left",
+                    text = TextBoxWidget:new{ text = Paper.diaryText(list), face = face(pfont.face.regular, pz(10), "smallinfofont"), width = inner_w - lw - S(12), alignment = "left",
                         height = lh * 3, height_adjust = true, height_overflow_show_ellipsis = true }
                 end
                 self.widgets[#self.widgets + 1] = label
@@ -838,6 +881,10 @@ local function pageClass()
         local foot_y = H - foot_h
         self.widgets[#self.widgets + 1] = fetch
         self.foot = { y = foot_y, h = foot_h, fetch = { widget = fetch, x = margin, y = foot_y + S(5), w = fetch:getSize().w + S(20) } }
+        -- Aa: the front page's type (touch: a tap; keys: Menu)
+        local aa = TextWidget:new{ text = "Aa", face = Font:getFace("smallinfofontbold", 10) }
+        self.widgets[#self.widgets + 1] = aa
+        self.foot.type = { widget = aa, x = self.foot.fetch.x + self.foot.fetch.w + S(14), y = foot_y + S(5), w = aa:getSize().w + S(28) }
         self.close_w = Device:isTouchDevice() and S(48) or 0
 
         self.blocks, self.col_rules = {}, {}
@@ -951,6 +998,8 @@ local function pageClass()
         bb:paintRect(x + margin, y + f.y, W - margin * 2, 1, Blitbuffer.COLOR_BLACK)
         f.fetch.widget:paintTo(bb, x + f.fetch.x, y + f.fetch.y)
         f.label.widget:paintTo(bb, x + f.label.x, y + f.label.y)
+        f.type.widget:paintTo(bb, x + f.type.x, y + f.type.y)
+        bb:paintBorder(x + f.type.x - S(6), y + f.type.y - S(1), f.type.widget:getSize().w + S(12), f.type.widget:getSize().h + S(2), 1, Blitbuffer.COLOR_DARK_GRAY)
         if self.keys and self.focus == #self.blocks + 1 then
             bb:paintBorder(x + f.fetch.x - S(4), y + f.fetch.y - S(2), f.fetch.widget:getSize().w + S(8), f.fetch.widget:getSize().h + S(4), S(2), Blitbuffer.COLOR_BLACK)
         end
@@ -983,6 +1032,7 @@ local function pageClass()
         if i == #self.blocks + 1 then return Paper.refresh(self.plugin, self) end
     end
 
+    function PaperPage:onGzType() Paper.frontDialog(self.plugin); return true end
     function PaperPage:onGzNextPage() return self:turn(1) end
     function PaperPage:onGzPrevPage() return self:turn(-1) end
     function PaperPage:onGzClose() UIManager:close(self); return true end
@@ -1004,6 +1054,7 @@ local function pageClass()
         if self.close_w > 0 and px >= W - self.close_w and py <= self.close_w then return "close" end
         if py >= self.foot.y then
             if px <= self.foot.fetch.x + self.foot.fetch.w then return "fetch" end
+            if px >= self.foot.type.x - S(14) and px <= self.foot.type.x + self.foot.type.w then return "type" end
             if px >= W * 0.75 then return "next" end
             if px >= W * 0.5 then return "prev" end
             return nil
@@ -1021,6 +1072,7 @@ local function pageClass()
         if what == "fetch" then Paper.refresh(self.plugin, self); return true end
         if what == "next" then return self:turn(1) end
         if what == "prev" then return self:turn(-1) end
+        if what == "type" then Paper.frontDialog(self.plugin); return true end
         if what == "diary" then
             -- (the Calendar tab, for the day's events in full)
             UIManager:close(self)
@@ -1034,7 +1086,10 @@ local function pageClass()
     function PaperPage:onGzSwipe(_arg, ges)
         if ges.direction == "west" then return self:turn(1) end
         if ges.direction == "east" then return self:turn(-1) end
-        return false -- (down from the top: the quick panel)
+        -- down from the top: the quick panel, as at Home and in a book (nothing under the
+        -- paper gets the swipe: it was lost)
+        if Paper.pulledDown(ges) then return Paper.openPanel(self.plugin) end
+        return false
     end
 
     function PaperPage:onCloseWidget()
@@ -1064,7 +1119,7 @@ function Paper.show(plugin)
     local D = Daily()
     if D.noWifi() then return info(D.why("usb")) end
     if not D.enabled(plugin) then
-        return info(_("The daily paper is off. Turn it on in Settings → Home → Daily paper."))
+        return info(_("The daily paper is off. Turn it on in Settings → Accounts and services → Daily paper."))
     end
     if Paper.instance and not Paper.instance.closed then return Paper.instance end
     local self = pageClass():new{ plugin = plugin }
@@ -1083,31 +1138,414 @@ function Paper.articleText(item)
     if by ~= "" then parts[#parts + 1] = by end
     if item.text and item.text ~= "" then parts[#parts + 1] = item.text end
     if item.link then
-        parts[#parts + 1] = (not item.text or #item.text < 600)
-            and _("This feed carries only a summary. The whole story is at its link: QR code shows it for your phone.")
+        parts[#parts + 1] = item.full and _("From the story's own page. QR code shows its link for your phone.")
+            or (not item.text or #item.text < 600)
+            and _("This feed carries only a summary, and the story's page gave no more. The whole story is at its link: QR code shows it for your phone.")
             or _("The story's own page: QR code shows its link for your phone.")
     end
     return table.concat(parts, "\n\n")
 end
 
-function Paper.article(_plugin, item)
-    local TextViewer = require("ui/widget/textviewer")
-    local viewer
-    local buttons = { {} }
-    if item.link then
-        buttons[1][#buttons[1] + 1] = { text = _("QR code"), callback = function()
-            local QRMessage = require("ui/widget/qrmessage")
-            UIManager:show(QRMessage:new{ text = item.link, width = Device.screen:getWidth(), height = Device.screen:getHeight() })
-        end }
+--- A swipe that opens the quick panel: down, starting near the top of the screen.
+Paper.PULL_ZONE = 0.12 -- (of the screen's height)
+function Paper.pulledDown(ges)
+    if not (ges and ges.direction == "south" and ges.pos) then return false end
+    return ges.pos.y < Device.screen:getHeight() * Paper.PULL_ZONE
+end
+
+function Paper.openPanel(plugin)
+    local ok, Panel = pcall(require, "gzreader_panel")
+    if not ok then return false end
+    require("gzreader_log").info("daily paper: the quick panel pulled down")
+    Panel.show(plugin)
+    return true
+end
+
+---------------------------------------------------------------- a story's type
+
+Paper.FRONT_SIZES = { { id = "small", scale = 0.85 }, { id = "normal", scale = 1 }, { id = "large", scale = 1.2 }, { id = "larger", scale = 1.45 } }
+
+function Paper.frontSizeLabel(id)
+    if id == "small" then return _("Small") end
+    if id == "large" then return _("Large") end
+    if id == "larger" then return _("Larger") end
+    return _("Normal")
+end
+
+--- How the paper's own pages are set (headlines, how stories begin, the
+--- weather and TODAY boxes; the paper's name keeps its own face): { face =
+--- one of FACES, size = one of FRONT_SIZES, scale }.
+function Paper.frontFont(plugin)
+    local st = Daily().store(plugin)
+    local f = type(st.front) == "table" and st.front or {}
+    local out = { face = Paper.FACES[1], size = Paper.FRONT_SIZES[2] }
+    for _i, c in ipairs(Paper.FACES) do if c.id == f.face then out.face = c end end
+    for _i, c in ipairs(Paper.FRONT_SIZES) do if c.id == f.size then out.size = c end end
+    out.scale = out.size.scale
+    return out
+end
+
+--- How many days the weather box shows at a size of type.
+function Paper.weatherDays(scale)
+    if scale > 1.3 then return 2 end
+    if scale > 1 then return 3 end
+    return 4
+end
+
+--- Change the pages' "face" or "size" and keep it; the open paper is laid
+--- out again from its first page. Returns true when something changed.
+function Paper.setFrontFont(plugin, what, value)
+    if what ~= "face" and what ~= "size" then return false end
+    local st = Daily().store(plugin)
+    st.front = type(st.front) == "table" and st.front or {}
+    local now = Paper.frontFont(plugin)
+    local known = false
+    for _i, c in ipairs(what == "face" and Paper.FACES or Paper.FRONT_SIZES) do if c.id == value then known = true end end
+    if not known or value == (what == "face" and now.face.id or now.size.id) then return false end
+    st.front[what] = value
+    plugin:save()
+    if Paper.instance and not Paper.instance.closed then Paper.instance:reload() end
+    return true
+end
+
+--- The rows of the pages' Aa box.
+function Paper.frontRows(plugin)
+    local font = Paper.frontFont(plugin)
+    local rows = { {}, {} }
+    for _i, c in ipairs(Paper.FRONT_SIZES) do
+        rows[1][#rows[1] + 1] = { text = Paper.frontSizeLabel(c.id), on = c.id == font.size.id, run = function() return Paper.setFrontFont(plugin, "size", c.id) end }
     end
-    buttons[1][#buttons[1] + 1] = { text = _("Close"), id = "close", callback = function() UIManager:close(viewer) end }
-    viewer = TextViewer:new{
-        title = item.title, title_multilines = true, text = Paper.articleText(item),
-        width = Device.screen:getWidth(), height = Device.screen:getHeight(),
-        buttons_table = buttons, add_default_buttons = false,
+    for _i, c in ipairs(Paper.FACES) do
+        rows[2][#rows[2] + 1] = { text = Paper.faceLabel(c.id), on = c.id == font.face.id, run = function() return Paper.setFrontFont(plugin, "face", c.id) end }
+    end
+    return rows
+end
+
+--- The Aa box over the paper's pages (it stays up while you try them).
+function Paper.frontDialog(plugin)
+    local ButtonDialog = require("ui/widget/buttondialog")
+    if Paper.front_dialog then UIManager:close(Paper.front_dialog) end
+    local buttons = {}
+    for r, row in ipairs(Paper.frontRows(plugin)) do
+        buttons[r] = {}
+        for _i, b in ipairs(row) do
+            buttons[r][#buttons[r] + 1] = { text = (b.on and "\u{2713} " or "") .. b.text, callback = function()
+                if b.run() then Paper.frontDialog(plugin) end
+            end }
+        end
+    end
+    buttons[#buttons + 1] = { { text = _("Done"), id = "close", callback = function()
+        UIManager:close(Paper.front_dialog)
+        Paper.front_dialog = nil
+    end } }
+    Paper.front_dialog = ButtonDialog:new{ title = _("The paper's pages"), title_align = "center", buttons = buttons,
+        tap_close_callback = function() Paper.front_dialog = nil end }
+    UIManager:show(Paper.front_dialog)
+    return Paper.front_dialog
+end
+
+--- Settings → … → Daily paper → The paper's pages.
+function Paper.frontItems(plugin)
+    local function font() return Paper.frontFont(plugin) end
+    local faces, sizes = {}, {}
+    for _i, c in ipairs(Paper.FACES) do
+        faces[#faces + 1] = { text = Paper.faceLabel(c.id), radio = true, checked_func = function() return font().face.id == c.id end,
+            callback = function() Paper.setFrontFont(plugin, "face", c.id) end }
+    end
+    for _i, c in ipairs(Paper.FRONT_SIZES) do
+        sizes[#sizes + 1] = { text = Paper.frontSizeLabel(c.id), radio = true, checked_func = function() return font().size.id == c.id end,
+            callback = function() Paper.setFrontFont(plugin, "size", c.id) end }
+    end
+    return {
+        { text_func = function() return T(_("Typeface: %1"), Paper.faceLabel(font().face.id)) end, sub_item_table = faces },
+        { text_func = function() return T(_("Size: %1"), Paper.frontSizeLabel(font().size.id)) end, sub_item_table = sizes },
     }
-    UIManager:show(viewer)
-    return viewer
+end
+
+Paper.FACES = {
+    { id = "serif", regular = "NotoSerif-Regular.ttf", bold = "NotoSerif-Bold.ttf" },
+    { id = "sans", regular = "NotoSans-Regular.ttf", bold = "NotoSans-Bold.ttf" },
+    { id = "classic", regular = "FreeSerif.ttf", bold = "FreeSerif.ttf" },
+    { id = "typewriter", regular = "DroidSansMono.ttf", bold = "DroidSansMono.ttf" },
+}
+Paper.SIZE_MIN, Paper.SIZE_MAX, Paper.SIZE_DEFAULT = 8, 30, 12
+Paper.SIZE_CHOICES = { 9, 10, 11, 12, 13, 14, 16, 18, 20, 22, 26, 30 }
+Paper.SPACINGS = { { id = "tight", em = 0.15 }, { id = "normal", em = 0.3 }, { id = "wide", em = 0.55 } }
+
+function Paper.faceLabel(id)
+    if id == "sans" then return _("Sans") end
+    if id == "classic" then return _("Classic") end
+    if id == "typewriter" then return _("Typewriter") end
+    return _("Serif")
+end
+
+function Paper.spacingLabel(id)
+    if id == "tight" then return _("Tight") end
+    if id == "wide" then return _("Wide") end
+    return _("Normal")
+end
+
+--- How a story is set: { face = one of FACES, size, spacing = one of
+--- SPACINGS } (Serif 12, Normal, until changed).
+function Paper.storyFont(plugin)
+    local st = Daily().store(plugin)
+    local f = type(st.font) == "table" and st.font or {}
+    local out = { face = Paper.FACES[1], spacing = Paper.SPACINGS[2] }
+    for _i, c in ipairs(Paper.FACES) do if c.id == f.face then out.face = c end end
+    for _i, c in ipairs(Paper.SPACINGS) do if c.id == f.spacing then out.spacing = c end end
+    out.size = math.max(Paper.SIZE_MIN, math.min(Paper.SIZE_MAX, math.floor(tonumber(f.size) or Paper.SIZE_DEFAULT)))
+    return out
+end
+
+--- Change one of them ("face", "size", "spacing") and keep it. A size is
+--- held between SIZE_MIN and SIZE_MAX; a face or spacing that isn't known
+--- changes nothing. Returns true when something changed.
+function Paper.setStoryFont(plugin, what, value)
+    local st = Daily().store(plugin)
+    st.font = type(st.font) == "table" and st.font or {}
+    local now = Paper.storyFont(plugin)
+    if what == "size" then
+        value = math.max(Paper.SIZE_MIN, math.min(Paper.SIZE_MAX, math.floor(tonumber(value) or now.size)))
+        if value == now.size then return false end
+        st.font.size = value
+    elseif what == "face" or what == "spacing" then
+        local known = false
+        for _i, c in ipairs(what == "face" and Paper.FACES or Paper.SPACINGS) do if c.id == value then known = true end end
+        if not known or value == (what == "face" and now.face.id or now.spacing.id) then return false end
+        st.font[what] = value
+    else
+        return false
+    end
+    plugin:save()
+    if Paper.story and not Paper.story.closed then Paper.story:rebuild() end
+    return true
+end
+
+--- A story's buttons at the top: its type (Aa), its link as a QR code (when it has one), and ✕.
+function Paper.articleButtons(item)
+    local out = { "type" }
+    if item and item.link then out[#out + 1] = "qr" end
+    out[#out + 1] = "close"
+    return out
+end
+
+--- A story, as text that scrolls with the finger (not page by page): its
+--- headline, where it's from, the story; ✕ and QR code (its link, for a
+--- phone) at the top. Page keys and the 5-way ▲ ▼ scroll by most of a
+--- screen; Back closes; a swipe down from the top: the quick panel.
+local ArticleView
+function Paper.article(plugin, item)
+    local FrameContainer = require("ui/widget/container/framecontainer")
+    local GestureRange = require("ui/gesturerange")
+    local HorizontalGroup = require("ui/widget/horizontalgroup")
+    local HorizontalSpan = require("ui/widget/horizontalspan")
+    local InputContainer = require("ui/widget/container/inputcontainer")
+    local CenterContainer = require("ui/widget/container/centercontainer")
+    local LineWidget = require("ui/widget/linewidget")
+    local OverlapGroup = require("ui/widget/overlapgroup")
+    local LeftContainer = require("ui/widget/container/leftcontainer")
+    local RightContainer = require("ui/widget/container/rightcontainer")
+    local ScrollableContainer = require("ui/widget/container/scrollablecontainer")
+    local TextBoxWidget = require("ui/widget/textboxwidget")
+    local TextWidget = require("ui/widget/textwidget")
+    local VerticalGroup = require("ui/widget/verticalgroup")
+    local VerticalSpan = require("ui/widget/verticalspan")
+    local Size = require("ui/size")
+    local Screen = Device.screen
+    local function S(n) return Screen:scaleBySize(n) end
+    if not ArticleView then
+        ArticleView = InputContainer:extend{ covers_fullscreen = true, name = "gz_daily_article" }
+        function ArticleView:init()
+            self.dimen = Geom:new{ x = 0, y = 0, w = Screen:getWidth(), h = Screen:getHeight() }
+            self:build()
+            if Device:hasKeys() then
+                local g = Device.input.group
+                self.key_events = {
+                    Close = { { g.Back } },
+                    PageDown = { { g.PgFwd }, { "Down" } },
+                    PageUp = { { g.PgBack }, { "Up" } },
+                    ShowQR = { { "Press" } },
+                    ShowType = { { "Menu" } },
+                }
+            end
+            if Device:isTouchDevice() then
+                local sw, sh = self.dimen.w, self.dimen.h
+                self.ges_events = { PullPanel = { GestureRange:new{ ges = "swipe", range = function()
+                    return Geom:new{ x = 0, y = 0, w = sw, h = math.floor(sh * Paper.PULL_ZONE) } end } } }
+            end
+        end
+        --- The bar and the story, set in the type chosen (Paper.storyFont).
+        function ArticleView:build()
+            local sw, sh = self.dimen.w, self.dimen.h
+            local font = Paper.storyFont(self.plugin)
+            local margin = S(18)
+            local inner = sw - 2 * margin
+            local bar_h = S(52)
+            local it = self.item
+            local function button(text, fn)
+                local w = FrameContainer:new{ padding = S(6), padding_left = S(14), padding_right = S(14), margin = 0, radius = S(6),
+                    bordersize = Size.border.thick, TextWidget:new{ text = text, face = Font:getFace("cfont", 16), bold = true } }
+                local box = InputContainer:new{ dimen = Geom:new{ w = w:getSize().w, h = w:getSize().h }, w }
+                box.ges_events = { TapButton = { GestureRange:new{ ges = "tap", range = function() return box.dimen end } } }
+                function box:onTapButton() fn(); return true end
+                return box
+            end
+            local right = HorizontalGroup:new{ align = "center" }
+            for _i, id in ipairs(Paper.articleButtons(it)) do
+                if id == "type" then right[#right + 1] = button("Aa", function() self:onShowType() end)
+                elseif id == "qr" then right[#right + 1] = button(_("QR code"), function() self:onShowQR() end)
+                else right[#right + 1] = button("\u{2715}", function() self:onClose() end) end
+                right[#right + 1] = HorizontalSpan:new{ width = S(8) }
+            end
+            local bar = VerticalGroup:new{
+                OverlapGroup:new{ dimen = Geom:new{ w = sw, h = bar_h },
+                    LeftContainer:new{ dimen = Geom:new{ w = sw, h = bar_h },
+                        HorizontalGroup:new{ HorizontalSpan:new{ width = margin },
+                            TextWidget:new{ text = it.source or _("Daily paper"), face = serifItalic(10),
+                                max_width = sw - right:getSize().w - 2 * margin } } },
+                    RightContainer:new{ dimen = Geom:new{ w = sw, h = bar_h }, right } },
+                LineWidget:new{ background = Blitbuffer.COLOR_BLACK, dimen = Geom:new{ w = sw, h = Size.line.medium } },
+            }
+            local col = VerticalGroup:new{ align = "left",
+                VerticalSpan:new{ width = S(16) },
+                TextBoxWidget:new{ text = it.title or "", face = face(font.face.bold, math.floor(font.size * 1.5 + 0.5), "smallinfofontbold"),
+                    width = inner, bold = font.face.bold == font.face.regular or nil },
+                VerticalSpan:new{ width = S(10) },
+            }
+            -- the story's picture, whole, under its headline
+            local pic_path = Daily().pictures(self.plugin) and Daily().picturePath(it)
+            local pic = pic_path and Paper.pictureWhole(pic_path, inner, math.floor(sh * 0.45))
+            self.picture = pic or nil
+            if pic then
+                col[#col + 1] = CenterContainer:new{ dimen = Geom:new{ w = inner, h = pic:getSize().h }, pic }
+                col[#col + 1] = VerticalSpan:new{ width = S(12) }
+            end
+            for _i, w in ipairs({
+                TextBoxWidget:new{ text = Paper.articleText(it), face = face(font.face.regular, font.size, "smallinfofont"), width = inner,
+                    line_height = font.spacing.em },
+                VerticalSpan:new{ width = S(30) },
+            }) do col[#col + 1] = w end
+            self.scroller = ScrollableContainer:new{
+                dimen = Geom:new{ w = sw, h = sh - bar_h - Size.line.medium }, show_parent = self,
+                HorizontalGroup:new{ align = "top", HorizontalSpan:new{ width = margin }, col },
+            }
+            -- (the story moves with the finger and rests exactly where it lifts, also
+            -- when the finger is still moving as it lifts: gzreader_livescroll.lua)
+            require("gzreader_livescroll").on(self.scroller, { free = true })
+            self[1] = FrameContainer:new{ width = sw, height = sh, padding = 0, bordersize = 0, background = Blitbuffer.COLOR_WHITE,
+                VerticalGroup:new{ bar, self.scroller } }
+        end
+        --- Set again after its type changed, at the same place in the story.
+        function ArticleView:rebuild()
+            local old = self.scroller
+            local at = (old and (old._max_scroll_offset_y or 0) > 0) and (old._scroll_offset_y or 0) / old._max_scroll_offset_y or 0
+            self:build()
+            UIManager:setDirty(self, "ui")
+            if at > 0 then
+                -- (how long the story is now is known once it has been drawn)
+                UIManager:scheduleIn(0.2, function()
+                    if self.closed or not self.scroller or (self.scroller._max_scroll_offset_y or 0) <= 0 then return end
+                    self.scroller:_scrollBy(0, math.floor(at * self.scroller._max_scroll_offset_y + 0.5) - (self.scroller._scroll_offset_y or 0))
+                    UIManager:setDirty(self, function() return "ui", self.scroller.dimen end)
+                end)
+            end
+        end
+        --- Aa: the story's type. Smaller / larger, the typeface, the line spacing;
+        --- the story behind is set again at each tap.
+        function ArticleView:onShowType()
+            Paper.typeDialog(self.plugin)
+            return true
+        end
+        function ArticleView:onCloseWidget()
+            self.closed = true
+            if Paper.story == self then Paper.story = nil end
+        end
+        function ArticleView:scroll(dir)
+            if self.scroller and self.scroller._scrollBy then self.scroller:_scrollBy(0, dir * math.floor(self.scroller.dimen.h * 0.85)) end
+            UIManager:setDirty(self, function() return "ui", self.scroller.dimen end)
+            return true
+        end
+        function ArticleView:onPageDown() return self:scroll(1) end
+        function ArticleView:onPageUp() return self:scroll(-1) end
+        function ArticleView:onShowQR()
+            if not self.item.link then return true end
+            local QRMessage = require("ui/widget/qrmessage")
+            UIManager:show(QRMessage:new{ text = self.item.link, width = Screen:getWidth(), height = Screen:getHeight() })
+            return true
+        end
+        function ArticleView:onPullPanel(_arg, ges)
+            if not Paper.pulledDown(ges) then return false end
+            return Paper.openPanel(self.plugin)
+        end
+        function ArticleView:onClose() UIManager:close(self, "full"); return true end
+    end
+    local v = ArticleView:new{ item = item, plugin = plugin }
+    Paper.story = v
+    UIManager:show(v, "full")
+    return v
+end
+
+--- The rows of the Aa box: { { { text, on = chosen, enabled, run } … } … }.
+function Paper.typeRows(plugin)
+    local font = Paper.storyFont(plugin)
+    local rows = { {
+        { text = "A\u{2212}", enabled = font.size > Paper.SIZE_MIN, run = function() return Paper.setStoryFont(plugin, "size", font.size - 1) end },
+        { text = T(_("Size %1"), font.size), enabled = false },
+        { text = "A+", enabled = font.size < Paper.SIZE_MAX, run = function() return Paper.setStoryFont(plugin, "size", font.size + 1) end },
+    }, {}, {} }
+    for _i, c in ipairs(Paper.FACES) do
+        rows[2][#rows[2] + 1] = { text = Paper.faceLabel(c.id), on = c.id == font.face.id, run = function() return Paper.setStoryFont(plugin, "face", c.id) end }
+    end
+    for _i, c in ipairs(Paper.SPACINGS) do
+        rows[3][#rows[3] + 1] = { text = Paper.spacingLabel(c.id), on = c.id == font.spacing.id, run = function() return Paper.setStoryFont(plugin, "spacing", c.id) end }
+    end
+    return rows
+end
+
+--- The Aa box over a story (it stays up while you try sizes and faces).
+function Paper.typeDialog(plugin)
+    local ButtonDialog = require("ui/widget/buttondialog")
+    if Paper.type_dialog then UIManager:close(Paper.type_dialog) end
+    local buttons = {}
+    for r, row in ipairs(Paper.typeRows(plugin)) do
+        buttons[r] = {}
+        for _i, b in ipairs(row) do
+            buttons[r][#buttons[r] + 1] = { text = (b.on and "\u{2713} " or "") .. b.text, enabled = b.enabled, callback = function()
+                if b.run and b.run() then Paper.typeDialog(plugin) end
+            end }
+        end
+    end
+    buttons[#buttons + 1] = { { text = _("Done"), id = "close", callback = function()
+        UIManager:close(Paper.type_dialog)
+        Paper.type_dialog = nil
+    end } }
+    Paper.type_dialog = ButtonDialog:new{ title = _("Story text"), title_align = "center", buttons = buttons,
+        tap_close_callback = function() Paper.type_dialog = nil end }
+    UIManager:show(Paper.type_dialog)
+    return Paper.type_dialog
+end
+
+--- Settings → … → Daily paper → Story text.
+function Paper.fontItems(plugin)
+    local function font() return Paper.storyFont(plugin) end
+    local faces, sizes, spacings = {}, {}, {}
+    for _i, c in ipairs(Paper.FACES) do
+        faces[#faces + 1] = { text = Paper.faceLabel(c.id), radio = true, checked_func = function() return font().face.id == c.id end,
+            callback = function() Paper.setStoryFont(plugin, "face", c.id) end }
+    end
+    for _i, n in ipairs(Paper.SIZE_CHOICES) do
+        sizes[#sizes + 1] = { text = tostring(n) .. (n == Paper.SIZE_DEFAULT and "  " .. _("(as it comes)") or ""), radio = true,
+            checked_func = function() return font().size == n end, callback = function() Paper.setStoryFont(plugin, "size", n) end }
+    end
+    for _i, c in ipairs(Paper.SPACINGS) do
+        spacings[#spacings + 1] = { text = Paper.spacingLabel(c.id), radio = true, checked_func = function() return font().spacing.id == c.id end,
+            callback = function() Paper.setStoryFont(plugin, "spacing", c.id) end }
+    end
+    return {
+        { text_func = function() return T(_("Typeface: %1"), Paper.faceLabel(font().face.id)) end, sub_item_table = faces },
+        { text_func = function() return T(_("Size: %1"), font().size) end, sub_item_table = sizes },
+        { text_func = function() return T(_("Line spacing: %1"), Paper.spacingLabel(font().spacing.id)) end, sub_item_table = spacings },
+    }
 end
 
 ---------------------------------------------------------------- settings
@@ -1186,7 +1624,7 @@ function Paper.typeAddFeed(plugin, after)
     d:onShowKeyboard()
 end
 
---- Settings → Home → Daily paper → Feeds.
+--- Settings → Accounts and services → Daily paper → Feeds.
 function Paper.feedItems(plugin)
     local D = Daily()
     local st = D.store(plugin)
@@ -1264,7 +1702,7 @@ function Paper.setTown(plugin, town, after)
     end, { reason = "the weather's town" })
 end
 
---- Settings → Home → Daily paper → Weather.
+--- Settings → Accounts and services → Daily paper → Weather.
 function Paper.weatherItems(plugin)
     local W = require("gzreader_weather")
     local function w() return W.store(plugin) end
@@ -1326,7 +1764,7 @@ function Paper.browserSetup(plugin)
     end, { reason = "setting up the daily paper" })
 end
 
---- Settings → Home → Daily paper.
+--- Settings → Accounts and services → Daily paper.
 function Paper.settingsItems(plugin)
     local D = Daily()
     if D.noWifi() then
@@ -1376,8 +1814,32 @@ function Paper.settingsItems(plugin)
             end,
         },
         {
+            text = _("The paper's pages"),
+            help_text = _("The type of the paper's own pages: the headlines, how each story begins, the weather and TODAY boxes. A typeface and four sizes; bigger type means fewer stories on a page and more pages, and fewer days in the weather box. The same can be changed on the paper itself, with Aa at its foot (on a Kindle with keys: Menu). The paper's name keeps its own face."),
+            enabled_func = on,
+            sub_item_table_func = function() return Paper.frontItems(plugin) end,
+        },
+        {
+            text = _("Story text"),
+            help_text = _("How an opened story is set: its typeface, size and line spacing. The same can be changed while reading a story, with Aa at its top (on a Kindle with keys: Menu)."),
+            enabled_func = on,
+            sub_item_table_func = function() return Paper.fontItems(plugin) end,
+        },
+        {
+            text = _("Whole stories"),
+            help_text = _("Many feeds carry only a sentence or two of each story. With this on, such a story's own web page is fetched with the paper and the article taken out of it, as a browser's reader view does, so the paper reads whole with Wi-Fi off. It makes the day's fetch longer (a page a story, up to five minutes in all on a slow Kindle, in the background). Stories behind a paywall, or on pages built by scripts, keep the feed's summary. A story's page can be on another site than its feed (Hacker News links anywhere); that site then also sees this Kindle's internet address."),
+            enabled_func = on,
+            checked_func = function() return on() and D.fullStories(plugin) end,
+            callback = function()
+                local st = D.store(plugin)
+                if st.full == false then st.full = nil else st.full = false end
+                plugin:save()
+                D.feedsChanged()
+            end,
+        },
+        {
             text = _("Pictures"),
-            help_text = _("The lead story's picture and a few more (eight at most), fetched with the paper and shown in grey. Pictures often come from another site than the feed's (a picture server), which then also sees this Kindle's internet address. Without them the paper is fetched faster and takes less room."),
+            help_text = _("Stories' pictures, fetched with the paper and shown in grey: in an opened story under its headline (24 stories at most), and for the lead story and a few more on the paper's pages. Pictures often come from another site than the feed's (a picture server), which then also sees this Kindle's internet address. Without them the paper is fetched faster and takes less room."),
             enabled_func = on,
             checked_func = function() return on() and D.pictures(plugin) end,
             callback = function()

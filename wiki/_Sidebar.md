@@ -13,6 +13,7 @@
 - [Kindle 4, Touch](Install-Kindle) · `kindle`
 - [Touch Kindles, firmware ≤ 5.16.2](Install-Kindle-PW2) · `kindlepw2`
 - [Touch Kindles, firmware 5.16.3+](Install-Kindle-HF) · `kindlehf`
+- [Kobo](Install-Kobo) · `kobo`
 - [Nook 1st Edition](Install-Nook-1st-Edition) · `nook-1st-edition`
 - [Nook Simple Touch](Install-Nook-Simple-Touch) · `nook`
 - [Updating and uninstalling](Updating-and-Uninstalling)
@@ -20,6 +21,7 @@
 **Using it**
 
 - [Using GZreader](Using-GZreader)
+- [Settings](Settings)
 - [Setup page and connections](Setup-Page-and-Connections)
 - [Grimmory library](Grimmory-Library)
 - [Grimmory sync](Grimmory-Sync)
@@ -36,6 +38,7 @@
 - [Bluetooth](Bluetooth)
 - [Updates and test builds](Updates-and-Test-Builds)
 - [Privacy and diagnostics](Privacy-and-Diagnostics)
+- [Kobo](Kobo)
 - [Nook 1st Edition](Nook-1st-Edition)
 - [Nook Simple Touch](Nook-Simple-Touch)
 
