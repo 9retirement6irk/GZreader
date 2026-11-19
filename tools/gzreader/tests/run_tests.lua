@@ -10557,7 +10557,8 @@ print("Notes (Memos v0.31)")
                     .. " s after one 5 s ago), and not put off for ever by drawing on and on")
             -- the drawing screen's copy: a journal entry's under the entry's id
             local entry = { state = { valence = "neutral", body = "x" } }
-            local scr = { changed = true, pages = { { scene = sceneWith(4) } }, journal = { under = entry }, keptPages = DS.keptPages }
+            local scr = { changed = true, pages = { { scene = sceneWith(4) } }, journal = { under = entry }, keptPages = DS.keptPages,
+                keptRecord = DS.keptRecord }
             UIMk.unschedule = function() end
             local kept = DS.keepNow(scr, "test")
             UIMk.unschedule = real_un
@@ -10566,6 +10567,48 @@ print("Notes (Memos v0.31)")
                 and #Drawing.liveElements(again.pages[1]) == 4 and again.journal.state.body == "x",
                 "…the drawing screen keeps every page, a journal entry's under the entry's id (the entry crosses it off)")
             check(DS.keepNow({ changed = false, pages = {} }) == false, "…nothing changed: nothing written")
+            -- kept between strokes only, and in a background process: written on the screen's
+            -- thread a page of handwriting took a second or more, and the pen froze (2026-11-18)
+            local tm = require("ui/time")
+            local now = tm.now()
+            local w_on = DS.keepWait({ sketch = { contacts = { [4] = {} } } }, now)
+            local w_just = DS.keepWait({ sketch = { contacts = {} }, _input_at = now - tm.s(0.5) }, now)
+            local w_quiet = DS.keepWait({ sketch = { contacts = {} }, _input_at = now - tm.s(5) }, now)
+            local w_long = DS.keepWait({ sketch = { contacts = {} }, _input_at = now, _keep_since = os.time() - Draft.LONGEST - 1 }, now)
+            local w_long_on = DS.keepWait({ sketch = { contacts = { [4] = {} } }, _keep_since = os.time() - Draft.LONGEST - 1 }, now)
+            check(w_on == Draft.RETRY and w_just and w_just > 0.9 and w_just <= Draft.QUIET and w_quiet == nil and w_long == nil
+                and w_long_on == Draft.RETRY,
+                "…not while the pen is on the page (" .. tostring(w_on) .. " s) or moved a moment ago (" .. tostring(w_just)
+                    .. " s); after drawing on and on, between strokes")
+            local Async = require("gzreader_async")
+            local lfs = require("libs/libkoreader-lfs")
+            local was_sync = Async.sync
+            Async.sync = true
+            local bid = Draft.newId() .. "w"
+            local res = {}
+            Draft.writeLater(bid, function() return { kind = "note", pages = { sceneWith(2) } } end,
+                function(ok, n, pages) res = { ok = ok, n = n, pages = pages } end)
+            local bg1 = Draft.read(bid)
+            check(res.ok and res.pages == 1 and bg1 and #Drawing.liveElements(bg1.pages[1]) == 2
+                and lfs.attributes(Draft.path(bid) .. ".bg", "mode") == nil,
+                "…written in a background process, moved over the copy when done")
+            Draft.writeLater(bid, function()
+                Draft.write(bid, { kind = "note", pages = { sceneWith(5) } }) -- (written meanwhile: newer)
+                return { kind = "note", pages = { sceneWith(3) } }
+            end, function(ok, n) res = { ok = ok, n = n } end)
+            local bg2 = Draft.read(bid)
+            check(res.ok == nil and res.n == "stale" and bg2 and #Drawing.liveElements(bg2.pages[1]) == 5,
+                "…one written meanwhile is newer: the background copy is dropped")
+            Draft.writeLater(bid, function()
+                Draft.clear(bid, "test") -- (saved meanwhile)
+                return { kind = "note", pages = { sceneWith(3) } }
+            end, function(ok, n) res = { ok = ok, n = n } end)
+            check(res.n == "stale" and not Draft.exists(bid) and lfs.attributes(Draft.path(bid) .. ".bg", "mode") == nil,
+                "…saved (crossed off) meanwhile: it doesn't come back")
+            Async.sync = was_sync
+            check(dsrcp:find("self:keepNow(nil, true)", 1, true) ~= nil
+                and dsrcp:find('screen._input_at = require("ui/time").now()', 1, true) ~= nil,
+                "…the drawing screen's pause: in the background; going to sleep: at once")
             Draft.clear(entry.draft_id, "test")
             Draft.clear(id, "test")
             local jsrcd = io.open(PLUGIN .. "/gzreader_journalscreen.lua"):read("*a")

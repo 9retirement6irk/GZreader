@@ -345,17 +345,24 @@ end
 --- seconds without a change), at most every DrawDraft.EVERY seconds, and anyway
 --- after DrawDraft.LONGEST seconds of drawing without a pause. So a drawing never
 --- saved (GZreader stopped, the battery ran out) comes back at the next start.
-function DrawScreen:keepSoon(now)
+function DrawScreen:keepSoon(now, at_least)
     local Draft = require("gzreader_drawdraft")
     now = now or os.time()
     self._keep_since = self._keep_since or now
     if not self._keep_task then
         self._keep_task = function()
+            if self._closed then self._keep_planned = nil; return end
+            -- (the pen on the page, or moved a moment ago: about to write. Later.)
+            local wait = self:keepWait()
+            if wait then
+                UIManager:scheduleIn(wait, self._keep_task)
+                return
+            end
             self._keep_planned = nil
-            if not self._closed then self:keepNow() end
+            self:keepNow(nil, true)
         end
     end
-    local wait = Draft.PAUSE
+    local wait = math.max(Draft.PAUSE, at_least or 0)
     if self._kept_at then wait = math.max(wait, Draft.EVERY - (now - self._kept_at)) end
     -- (drawing on and on: not pushed back past LONGEST from the first change)
     if self._keep_planned and now - self._keep_since >= Draft.LONGEST then return end
@@ -382,27 +389,67 @@ function DrawScreen:keptPages()
     return out
 end
 
---- The drawing written down now (see keepSoon). true when it was.
-function DrawScreen:keepNow(why)
+--- Not yet (seconds to wait), or nil: the pen (or a finger) is on the page, or
+--- moved less than Draft.QUIET seconds ago (hovering counts: about to write).
+--- After Draft.LONGEST seconds of drawing on and on, only between strokes.
+function DrawScreen:keepWait(now)
+    local Draft = require("gzreader_drawdraft")
+    local sk = self.sketch
+    if sk and next(sk.contacts or {}) ~= nil then return Draft.RETRY end
+    local time = require("ui/time")
+    now = now or time.now()
+    local long = self._keep_since and os.time() - self._keep_since >= Draft.LONGEST
+    if self._input_at and not long then
+        local since = time.to_s(now - self._input_at)
+        if since < Draft.QUIET then return math.max(0.2, Draft.QUIET - since) end
+    end
+    return nil
+end
+
+--- The record kept for this drawing (every page, as Memos' scene; a journal entry's state).
+function DrawScreen:keptRecord()
+    local Draft = require("gzreader_drawdraft")
+    local under = self.journal and self.journal.under
+    return { kind = under and "journal" or "note", title = self.meta and self.meta.title or nil,
+        pages = self:keptPages(), journal = under and { state = Draft.entryState(under.state) } or nil }
+end
+
+--- The drawing written down (see keepSoon). `later`: in a background process,
+--- so the pen isn't held up (Draft.writeLater); else now, here (going to sleep,
+--- back to the journal entry). true when it was (or is on its way).
+function DrawScreen:keepNow(why, later)
     if self._keep_task then UIManager:unschedule(self._keep_task) end
     self._keep_planned, self._keep_since = nil, nil
     if not self.changed then return false end
     local Draft = require("gzreader_drawdraft")
-    local t0 = os.clock()
-    local ok, pages = pcall(self.keptPages, self)
-    if not ok then Log.warn("drawing: couldn't keep a copy:", tostring(pages)); return false end
     local under = self.journal and self.journal.under
     -- (its own file: a journal entry's stays the entry's, every time its drawing opens)
     if not self.draft_id then
         self.draft_id = (under and under.draft_id) or Draft.newId()
         if under then under.draft_id = self.draft_id end
     end
-    local wrote, n = Draft.write(self.draft_id, { kind = under and "journal" or "note", title = self.meta and self.meta.title or nil,
-        pages = pages, journal = under and { state = Draft.entryState(under.state) } or nil })
     self._kept_at = os.time()
+    if later then
+        Draft.writeLater(self.draft_id, function() return self:keptRecord() end, function(ok, n, pages, took)
+            if ok then
+                Log.info(string.format("drawing: a copy kept (%s, in the background), %d page(s), %d bytes, about %d s",
+                    why or "a pause", pages or 0, n or 0, took or 0))
+            elseif n == "busy" then
+                -- (another background job: again shortly, still between strokes)
+                if not self._closed then self:keepSoon(nil, Draft.RETRY * 5) end
+            elseif n ~= "stale" then
+                Log.warn("drawing: couldn't keep a copy:", tostring(n))
+            end
+        end)
+        return true
+    end
+    local t0 = os.clock()
+    local ok, rec = pcall(self.keptRecord, self)
+    if not ok then Log.warn("drawing: couldn't keep a copy:", tostring(rec)); return false end
+    local wrote, n = Draft.write(self.draft_id, rec)
     if not wrote then Log.warn("drawing: couldn't keep a copy:", tostring(n)); return false end
     Log.info(string.format("drawing: a copy kept (%s), %d page(s), %d bytes, %.2f s", why or "a pause",
-        #pages, n or 0, os.clock() - t0))
+        #rec.pages, n or 0, os.clock() - t0))
     return true
 end
 
@@ -1389,6 +1436,8 @@ function DrawScreen:hook()
         if screen._closed or UIManager:getTopmostVisibleWidget() ~= screen then return orig(det, tevs) end
         -- (beside a book: touches that began on the book are the book's, as KOReader reads them)
         if screen.pane and not screen:paneFrame(det, tevs) then return orig(det, tevs) end
+        -- (the pen moved, on the page or hovering: no copy kept for a moment, see keepWait)
+        screen._input_at = require("ui/time").now()
         -- (the pen's side button, as KOReader reads it: BTN_STYLUS or BTN_STYLUS2; held, the pen rubs out)
         if screen.sketch then
             local held = input.stylus_eraser_active == true or input.stylus_highlighter_active == true

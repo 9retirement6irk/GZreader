@@ -51,7 +51,7 @@ add({ fn = function(E) stroke(E, 0.45); if PEN then E.penAway(0.6) end end, afte
 add({ fn = function(_E)
     local ids = Draft().list()
     check(#ids == 0, "drawing: nothing kept while the pen's still going (" .. #ids .. ")")
-end, after = 4 })
+end, after = 8 }) -- (kept in a background process: a moment more)
 add({ fn = function(E)
     local ids = Draft().list()
     kept_id = ids[1]

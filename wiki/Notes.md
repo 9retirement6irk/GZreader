@@ -606,8 +606,10 @@ API to `/api` are found too.
   when you choose **Start from the saved note**, or after two weeks.
 - **Drawings are kept as you draw**, a few seconds after each pause (at
   most every 30 seconds, at least every minute and a half however long you
-  write) and right before the Kindle goes to sleep, in
-  `koreader/settings/gzreader-drawings/unsaved-….json`. If GZreader stops
+  write, between strokes) and right before the Kindle goes to sleep, in
+  `koreader/settings/gzreader-drawings/unsaved-….json`. Never while the pen
+  is on the page or has just moved, and by a background process, so
+  writing isn't held up. If GZreader stops
   before you save (it hung, crashed or the battery ran out), the next time
   it starts it asks about each one: **Open it** (a journal entry comes back
   with its mood, tags, words and drawing, the drawing on the screen; a

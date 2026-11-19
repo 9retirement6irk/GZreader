@@ -9,6 +9,12 @@ text, to a file of its own (`gzreader-drawings/unsaved-<id>.json`):
 
 - after a pause in the drawing (`PAUSE` seconds without a new stroke), at
   most every `EVERY` seconds, and at once when the Kindle goes to sleep;
+- never while the pen is on the page or has moved in the last `QUIET`
+  seconds, and in a background process (Draft.writeLater): written on the
+  screen's thread, a page of handwriting took a second or more on a Kindle,
+  and the pen put down in that time froze and its stroke came out wrong
+  (the owner, 2026-11-18). Going to sleep and leaving the drawing still
+  write at once (Draft.write);
 - crossed off when the drawing is saved or left on purpose (Discard).
 
 A journal entry's drawing goes on being kept, with the entry's mood, tags
@@ -31,7 +37,11 @@ local T = require("ffi/util").template
 local Draft = {
     PAUSE = 3, -- (s) without a new stroke: the drawing kept
     EVERY = 30, -- (s) at most this often
-    LONGEST = 90, -- (s) drawing without a pause: kept anyway
+    LONGEST = 90, -- (s) drawing without a pause: kept anyway (between strokes)
+    QUIET = 1.5, -- (s) since the pen (or a finger) last moved, hovering too
+    RETRY = 1, -- (s) not quiet yet, or a background job busy: looked at again
+    gen = {}, -- id → how many times written or crossed off (a later one wins)
+    cleared = {}, -- id → crossed off: a background copy still on its way is dropped
     DELAY = 7, -- (s) after GZreader starts: asked about one left from before
     PREFIX = "unsaved-",
     asked = false,
@@ -80,6 +90,13 @@ end
 --- Writes `rec` ({ kind, title, pages = { scene, … }, journal }) as the
 --- drawing left unsaved. Each page's scene is Memos' own scene text. true or nil, err.
 function Draft.write(id, rec)
+    Draft.gen[id] = (Draft.gen[id] or 0) + 1
+    Draft.cleared[id] = nil
+    return Draft.writeFile(id, rec, Draft.path(id) .. ".tmp", true)
+end
+
+--- The file itself: `rec` as text in `tmp`, then moved over the draft (`rename`).
+function Draft.writeFile(id, rec, tmp, rename)
     local Drawing = require("gzreader_drawing")
     local Json = require("gzreader_json")
     local parts = {}
@@ -94,15 +111,46 @@ function Draft.write(id, rec)
     -- (the pages as they are: Memos' scene text, put in as it is)
     local text = head:sub(1, -2) .. ',"pages":[' .. table.concat(parts, ",") .. "]}"
     local path = Draft.path(id)
-    local tmp = path .. ".tmp"
     local f, err = io.open(tmp, "wb")
     if not f then return nil, err end
     local ok, werr = f:write(text)
     f:close()
     if not ok then os.remove(tmp); return nil, werr end
-    local moved, merr = os.rename(tmp, path)
-    if not moved then os.remove(tmp); return nil, merr end
+    if rename then
+        local moved, merr = os.rename(tmp, path)
+        if not moved then os.remove(tmp); return nil, merr end
+    end
     return true, #text
+end
+
+--- Draft.write in a background process (gzreader_async): `make()` (run there,
+--- on a copy of everything as it is now) returns the record. Moved over the
+--- draft here once it's done, unless the draft was written since (that copy is
+--- newer) or crossed off. on_done(ok, bytes_or_why, pages, seconds): why
+--- "busy" (another background job: try again later), "stale" or an error.
+function Draft.writeLater(id, make, on_done)
+    on_done = on_done or function() end
+    Draft.gen[id] = (Draft.gen[id] or 0) + 1
+    local gen = Draft.gen[id]
+    local tmp = Draft.path(id) .. ".bg"
+    require("gzreader_async").background(function()
+        local t0 = os.time()
+        local rec = make()
+        local ok, n = Draft.writeFile(id, rec, tmp, false)
+        return ok or false, n, #(rec.pages or {}), os.time() - t0
+    end, function(ok, n, pages, took)
+        if not ok then
+            os.remove(tmp)
+            return on_done(nil, n)
+        end
+        if Draft.gen[id] ~= gen or Draft.cleared[id] then
+            os.remove(tmp)
+            return on_done(nil, "stale")
+        end
+        local moved, merr = os.rename(tmp, Draft.path(id))
+        if not moved then os.remove(tmp); return on_done(nil, merr) end
+        on_done(true, n, pages, took)
+    end, "keep a drawing", { timeout = 120 })
 end
 
 --- The drawing left unsaved: { at, kind, title, pages = { scene, … }, journal }, or nil.
@@ -130,6 +178,11 @@ function Draft.exists(id)
 end
 
 function Draft.clear(id, why)
+    if id ~= nil then
+        Draft.gen[id] = (Draft.gen[id] or 0) + 1
+        Draft.cleared[id] = true
+        os.remove(Draft.path(id) .. ".bg")
+    end
     if Draft.exists(id) then
         os.remove(Draft.path(id))
         Log.info("drawing: the copy kept as it was drawn crossed off (" .. tostring(why or "saved") .. ")")
