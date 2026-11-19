@@ -8,8 +8,9 @@ TREE=${GZ_EMU_TREE:-/root/work/emu/koreader}
 SCRIPT=$(cd "$(dirname "$1")" && pwd)/$(basename "$1")
 OUT=$(mkdir -p "$2" && cd "$2" && pwd)
 cd "$TREE" || exit 1
-# a fresh install every time (LuaSettings also restores from *.old)
-rm -rf "$OUT"/* settings.reader.lua settings.reader.lua.old settings defaults.persistent.lua* history.lua* \
+# a fresh install every time (LuaSettings also restores from *.old); GZ_EMU_KEEP=1: as it is
+# (places_tour.lua: an install from before 1.35, laid out by hand, to be moved)
+[ "${GZ_EMU_KEEP:-}" = 1 ] || rm -rf "$OUT"/* settings.reader.lua settings.reader.lua.old settings defaults.persistent.lua* history.lua* \
     gzreader-remote gzreader-usage cache history docsettings gzreader.log /mnt/us/GZreader /mnt/onboard/GZreader
 mkdir -p /mnt/us/documents /mnt/onboard # (/mnt/onboard: a Kobo's drive, GZ_EMU_MODEL=clara or libra)
 cp "$TREE/koreader.sh" /var/tmp/koreader.sh # else: "startup script has been updated"
@@ -23,4 +24,9 @@ GZ_EMU_ARMLIBS=/usr/arm-linux-gnueabi
 if ! qemu-arm-static -L "$GZ_EMU_ARMLIBS" ./luajit -v >/dev/null 2>&1 && [ -d /usr/arm-linux-gnueabihf ]; then GZ_EMU_ARMLIBS=/usr/arm-linux-gnueabihf; fi
 export GZ_EMU_ARMLIBS
 timeout "${EMU_TIMEOUT:-400}" qemu-arm-static -L "$GZ_EMU_ARMLIBS" ./luajit "$HERE/emu.lua" "$SCRIPT" "$OUT" > "$OUT.txt" 2>&1
+# (exit 85: GZreader asked to start again, as koreader.sh's loop does: from this
+# folder, wherever it is now: the move into GZreader/app renames it while it runs)
+if [ $? -eq 85 ]; then
+    timeout "${EMU_TIMEOUT:-400}" qemu-arm-static -L "$GZ_EMU_ARMLIBS" ./luajit "$HERE/emu.lua" "$SCRIPT" "$OUT" >> "$OUT.txt" 2>&1
+fi
 echo "exit $?  (log: $OUT.txt, screens: $OUT/*.png, GZreader log: $TREE/gzreader.log)"

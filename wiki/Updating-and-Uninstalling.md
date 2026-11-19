@@ -14,7 +14,7 @@ More: [Updates and test builds](Updates-and-Test-Builds).
 **Settings → Privacy and diagnostics → Advanced → Reset GZreader** (the last item) puts GZreader back to how it was when you installed it, without reinstalling. It asks first. Then:
 
 - every setting goes back to its default, and your reading statistics are removed;
-- everything GZreader downloaded is removed: the **GZreader** folder is emptied (books, audiobooks, music, and the sync page's saved keys and reports);
+- everything GZreader downloaded is removed: `GZreader/books`, `music`, `audiobooks` and `notes` are emptied, and the sync page's saved keys and reports go (`GZreader/app`, GZreader itself, stays);
 - every account is forgotten on this device: Grimmory, Plex, Memos, calendars, Home Assistant, Immich. Nothing is signed out on the servers, so your other devices stay signed in;
 - GZreader restarts and the setup guide opens, as on the first start.
 
@@ -22,9 +22,9 @@ Changes not sent yet (reading progress, notes made without Wi‑Fi) are lost. Bo
 
 ## Uninstalling
 
-**Kindles:** delete the `koreader` folder, `extensions/koreader`, `launchpad/koreader.ini` (Kindle 2/3/DX) and `documents/GZreader.sh` (Kindle 4 and newer). The **GZreader** folder with your books stays until you delete it.
+**Kindles:** delete `GZreader/app`, `extensions/gzreader`, `launchpad/gzreader.ini` (Kindle 2/3/DX) and `documents/GZreader.sh` (Kindle 4 and newer). Your books, music, audiobooks and notes (`GZreader/books`, `music`, `audiobooks`, `notes`) stay until you delete the whole **GZreader** folder. KOReader, if you have it, isn't touched.
 
-**Kobos:** delete `.adds/koreader`, `.adds/nm/gzreader`, `.adds/kfmon/config/gzreader.ini` and `gzreader.png`. The **GZreader** folder with your books stays until you delete it. Sign-ins kept on the Kobo's own disk go with Reset GZreader (do it before deleting), or with the next Kobo update.
+**Kobos:** delete `GZreader/app`, `.adds/nm/gzreader`, `.adds/kfmon/config/gzreader.ini` and `gzreader.png`. Your books, music, audiobooks and notes stay until you delete the whole **GZreader** folder. KOReader (`.adds/koreader`), if you have it, isn't touched. Sign-ins kept on the Kobo's own disk go with Reset GZreader (do it before deleting), or with the next Kobo update.
 
 **Nook 1st Edition:** remove the icon's helper and app first (`adb shell sh /data/gzreader/launcher.sh uninstall`, `adb uninstall gzreader.nook.launcher`), then `adb shell rm -r /data/gzreader`, and on the microSD card (or the Nook's own storage) the `.gzreader-app` folder. The `GZreader` folder with your books stays until you delete it.
 

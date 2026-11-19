@@ -229,7 +229,7 @@ a network and show at once.
 
 Picking a book in the Grimmory browser asks whether to download it and shows
 Grimmory's cover thumbnail (250 x 350, `/api/v1/media/book/<id>/thumbnail`),
-fetched in the background and kept in `koreader/cache/gzreader-thumbs/`
+fetched in the background and kept in `GZreader/app/cache/gzreader-thumbs/`
 (renewed when the cover changes in Grimmory). The Grimmory lists and a
 book's page use `cache/gzreader-covers/`.
 

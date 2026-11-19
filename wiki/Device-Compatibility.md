@@ -33,7 +33,7 @@ These run the touch packages with the same KOReader device support as the Paperw
 | Paperwhite 4 (2018), Paperwhite 5 and Signature Edition (2021), Kindle 2019, 2022 | `kindlepw2` (firmware ≤ 5.16.2.x) or `kindlehf` (5.16.3 or newer) |
 | Paperwhite 6 and Signature Edition (2024), Kindle 2024, Colorsoft and Scribe Colorsoft (in colour: covers as KOReader shows them, the shelf ornaments and the players) | `kindlehf` |
 
-The firmware version is in the Kindle's Settings → Device Options → Device Info. Packages for another Kindle or firmware don't start (the Kindle flashes and goes back to its home screen; `koreader/crash.log` says why).
+The firmware version is in the Kindle's Settings → Device Options → Device Info. Packages for another Kindle or firmware don't start (the Kindle flashes and goes back to its home screen; `GZreader/app/crash.log` says why).
 
 **Big screens (Scribe, DX).** KOReader draws menus, buttons and text bigger the more pixels a screen has across, so on a Scribe they came out about 1.7 times their size on a 6" Kindle. GZreader sizes them for the screen's density instead and lets them grow only a little on a bigger screen (on a Scribe about 1.3 times a 6" Kindle's, on a DX a fifth smaller than before). Books look as before: their font size and margins aren't changed. On those Kindles **Settings → Display and light → Size of menus and text** offers Automatic, Smaller, Larger or As large as KOReader makes them (after a restart).
 

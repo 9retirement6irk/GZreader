@@ -54,7 +54,8 @@ end
 
 --- Where drawings wait to go to Memos (gzreader_drawscreen's dir; not loaded for this at start).
 function Draft.dir()
-    local dir = require("datastorage"):getSettingsDir() .. "/gzreader-drawings"
+    -- (beside the drawings waiting to go to Memos: GZreader/notes/drawings; before 1.35 the app's settings)
+    local dir = require("gzreader_places").notes("drawings", require("datastorage"):getSettingsDir() .. "/gzreader-drawings")
     lfs.mkdir(dir)
     return dir
 end

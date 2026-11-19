@@ -6,7 +6,8 @@
 #
 # Output, in out-dir: gzreader-kobo-<version>.zip, to unzip onto the Kobo's
 # drive (its top folder):
-#   .adds/koreader/                 GZreader (KOReader's place on a Kobo)
+#   GZreader/app/                   GZreader, in a folder of its own with the books
+#                                   (beside KOReader's .adds/koreader, not in it)
 #   .adds/nm/gzreader               NickelMenu: a "GZreader" item in Nickel's menu
 #   .adds/kfmon/config/gzreader.ini KFMon: the "GZreader" book starts it…
 #   gzreader.png                    …this picture, which Nickel lists as a book
@@ -25,12 +26,12 @@ trap 'rm -rf "$STAGE"' EXIT
 # shellcheck source=tools/gzreader/package-common.sh
 . "$REPO/tools/gzreader/package-common.sh"
 
-mkdir -p "$STAGE/src" "$STAGE/out/.adds"
+mkdir -p "$STAGE/src" "$STAGE/out/.adds" "$STAGE/out/GZreader"
 unzip -q "$SRC_ZIP" -d "$STAGE/src"
 [ -f "$STAGE/src/koreader/koreader.sh" ] && [ -d "$STAGE/src/koreader/frontend" ] \
     || { echo "not a KOReader Kobo package: $SRC_ZIP" >&2; exit 1; }
-mv "$STAGE/src/koreader" "$STAGE/out/.adds/koreader"
-KO="$STAGE/out/.adds/koreader"
+mv "$STAGE/src/koreader" "$STAGE/out/GZreader/app"
+KO="$STAGE/out/GZreader/app"
 BASE_REV=$(cat "$KO/git-rev")
 if ! git -C "$REPO" merge-base --is-ancestor "$BASE_REV" HEAD 2>/dev/null; then
     echo "warning: this branch is not based on $BASE_REV; frontend Lua may not match the release binaries" >&2
@@ -44,8 +45,9 @@ rm -f "$KO/update_once.marker" # (KOReader's own first-start update check: GZrea
 
 # 2. Launchers: NickelMenu and KFMon (either, or both, may be installed).
 mkdir -p "$STAGE/out/.adds/nm" "$STAGE/out/.adds/kfmon/config"
-cp "$REPO/platform/kobo/nm/gzreader" "$STAGE/out/.adds/nm/gzreader"
-cp "$REPO/platform/kobo/kfmon/gzreader.ini" "$STAGE/out/.adds/kfmon/config/gzreader.ini"
+# (plugins/gzreader.koplugin/launchers: the move from .adds/koreader installs them too)
+cp "$REPO/plugins/gzreader.koplugin/launchers/kobo/nm/gzreader" "$STAGE/out/.adds/nm/gzreader"
+cp "$REPO/plugins/gzreader.koplugin/launchers/kobo/kfmon/gzreader.ini" "$STAGE/out/.adds/kfmon/config/gzreader.ini"
 cp "$REPO/platform/kobo/gzreader.png" "$STAGE/out/gzreader.png"
 
 # 3. Bundled English dictionary, trimming (the other e-readers' device code;
@@ -60,6 +62,6 @@ echo "$GZ_VERSION" > "$KO/gzreader-version"
 
 OUT="$OUT_DIR/gzreader-kobo-${GZ_VERSION}.zip"
 rm -f "$OUT"
-(cd "$STAGE/out" && zip -qr -9 "$OUT" .adds gzreader.png)
+(cd "$STAGE/out" && zip -qr -9 "$OUT" GZreader .adds gzreader.png)
 echo "$OUT"
 du -h "$OUT"

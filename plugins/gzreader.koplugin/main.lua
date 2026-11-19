@@ -282,6 +282,8 @@ function Grimmory:init()
         end
         -- downloads / audiobook preparing cut short last time: ask what to do
         pcall(function() require("gzreader_recovery").schedule(self) end)
+        -- GZreader moved into its own folder at this start (gzreader_migrate.lua): said once
+        pcall(function() require("gzreader_places").announce() end)
         -- a drawing never saved (GZreader stopped while it was open): ask what to do
         pcall(function() require("gzreader_drawdraft").schedule(self) end)
         if self.api:isPaired() then
@@ -2081,6 +2083,12 @@ end
 Grimmory.FOLDER = "GZreader"
 
 function Grimmory:libraryDir()
+    -- GZreader in its own folder (GZreader/app): the books are GZreader/books (gzreader_places)
+    local books = require("gzreader_places").books(nil)
+    if books then
+        if self.store.library_dir ~= books then self.store.library_dir = books end
+        return books
+    end
     local dir = self.store.library_dir
     if not dir then
         local home = G_reader_settings:readSetting("home_dir") or Device.home_dir or DataStorage:getDataDir()

@@ -10,7 +10,8 @@ What goes (`Reset.plan`):
   the reading statistics — in the settings folder or, as KOReader may keep
   them, `statistics.sqlite3` in its own folder);
 - the GZreader folder's contents (books, audiobooks, music, the sync page's
-  `.gzsync` with its saved keys and reports) — books elsewhere stay;
+  `.gzsync` with its saved keys and reports; from 1.35 GZreader/books, music,
+  audiobooks, notes and .gzsync, never GZreader/app) — books elsewhere stay;
 - the cache, the sleep screen pictures, the remote debugging spool, the
   Immich wallpaper, KOReader's other book-settings folders;
 - on a Kindle, the sign-ins kept off the USB drive (`gzreader_secrets.lua`'s
@@ -185,6 +186,12 @@ function Reset.plan(plugin, over)
         empty(data .. "/" .. name, nil, name)
     end
     if d.secrets then empty(d.secrets, nil, "sign-ins") end
+    -- (GZreader in its own folder, 1.35: music, audiobooks, notes and the sync page's
+    -- folder beside the books, never the folder itself, which holds the program)
+    local root = (over or {}).root or require("gzreader_places").root()
+    if root then
+        for _i, name in ipairs({ "music", "audiobooks", "notes", ".gzsync" }) do empty(root .. "/" .. name, nil, name) end
+    end
     if d.library then
         empty(d.library, nil, "library")
         local last = plan.empty[#plan.empty]

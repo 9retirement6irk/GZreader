@@ -65,7 +65,8 @@ local DrawScreen = InputContainer:extend{
 
 --- Where drawings wait until they're in Memos.
 function DrawScreen.dir()
-    local dir = DataStorage:getSettingsDir() .. "/gzreader-drawings"
+    -- (GZreader/notes/drawings; before 1.35, in the app's settings: gzreader_places)
+    local dir = require("gzreader_places").notes("drawings", DataStorage:getSettingsDir() .. "/gzreader-drawings")
     lfs.mkdir(dir)
     return dir
 end

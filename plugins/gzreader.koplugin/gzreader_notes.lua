@@ -2944,7 +2944,7 @@ function Notes.markUpPdf(plugin, memo, att)
             UIManager:show(busy)
             UIManager:forceRePaint()
             -- (where drawings wait to be sent: the pictures made on the way, removed after)
-            local dir = require("datastorage"):getSettingsDir() .. "/gzreader-drawings"
+            local dir = require("gzreader_places").notes("drawings", require("datastorage"):getSettingsDir() .. "/gzreader-drawings")
             lfs.mkdir(dir)
             local pages, why, detail = PdfMarkup.pages(path, list, dir)
             UIManager:close(busy)

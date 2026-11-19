@@ -437,7 +437,7 @@ API to `/api` are found too.
     the paper you chose last. The paper goes to Memos with the drawing as its
     background, as Memos' own drawing editor keeps one (a locked picture
     under everything), so Memos shows and keeps it; on the Kindle it's grey.
-    **Your own paper:** put a PNG file in `koreader/settings/gzreader-notepaper`
+    **Your own paper:** put a PNG file in `GZreader/app/settings/gzreader-notepaper`
     on the Kindle (at most 1440 pixels on its longer side and 600 KB); it's
     offered after the others, named after the file.
     On a paper the ink goes on the screen a little more slowly than on a

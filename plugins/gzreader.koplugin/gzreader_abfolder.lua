@@ -34,7 +34,8 @@ local function mkdirp(path)
 end
 
 local function storeDir(plugin, id)
-    return plugin:libraryDir() .. "/" .. Folder.STORE .. "/" .. tostring(id)
+    -- (GZreader/audiobooks; before 1.35, the hidden .audiobooks in the GZreader folder: gzreader_places)
+    return require("gzreader_places").audiobooks(plugin:libraryDir() .. "/" .. Folder.STORE) .. "/" .. tostring(id)
 end
 
 function Folder.entryDir(plugin)

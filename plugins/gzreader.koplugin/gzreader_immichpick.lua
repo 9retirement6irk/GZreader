@@ -191,8 +191,8 @@ end
 
 --- Where thumbnails and picked photos wait (thumbnails: thrown away when the picker closes).
 function Pick.dir()
-    local DataStorage = require("datastorage")
-    local dir = DataStorage:getSettingsDir() .. "/gzreader-drawings"
+    -- (with the drawings waiting to go to Memos: GZreader/notes/drawings, gzreader_places)
+    local dir = require("gzreader_places").notes("drawings", require("datastorage"):getSettingsDir() .. "/gzreader-drawings")
     lfs.mkdir(dir)
     local thumbs = dir .. "/immich-thumbs"
     lfs.mkdir(thumbs)

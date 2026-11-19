@@ -15,8 +15,8 @@ From the [latest release](https://github.com/9retirement6irk/GZreader/releases/l
 ## 3. Copy it to the Kindle
 
 1. Connect the Kindle to the computer with USB; it shows up as a drive.
-2. Unzip the package on the computer. Inside are the folders `koreader`, `extensions` and `documents` (with one file, `GZreader.sh`: the GZreader item on a touch Kindle's home screen).
-3. Copy those folders to the **top of the Kindle's drive**, merging with any folders of the same name already there (your books in `documents` and KUAL's own `extensions` folder stay; GZreader adds `documents/GZreader.sh` and `extensions/koreader`). If an old KOReader is installed, its `koreader` folder is replaced.
+2. Unzip the package on the computer. Inside are the folders `GZreader` (with `app` in it: GZreader itself), `extensions` and `documents` (with one file, `GZreader.sh`: the GZreader item on a touch Kindle's home screen).
+3. Copy those folders to the **top of the Kindle's drive**, merging with any folders of the same name already there (your books in `documents` and KUAL's own `extensions` folder stay; GZreader adds `GZreader/app`, `extensions/gzreader` and `documents/GZreader.sh`). **A KOReader already there stays as it is**: GZreader has its own folder and its own KUAL entry, so you can keep both. → [Where GZreader keeps things](Installing#where-gzreader-keeps-things)
 4. **Eject** the Kindle safely and unplug it.
 
 ## 4. Start GZreader

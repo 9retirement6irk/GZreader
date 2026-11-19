@@ -94,6 +94,27 @@ if [ "${GZ_CI_KOBO:-1}" = 1 ]; then
         echo "- ✅ condor (Kobo pen): $(grep -c '^ok' "$k") checks" >> "$SUM"
     fi
 fi
+# GZreader in a folder of its own: a drive laid out as before 1.35 (GZreader
+# in KOReader's place), moved at start into GZreader/app, books, music, notes
+# (emulator/places_tour.lua, places-drive.sh). A Paperwhite 3, and a Clara HD.
+echo "### Moving into the GZreader folder (emulator)" >> "$SUM"
+for pm in pw3:kindle clara:kobo; do
+    model=${pm%%:*}; kind=${pm#*:}
+    [ "$kind" = kobo ] && [ "${GZ_CI_KOBO:-1}" != 1 ] && continue
+    APPDIR=$(bash "$REPO/tools/gzreader/emulator/places-drive.sh" "$TREE" "$OUT/places-drive-$model" "$kind")
+    GZ_EMU_KEEP=1 GZ_MOVE_HOME="$OUT/places-drive-$model" GZ_MOVE_DEVICE=$kind GZ_PLACES=moved \
+        GZ_EMU_TREE="$APPDIR" GZ_EMU_MODEL=$model EMU_TIMEOUT=420 \
+        bash "$REPO/tools/gzreader/emulator/run.sh" "$REPO/tools/gzreader/emulator/places_tour.lua" "$OUT/places-$model" > /dev/null 2>&1
+    k="$OUT/places-$model/places-checks.txt"
+    if [ ! -s "$k" ] || [ "$(grep -c '^ok' "$k")" -lt 9 ] || grep -q '^FAIL' "$k"; then
+        failed=$((failed + 1)); echo "- ❌ $model ($kind): $( [ -s "$k" ] && grep -c '^ok' "$k" || echo 0) ok (see places-$model.txt)" >> "$SUM"
+        [ -s "$k" ] && sed 's/^/  - /' "$k" | grep FAIL >> "$SUM"
+    else
+        echo "- ✅ $model ($kind): $(grep -c '^ok' "$k") checks" >> "$SUM"
+    fi
+    cp "$OUT/places-drive-$model/GZreader/app/gzreader.log" "$OUT/places-$model/" 2>/dev/null
+    rm -rf "$OUT/places-drive-$model"
+done
 # CPU budgets: a Kindle 3's everyday work (start, a book, page turns, the
 # quick panel, Home) against tools/gzreader/emulator/perf_baseline.json
 # (perf.lua, perf_check.py). GZ_CI_PERF=0 skips it.

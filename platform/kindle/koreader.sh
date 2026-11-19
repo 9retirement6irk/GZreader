@@ -462,12 +462,15 @@ if [ "${RETURN_VALUE}" -eq 86 ]; then
         done
         # (the drive settles: fsck, the Kindle's indexer)
         sleep 5
-        if gz_latest_wait && [ -f /mnt/us/koreader/koreader.sh ] && ! pidof reader.lua >/dev/null 2>&1; then
+        # (GZreader's folder: this one; or, moved at this start into its own, GZreader/app)
+        GZ_APP="${KOREADER_DIR}"
+        [ -f "${GZ_APP}/koreader.sh" ] || GZ_APP=/mnt/us/GZreader/app
+        if gz_latest_wait && [ -f "${GZ_APP}/koreader.sh" ] && ! pidof reader.lua >/dev/null 2>&1; then
             rm -f /var/tmp/gzreader-usbwait
-            echo "GZreader: back from USB drive mode at $(date)" >>/mnt/us/koreader/crash.log 2>/dev/null
+            echo "GZreader: back from USB drive mode at $(date)" >>"${GZ_APP}/crash.log" 2>/dev/null
             rm -f /var/tmp/fbink
             # shellcheck disable=SC2086
-            exec /bin/sh /mnt/us/koreader/koreader.sh ${REEXEC_FLAGS}
+            exec /bin/sh "${GZ_APP}/koreader.sh" ${REEXEC_FLAGS}
         fi
     fi
 fi

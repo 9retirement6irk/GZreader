@@ -1158,14 +1158,16 @@ gets a password or token.
     if (!Drive.gz || !box) return;
     var gz = Drive.gz;
     // (as GZreader's Settings → Storage counts them: the Audiobooks and Music folders hold stand-ins)
-    var ab = await Drive.tryDir(gz, ".audiobooks"), mu = await Drive.tryDir(gz, ".music"), cp = Drive.sync;
+    // (GZreader 1.35 and later: app, books, music, audiobooks, notes inside the GZreader folder)
+    var app = await Drive.tryDir(gz, "app"), lib = (app && await Drive.tryDir(gz, "books")) || gz;
+    var ab = await Drive.tryDir(gz, app ? "audiobooks" : ".audiobooks"), mu = await Drive.tryDir(gz, app ? "music" : ".music"), cp = Drive.sync;
     var parts = [
-      { key: "books", label: "Books", bytes: await dirSize(gz, function (n) { return n[0] === "." || n === "Audiobooks" || n === "Music"; }) },
+      { key: "books", label: "Books", bytes: await dirSize(lib, function (n) { return n[0] === "." || n === "Audiobooks" || n === "Music" || (!!app && lib === gz); }) },
       { key: "audiobooks", label: "Audiobooks", bytes: ab ? await dirSize(ab) : 0 },
       { key: "music", label: "Music", bytes: mu ? await dirSize(mu) : 0 },
     ];
     parts.push({ key: "copy", label: "Library copy, covers and sync files", bytes: await dirSize(cp, function (n) { return n === "in" || n === Vault.FILE; }) });
-    var notes = Drive.root && (await Drive.tryDir(Drive.root, "koreader/cache/gzreader-notes") || await Drive.tryDir(Drive.root, ".adds/koreader/cache/gzreader-notes")); // (a Kobo: .adds/koreader)
+    var notes = (app && await Drive.tryDir(gz, "notes/files")) || (Drive.root && (await Drive.tryDir(Drive.root, "koreader/cache/gzreader-notes") || await Drive.tryDir(Drive.root, ".adds/koreader/cache/gzreader-notes"))); // (1.35: GZreader/notes; before, a Kobo's: .adds/koreader)
     if (notes) parts.push({ key: "notes", label: "Notes' pictures", bytes: await dirSize(notes) });
     var disk = (K.out || {}).disk;
     var coming = Picks.d.books.concat((K.out || {}).queue || []).reduce(function (a, q) { return a + (Number(q.size_kb) || 0) * 1024; }, 0);
@@ -2219,7 +2221,9 @@ gets a password or token.
     readLogs: async function () {
       var fresh = Drive.sync && await Drive.readText(Drive.sync, "reports/latest.txt");
       if (fresh != null && fresh !== "") return { text: fresh, exported: true };
-      var ko = Drive.root && (await Drive.tryDir(Drive.root, "koreader") || await Drive.tryDir(Drive.root, ".adds/koreader")); // (a Kobo: .adds/koreader)
+      // (1.35: GZreader/app; before, KOReader's place: koreader, or .adds/koreader on a Kobo)
+      var ko = (Drive.gz && await Drive.tryDir(Drive.gz, "app"))
+        || (Drive.root && (await Drive.tryDir(Drive.root, "GZreader/app") || await Drive.tryDir(Drive.root, "koreader") || await Drive.tryDir(Drive.root, ".adds/koreader")));
       if (!ko) return null;
       var a = await Drive.readText(ko, "gzreader.log.1"), b = await Drive.readText(ko, "gzreader.log");
       var crash = await Drive.readText(ko, "crash.log");
