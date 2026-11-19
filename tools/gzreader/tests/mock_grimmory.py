@@ -263,6 +263,13 @@ class H(BaseHTTPRequestHandler):
             return self._json(401, {"message": "Invalid credentials"})
         if u.path == "/api/v1/auth/refresh":
             STATE["refresh_calls"] += 1
+            if STATE.get("refresh_delay"):  # (a slow answer: the token is still replaced)
+                b = self._body()
+                user = STATE["refresh"].pop(b.get("refreshToken"), None)
+                time.sleep(STATE["refresh_delay"])
+                if not user:
+                    return self._json(401, {"message": "Invalid or expired refresh token"})
+                return self._json(200, self._tokens(user))
             b = self._body()
             user = STATE["refresh"].pop(b.get("refreshToken"), None)  # rotation
             if not user:
@@ -773,6 +780,8 @@ if __name__ == "__main__":
                     if bid in SHELVES[sid]: SHELVES[sid].remove(bid)
             if u.path == "/reset_ko":
                 STATE["kouser"].clear()
+            if u.path == "/refresh_delay":
+                STATE["refresh_delay"] = float(q.get("s", ["0"])[0])
             if u.path == "/expire_refresh":
                 STATE["refresh"].clear(); STATE["access"].clear()
             body = json.dumps({"log": STATE["log"], "kouser": STATE["kouser"], "progress": {str(k): v for k, v in STATE["progress"].items()}, "sessions": STATE["sessions"], "last_put_body": STATE.get("last_put_body"), "last_oidc_origin": STATE.get("last_oidc_origin"), "refresh_calls": STATE["refresh_calls"], "gzip_replies": STATE.get("gzip_replies", 0), "bookmarks": list(STATE["bookmarks"].values()), "annotations": sorted(STATE["annotations"].values(), key=lambda a: a["id"]), "notes": sorted(STATE["notes"].values(), key=lambda a: a["id"]), "usage": STATE.get("usage", []), "last_timeline_query": STATE.get("last_timeline_query"), "ratings": {str(k): v for k, v in STATE["ratings"].items()}, "read_status": {str(k): v for k, v in STATE["read_status"].items()}, "shelves": {str(k): v for k, v in SHELVES.items()}, "last_shelves_body": STATE.get("last_shelves_body")}).encode()

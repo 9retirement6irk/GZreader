@@ -49,6 +49,13 @@ page. It opens a list drawn like Settings (an icon on each row): who you're
 signed in as, Rebuild library, reconnecting, and About Grimmory. What's on
 the Kindle is in the Downloads tab.
 
+**Staying signed in.** GZreader renews its sign-in now and then, and
+Grimmory hands over a new key each time and throws the old one away. It
+waits up to 45 seconds for that answer, so a slow Kindle (a Kindle 3 just
+woken up) doesn't give up on a key Grimmory has already replaced. If it
+still says it must connect again, `gzreader.log` says whether a renewal got
+no answer.
+
 **An Audiobooks tab** (off until you turn it on: Settings → Home and tabs →
 Tab bar → Tabs → Audiobooks, or the setup guide's tab page; Kindles with a
 speaker or headphone jack) opens the Catalog's Audiobooks page on its own:
