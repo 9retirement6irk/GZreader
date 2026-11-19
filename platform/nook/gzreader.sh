@@ -100,7 +100,9 @@ export GZ_NOOK_HOME
 # and was full: updates couldn't unpack. The parts of GZreader that are only
 # read, not run (its Lua, fonts, hyphenation, translations) and its cache
 # live on the microSD card when there is one, else on the Nook's own
-# storage: $GZ_NOOK_HOME/.gzreader-app. They're mounted into koreader/ while
+# storage: $GZ_NOOK_HOME/GZreader/app (before 1.35 the hidden .gzreader-app:
+# renamed at the next start; the fingerprints below are of paths inside it,
+# so they still match). They're mounted into koreader/ while
 # GZreader runs, so it sees one folder. Its programs and libraries (they need
 # a Linux disk: the card is FAT) and its settings stay on /data. The first
 # start moves them (a minute or two); a full package pushed over them later
@@ -180,10 +182,21 @@ copy_part() {
 }
 app_parts() {
     APP_FILE=$GZ/app-home
-    APP=$GZ_NOOK_HOME/.gzreader-app
+    APP=$GZ_NOOK_HOME/GZreader/app
+    OLD_APP=$GZ_NOOK_HOME/.gzreader-app
     [ -s "$APP_FILE" ] && APP=$(cat "$APP_FILE")
     # (left over from a GZreader that didn't close properly)
     for P in $APP_PARTS; do part_bound "$GZ/koreader/$P" && unbind_part "$GZ/koreader/$P"; done
+    # (before 1.35: the hidden .gzreader-app; now GZreader/app, beside the books)
+    if [ "$APP" = "$OLD_APP" ] && [ -f "$OLD_APP/.gz-app" ] && [ ! -e "$GZ_NOOK_HOME/GZreader/app" ]; then
+        if mkdir -p "$GZ_NOOK_HOME/GZreader" && mv "$OLD_APP" "$GZ_NOOK_HOME/GZreader/app"; then
+            APP=$GZ_NOOK_HOME/GZreader/app
+            echo "$APP" > "$APP_FILE"
+            log "app: .gzreader-app is GZreader/app now"
+        else
+            log "app: couldn't rename .gzreader-app to GZreader/app: it stays as it is"
+        fi
+    fi
     if [ -s "$APP_FILE" ] && [ ! -f "$APP/.gz-app" ]; then
         log "app: GZreader's files are in $APP, which isn't there (card taken out?)"
         echo "GZreader's files are on the storage it was started from ($APP): put that card back in."

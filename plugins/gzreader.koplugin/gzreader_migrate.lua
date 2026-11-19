@@ -36,6 +36,9 @@ local M = {
         { home = "/mnt/onboard", app = "/mnt/onboard/.adds/koreader", device = "kobo" },
     },
     FOLDER = "GZreader",
+    -- the Nook: its program stays on its own disk (/data, programs can't run from the
+    -- card); the rest moves into GZreader/ on the card, and this says it's done
+    NOOK_DONE = "settings/gzreader-folder.done",
     -- names in the old GZreader folder that aren't books (the new folders, and those moved apart)
     -- (.gzsync: the sync page's, stays at the top of the GZreader folder)
     NOT_BOOKS = { app = true, books = true, music = true, audiobooks = true, notes = true, [".music"] = true, [".audiobooks"] = true,
@@ -81,6 +84,25 @@ local function writeFile(p, s)
     return os.rename(tmp, p) ~= nil
 end
 
+--- A file copied (another disk); true when the copy is whole.
+function M.copyFile(from, to)
+    local f = io.open(from, "rb")
+    if not f then return false end
+    local tmp = to .. ".gzmove"
+    local o = io.open(tmp, "wb")
+    if not o then f:close(); return false end
+    local ok = true
+    while ok do
+        local chunk = f:read(65536) -- (in pieces: an audiobook is larger than the Nook's memory)
+        if not chunk then break end
+        ok = o:write(chunk) and true or false
+    end
+    f:close()
+    o:close()
+    if not ok or lfs.attributes(tmp, "size") ~= lfs.attributes(from, "size") then os.remove(tmp); return false end
+    return os.rename(tmp, to) ~= nil
+end
+
 --- `from` to `to`: renamed (the same drive). A folder whose place is taken
 --- already: its insides moved one by one (a move cut short, done again).
 function M.move(from, to)
@@ -88,6 +110,13 @@ function M.move(from, to)
     if not mode(to) then
         local ok, err = os.rename(from, to)
         if ok then return true end
+        -- (another disk: the Nook's /data to its card; copied, checked, then the old one removed)
+        if isDir(from) then
+            if lfs.mkdir(to) then return M.move(from, to) end
+        elseif mode(from) == "file" and M.copyFile(from, to) then
+            os.remove(from)
+            return true
+        end
         say("couldn't move", from, "→", to, tostring(err))
         return false
     end
@@ -115,7 +144,8 @@ function M.rules(o)
         { "./settings/gzreader-drawings", R .. "/notes/drawings" },
         { o.app .. "/cache/gzreader-notes", R .. "/notes/files" },
         { "./cache/gzreader-notes", R .. "/notes/files" },
-        { o.app, R .. "/app" },
+        -- (the Nook's program stays where it is: a rule that changes nothing)
+        o.keep_app and { false } or { o.app, R .. "/app" },
         { o.lib, R .. "/books" },
     }
 end
@@ -129,8 +159,10 @@ function M.mapPath(s, rules, root)
     end
     for _i, r in ipairs(rules) do
         local old, new = r[1], r[2]
-        if s == old then return new end
-        if s:sub(1, #old + 1) == old .. "/" then return new .. s:sub(#old + 1) end
+        if r and old then
+            if s == old then return new end
+            if s:sub(1, #old + 1) == old .. "/" then return new .. s:sub(#old + 1) end
+        end
     end
     return nil
 end
@@ -288,8 +320,10 @@ end
 --- The move, from `o` = { home, app, lib, device }. Returns the program's new folder, or nil and why.
 function M.run(o)
     o.root = o.home .. "/" .. M.FOLDER
-    local target = o.root .. "/app"
-    if mode(target) then return nil, "GZreader/app is there already" end
+    local target = o.keep_app and o.app or o.root .. "/app"
+    if o.keep_app then
+        if mode(o.app .. "/" .. M.NOOK_DONE) then return nil, "moved already" end
+    elseif mode(target) then return nil, "GZreader/app is there already" end
     o.lib = (o.lib or o.root):gsub("/+$", "")
     -- (the books' folder GZreader remembered is only taken when it's a GZreader folder
     -- GZreader made, e.g. documents/GZreader, and on this drive: never a folder of
@@ -348,16 +382,21 @@ function M.run(o)
     for _i, f in ipairs({ "docprops_cache.sqlite", "docprops_cache.sqlite-wal", "docprops_cache.sqlite-shm" }) do
         os.remove(o.app .. "/settings/" .. f)
     end
-    -- 6. GZreader's launchers, to GZreader/app
-    pcall(M.launchers, o)
+    -- 6. GZreader's launchers, to GZreader/app (the Nook's start where they did)
+    if not o.keep_app then pcall(M.launchers, o) end
     if o.device == "kobo" then pcall(M.koboExclude, o.home .. "/.kobo/Kobo/Kobo eReader.conf") end
     -- 7. a note for the new place (GZreader says once that it moved), then the program itself
     -- (JSON: a file on the drive is read as data, never run)
     writeFile(o.app .. "/settings/gzreader-moved.json", string.format(
         '{"at":%d,"from":"%s","books":%d,"files":%d,"paths":%d,"device":"%s"}\n',
         os.time(), (o.app:gsub('[%c"\\]', "")), books, done.files, done.paths, (tostring(o.device or "?"):gsub("%W", ""))))
-    local ok, err = os.rename(o.app, target)
-    if not ok then return nil, "couldn't move the program: " .. tostring(err) end
+    if o.keep_app then
+        -- (the Nook: the program stays; this says the rest is in GZreader/ now: gzreader_places)
+        writeFile(o.app .. "/" .. M.NOOK_DONE, os.date("!%Y-%m-%dT%H:%M:%SZ") .. "\n")
+    else
+        local ok, err = os.rename(o.app, target)
+        if not ok then return nil, "couldn't move the program: " .. tostring(err) end
+    end
     say(string.format("done: %d books, %d paths in %d files; the program is %s", books, done.paths, done.files, target))
     return target
 end
@@ -402,6 +441,24 @@ end
 --- From reader.lua: the device's own places; nothing when GZreader isn't in one of them.
 function M.early()
     local cwd = (lfs.currentdir() or ""):gsub("/+$", "")
+    -- the Nook (its start script says where its card is): everything but the program
+    -- into GZreader/ on the card, once; no restart (the program didn't move)
+    local nook = os.getenv("GZ_NOOK_HOME")
+    if nook and nook ~= "" then
+        nook = nook:gsub("/+$", "")
+        if mode(cwd .. "/" .. M.NOOK_DONE) then
+            -- (moved by a beta that left the reading history behind: put right once)
+            pcall(M.fixHistory, cwd, nook .. "/" .. M.FOLDER, cwd, true)
+            return nil
+        end
+        if not isDir(nook) then return nil end
+        local state = readFile(cwd .. "/settings/gzreader.lua") or ""
+        local lib = state:match('%["library_dir"%]%s*=%s*"([^"\n]+)"')
+        local ok, res, why = pcall(M.run, { home = nook, app = cwd, lib = lib, device = "nook", keep_app = true })
+        if not ok then say("stopped:", tostring(res)) end
+        if ok and not res then say("not moved:", tostring(why)) end
+        return nil
+    end
     local test_home = os.getenv("GZ_MOVE_HOME") -- (the tests and the emulator: a drive of their own)
     for _i, l in ipairs(M.LEGACY) do
         local home, app = l.home, l.app

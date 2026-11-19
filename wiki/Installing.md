@@ -35,6 +35,8 @@ Everything is in one **GZreader** folder at the top of the drive, beside KOReade
 | `GZreader/audiobooks` | audiobooks you downloaded |
 | `GZreader/notes` | your notes kept on the device, their attachments, drawings waiting to go to Memos |
 
+**On a Nook** it's the same folder on the microSD card (or the Nook's storage), except that `GZreader/app` holds only the parts of GZreader that are read, not run: its programs, settings and logs stay in `/data/gzreader` (the card can't run programs), and the code on the card is checked against fingerprints kept there at every start.
+
 Sign-ins (passwords, tokens, calendar links) are kept on the device's own disk instead, where a computer can't read them. KOReader keeps `koreader/`, its own KUAL entry and its settings; GZreader has its own (`extensions/gzreader`, the **GZreader** item), so you can use both.
 
 **Updating from a version before 1.35** (GZreader was installed in KOReader's place, `koreader/`): the first start after the update moves everything into the GZreader folder by itself: GZreader, your books (with their reading positions, history and collections), music, audiobooks and notes. It takes a moment and starts again once; a message says it's done. The `koreader` folder is then free for KOReader.

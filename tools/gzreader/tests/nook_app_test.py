@@ -77,7 +77,8 @@ def main():
     real = os.environ.get("GZ_TEST_BUSYBOX") or sh or next(iter(sorted(glob.glob("/nix/store/*-busybox-*/bin/busybox"))), None)
     shell = [real, "sh"] if real else ["sh"]
     print("shell:", " ".join(shell))
-    app = os.path.join(card, ".gzreader-app")
+    app = os.path.join(card, "GZreader", "app")  # (before 1.35: card/.gzreader-app)
+    old_app = os.path.join(card, ".gzreader-app")
 
     def start(**env):
         e = dict(os.environ, GZ=gz, GZ_NOOK_HOME=card, MOUNTS=mounts, LOG=log)
@@ -172,6 +173,16 @@ def main():
               "a part that can't be copied: stays on the Nook's disk (the others on the card)")
         start(THEN_EXIT="1")
         # all back on the Nook's disk
+        # before 1.35 the card's part was the hidden .gzreader-app: renamed GZreader/app at the next start
+        start(THEN_EXIT="1")
+        os.rename(app, old_app)
+        open(os.path.join(gz, "app-home"), "w").write(old_app + "\n")
+        open(log, "w").close()
+        r = start(THEN_EXIT="1")
+        check("rc=0" in r.stdout and os.path.isdir(app) and not os.path.exists(old_app)
+              and read(gz, "app-home").strip() == app and "is GZreader/app now" in read(log)
+              and "changed by something other than GZreader" not in r.stdout,
+              "before 1.35 (.gzreader-app): renamed GZreader/app, app-home follows, its code still matches its fingerprints (%s)" % r.stdout.strip())
         r = start(GZ_NOOK_APP="here")
         check("rc=0" in r.stdout and not any(bound(p) for p in ("frontend", "plugins", "fonts"))
               and read(ko, "frontend", "new.lua") == "new\n" and read(ko, "plugins", "gzreader.koplugin", "main.lua") == "plugins\n"
