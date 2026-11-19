@@ -89,7 +89,7 @@ end, after = 3 })
 add({ fn = function(E) tap(E, (button("shape"))) end, after = 3 })
 add({ shot = "4-shapes-panel", after = 0.5 })
 add({ fn = function(E)
-    check(screen().flyout == "shape" and ids("flyout") == "s-square,s-circle,s-triangle,s-line,s-arrow",
+    check(screen().flyout == "shape" and ids("flyout") == "s-square,s-circle,s-triangle,s-line,s-arrow,snap",
         "Shapes, and again: Square, Circle, Triangle, Line, Arrow (" .. ids("flyout") .. ")")
     tap(E, (button("s-circle")))
 end, after = 3 })

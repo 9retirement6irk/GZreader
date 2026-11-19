@@ -324,6 +324,12 @@ API to `/api` are found too.
       the shape's outline follows the pen, and it's put on the page when you lift. It's drawn in the pen's thickness
       and colour, and is undone and rubbed out like a stroke (Memos gets
       it as a stroke along the outline).
+      **Draw and hold:** with any pen, draw a line, circle, oval, triangle
+      or box roughly and keep the pen still for a moment at the end: when
+      you lift, it becomes a clean one in the same place (as on the Apple
+      Newton). Lifted at once, or smaller than a fingertip, it stays as you
+      drew it. The Shapes panel's **Draw and hold: clean shapes** switch
+      turns it off.
     - **Text:** typed text boxes. Tap the page where one goes and type its
       words (**Add**). The box is chosen: a frame with a handle at its
       bottom right corner. **Drag the box** to move it; **drag its corner**
