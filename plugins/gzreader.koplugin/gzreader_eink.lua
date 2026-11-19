@@ -155,35 +155,44 @@ function Eink.install()
     local Screen = require("device").screen
     local time = require("ui/time")
     local orig_refresh = UIManager._refresh
+    -- (GZreader's part of each hook in a pcall: a fault in it leaves KOReader's own call as it was)
     UIManager._refresh = function(self, mode, region, dither)
-        if mode and not self.currently_scrolling and Eink.enabled() then
-            local pending = Eink.pending and os.time() - Eink.pending <= 3   -- (an opened window's own update)
-            local arrow = Eink.arrow_at and time.to_s(time.now() - Eink.arrow_at) < Eink.ARROW_S
-                or Eink.inPlayer(self._window_stack)   -- (in a player: only its own opening flashes)
-            local background = not (Eink.input_at and time.to_s(time.now() - Eink.input_at) < Eink.INPUT_S)
-            local promoted, flashed = Eink.promote(mode, region, Screen:getWidth(), Screen:getHeight(), pending, arrow, background)
-            if flashed then Eink.pending = nil end
-            mode = promoted
+        if mode and not self.currently_scrolling then
+            local ok, m = pcall(function()
+                if not Eink.enabled() then return mode end
+                local pending = Eink.pending and os.time() - Eink.pending <= 3   -- (an opened window's own update)
+                local arrow = Eink.arrow_at and time.to_s(time.now() - Eink.arrow_at) < Eink.ARROW_S
+                    or Eink.inPlayer(self._window_stack)   -- (in a player: only its own opening flashes)
+                local background = not (Eink.input_at and time.to_s(time.now() - Eink.input_at) < Eink.INPUT_S)
+                local promoted, flashed = Eink.promote(mode, region, Screen:getWidth(), Screen:getHeight(), pending, arrow, background)
+                if flashed then Eink.pending = nil end
+                return promoted
+            end)
+            if ok and m then mode = m end
         end
         return orig_refresh(self, mode, region, dither)
     end
     -- the last key: an arrow (focus moving: no flash) or not
     local orig_input = UIManager.handleInputEvent
     UIManager.handleInputEvent = function(self, ev, ...)
-        if type(ev) == "table" and ev.handler ~= "onKeyRelease" then Eink.input_at = time.now() end -- (a key or a tap)
-        if type(ev) == "table" and (ev.handler == "onKeyPress" or ev.handler == "onKeyRepeat") then
-            local key = type(ev.args) == "table" and ev.args[1]
-            Eink.arrow_at = type(key) == "table" and Eink.ARROWS[key.key] and time.now() or nil
-        end
+        pcall(function()
+            if type(ev) == "table" and ev.handler ~= "onKeyRelease" then Eink.input_at = time.now() end -- (a key or a tap)
+            if type(ev) == "table" and (ev.handler == "onKeyPress" or ev.handler == "onKeyRepeat") then
+                local key = type(ev.args) == "table" and ev.args[1]
+                Eink.arrow_at = type(key) == "table" and Eink.ARROWS[key.key] and time.now() or nil
+            end
+        end)
         return orig_input(self, ev, ...)
     end
     local orig_show, orig_close = UIManager.show, UIManager.close
     UIManager.show = function(self, widget, ...)
-        if Eink.flashesFor(widget, self._window_stack) then Eink.pending = os.time() end
+        local okf, flash = pcall(Eink.flashesFor, widget, self._window_stack)
+        if okf and flash then Eink.pending = os.time() end
         return orig_show(self, widget, ...)
     end
     UIManager.close = function(self, widget, ...)
-        if Eink.flashesFor(widget, self._window_stack) then Eink.pending = os.time() end
+        local okf, flash = pcall(Eink.flashesFor, widget, self._window_stack)
+        if okf and flash then Eink.pending = os.time() end
         return orig_close(self, widget, ...)
     end
 end

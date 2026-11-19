@@ -81,6 +81,9 @@ grep -q "FAIL" "$WORK/hwr.txt" && failed=$((failed + 1))
 echo "== handwriting to text (on the Kindle, Claude, an OpenAI-style service)"
 (cd "$T" && luajit handwriting_test.lua "$REPO/plugins/gzreader.koplugin" "$T/lib" "$KOBASE") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+echo "== a safety net under every timer (a round's budget, runaway tasks, GZreader's tasks failing alone)"
+(cd "$T" && luajit tasksafe_test.lua "$REPO/plugins/gzreader.koplugin" "$T/lib" "$KOBASE") 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
 echo "== pen Kindles: the pen and the touch screen kept apart (KOReader's input.lua)"
 (cd "$T" && luajit peninput_test.lua "$REPO" "$KOBASE") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))

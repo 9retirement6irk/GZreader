@@ -88,6 +88,9 @@ function Grimmory:init()
     -- creates a new plugin instance for each FileManager/ReaderUI, and a
     -- background download or queued sync data must not be written to a stale copy.
     if not Grimmory.shared_settings then
+        -- a safety net under every timer: a round of them never holds the screen and the pen
+        -- for long, and one of GZreader's that fails stops alone (gzreader_tasksafe.lua)
+        pcall(function() require("gzreader_tasksafe").install() end)
         -- how long this start takes (a log line once Home is on screen: gzreader_opentiming.lua)
         pcall(function() require("gzreader_opentiming").bootBegin() end)
         Grimmory.shared_settings = LuaSettings:open(DataStorage:getSettingsDir() .. "/gzreader.lua")
