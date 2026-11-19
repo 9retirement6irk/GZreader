@@ -7442,6 +7442,21 @@ print("Remote debugging (debug reports on)")
     R.onResume()
     R.periodicBeat()
     check(io.open(R.livePath()):read("*a"):match("^%d+ run "), "…and running again once it wakes")
+    -- the end of a crash.log cut short: NUL bytes, a letter cut in two (the feed answered 500 to it every time)
+    do
+        local clean = require("gzreader_textclean")
+        check(clean("ok \0\0caf\195") == "ok caf?" and clean("café ✓") == "café ✓" and clean("plain") == "plain"
+            and clean("\226\156") == "??", "report text: no NUL bytes, stray bytes as ?, the rest as it was")
+        os.execute("rm -f '" .. dir .. "'/spool/*")
+        R.event("cut short", "end of crash.log\0\0 caf\195")
+        local got
+        for n in lfs.dir(dir .. "/spool") do
+            if n:match("%.json$") then local f = io.open(dir .. "/spool/" .. n, "rb"); got = f:read("*a"); f:close() end
+        end
+        check(got and not got:find("\0", 1, true) and not got:find("u0000", 1, true) and got:find("caf?", 1, true),
+            "a queued report is cleaned before it's written for the watchdog")
+        os.execute("rm -f '" .. dir .. "'/spool/*")
+    end
     R.onSuspend()
     R.event("queued before turning it off", "x")
     R.setSetting(false) -- (Settings or the setup guide: off; stops it)
