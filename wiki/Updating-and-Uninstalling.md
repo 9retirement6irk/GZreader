@@ -26,8 +26,8 @@ Changes not sent yet (reading progress, notes made without Wi‑Fi) are lost. Bo
 
 **Kobos:** delete `GZreader/app`, `.adds/nm/gzreader`, `.adds/kfmon/config/gzreader.ini` and `gzreader.png`. Your books, music, audiobooks and notes stay until you delete the whole **GZreader** folder. KOReader (`.adds/koreader`), if you have it, isn't touched. Sign-ins kept on the Kobo's own disk go with Reset GZreader (do it before deleting), or with the next Kobo update.
 
-**Nook 1st Edition:** remove the icon's helper and app first (`adb shell sh /data/gzreader/launcher.sh uninstall`, `adb uninstall gzreader.nook.launcher`), then `adb shell rm -r /data/gzreader`, and on the microSD card (or the Nook's own storage) the `.gzreader-app` folder. The `GZreader` folder with your books stays until you delete it.
+**Nook 1st Edition:** remove the icon's helper and app first (`adb shell sh /data/gzreader/launcher.sh uninstall`, `adb uninstall gzreader.nook.launcher`), then `adb shell rm -r /data/gzreader`, and on the microSD card (or the Nook's own storage) the `GZreader/app` folder (`.gzreader-app` before 1.35). The rest of the `GZreader` folder (books, music, audiobooks, notes) stays until you delete it.
 
-**Nook Simple Touch:** `adb shell rm -r /data/gzreader`, and the `.gzreader-app` folder on the card or the NOOK drive.
+**Nook Simple Touch:** `adb shell rm -r /data/gzreader`, and the `GZreader/app` folder (`.gzreader-app` before 1.35) on the card or the NOOK drive.
 
 Neither Nook's system is changed for good by running GZreader: restarting the Nook always brings back its own software.

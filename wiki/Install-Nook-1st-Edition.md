@@ -55,8 +55,11 @@ yours in full first, charge the battery, and back up your books.
    That storage is about 240 MB, shared with Android, and it filled up: an
    update couldn't unpack. What GZreader only reads (its Lua code, fonts,
    hyphenation, translations, about 55 MB) and its cache go to
-   `.gzreader-app` on the microSD card when one is in, else on the Nook's
-   own storage. They're mounted back into `/data/gzreader/koreader` while
+   `GZreader/app` on the microSD card when one is in, else on the Nook's
+   own storage (before 1.35 the hidden `.gzreader-app`, renamed at the
+   next start). The rest is in the same `GZreader` folder: `books`,
+   `music`, `audiobooks` and `notes` (moved there by itself at the first
+   start after the update, your reading positions with them). They're mounted back into `/data/gzreader/koreader` while
    GZreader runs, so nothing else changes. Its programs and libraries
    (the card can't run them) and its settings and reading history (so a
    card swap can't lose them) stay in `/data/gzreader`, about 30 MB.

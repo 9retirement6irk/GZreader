@@ -18,8 +18,14 @@ audiobooks in the hidden GZreader/.music and .audiobooks, and the notes in
 koreader/settings and koreader/cache. Running from there ("legacy"), these
 answer the old places; gzreader_migrate.lua moves everything once.
 
-Sign-ins stay on the device's own disk (gzreader_secrets.lua). The Nook keeps
-its own layout (legacy).
+Sign-ins stay on the device's own disk (gzreader_secrets.lua).
+
+The Nook: its program and settings stay on its own disk (/data/gzreader:
+programs can't run from the card, which is FAT); everything else is in
+GZreader/ on the card (GZ_NOOK_HOME): app (the parts of the program that are
+only read, mounted into it by gzreader.sh, checked against fingerprints on
+/data), books, music, audiobooks, notes. Once moved (gzreader_migrate.lua's
+NOOK_DONE), these answer the new places.
 ]]
 
 local lfs = require("libs/libkoreader-lfs")
@@ -57,10 +63,19 @@ function Places.isNew(app)
     return (parent:match("([^/]+)$") or ""):lower() == Places.FOLDER:lower()
 end
 
+--- The Nook's GZreader folder on its card, once moved there (nil: not a Nook, or not yet).
+function Places.nookRoot(app)
+    local home = os.getenv("GZ_NOOK_HOME")
+    if not home or home == "" then return nil end
+    app = app or Places.app()
+    if lfs.attributes(app .. "/settings/gzreader-folder.done", "mode") ~= "file" then return nil end
+    return (home:gsub("/+$", "")) .. "/" .. Places.FOLDER
+end
+
 --- The GZreader folder (one-folder layout), or nil (legacy).
 function Places.root(app)
     app = app or Places.app()
-    if not Places.isNew(app) then return nil end
+    if not Places.isNew(app) then return Places.nookRoot(app) end
     return (app:match("^(.*)/[^/]+$"))
 end
 
@@ -114,9 +129,13 @@ function Places.announce()
     local _ = require("gettext")
     local T = require("ffi/util").template
     require("ui/uimanager"):scheduleIn(3, function()
-        require("ui/uimanager"):show(require("ui/widget/infomessage"):new{
-            text = T(_("GZreader now has a folder of its own, beside %2: %1\n\napp: GZreader itself\nbooks: your books\nmusic, audiobooks: what you downloaded\nnotes: your notes kept here\n\nEverything was moved there, your reading positions with it, and the %3 folder is free for %2."), root, "KOReader", "koreader"),
-        })
+        local said
+        if moved.device == "nook" then
+            said = T(_("GZreader's things on the card are in one folder now: %1\n\napp: the parts of GZreader kept on the card\nbooks: your books\nmusic, audiobooks: what you downloaded\nnotes: your notes kept here\n\nEverything was moved there, your reading positions with it."), root)
+        else
+            said = T(_("GZreader now has a folder of its own, beside %2: %1\n\napp: GZreader itself\nbooks: your books\nmusic, audiobooks: what you downloaded\nnotes: your notes kept here\n\nEverything was moved there, your reading positions with it, and the %3 folder is free for %2."), root, "KOReader", "koreader")
+        end
+        require("ui/uimanager"):show(require("ui/widget/infomessage"):new{ text = said })
     end)
 end
 

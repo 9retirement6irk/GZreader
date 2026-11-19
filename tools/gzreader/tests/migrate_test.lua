@@ -176,5 +176,61 @@ do -- the books' folder GZreader remembered: taken only when it's a GZreader fol
     os.execute("rm -rf '" .. WORK .. "/lib-other-drive'")
 end
 
+do -- the Nook: its program stays on /data; the rest into GZreader/ on the card, once (no restart)
+    local card, data = WORK .. "/nook-card", WORK .. "/nook-data"
+    os.execute("rm -rf '" .. card .. "' '" .. data .. "'")
+    local A, L = data .. "/gzreader/koreader", card .. "/GZreader"
+    write(A .. "/luajit", "ELF")
+    write(A .. "/settings/gzreader.lua", 'return {\n    ["library_dir"] = "' .. L .. '",\n}\n')
+    write(A .. "/settings/history.lua", 'return {\n    [1] = {\n        ["file"] = "' .. L .. '/Nook Book.epub",\n    },\n}\n')
+    write(A .. "/settings/gzreader-notes.json", '{"notes":[]}')
+    write(A .. "/settings/gzreader-drawings/w.png", "PNG")
+    write(L .. "/Nook Book.epub", "EPUB")
+    write(L .. "/Nook Book.sdr/metadata.epub.lua", 'return {\n    ["doc_path"] = "' .. L .. '/Nook Book.epub",\n}\n')
+    write(L .. "/.music/a/1.mp3", "MP3")
+    write(L .. "/app/.gz-app", "") -- (the parts of the program on the card: gzreader.sh's)
+    write(L .. "/app/frontend/ui.lua", "ui")
+    local target, why = M.run({ home = card, app = A, lib = L, device = "nook", keep_app = true })
+    check(target == A and exists(A .. "/luajit") and exists(L .. "/books/Nook Book.epub") and exists(L .. "/music/a/1.mp3")
+        and read(L .. "/app/frontend/ui.lua") == "ui" and not exists(L .. "/books/app"),
+        "the Nook: the program stays on /data; the books and music into GZreader/ on the card; GZreader/app (the card's part) left as it is ("
+            .. tostring(target or why) .. ")")
+    check(read(L .. "/notes/notes.json") == '{"notes":[]}' and not exists(A .. "/settings/gzreader-notes.json")
+        and read(L .. "/notes/drawings/w.png") == "PNG",
+        "…the notes off the Nook's small disk onto the card (copied across: another disk)")
+    check((read(A .. "/settings/history.lua") or ""):find(L .. "/books/Nook Book.epub", 1, true) ~= nil
+        and (read(L .. "/books/Nook Book.sdr/metadata.epub.lua") or ""):find(L .. "/books/Nook Book.epub", 1, true) ~= nil
+        and exists(A .. "/" .. M.NOOK_DONE) and (read(A .. "/settings/gzreader-moved.json") or ""):find('"device":"nook"', 1, true) ~= nil,
+        "…the saved paths follow (history, the book's own settings); done once (noted on /data)")
+    local again, why2 = M.run({ home = card, app = A, lib = L, device = "nook", keep_app = true })
+    check(again == nil and why2 == "moved already", "…and not again")
+    -- (from reader.lua, as the Nook starts it: GZ_NOOK_HOME, in the program's folder)
+    os.execute("rm -f '" .. A .. "/" .. M.NOOK_DONE .. "'")
+    write(L .. "/Second.epub", "EPUB")
+    local cmd = string.format("cd '%s' && GZ_NOOK_HOME='%s' luajit -e \"package.path='%s/?.lua;'..package.path; "
+        .. "package.cpath='%s/?.so;%s/libs/?.so;'..package.cpath; "
+        .. "if not pcall(require,'libs/libkoreader-lfs') then package.preload['libs/libkoreader-lfs']=function() return require('lfs') end end; "
+        .. "io.write(tostring(dofile('%s/plugins/gzreader.koplugin/gzreader_migrate.lua').early()))\" 2>/dev/null",
+        A, card, KO, KO, KO, REPO)
+    local h = io.popen(cmd)
+    local out = h and h:read("*a") or ""
+    if h then h:close() end
+    check(out == "nil" and exists(L .. "/books/Second.epub") and exists(A .. "/" .. M.NOOK_DONE),
+        "…from reader.lua on a Nook (GZ_NOOK_HOME): moved, and no restart asked (" .. out .. ")")
+    local cmd2 = string.format("GZ_NOOK_HOME='%s' luajit -e \"package.path='%s/plugins/gzreader.koplugin/?.lua;%s/?.lua;'..package.path; "
+        .. "package.cpath='%s/?.so;%s/libs/?.so;'..package.cpath; "
+        .. "if not pcall(require,'libs/libkoreader-lfs') then package.preload['libs/libkoreader-lfs']=function() return require('lfs') end end; "
+        .. "local P=require('gzreader_places'); io.write(tostring(P.root('%s')), ' ', tostring(P.root('%s')))\" 2>/dev/null",
+        card, REPO, KO, KO, KO, A, WORK .. "/not-moved")
+    local h2 = io.popen(cmd2)
+    local out2 = h2 and h2:read("*a") or ""
+    if h2 then h2:close() end
+    check(out2 == L .. " nil", "…then GZreader's places are GZreader/ on the card (not before the move): " .. out2)
+    write(WORK .. "/copy-from.bin", string.rep("x", 200000))
+    check(M.copyFile(WORK .. "/copy-from.bin", WORK .. "/copy-to.bin") and read(WORK .. "/copy-to.bin") == string.rep("x", 200000)
+        and not exists(WORK .. "/copy-to.bin.gzmove"), "a file copied in pieces, whole (another disk)")
+    package.loaded["gzreader_places"] = nil
+end
+
 print(string.format("move into the GZreader folder: %d passed, %d failed", pass, fail))
 os.exit(fail == 0 and 0 or 1)
