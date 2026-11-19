@@ -518,7 +518,8 @@ API to `/api` are found too.
   - **On touch Kindles it looks as the fork's web journal does:** the
     question with small **Overall today / Right now** toggles beside it; a
     big **face** beside a **slider** of the seven steps (tap a place on it or
-    drag along it; the face shows the step, faded until one is chosen;
+    drag along it: the dot follows your finger from step to step; the face
+    shows the step, faded until one is chosen;
     **Clear** takes it back); feelings and causes as chips that **fill black
     when chosen** (light grey otherwise); activities as chips with **their
     icons** (the ones set in Memos: briefcase, dumbbell, people, book, music,
@@ -542,7 +543,10 @@ API to `/api` are found too.
     Scribe once zoomed in, or the hand), paper and pages. Only its top bar
     differs: **←** goes back to the whole entry (the drawing kept), **Aa**
     back to typing, and **Save** saves the journal entry, words and drawing
-    together. ✎ shows how many sheets go with the entry.
+    together. ✎ shows how many sheets go with the entry, and after **←**
+    the drawing shows as a **picture under the tags**, above the prompt,
+    before the entry is saved (as your words do); a tap on it opens it
+    again to go on drawing.
     (Kindles with keys: **W** writes in a box of its own, as before.)
   - **Where and the weather** (above the prompt, as the web journal's
     line): the entry's **location**, and the **weather** there at the
@@ -618,3 +622,18 @@ API to `/api` are found too.
   opening that note again (or a new note, for a new one) offers **Put them
   back**. Drafts never leave the Kindle, and go once the note is saved,
   when you choose **Start from the saved note**, or after two weeks.
+- **Drawings are kept as you draw**, a few seconds after each pause (at
+  most every 30 seconds, at least every minute and a half however long you
+  write, between strokes) and right before the Kindle goes to sleep, in
+  `koreader/settings/gzreader-drawings/unsaved-….json`. Never while the pen
+  is on the page or has just moved, and by a background process, so
+  writing isn't held up. If GZreader stops
+  before you save (it hung, crashed or the battery ran out), the next time
+  it starts it asks about each one: **Open it** (a journal entry comes back
+  with its mood, tags, words and drawing, the drawing on the screen; a
+  note's drawing opens as a new drawing note), **Later** (asked again at
+  the next start) or **Delete it**. The copy goes once the drawing (or the
+  journal entry) is saved or discarded. It never leaves the Kindle.
+- **Drawing keeps the Kindle awake.** Drawing counts as using the Kindle,
+  as any tap does, so it doesn't go to sleep while you draw. Put down, it
+  sleeps after the time set in its sleep setting.

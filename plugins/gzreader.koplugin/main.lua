@@ -279,6 +279,8 @@ function Grimmory:init()
         end
         -- downloads / audiobook preparing cut short last time: ask what to do
         pcall(function() require("gzreader_recovery").schedule(self) end)
+        -- a drawing never saved (GZreader stopped while it was open): ask what to do
+        pcall(function() require("gzreader_drawdraft").schedule(self) end)
         if self.api:isPaired() then
             UIManager:scheduleIn(8, function()
                 if not NetworkMgr:isConnected() then return end

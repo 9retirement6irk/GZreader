@@ -383,6 +383,7 @@ function JournalScreen:save()
     end
     local content = self:content()
     self.saved = true
+    require("gzreader_drawdraft").clear(self.draft_id, "the journal entry saved")
     UIManager:close(self, "full")
     if self.on_save then self.on_save(content, #drawings > 0 and drawings or nil, self.state.place) end
 end
@@ -532,6 +533,43 @@ function JournalScreen.paintRules(input, bb, x, y)
     return n
 end
 
+JournalScreen.PREVIEW_H = 150 -- (scaled) how tall a page's picture is under the tags
+
+--- The entry's drawing as small pictures, one a page (at most as many as fit
+--- across `width`), a tap on one opens the drawing again. nil when no page has
+--- a picture yet.
+function JournalScreen:drawingStrip(width)
+    local Sticky = require("gzreader_sticky")
+    local ImageWidget = require("ui/widget/imagewidget")
+    local screen = self
+    local th = S(JournalScreen.PREVIEW_H)
+    local row = HorizontalGroup:new{ align = "center" }
+    local used, shown = 0, 0
+    self.preview = { pages = 0 }
+    for _i, p in ipairs(self.pages or {}) do
+        if not p.removed and p.path then
+            local bb = Sticky.picture(p.path, width, th - 2)
+            if bb then
+                local w = bb:getWidth() + 2
+                if shown > 0 and used + S(8) + w > width then break end
+                local cell = FrameContainer:new{ padding = 0, margin = 0, bordersize = Size.border.thin,
+                    background = Blitbuffer.COLOR_WHITE, ImageWidget:new{ image = bb, image_disposable = true } }
+                local tap = InputContainer:new{ dimen = Geom:new{ w = cell:getSize().w, h = cell:getSize().h }, cell }
+                tap.ges_events = { TapPreview = { GestureRange:new{ ges = "tap", range = function() return tap.dimen end } } }
+                function tap:onTapPreview() screen:startDrawing(); return true end
+                if shown > 0 then row[#row + 1] = HorizontalSpan:new{ width = S(8) } end
+                row[#row + 1] = tap
+                self.preview.first = self.preview.first or tap
+                used = used + (shown > 0 and S(8) or 0) + w
+                shown = shown + 1
+            end
+        end
+    end
+    if shown == 0 then return nil end
+    self.preview.pages = shown
+    return row
+end
+
 --- The words' box: plain text (KOReader's InputText), lined, `h` high, with
 --- ✎ in its top right corner (and how many sheets, once drawn).
 function JournalScreen:writingBox(width, h)
@@ -601,7 +639,11 @@ function JournalScreen:onClose()
     local dialog
     dialog = ButtonDialog:new{ title = _("Save this journal entry?"), buttons = {
         { { text = _("Save"), align = "left", callback = function() UIManager:close(dialog); self:save() end } },
-        { { text = _("Discard"), align = "left", callback = function() UIManager:close(dialog); UIManager:close(self, "full") end } },
+        { { text = _("Discard"), align = "left", callback = function()
+            UIManager:close(dialog)
+            require("gzreader_drawdraft").clear(self.draft_id, "the journal entry discarded")
+            UIManager:close(self, "full")
+        end } },
         { { text = _("Keep going"), align = "left", callback = function() UIManager:close(dialog) end } },
     } }
     local add = rawget(_G, "__ZEN_DIALOG_SHORTCUTS")
@@ -771,6 +813,7 @@ function JournalScreen:moodSlider(width)
     local h = S(40)
     local Slider = InputContainer:extend{}
     local slider = Slider:new{ dimen = Geom:new{ w = width, h = h } }
+    self.mood_slider = slider
     local n = #Journal.VALENCES
     local pad = S(12) -- (the thumb's room at the ends)
     local function stepX(i) return pad + math.floor((width - 2 * pad) * (i - 1) / (n - 1)) end
@@ -798,8 +841,12 @@ function JournalScreen:moodSlider(width)
         return true
     end
     function slider:onPanStep(_a, ges)
-        self.dragging = pick(ges.pos.x)
-        UIManager:setDirty(screen, function() return "fast", self.dimen end)
+        -- (the dot moved to the finger's step, shown once a step is reached: in grey, as
+        -- "fast" (black and white only) lost the dot and the track's greys on a Kindle)
+        local i = pick(ges.pos.x)
+        if i == self.dragging then return true end
+        self.dragging = i
+        UIManager:setDirty(screen, function() return "ui", self.dimen end)
         return true
     end
     function slider:onPanReleaseStep(_a, ges)
@@ -840,6 +887,7 @@ function JournalScreen:moodSlider(width)
         if not cur then for i, v in ipairs(Journal.VALENCES) do if v == screen.state.valence then cur = i end end end
         local r = S(11)
         local cx, cy = x + stepX(cur or 4), y + math.floor(h / 2)
+        self.thumb_at = cur
         if cur then
             bb:paintCircle(cx, cy, r + S(1), Blitbuffer.COLOR_DARK_GRAY, S(1))
             bb:paintCircle(cx, cy, r, Blitbuffer.COLOR_WHITE, S(3))
@@ -1138,6 +1186,15 @@ function JournalScreen:buildWeb(col, inner, sw, sh, margin, gap, label)
         col[#col + 1] = self:flow({ { id = "goals", size = 14, on = self:goalsDone() > 0,
             text = T(_("Goals: %1 of %2 done"), self:goalsDone(), #set.goals), callback = function() self:pickGoals() end } }, inner)
         gap(10)
+    end
+    -- the drawing, once drawn (← back from it keeps it): a picture of each page, under the
+    -- tags as the words are under the prompt; a tap opens it again
+    if self:sheetCount() > 0 then
+        local strip = self:drawingStrip(inner)
+        if strip then
+            col[#col + 1] = strip
+            gap(8)
+        end
     end
     -- where and the weather (the web's journal header)
     local prow = self:placeRow(inner)

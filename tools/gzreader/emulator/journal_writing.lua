@@ -159,11 +159,16 @@ add({ fn = function(E)
     local j = journal()
     check(j and screen() == nil and not j.drawing and j:sheetCount() == 1 and #j:drawings() == 1 and j.input and j.state.body == "Walked to the lake.",
         "←: back to the whole entry, the drawing kept, the words kept, ✎ shows one sheet")
-    E.tap(centre(j.draw_chip.dimen))
+    local pv = j and j.preview
+    local d = pv and pv.first and pv.first.dimen
+    local box = j and j.input and j.input.dimen
+    check(pv and pv.pages == 1 and d and d.h > 50 and box and d.y < box.y,
+        "…and a picture of the drawing under the tags, above the words (as the words show before the entry's saved)")
+    if d then E.tap(centre(d)) end
 end, after = 5 })
 add({ fn = function(E)
     local d = screen()
-    check(d and #d.sketch:live() == strokes_before + 2, "✎ again: the same drawing, to go on with")
+    check(d and #d.sketch:live() == strokes_before + 2, "a tap on its picture: the same drawing, to go on with")
     tapAt(E, button("typing"))
 end, after = 4 })
 add({ fn = function(E)

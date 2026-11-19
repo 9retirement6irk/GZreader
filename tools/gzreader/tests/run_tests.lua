@@ -10514,6 +10514,140 @@ print("Notes (Memos v0.31)")
         for _i, t in ipairs(require("gzreader_drawscreen").SIDE_TOOLS) do ids[#ids + 1] = t.id end
         check(table.concat(ids, ",") == "pen,highlighter,shape,text,eraser,lasso,hand,fingers,sep,undo,redo,more",
             "drawing: the tools down the side, as the Scribe's (pen / finger on pen Kindles): " .. table.concat(ids, ","))
+        -- drawing keeps the Kindle awake (AutoSuspend's idle timer: KOReader's InputEvent hook), at most every few seconds
+        do
+            local DS = require("gzreader_drawscreen")
+            local UIMa = require("ui/uimanager")
+            local was = UIMa.event_hook
+            local n = 0
+            UIMa.event_hook = { execute = function(_h, name) if name == "InputEvent" then n = n + 1 end end }
+            local fake = {}
+            local a, b, c = DS.stillHere(fake, 100), DS.stillHere(fake, 102), DS.stillHere(fake, 100 + DS.AWAKE_EVERY)
+            UIMa.event_hook = was
+            check(a and not b and c and n == 2, "drawing: the Kindle told it's in use as you draw (KOReader's InputEvent hook), not at every point (" .. n .. ")")
+            check(dsrcp:find("screen:stillHere()", 1, true) ~= nil, "…from the drawing screen's own touch handling")
+        end
+        -- a drawing kept as it's drawn (gzreader_drawdraft): back after GZreader stopped before it was saved
+        do
+            local Draft = require("gzreader_drawdraft")
+            local DS = require("gzreader_drawscreen")
+            local Drawing = require("gzreader_drawing")
+            for _i, id in ipairs(Draft.list()) do Draft.clear(id, "test") end
+            local function sceneWith(n)
+                local sc = Drawing.newScene()
+                for k = 1, n do Drawing.addStroke(sc, { { 10, 10 * k, 0.5 }, { 40, 10 * k + 5, 0.5 }, { 80, 10 * k, 0.5 } }, { width = 2 }) end
+                return sc
+            end
+            local id = Draft.newId()
+            local wrote = Draft.write(id, { kind = "journal", title = nil, pages = { sceneWith(3), sceneWith(1) },
+                journal = { state = Draft.entryState({ valence = "slightly-pleasant", body = "Speaking of work",
+                    feelings = { "calm", "content" }, activities = { "work" }, kind = "today", widget = function() end }) } })
+            local back = Draft.read(id)
+            check(wrote and back and back.kind == "journal" and #back.pages == 2 and #Drawing.liveElements(back.pages[1]) == 3
+                and #Drawing.liveElements(back.pages[2]) == 1 and back.journal.state.valence == "slightly-pleasant"
+                and back.journal.state.body == "Speaking of work" and back.journal.state.feelings[2] == "content"
+                and back.journal.state.widget == nil,
+                "drawing kept as it's drawn: its pages (Memos' scenes) and the journal entry's mood, tags and words read back")
+            local id2 = id .. "b" -- (sorted after it)
+            Draft.write(id2, { kind = "note", pages = { sceneWith(2) } })
+            local ids = Draft.list()
+            check(#ids == 2 and ids[1] == id and ids[2] == id2 and Draft.exists(id) and Draft.exists(id2), "…each drawing in a file of its own: a new one never writes over one left from before")
+            check(Draft.describe(back):find("journal entry", 1, true) ~= nil and Draft.describe(back):find("2 pages", 1, true) ~= nil,
+                "…asked about after a restart: " .. Draft.describe(back))
+            Draft.clear(id2, "test")
+            local bad = io.open(Draft.path("bad-one"), "wb"); bad:write("{not json"); bad:close()
+            check(Draft.read("bad-one") == nil and Draft.read("not-there") == nil, "…one that can't be read: nil (set aside, not opened)")
+            os.remove(Draft.path("bad-one"))
+            -- when: at a pause, at most every EVERY seconds, never put off past LONGEST
+            local UIMk = require("ui/uimanager")
+            local real_in, real_un = UIMk.scheduleIn, UIMk.unschedule
+            local planned = {}
+            UIMk.scheduleIn = function(_u, sec, fn) planned[#planned + 1] = sec end
+            UIMk.unschedule = function() end
+            local fake = {}
+            DS.keepSoon(fake, 1000)
+            local w1 = planned[#planned]
+            fake._kept_at, fake._keep_planned, fake._keep_since = 1000, nil, nil
+            DS.keepSoon(fake, 1005)
+            local w2 = planned[#planned]
+            local before = #planned
+            fake._keep_since, fake._keep_planned = 1005 - Draft.LONGEST, 1030
+            DS.keepSoon(fake, 1005)
+            local held = #planned == before
+            UIMk.scheduleIn, UIMk.unschedule = real_in, real_un
+            check(w1 == Draft.PAUSE and w2 == Draft.EVERY - 5 and held,
+                "…written at a pause (" .. tostring(w1) .. " s), at most every " .. Draft.EVERY .. " s (" .. tostring(w2)
+                    .. " s after one 5 s ago), and not put off for ever by drawing on and on")
+            -- the drawing screen's copy: a journal entry's under the entry's id
+            local entry = { state = { valence = "neutral", body = "x" } }
+            local scr = { changed = true, pages = { { scene = sceneWith(4) } }, journal = { under = entry }, keptPages = DS.keptPages,
+                keptRecord = DS.keptRecord }
+            UIMk.unschedule = function() end
+            local kept = DS.keepNow(scr, "test")
+            UIMk.unschedule = real_un
+            local again = entry.draft_id and Draft.read(entry.draft_id)
+            check(kept and entry.draft_id == scr.draft_id and again and again.kind == "journal" and #again.pages == 1
+                and #Drawing.liveElements(again.pages[1]) == 4 and again.journal.state.body == "x",
+                "…the drawing screen keeps every page, a journal entry's under the entry's id (the entry crosses it off)")
+            check(DS.keepNow({ changed = false, pages = {} }) == false, "…nothing changed: nothing written")
+            -- kept between strokes only, and in a background process: written on the screen's
+            -- thread a page of handwriting took a second or more, and the pen froze (2026-11-18)
+            local tm = require("ui/time")
+            local now = tm.now()
+            local w_on = DS.keepWait({ sketch = { contacts = { [4] = {} } } }, now)
+            local w_just = DS.keepWait({ sketch = { contacts = {} }, _input_at = now - tm.s(0.5) }, now)
+            local w_quiet = DS.keepWait({ sketch = { contacts = {} }, _input_at = now - tm.s(5) }, now)
+            local w_long = DS.keepWait({ sketch = { contacts = {} }, _input_at = now, _keep_since = os.time() - Draft.LONGEST - 1 }, now)
+            local w_long_on = DS.keepWait({ sketch = { contacts = { [4] = {} } }, _keep_since = os.time() - Draft.LONGEST - 1 }, now)
+            check(w_on == Draft.RETRY and w_just and w_just > 0.9 and w_just <= Draft.QUIET and w_quiet == nil and w_long == nil
+                and w_long_on == Draft.RETRY,
+                "…not while the pen is on the page (" .. tostring(w_on) .. " s) or moved a moment ago (" .. tostring(w_just)
+                    .. " s); after drawing on and on, between strokes")
+            local Async = require("gzreader_async")
+            local lfs = require("libs/libkoreader-lfs")
+            local was_sync = Async.sync
+            Async.sync = true
+            local bid = Draft.newId() .. "w"
+            local res = {}
+            Draft.writeLater(bid, function() return { kind = "note", pages = { sceneWith(2) } } end,
+                function(ok, n, pages) res = { ok = ok, n = n, pages = pages } end)
+            local bg1 = Draft.read(bid)
+            check(res.ok and res.pages == 1 and bg1 and #Drawing.liveElements(bg1.pages[1]) == 2
+                and lfs.attributes(Draft.path(bid) .. ".bg", "mode") == nil,
+                "…written in a background process, moved over the copy when done")
+            Draft.writeLater(bid, function()
+                Draft.write(bid, { kind = "note", pages = { sceneWith(5) } }) -- (written meanwhile: newer)
+                return { kind = "note", pages = { sceneWith(3) } }
+            end, function(ok, n) res = { ok = ok, n = n } end)
+            local bg2 = Draft.read(bid)
+            check(res.ok == nil and res.n == "stale" and bg2 and #Drawing.liveElements(bg2.pages[1]) == 5,
+                "…one written meanwhile is newer: the background copy is dropped")
+            Draft.writeLater(bid, function()
+                Draft.clear(bid, "test") -- (saved meanwhile)
+                return { kind = "note", pages = { sceneWith(3) } }
+            end, function(ok, n) res = { ok = ok, n = n } end)
+            check(res.n == "stale" and not Draft.exists(bid) and lfs.attributes(Draft.path(bid) .. ".bg", "mode") == nil,
+                "…saved (crossed off) meanwhile: it doesn't come back")
+            Async.sync = was_sync
+            check(dsrcp:find("self:keepNow(nil, true)", 1, true) ~= nil
+                and dsrcp:find('screen._input_at = require("ui/time").now()', 1, true) ~= nil,
+                "…the drawing screen's pause: in the background; going to sleep: at once")
+            Draft.clear(entry.draft_id, "test")
+            Draft.clear(id, "test")
+            local jsrcd = io.open(PLUGIN .. "/gzreader_journalscreen.lua"):read("*a")
+            check(dsrcp:find('require("gzreader_drawdraft").clear(self.draft_id, "saved")', 1, true) ~= nil
+                and dsrcp:find('if self._keep_planned then self:keepNow("going to sleep") end', 1, true) ~= nil
+                and dsrcp:find("    self:keepSoon()\nend", 1, true) ~= nil
+                and jsrcd:find('clear(self.draft_id, "the journal entry saved")', 1, true) ~= nil
+                and jsrcd:find('clear(self.draft_id, "the journal entry discarded")', 1, true) ~= nil
+                and io.open(PLUGIN .. "/main.lua"):read("*a"):find('require("gzreader_drawdraft").schedule(self)', 1, true) ~= nil,
+                "…kept after each change, before the Kindle sleeps; crossed off when saved or discarded; asked about at the next start")
+            -- the journal's mood slider dragged: the dot shown at each step, in grey (not black and white only)
+            check(jsrcd:find('if i == self.dragging then return true end', 1, true) ~= nil
+                and jsrcd:find('UIManager:setDirty(screen, function() return "ui", self.dimen end)', 1, true) ~= nil
+                and not jsrcd:find('return "fast", self.dimen', 1, true),
+                "journal: the mood slider's dot follows a drag, shown in grey at each new step")
+        end
         -- the pen / finger button (pen Kindles): what draws, kept for next time
         do
             local DS = require("gzreader_drawscreen")
