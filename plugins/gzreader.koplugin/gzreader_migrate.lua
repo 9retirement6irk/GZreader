@@ -267,12 +267,27 @@ function M.koboExclude(conf)
     return writeFile(conf, table.concat(lines, "\n") .. "\n")
 end
 
+--- Is `lib` a GZreader folder on the drive `home` (its last part GZreader, any case)?
+function M.ownLibrary(lib, home)
+    if type(lib) ~= "string" or lib == "" then return false end
+    local name = lib:match("([^/]+)$") or ""
+    if name:lower() ~= M.FOLDER:lower() then return false end
+    return lib:sub(1, #home + 1) == home .. "/"
+end
+
 --- The move, from `o` = { home, app, lib, device }. Returns the program's new folder, or nil and why.
 function M.run(o)
     o.root = o.home .. "/" .. M.FOLDER
     local target = o.root .. "/app"
     if mode(target) then return nil, "GZreader/app is there already" end
     o.lib = (o.lib or o.root):gsub("/+$", "")
+    -- (the books' folder GZreader remembered is only taken when it's a GZreader folder
+    -- GZreader made, e.g. documents/GZreader, and on this drive: never a folder of
+    -- your own, nor one elsewhere)
+    if not M.ownLibrary(o.lib, o.home) then
+        say("the remembered books' folder isn't GZreader's own on this drive: left as it is")
+        o.lib = o.root
+    end
     say("from", o.app, "and", o.lib, "to", o.root)
     if not mkdirp(o.root .. "/books") then return nil, "couldn't make " .. o.root .. "/books" end
     -- 1. the books (and their .sdr folders, the Audiobooks stand-ins…)

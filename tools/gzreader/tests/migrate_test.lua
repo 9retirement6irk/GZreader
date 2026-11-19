@@ -156,5 +156,25 @@ do
         "a Kobo: .adds/koreader → GZreader/app, NickelMenu's item to it, the Kobo's library told")
 end
 
+do -- the books' folder GZreader remembered: taken only when it's a GZreader folder on this drive
+    check(M.ownLibrary("/mnt/us/GZreader", "/mnt/us") and M.ownLibrary("/mnt/us/documents/gzreader", "/mnt/us")
+        and not M.ownLibrary("/mnt/us/documents", "/mnt/us") and not M.ownLibrary("/mnt/base-us/GZreader", "/mnt/us")
+        and not M.ownLibrary(nil, "/mnt/us") and not M.ownLibrary("/mnt/usx/GZreader", "/mnt/us"),
+        "the remembered books' folder: a GZreader folder on this drive (documents/GZreader too), never documents itself or another drive")
+    local home = WORK .. "/lib-elsewhere"
+    os.execute("rm -rf '" .. home .. "'")
+    local A, L = home .. "/koreader", home .. "/GZreader"
+    write(A .. "/koreader.sh", "#!/bin/sh\n")
+    os.execute("mkdir -p '" .. A .. "/plugins' && cp -r '" .. REPO .. "/plugins/gzreader.koplugin' '" .. A .. "/plugins/'")
+    write(L .. "/Here.epub", "EPUB")
+    local other = WORK .. "/lib-other-drive/documents"
+    write(other .. "/Theirs.epub", "EPUB")
+    local target = M.run({ home = home, app = A, lib = other, device = "kindle" })
+    check(target == L .. "/app" and exists(L .. "/books/Here.epub") and exists(other .. "/Theirs.epub")
+        and not exists(L .. "/books/Theirs.epub"),
+        "a remembered folder that isn't GZreader's own (documents, another drive): left alone; GZreader/'s books moved")
+    os.execute("rm -rf '" .. WORK .. "/lib-other-drive'")
+end
+
 print(string.format("move into the GZreader folder: %d passed, %d failed", pass, fail))
 os.exit(fail == 0 and 0 or 1)
