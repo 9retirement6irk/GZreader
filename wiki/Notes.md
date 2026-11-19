@@ -171,11 +171,16 @@ API to `/api` are found too.
     its photos as small pictures: tap a sheet to draw on it. **✎** in the top
     bar draws (a new note's first sheet), and the picture beside it adds
     photos, as on the drawing screen and an opened note.
-  - **The top bar is the drawing screen's:** **←** (leave; asks whether to
-    save when something changed), the note's name (its first line; under it
-    who can see it, its space and its tags), then **✎** (draw: its sheets),
-    a picture (**Photos** from Immich, when it's connected), **#** (add a tag), **⋮** (**Who can see it**, a tap for the next choice;
-    **Space**; **Draw**; **Close**) and **Done**, which saves. For a moment
+  - **The top bar is the drawing screen's:** **✕** (close; when something
+    changed it asks **Save**, **Discard** or **Keep writing**), the note's
+    name (its first line; under it who can see it, its space and its tags),
+    then **✎** (draw: its sheets) and the note's own icons, the same on the
+    drawing screen: a picture (**Photos** from Immich, when it's connected),
+    a tag (add one), a folder (**its space**, when you have spaces) and who
+    can see it (a lock: Private; a person: signed-in users; a globe: Public;
+    people: space members; tap to choose), then **⋮** (who can see it, space,
+    **Draw**, **Close**) and **Done**, which saves. On a narrow screen what
+    doesn't fit is in ⋮. For a moment
     after the drawing screen's **Done**, a tap on this bar is ignored, so a
     second tap on a slow Done doesn't save the note before you meant to.
   - Code, quotes, tables and pictures show as their Markdown in grey and edit
@@ -298,9 +303,11 @@ API to `/api` are found too.
   - **The drawing screen is laid out as the Kindle Scribe's notebook.** The
     page is the whole screen; the bar at the top and the tools at the side
     lie over it and fold away.
-  - **At the top:** **←** (leave; asks first when you drew something), the
-    drawing's name, then **All pages**, **Paper**, **Tags** (a new drawing),
-    **⋮ Options** (**New page**, **Picture from Immich…** when Immich is
+  - **At the top:** **✕** (close; when you drew something it asks **Save**,
+    **Discard changes** or **Keep drawing**), the drawing's name, then
+    (left to right) **All pages**, **Paper**, and the note's icons, as in the
+    note editor: a picture from Immich (put on the page), a tag, its space
+    and who can see it; then **⋮ Options** (**New page**, **Picture from Immich…** when Immich is
     connected, **Erase page**, **Close without saving**)
     and **Done** (keeps the drawings with the note). The small tab under the
     bar **folds the bar away** so you can draw on the top of the page; the
@@ -606,11 +613,11 @@ API to `/api` are found too.
 
 - **Saving…** shows in the middle of the screen while a note or a drawing
   is saved, so the Kindle never looks stuck.
-- **Back saves.** Leaving the note editor (Back, ←) or the drawing screen
-  (←) with changes saves them. To leave without saving: the editor's
-  **⋮ → Discard changes** (Alt+M on a keyboard Kindle), or the drawing
-  screen's **⋮ → Close without saving**. The quick note's window still asks
-  (a tap outside it is often by chance).
+- **✕ asks, Back saves.** **✕** at the top left of the note editor and the
+  drawing screen asks what to do with changes: **Save**, **Discard** or keep
+  going. The Kindle's **Back** key (keyboard Kindles) saves them as you
+  leave; to leave without saving there: **Alt+M → Discard changes**. The
+  quick note's window asks too.
 - **Drafts.** While you write, the note is kept on the Kindle every few
   seconds. If the Kindle restarts, crashes or runs flat before you save,
   opening that note again (or a new note, for a new one) offers **Put them

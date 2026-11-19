@@ -1,7 +1,7 @@
 -- Saving a note: "Saving…" on the screen while it's saved; Back saves what's
 -- written (⋮ → Discard changes doesn't); a draft is kept every few seconds
 -- while writing and offered back if the editor was closed without saving
--- (a crash, a restart); the drawing screen's ← saves what was drawn.
+-- (a crash, a restart); the drawing screen's ✕ asks, and Save saves what was drawn.
 --   python3 -I demo/mock_memos.py 18090 --sample &
 --   GZ_EMU_MODEL=pw3 GZ_EMU_TREE=<tree>/koreader run.sh note_autosave.lua <out>   (k3: keys)
 -- Checks go to <out>/note-autosave-checks.txt.
@@ -12,6 +12,26 @@ local function add(t) s[#s + 1] = t end
 local lines = {}
 local function check(ok, what) lines[#lines + 1] = (ok and "ok   " or "FAIL ") .. what end
 local function UIM() return require("ui/uimanager") end
+
+-- (a dialog's button by its exact text: "Save" is in its title too)
+local function dialogButton(E, title, text)
+    for _i, w in ipairs(require("ui/uimanager")._window_stack) do
+        if w.widget.title == title then
+            local seen = {}
+            local function walk(t, depth)
+                if type(t) ~= "table" or seen[t] or depth > 40 then return end
+                seen[t] = true
+                if t.text == text and t.callback and type(t.dimen) == "table" and t.dimen.w then return t end
+                for k, v in pairs(t) do
+                    if k ~= "show_parent" and k ~= "parent" then local r = walk(v, depth + 1); if r then return r end end
+                end
+            end
+            local b = walk(w.widget, 0)
+            if b then return E.tap({ b.dimen.x + math.floor(b.dimen.w / 2), b.dimen.y + math.floor(b.dimen.h / 2) }) end
+        end
+    end
+    E.say("no button", text)
+end
 local function plugin() local fm = require("apps/filemanager/filemanager").instance; return fm and fm.gzreader end
 local function N() return require("gzreader_notes") end
 local function Saving() return require("gzreader_saving") end
@@ -102,7 +122,7 @@ add({ fn = function()
     check(inMemos("draft-after-crash") ~= nil and Saving().readDraft("new") == nil, "…Back saved it; the draft gone")
 end, after = 1 })
 if TOUCH then
-    -- 4. the drawing screen: ← with something drawn saves it (back to the note), with Saving…
+    -- 4. the drawing screen: ✕ with something drawn asks; Save saves it (back to the note), with Saving…
     add({ fn = function(E)
         N().edit(plugin(), find("Georgia section"))
     end, after = 5 })
@@ -126,9 +146,16 @@ if TOUCH then
         end
     end, after = 4 })
     add({ fn = function(E)
+        -- (✕ asks since 2026-11-19: Save)
+        local asked
+        for _i, w in ipairs(UIM()._window_stack) do if w.widget.title == "Save this drawing?" then asked = true end end
+        check(asked, "✕ on the drawing screen: Save this drawing?")
+        dialogButton(E, "Save this drawing?", "Save")
+    end, after = 4 })
+    add({ fn = function(E)
         local ed = editor()
         check(named("gz_drawscreen") == nil and ed ~= nil and ed:hasDrawing() and #ed:drawingChanges() == 1,
-            "← on the drawing screen: the page kept (not the Leave without keeping? question), back to the note")
+            "…Save: the page kept, back to the note")
         check((Saving().shown or 0) > E.shown1, "…Saving… shown while its page was made into a picture")
         ed:discard()
     end, after = 4 })

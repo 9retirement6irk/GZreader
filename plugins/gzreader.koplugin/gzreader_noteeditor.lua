@@ -734,7 +734,7 @@ function Editor:drawChrome()
 end
 
 --- The touch editor's top bar, as the drawing screen's (gzreader_drawscreen.lua):
----   ←  The note's name                       ✎  #  ⋮  [Done]
+---   ✕  The note's name           ✎  🖼  #  🗂  🔒  ⋮  [Done]
 ---      Private · its space · #tags
 --- ← leaves (asks to save when something changed); ✎ draws (its sheets);
 --- the picture adds photos from Immich (when it's reachable); # adds a tag;
@@ -755,14 +755,16 @@ function Editor:notebookBar(sw)
         return (require("gzreader_notebar").build{ width = sw, height = self.title_h, title = self.bar_title,
             hint = table.concat(hint, " \u{00B7} "), note = _("Alt+M more") })
     end
+    local NoteBar = require("gzreader_notebar")
     local icons = {}
     if self:canDraw() then icons[#icons + 1] = { "draw", "pen", function() self:openDrawing() end, true } end
-    if self.immich then icons[#icons + 1] = { "photos", "photos", function() self:addPhotos() end, true } end
-    icons[#icons + 1] = { "tag", "tag", function() self:pickTag() end, true }
-    icons[#icons + 1] = { "options", "more", function() self:barOptions() end, true }
-    local bar, buttons = require("gzreader_notebar").build{
+    -- (the note's own: photo, tag, space, who can see it; the drawing screen has the same)
+    for _i, ic in ipairs(NoteBar.noteIcons(self:noteIconActions())) do icons[#icons + 1] = ic end
+    icons[#icons + 1] = { "options", "more", function() self:barOptions() end, true, always = true }
+    local bar, buttons = NoteBar.build{
         width = sw, height = self.title_h, title = self.bar_title, hint = table.concat(hint, " \u{00B7} "),
-        back = function() self:onCloseDialog() end,
+        -- (✕: leaves, asking Save or Discard when something changed; the Back key saves)
+        back = function() self:onCloseDialog(true) end, back_icon = "close",
         icons = icons,
         action = { "done", _("Done"), function() self:save() end, true },
         -- (← isn't guarded; the rest wait out a slow tap on the drawing screen's Done)
@@ -1010,13 +1012,23 @@ function Editor:backToText()
     if self.dpad and self.input then self.input:onShowKeyboard() end
 end
 
-function Editor:pickTag(pos)
+--- `o.quiet` (from the drawing screen): the tag goes in where the cursor was (at
+--- the end in the plain box) and the keyboard stays away; o.on_done(tag) after.
+function Editor:pickTag(pos, o)
+    o = o or {}
     local dialog
     local rows = {}
     local function insert(tag)
         tag = NoteEditor.cleanTag(tag)
         if tag ~= "" and self.rich then self.input:insertTag(tag)
-        elseif tag ~= "" then self:apply(NoteEditor.insertTag(self:text(), pos, tag)) end
+        elseif tag ~= "" then
+            self:apply(NoteEditor.insertTag(self:text(), pos or (#util.splitToChars(self:text()) + 1), tag))
+        end
+        if o.quiet then
+            self.focus_tool = nil
+            if o.on_done then o.on_done(tag) end
+            return
+        end
         self:backToText()
     end
     for i, t in ipairs(self.tags or {}) do
@@ -1028,7 +1040,10 @@ function Editor:pickTag(pos)
         local InputDialog = require("ui/widget/inputdialog")
         local d
         d = InputDialog:new{ title = _("New tag"), input = "", input_hint = _("e.g. travel or books/to-read"),
-            buttons = { { { text = _("Cancel"), id = "close", callback = function() UIManager:close(d); self:backToText() end },
+            buttons = { { { text = _("Cancel"), id = "close", callback = function()
+                    UIManager:close(d)
+                    if not o.quiet then self:backToText() end
+                end },
                 { text = _("Add"), is_enter_default = true, callback = function()
                     local v = d:getInputText()
                     UIManager:close(d)
@@ -1041,8 +1056,9 @@ function Editor:pickTag(pos)
     dialog = ButtonDialog:new{ title = _("Add a tag"), buttons = rows }
     local add = rawget(_G, "__ZEN_DIALOG_SHORTCUTS")
     if add then pcall(add, dialog) end
-    self:keyboardAside(dialog)
+    if not o.quiet then self:keyboardAside(dialog) end
     UIManager:show(dialog)
+    return dialog
 end
 
 --- Alt + key (from the text box or the toolbar). True when it was ours.
@@ -1501,6 +1517,8 @@ function Editor:openDrawing(page)
         -- (a new drawing: named and tagged from the drawing screen's top bar, as the Kindle Scribe's notebooks)
         meta = self.popup_only and { title = self.draw_title or "", tags = self.draw_tags or {}, offered = self.tags } or nil,
         immich = self.immich,
+        -- (the note's photo, tag, space and who can see it, as in the editor's bar)
+        note_icons = function(screen) return self:noteIconActions(screen) end,
         -- (an existing note: Archive note and Delete note… in the drawing screen's ⋮ too)
         note_actions = self.memo and {
             archive = function(screen)
@@ -1555,12 +1573,55 @@ function Editor:spaceLabel()
     return (self.space_title and self.space_title(self.space)) or self.space:match("^spaces/(.+)$") or self.space
 end
 
+--- The note's own icons' actions (NoteBar.noteIcons), here and on the drawing
+--- screen. `screen` (the drawing screen, when it's in front): its top bar is
+--- laid out again after a choice, and the keyboard stays away.
+function Editor:noteIconActions(screen)
+    local function after() if screen and not screen._closed then screen:barChanged() end end
+    return {
+        photos = self.immich and function()
+            if screen then return screen:pickPictures() end
+            self:addPhotos()
+        end or nil,
+        tag = function()
+            if screen then return self:pickTag(nil, { quiet = true, on_done = after }) end
+            self:pickTag()
+        end,
+        space = self.has_spaces and function() self:pickSpace({ quiet = screen ~= nil, on_done = after }) end or nil,
+        visibility = self.visibility,
+        pick_visibility = function() self:pickVisibility({ quiet = screen ~= nil, on_done = after }) end,
+    }
+end
+
+--- Choose who can see the note (a tap on its icon): the choices Alt+V goes through.
+function Editor:pickVisibility(o)
+    o = o or {}
+    local dialog
+    local rows = {}
+    for _i, v in ipairs(NoteEditor.visibilities(self.space, self.visibility)) do
+        rows[#rows + 1] = { { text = (NoteEditor.VIS_LABEL[v] or v) .. (self.visibility == v and "  \u{2713}" or ""), align = "left",
+            callback = function()
+                UIManager:close(dialog)
+                self.visibility = v
+                self:redraw()
+                if o.on_done then o.on_done(v) end
+            end } }
+    end
+    dialog = ButtonDialog:new{ title = _("Who can see it"), buttons = rows }
+    local add = rawget(_G, "__ZEN_DIALOG_SHORTCUTS")
+    if add then pcall(add, dialog) end
+    if not o.quiet then self:keyboardAside(dialog) end
+    UIManager:show(dialog)
+    return dialog
+end
+
 --- Choose the note's space (Alt+A, a tap): No space, or one of yours.
 --- (Touch: the on-screen keyboard steps aside while the list is open, or it
 --- would hide the list's last rows; it comes back after.)
-function Editor:pickSpace()
+function Editor:pickSpace(o)
+    o = o or {}
     local dialog
-    local kb = self.touch and self.input
+    local kb = not o.quiet and self.touch and self.input
     if kb then kb:onCloseKeyboard() end
     local function back() if kb then kb:onShowKeyboard() end end
     local function row(name, text)
@@ -1570,6 +1631,7 @@ function Editor:pickSpace()
             self.visibility = NoteEditor.visibilityAfterMove(self.visibility, name)
             self:redraw()
             back()
+            if o.on_done then o.on_done(name) end
         end } }
     end
     local rows = { row(nil, _("No space")) }
@@ -1675,13 +1737,15 @@ function Editor:discard()
 end
 
 --- Back (from the text box or the toolbar).
-function Editor:onCloseDialog()
+--- Leaving: `ask` (✕ in the top bar) asks Save, Discard or Keep writing when
+--- something changed; the Back key saves what changed as you leave.
+function Editor:onCloseDialog(ask)
     if not self:changed() then
         Saving.dropDraft(self.draft_key) -- (a draft offered and not taken: let go)
         UIManager:close(self, "full")
         return true
     end
-    if not self.floating and self:text():gsub("%s+$", "") ~= "" or (not self.floating and self:hasDrawing()) then
+    if ask ~= true and (not self.floating and self:text():gsub("%s+$", "") ~= "" or (not self.floating and self:hasDrawing())) then
         -- the full page: what's written is saved as you leave (as the Kindle's own notebooks do);
         -- ⋮ → Discard changes leaves without it. (The quick note's window, closed by a tap
         -- outside it as often by chance, still asks.)
