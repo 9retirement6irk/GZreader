@@ -442,9 +442,16 @@ API to `/api` are found too.
     black-and-white screen shows it in black.
   - **Pressure and tilt** (a Kindle with a pen): the line is as wide as
     the pen is pressed. Half pressure draws the thickness you chose, a
-    light touch down to 0.4 of it, full pressure up to 1.6 of it; laying the
-    pen over makes it heavier too, as shading with the side of a pencil.
-    Memos gets each point's pressure and draws the stroke by it. The pen's
+    light touch down to 0.4 of it, full pressure up to 1.6 of it.
+    **Tilt** does what it does with the real tool: laid over, the
+    **pencil** draws up to four times as wide and lighter (shading with
+    the side of the lead; press harder for darker), and the **marker** up
+    to twice as wide (the broad side of its tip). The pen, the fountain pen
+    and the highlighter write the same at any angle. A pen held as you
+    write (up to about 40 degrees from upright) counts as upright; the
+    effect grows from there to 60 degrees.
+    Memos gets each point's pressure and draws the stroke by it (tilt is
+    kept for the Kindle; the note's picture shows the shading). The pen's
     choices (tap the pen again) have **Pressure and tilt: on / off** for an
     even line. Pens report different numbers, so the range is learned as
     you draw: the very first strokes can look lighter or heavier than later

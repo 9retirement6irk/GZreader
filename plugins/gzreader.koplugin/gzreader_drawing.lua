@@ -136,7 +136,7 @@ function Drawing.fromScreen(points, per_unit)
     per_unit = per_unit or Drawing.SCREEN_PER_UNIT
     local out = {}
     for i, p in ipairs(points) do
-        out[i] = { p[1] / per_unit, p[2] / per_unit, p[3] }
+        out[i] = { p[1] / per_unit, p[2] / per_unit, p[3], p[4] }
     end
     return out
 end
@@ -153,7 +153,7 @@ local function nearestWidth(w)
     return math.max(0.25, math.min(12, w))
 end
 
---- A pen stroke from scene points `{ { x, y [, pressure 0..1] }, … }`.
+--- A pen stroke from scene points `{ { x, y [, pressure 0..1 [, tilt 0..1] ] }, … }`.
 --- `style`: `color` (`#rrggbb`), `width` (memos' 1, 2 or 4, or any from 0.25 to 12), `opacity` (0–100).
 --- Without pressure on every point (the Scribe's pen reports none through
 --- KOReader), memos draws the width from the stroke's speed instead
@@ -176,16 +176,24 @@ function Drawing.stroke(points, style)
     end
     local pts = list()
     local lastX, lastY
+    -- (a fourth number on a point: how far the pen was laid over there, 0..1. Memos has no
+    -- such thing: kept beside the points, one each, in customData.gzTilt, for the Kindle to
+    -- draw the stroke again as it was; only when some point has any)
+    local tilts, tilted = list(), false
     for _i, p in ipairs(points) do
         local dx, dy = round2(p[1] - minX), round2(p[2] - minY)
         -- (repeated samples add nothing; memos' pen leaves them out too)
         if dx ~= lastX or dy ~= lastY then
             local pr = pressured and math.max(0, math.min(1, tonumber(p[3]))) or 0.5
             pts[#pts + 1] = list({ dx, dy, round2(pr) })
+            local t = math.max(0, math.min(1, tonumber(p[4]) or 0))
+            tilts[#tilts + 1] = round2(t)
+            if t > 0.005 then tilted = true end
             lastX, lastY = dx, dy
         end
     end
     return {
+        customData = tilted and { gzTilt = tilts } or nil,
         id = Drawing.randomId(),
         type = "freedraw",
         x = round2(minX),

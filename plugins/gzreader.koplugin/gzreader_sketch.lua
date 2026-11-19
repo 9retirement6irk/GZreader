@@ -130,6 +130,13 @@ function Sketch.noteRange(range, pressure, tx, ty)
     end
     local t = math.max(math.abs(tonumber(tx) or 0), math.abs(tonumber(ty) or 0))
     if t > (range.t_seen or 0) then range.t_seen = t end
+    -- (how far it leans while it's on the glass, in degrees: for the log, to tune where "laid over" starts)
+    if type(pressure) == "number" and pressure > 0 and (tx ~= nil or ty ~= nil) then
+        local x, y = tonumber(tx) or 0, tonumber(ty) or 0
+        local deg = math.sqrt(x * x + y * y) / (Sketch.tiltTop(range) / Sketch.TILT_DEGREES)
+        range.lean_sum, range.lean_n = (range.lean_sum or 0) + deg, (range.lean_n or 0) + 1
+        range.lean_max = math.max(range.lean_max or 0, deg)
+    end
 end
 
 --- The pressure that counts as full.
@@ -147,15 +154,26 @@ function Sketch.tiltTop(range)
 end
 
 --- How heavy the line is at a point, 0 to 1 (0.5: the chosen thickness, as
---- a stroke without pressure), from the pen's pressure and tilt: pressing
---- harder makes it heavier, and so does laying the pen over (as shading
---- with the side of a pencil). nil without a pressure.
-function Sketch.weight(range, pressure, tx, ty)
+--- a stroke without pressure), from how hard the pen is pressed. nil
+--- without a pressure. (How far the pen is laid over is its own number,
+--- Sketch.tilt: each tool does its own thing with it.)
+function Sketch.weight(range, pressure)
     if type(pressure) ~= "number" or pressure <= 0 then return nil end
-    local p = math.min(1, pressure / Sketch.pressureTop(range))
+    return math.max(0.05, math.min(1, pressure / Sketch.pressureTop(range)))
+end
+
+--- How far the pen is laid over, 0 to 1, from its tilt along x and y (as
+--- the digitizer gives them: degrees from upright, or hundredths of one).
+--- A pen held to write leans 30 to 40 degrees already, so that counts as
+--- upright: 0 up to TILT_FROM degrees, 1 from TILT_DEGREES on (the side of
+--- the tip on the glass). nil when the pen tells no tilt.
+Sketch.TILT_FROM = 40
+function Sketch.tilt(range, tx, ty)
+    if tx == nil and ty == nil then return nil end
     tx, ty = tonumber(tx) or 0, tonumber(ty) or 0
-    local t = math.min(1, math.sqrt(tx * tx + ty * ty) / Sketch.tiltTop(range))
-    return math.max(0.05, math.min(1, p * (1 + 0.9 * t)))
+    local unit = Sketch.tiltTop(range) / Sketch.TILT_DEGREES -- (1, or 100 for hundredths)
+    local deg = math.sqrt(tx * tx + ty * ty) / unit
+    return math.max(0, math.min(1, (deg - Sketch.TILT_FROM) / (Sketch.TILT_DEGREES - Sketch.TILT_FROM)))
 end
 
 --- The ink's radius for a weight: from 0.4 of the chosen thickness's to 1.6 of it.
@@ -199,9 +217,13 @@ end
 --- How much of the paper a tool with a grain covers, 0 to 1, at weight `w`
 --- (the pen's pressure; none: as 0.5): light is sparse, pressed is nearly
 --- solid. nil for a tool without a grain.
-function Sketch.grainDensity(kind, w)
-    if not Sketch.toolStyle(kind).grain then return nil end
-    return 0.38 + 0.47 * math.max(0, math.min(1, w or 0.5))
+function Sketch.grainDensity(kind, w, t)
+    local st = Sketch.toolStyle(kind)
+    if not st.grain then return nil end
+    local d = 0.38 + 0.47 * math.max(0, math.min(1, w or 0.5))
+    -- (laid over: the side of the lead, lighter, as shading is)
+    if t and t > 0 and st.tilt and st.tilt.light then d = d * (1 - st.tilt.light * t) end
+    return d
 end
 
 --- True when a grained tool marks pixel (x, y), `d2` the square of its
@@ -230,6 +252,12 @@ end
 --- `flat`: no pressure; `gray`: its ink on the screen (0 black … 255 paper),
 --- painted only where it darkens, so it never lightens ink under it;
 --- `opacity`: Memos' for it. A stroke keeps its tool (`kind`; nil: the pen).
+--- `tilt`: what laying the pen over does (Sketch.tilt, 0 upright … 1 on its
+--- side): `width`, how many times as wide the line is with the pen right
+--- over; `light`, how much lighter a grained tool's line is then. The
+--- pencil shades with the side of its lead (wide and soft); the marker's
+--- chisel tip gives a broader line; the pen, the fountain pen and the
+--- highlighter write the same at any angle, as theirs do.
 Sketch.TOOL_IDS = { "pen", "fountain", "marker", "pencil", "highlighter" }
 --- The pen button's own (the Kindle Scribe's order); the highlighter has a button to itself.
 Sketch.PEN_IDS = { "pen", "fountain", "marker", "pencil" }
@@ -239,9 +267,10 @@ Sketch.TOOL_STYLE = {
     -- (scale: wider than the pen's line. At 0.7 a pencil line at Fine to Medium was two or three
     -- pixels across: too thin for its grain to show, a faint hairline once the picture was
     -- shown smaller than the Kindle's screen, as in Memos; the owner, 2026-11-17)
-    pencil = { icon = "pencil", scale = 1.3, lo = 0.75, hi = 1.2, gray = 0x60, opacity = 70, grain = true },
+    pencil = { icon = "pencil", scale = 1.3, lo = 0.75, hi = 1.2, gray = 0x60, opacity = 70, grain = true,
+        tilt = { width = 4, light = 0.45 } },
     fountain = { icon = "fountain", scale = 1, lo = 0.15, hi = 2.8, curve = 1.6 },
-    marker = { icon = "marker", scale = 1.9, flat = true }, -- (a felt tip: black, as wide all along)
+    marker = { icon = "marker", scale = 1.9, flat = true, tilt = { width = 2 } }, -- (a felt tip: black, as wide all along; broader laid over)
     highlighter = { icon = "highlighter", scale = 3.5, flat = true, gray = 0xC8, opacity = 35 },
 }
 
@@ -260,9 +289,11 @@ function Sketch.toolStyle(kind) return Sketch.TOOL_STYLE[kind or "pen"] or Sketc
 
 --- The ink's radius for tool `kind`, from the pen's radius `r` at the chosen
 --- thickness and the point's weight `w` (0..1, nil: no pressure).
-function Sketch.toolRadius(kind, r, w)
+--- `t` (Sketch.tilt): how far the pen was laid over there, for a tool that widens with it.
+function Sketch.toolRadius(kind, r, w, t)
     local st = Sketch.toolStyle(kind)
     local base = r * st.scale
+    if t and t > 0 and st.tilt and st.tilt.width then base = base * (1 + (st.tilt.width - 1) * math.min(1, t)) end
     if st.flat or not w then return math.max(1, math.floor(base + 0.5)) end
     local wc = st.curve and (w ^ st.curve) or w
     return math.max(1, math.floor(base * (st.lo + (st.hi - st.lo) * wc) + 0.5))
@@ -392,7 +423,7 @@ function Sketch:refit()
     local scene_pts = {}
     for i, st in ipairs(self.strokes) do
         local pts = {}
-        for j, p in ipairs(st.points) do local x, y = self:toScene(p[1], p[2]); pts[j] = { x, y, p[3] } end
+        for j, p in ipairs(st.points) do local x, y = self:toScene(p[1], p[2]); pts[j] = { x, y, p[3], p[4] } end
         scene_pts[i] = pts
     end
     local minX, minY, maxX, maxY
@@ -415,7 +446,7 @@ function Sketch:refit()
     -- (in the middle across, at the top)
     self.ox, self.oy = minX - (c.w / self.per_unit - (maxX - minX)) / 2, minY - margin / self.per_unit
     for i, st in ipairs(self.strokes) do
-        for j, p in ipairs(scene_pts[i]) do local x, y = self:toCanvas(p[1], p[2]); st.points[j] = { x, y, p[3] } end
+        for j, p in ipairs(scene_pts[i]) do local x, y = self:toCanvas(p[1], p[2]); st.points[j] = { x, y, p[3], p[4] } end
     end
     self.fit, self.zoomed = { per_unit = self.per_unit, ox = self.ox, oy = self.oy }, false
 end
@@ -433,12 +464,12 @@ function Sketch:setView(per_unit, ox, oy)
     local scene_pts = {}
     for i, st in ipairs(self.strokes) do
         local pts = {}
-        for j, p in ipairs(st.points) do local x, y = self:toScene(p[1], p[2]); pts[j] = { x, y, p[3] } end
+        for j, p in ipairs(st.points) do local x, y = self:toScene(p[1], p[2]); pts[j] = { x, y, p[3], p[4] } end
         scene_pts[i] = pts
     end
     self.per_unit, self.ox, self.oy = per_unit, ox, oy
     for i, st in ipairs(self.strokes) do
-        for j, p in ipairs(scene_pts[i]) do local x, y = self:toCanvas(p[1], p[2]); st.points[j] = { x, y, p[3] } end
+        for j, p in ipairs(scene_pts[i]) do local x, y = self:toCanvas(p[1], p[2]); st.points[j] = { x, y, p[3], p[4] } end
     end
 end
 
@@ -597,10 +628,13 @@ function Sketch.fromScene(scene, opts)
     for _i, el in ipairs(Drawing.liveElements(scene)) do
         if el.type == "freedraw" and type(el.points) == "table" and #el.points > 0 then
             local pts = {}
+            local tilts = type(el.customData) == "table" and type(el.customData.gzTilt) == "table"
+                and #el.customData.gzTilt == #el.points and el.customData.gzTilt or nil
             for _j, p in ipairs(el.points) do
                 local cx, cy = self:toCanvas((el.x or 0) + (p[1] or 0), (el.y or 0) + (p[2] or 0))
                 -- (drawn with a pen's pressure, here or in Memos: each point's weight)
-                pts[#pts + 1] = { cx, cy, el.simulatePressure == false and tonumber(p[3]) or nil }
+                -- (and how far the pen was laid over there, for a stroke drawn here: customData.gzTilt)
+                pts[#pts + 1] = { cx, cy, el.simulatePressure == false and tonumber(p[3]) or nil, tilts and tonumber(tilts[_j]) or nil }
             end
             local kind = Sketch.toolOf(el)
             if Sketch.toolStyle(kind).grain and tonumber(el.opacity) == 0 then
@@ -668,12 +702,15 @@ local function appendPoint(self, contact, cx, cy, out)
     if last and math.abs(cx - last[1]) < Sketch.MIN_STEP and math.abs(cy - last[2]) < Sketch.MIN_STEP then return end
     -- (a pen that tells how hard it's pressed: each point's weight, and the line as wide)
     local w = contact.weight
-    pts[#pts + 1] = { cx, cy, w }
+    -- (and how far it's laid over, for a tool that does something with that)
+    local t = contact.tilt
+    pts[#pts + 1] = { cx, cy, w, t }
     local kind = contact.stroke.kind
-    local r = Sketch.toolRadius(kind, self:radius(contact.stroke.width), w and (last and last[3] and (last[3] + w) / 2 or w) or nil)
+    local tm = t and (last and last[4] and (last[4] + t) / 2 or t) or nil
+    local r = Sketch.toolRadius(kind, self:radius(contact.stroke.width), w and (last and last[3] and (last[3] + w) / 2 or w) or nil, tm)
     local from = last or { cx, cy }
     out.segments[#out.segments + 1] = { from[1] + self.canvas.x, from[2] + self.canvas.y, cx + self.canvas.x, cy + self.canvas.y, r,
-        contact.stroke.color, Sketch.toolStyle(kind).gray, Sketch.grainDensity(kind, w) }
+        contact.stroke.color, Sketch.toolStyle(kind).gray, Sketch.grainDensity(kind, w, tm) }
 end
 
 --- A drawing contact at screen (x, y). On paper, the stroke stays on it: it
@@ -722,7 +759,7 @@ Sketch.distToSegment = distToSegment
 --- The live stroke under canvas point (x, y) within `reach` pixels, or nil.
 --- The canvas rectangle stroke `st` is drawn in ({ x0, y0, x1, y1 }, a little over: as wide as its tool can make it).
 function Sketch:strokeBox(st)
-    local r = Sketch.toolRadius(st.kind, self:radius(st.width), 1) + 2
+    local r = Sketch.toolRadius(st.kind, self:radius(st.width), 1, 1) + 2 -- (at its widest: pressed, laid over)
     local x0, y0, x1, y1
     for _i, p in ipairs(st.points) do
         x0, y0 = math.min(x0 or p[1], p[1]), math.min(y0 or p[2], p[2])
@@ -903,7 +940,12 @@ local function startContact(self, s, now, out)
         -- a pen with pressure (and the setting on): the whole stroke has weights (not a highlighter's)
         if self.pressure_on ~= false and pen and s.pressure ~= nil and not style.flat then
             c.pressured = true
-            c.weight = Sketch.weight(Sketch.range, s.pressure, s.tilt_x, s.tilt_y) or 0.5
+            c.weight = Sketch.weight(Sketch.range, s.pressure) or 0.5
+        end
+        -- …and its tilt, for a tool that does something with it (the pencil, the marker)
+        if self.pressure_on ~= false and pen and style.tilt then
+            c.tilt = Sketch.tilt(Sketch.range, s.tilt_x, s.tilt_y)
+            c.tilted = c.tilt ~= nil
         end
         addPoint(self, c, s.x, s.y, out)
     end
@@ -1144,8 +1186,13 @@ function Sketch:frame(slots, now)
                 c.moved = math.max(c.moved, math.abs(s.x - c.x0), math.abs(s.y - c.y0))
                 if c.kind == "draw" and c.pressured then
                     -- (eased: a pen's pressure jumps about from sample to sample)
-                    local w = Sketch.weight(Sketch.range, s.pressure, s.tilt_x, s.tilt_y)
+                    local w = Sketch.weight(Sketch.range, s.pressure)
                     if w then c.weight = 0.5 * c.weight + 0.5 * w end
+                end
+                if c.kind == "draw" and c.tilted then
+                    -- (eased more: the angle of a hand changes slowly, the numbers jitter)
+                    local t = Sketch.tilt(Sketch.range, s.tilt_x, s.tilt_y)
+                    if t then c.tilt = 0.7 * c.tilt + 0.3 * t end
                 end
                 c.x, c.y = s.x, s.y
                 if c.kind == "pinch" and self.pinch then
@@ -1519,12 +1566,16 @@ function Sketch:scene(paper)
             local pts = {}
             for j, p in ipairs(st.points) do
                 local sx, sy = self:toScene(p[1], p[2])
-                pts[j] = { sx, sy, p[3] }
+                pts[j] = { sx, sy, p[3], p[4] }
             end
             local style = Sketch.toolStyle(st.kind)
             local el = Drawing.addStroke(scene, pts, { width = math.min(12, st.width * style.scale),
                 color = st.color or Drawing.INK, opacity = style.opacity })
-            if el and st.kind then el.customData = { gzTool = st.kind } end
+            -- (Drawing.stroke keeps the tilts, if any, in customData.gzTilt)
+            if el and st.kind then
+                el.customData = el.customData or {}
+                el.customData.gzTool = st.kind
+            end
         end
     end
     -- text boxes made here: after the strokes (memos draws them on top)
