@@ -112,6 +112,39 @@ function Paper.pictureWidget(path, w, max_h)
     return pic
 end
 
+--- A story's picture whole, for the opened story: as wide as the column
+--- when it's big enough (never more than twice its own size), never taller
+--- than `max_h`, its shape kept. Returns the widget (its own size) or nil.
+function Paper.pictureWhole(path, max_w, max_h)
+    local ok, bb = pcall(function()
+        local RenderImage = require("ui/renderimage")
+        local src = RenderImage:renderImageFile(path, false)
+        if not src then return nil end
+        local sw, sh = src:getWidth(), src:getHeight()
+        if sw < 8 or sh < 8 then src:free(); return nil end
+        local tw, th = Paper.fitSize(sw, sh, max_w, max_h)
+        if tw == sw and th == sh then return src end
+        return RenderImage:scaleBlitBuffer(src, tw, th, true)
+    end)
+    if not ok or not bb then return nil end
+    local w, h = bb:getWidth(), bb:getHeight()
+    local pic = drawn(w, h, function(out, x, y)
+        if not bb then return end
+        out:blitFrom(bb, x, y, 0, 0, w, h)
+        out:paintBorder(x, y, w, h, 1, Blitbuffer.COLOR_GRAY)
+    end)
+    pic.free = function()
+        if bb then bb:free(); bb = nil end
+    end
+    return pic
+end
+
+--- The size a `sw` × `sh` picture is shown at inside max_w × max_h.
+function Paper.fitSize(sw, sh, max_w, max_h)
+    local scale = math.min(max_w / math.max(1, sw), max_h / math.max(1, sh), 2)
+    return math.max(1, math.floor(sw * scale + 0.5)), math.max(1, math.floor(sh * scale + 0.5))
+end
+
 --- A `sw` × `sh` picture scaled to `w` wide.
 function Paper.pictureSize(sw, sh, w)
     return w, math.max(1, math.floor(sh * w / math.max(1, sw) + 0.5))
@@ -738,7 +771,7 @@ local function pageClass()
         if story.item.source and story.item.source ~= "" then
             add(TextWidget:new{ text = story.item.source, face = serifItalic(8), max_width = w, fgcolor = Blitbuffer.COLOR_DARK_GRAY }, S(2))
         end
-        local pic_path = D.pictures(self.plugin) and D.picturePath(story.item)
+        local pic_path = D.pictures(self.plugin) and D.pagePicture(story.item) and D.picturePath(story.item)
         local pic = pic_path and Paper.pictureWidget(pic_path, w, math.floor(w * (lead and 0.3 or 0.5)))
         if pic then add(pic, S(4)) end
         local text = Paper.excerpt(story.item.text, lead and 700 or 420)
@@ -1189,6 +1222,7 @@ function Paper.article(plugin, item)
     local HorizontalGroup = require("ui/widget/horizontalgroup")
     local HorizontalSpan = require("ui/widget/horizontalspan")
     local InputContainer = require("ui/widget/container/inputcontainer")
+    local CenterContainer = require("ui/widget/container/centercontainer")
     local LineWidget = require("ui/widget/linewidget")
     local OverlapGroup = require("ui/widget/overlapgroup")
     local LeftContainer = require("ui/widget/container/leftcontainer")
@@ -1259,10 +1293,20 @@ function Paper.article(plugin, item)
                 TextBoxWidget:new{ text = it.title or "", face = face(font.face.bold, math.floor(font.size * 1.5 + 0.5), "smallinfofontbold"),
                     width = inner, bold = font.face.bold == font.face.regular or nil },
                 VerticalSpan:new{ width = S(10) },
+            }
+            -- the story's picture, whole, under its headline
+            local pic_path = Daily().pictures(self.plugin) and Daily().picturePath(it)
+            local pic = pic_path and Paper.pictureWhole(pic_path, inner, math.floor(sh * 0.45))
+            self.picture = pic or nil
+            if pic then
+                col[#col + 1] = CenterContainer:new{ dimen = Geom:new{ w = inner, h = pic:getSize().h }, pic }
+                col[#col + 1] = VerticalSpan:new{ width = S(12) }
+            end
+            for _i, w in ipairs({
                 TextBoxWidget:new{ text = Paper.articleText(it), face = face(font.face.regular, font.size, "smallinfofont"), width = inner,
                     line_height = font.spacing.em },
                 VerticalSpan:new{ width = S(30) },
-            }
+            }) do col[#col + 1] = w end
             self.scroller = ScrollableContainer:new{
                 dimen = Geom:new{ w = sw, h = sh - bar_h - Size.line.medium }, show_parent = self,
                 HorizontalGroup:new{ align = "top", HorizontalSpan:new{ width = margin }, col },
@@ -1671,7 +1715,7 @@ function Paper.settingsItems(plugin)
         },
         {
             text = _("Pictures"),
-            help_text = _("The lead story's picture and a few more (eight at most), fetched with the paper and shown in grey. Pictures often come from another site than the feed's (a picture server), which then also sees this Kindle's internet address. Without them the paper is fetched faster and takes less room."),
+            help_text = _("Stories' pictures, fetched with the paper and shown in grey: in an opened story under its headline (24 stories at most), and for the lead story and a few more on the paper's pages. Pictures often come from another site than the feed's (a picture server), which then also sees this Kindle's internet address. Without them the paper is fetched faster and takes less room."),
             enabled_func = on,
             checked_func = function() return on() and D.pictures(plugin) end,
             callback = function()

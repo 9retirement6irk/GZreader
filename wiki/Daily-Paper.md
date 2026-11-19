@@ -90,11 +90,14 @@ kept on the Kindle: nothing is fetched for it and nothing about them leaves
 the Kindle. Tap the box for the Calendar tab. A day without events has no
 box; **Settings → Accounts and services → Daily paper → Today's calendar events** turns it off.
 
-**Pictures**: the lead story's picture runs across the front page, a few more
-stories have theirs in the columns (eight an edition at most), and the lead's
-is on the newspaper's front page on the shelf. They are fetched with the
-paper, kept until the next edition and shown in grey. A story opened as text
-has no picture. **Settings → Accounts and services → Daily paper → Pictures** turns them off
+**Pictures**: an opened story shows its picture, whole, under its headline
+(up to 24 stories an edition have one). The lead story's picture also runs
+across the front page, a few more stories have theirs in the columns, and the
+lead's is on the newspaper's front page on the shelf. They are the pictures
+the feeds name for their stories (or, failing that, the one the story's own
+page names), fetched with the paper, kept until the next edition and shown in
+grey. Pictures between a story's paragraphs aren't shown.
+**Settings → Accounts and services → Daily paper → Pictures** turns them off
 (the paper is fetched faster without them).
 
 ## When it's fetched

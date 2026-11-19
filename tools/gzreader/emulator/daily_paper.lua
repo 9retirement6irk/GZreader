@@ -177,6 +177,7 @@ add({ fn = function(E)
     local UIManager = require("ui/uimanager")
     local top = UIManager:getTopmostVisibleWidget()
     check(E, top and top.name == "gz_daily_article" and top.item.title:find("Seven ships", 1, true) ~= nil, "a story opened as text")
+    if os.getenv("GZ_EMU_PICTURE") then check(E, top and top.picture ~= nil and top.picture:getSize().w > 100, "…with its picture under the headline") end
     E.story = top
     -- it scrolls freely: a long story is taller than the screen, and the page key moves it part of a screen
     local sc = top and top.scroller
