@@ -54,6 +54,7 @@ local Log = require("gzreader_log")
 local T = require("ffi/util").template
 local _ = require("gettext")
 
+local Saving = require("gzreader_saving")
 local Screen = Device.screen
 local S = function(px) return Screen:scaleBySize(px) end
 
@@ -262,6 +263,8 @@ local function makeInput(editor, opts)
 end
 
 function Editor:init()
+    -- (the note's draft, kept while writing: gzreader_saving.lua)
+    self.draft_key = Saving.keyOf(self.memo)
     local sw, sh = Screen:getWidth(), Screen:getHeight()
     self.dimen = Geom:new{ x = 0, y = 0, w = sw, h = sh }
     self.visibility = (self.memo and self.memo.visibility) or "PRIVATE"
@@ -561,8 +564,65 @@ function Editor:keyboardSoon()
 end
 
 function Editor:onShow()
-    -- touch: the on-screen keyboard, at once (not when the drawing screen opens over it first)
-    if not self.drawing_first then self:keyboardSoon() end
+    local offered
+    if not self.draft_started and not self.popup_only then
+        self.draft_started = true
+        if not self.drawing_first then offered = self:offerDraft() end -- (not over a drawing opened first)
+        self:keepDrafts()
+    end
+    -- touch: the on-screen keyboard, at once (not when the drawing screen opens over it first,
+    -- nor under a draft's question: it comes when that's answered)
+    if not self.drawing_first and not offered then self:keyboardSoon() end
+end
+
+--- What was being written here before (a crash, a restart, the battery): offered back.
+function Editor:offerDraft()
+    local draft = Saving.readDraft(self.draft_key)
+    if not Saving.differs(draft, self.original) then
+        if draft then Saving.dropDraft(self.draft_key) end
+        return
+    end
+    Log.info("notes: an unsaved draft offered back") -- (never its words)
+    local dialog
+    local function back() UIManager:close(dialog); self:keyboardSoon() end
+    dialog = ButtonDialog:new{ title = _("This note has changes that weren't saved. Put them back?"), buttons = {
+        { { text = _("Put them back"), align = "left", callback = function()
+            back()
+            self.input:setText(draft.text)
+            if draft.visibility and NoteEditor.VIS_LABEL[draft.visibility] then self.visibility = draft.visibility end
+            self:drawChrome()
+            UIManager:setDirty(self, "ui")
+        end } },
+        { { text = _("Start from the saved note"), align = "left", callback = function()
+            back()
+            Saving.dropDraft(self.draft_key)
+        end } },
+    } }
+    local add = rawget(_G, "__ZEN_DIALOG_SHORTCUTS")
+    if add then pcall(add, dialog) end
+    self.draft_dialog = dialog
+    UIManager:show(dialog)
+    return dialog
+end
+
+--- Every few seconds while the note is open: what's written kept on the Kindle (a draft)
+--- when it changed, so it's never lost before it's saved.
+function Editor:keepDrafts()
+    local function look()
+        if self.closed or self.saved then return end
+        local ok, text = pcall(self.text, self)
+        if ok and text ~= self.draft_text then
+            self.draft_text = text
+            if text:gsub("%s+$", "") ~= self.original:gsub("%s+$", "") then
+                Saving.writeDraft(self.draft_key, { text = text, visibility = self.visibility })
+            else
+                Saving.dropDraft(self.draft_key)
+            end
+        end
+        UIManager:scheduleIn(Saving.DRAFT_EVERY, look)
+    end
+    self.draft_text = self.original
+    UIManager:scheduleIn(Saving.DRAFT_EVERY, look)
 end
 
 function Editor:drawChrome()
@@ -753,6 +813,10 @@ function Editor:barOptions()
     end
     if self:canDraw() then
         rows[#rows + 1] = { { text = self:hasDrawing() and self:drawingLabel() or _("Draw"), align = "left", callback = run(function() self:openDrawing() end) } }
+    end
+    if self:changed() then
+        -- (Back saves: this leaves without it)
+        rows[#rows + 1] = { { text = _("Discard changes"), align = "left", callback = run(function() self:discard() end) } }
     end
     if self.memo then
         rows[#rows + 1] = { { text = _("Archive note"), align = "left", callback = run(function() self:archiveNote() end) } }
@@ -1580,22 +1644,48 @@ end
 --- Saves the note as `text` with its drawings (Save, and the New drawing window's Save).
 function Editor:saveText(text)
     self.saved = true
+    -- "Saving…" on the screen at once: what follows (the note queued, the Notes tab drawn
+    -- again with it) takes a moment on a Kindle, and nothing else would show meanwhile
+    local box = Saving.show()
     UIManager:close(self, "full")
     if self.on_save then
         local drawings = self:drawingChanges()
         self.on_save(text, self.visibility, self.visibility ~= self.original_vis, self.space, self.space ~= self.original_space,
             (#drawings > 0 or drawings.order) and drawings or nil, #(self.photos or {}) > 0 and self.photos or nil, self:photoChanges())
     end
+    Saving.dropDraft(self.draft_key)
+    -- (put away once what's under it has been drawn again)
+    UIManager:scheduleIn(Saving.MIN_SHOWN or 0.6, function() Saving.close(box) end)
+end
+
+--- Leaves without saving: the drawing's new pages and the draft thrown away.
+function Editor:discard()
+    Log.info("notes: changes discarded")
+    Saving.dropDraft(self.draft_key)
+    self:dropDrawing()
+    UIManager:close(self, "full")
 end
 
 --- Back (from the text box or the toolbar).
 function Editor:onCloseDialog()
-    if not self:changed() then UIManager:close(self, "full"); return true end
+    if not self:changed() then
+        Saving.dropDraft(self.draft_key) -- (a draft offered and not taken: let go)
+        UIManager:close(self, "full")
+        return true
+    end
+    if not self.floating and self:text():gsub("%s+$", "") ~= "" or (not self.floating and self:hasDrawing()) then
+        -- the full page: what's written is saved as you leave (as the Kindle's own notebooks do);
+        -- ⋮ → Discard changes leaves without it. (The quick note's window, closed by a tap
+        -- outside it as often by chance, still asks.)
+        Log.info("notes: left the editor with changes: saved")
+        self:save()
+        return true
+    end
     local dialog
     dialog = ButtonDialog:new{ title = _("Save this note?"), buttons = {
         { { text = _("Save"), align = "left", callback = function() UIManager:close(dialog); self:save() end } },
         { { text = _("Discard"), align = "left", callback = function()
-            UIManager:close(dialog); self:dropDrawing(); UIManager:close(self, "full")
+            UIManager:close(dialog); Saving.dropDraft(self.draft_key); self:dropDrawing(); UIManager:close(self, "full")
         end } },
         { { text = _("Keep writing"), align = "left", callback = function() UIManager:close(dialog) end } },
     } }
