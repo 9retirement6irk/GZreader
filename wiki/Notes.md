@@ -345,11 +345,21 @@ API to `/api` are found too.
       take back moves, sizes and words; **Erase page** takes the boxes too.
       Memos gets them as its own text boxes, so they can be edited there,
       and text boxes made in Memos can be moved and retyped here.
+      **Write by hand** (tap **Text** again for its panel): write with the
+      pen (or a finger on a Kindle without one) and, a moment after you
+      lift it, what you wrote turns into typed text where you wrote it, as
+      on the Apple Newton. Go on writing after it, on its line or the next,
+      and the words go into the same box. **Undo** brings the writing back
+      as ink. How it's read is in the panel (**Read: …**) and in
+      [Settings → Notes → Handwriting to text](#handwriting-to-text).
     - **Eraser:** rubs out whole strokes, as in Memos; five sizes (how near
       a stroke it has to pass) and **Erase page**.
     - **Lasso:** draw a loop around some strokes to choose them. A dashed
-      frame goes around them, with **Copy**, **Cut** and **Delete** beside
-      it. Drag from inside the frame to move them; drag a corner to make
+      frame goes around them, with **Copy**, **Cut**, **Delete** and **To
+      text** beside it. **To text** reads the chosen writing and shows the
+      words to check and change: **Convert** puts them in a text box where
+      the writing was (one Undo brings the writing back), **Cancel** leaves
+      it as it is. Drag from inside the frame to move them; drag a corner to make
       them bigger or smaller. After **Copy**, tap an empty place and
       **Paste** appears there (the copy is kept for other drawings too,
       until the Kindle restarts). A tap outside the frame, or another tool,
@@ -600,3 +610,29 @@ API to `/api` are found too.
   opening that note again (or a new note, for a new one) offers **Put them
   back**. Drafts never leave the Kindle, and go once the note is saved,
   when you choose **Start from the saved note**, or after two weeks.
+
+## Handwriting to text
+
+Settings → Notes → **Handwriting to text** says how your writing is read,
+for the text tool's **Write by hand** and the lasso's **To text**:
+
+- **On the Kindle** (the default): nothing leaves the Kindle and no Wi‑Fi is
+  needed. It reads printed writing best: letters apart, English words and
+  digits; joined-up writing much less well. The reader, its small model and
+  its word list are [Ink Away](https://github.com/EmirErtorer/ink-away.koplugin)'s
+  (MIT License; its notices are in the plugin's `data/handwriting/NOTICE.md`).
+- **Claude**: Anthropic's Claude reads it, joined-up writing too. Give it an
+  API key from console.anthropic.com (**Claude key**; paid by use, a few
+  words cost a tiny fraction of a cent). **Claude model** is
+  `claude-haiku-5-5` unless you change it.
+- **Online service (OpenAI-style)**: any service that reads pictures
+  through OpenAI's Chat Completions API: OpenAI, or a model you run
+  yourself. Give its **address** (`https://…/v1`; plain `http://` only to a
+  computer on your network), a **key** and a **model** that reads pictures.
+
+Online, only the writing being read is sent, as a black-and-white picture:
+never the page, its pictures or your other notes. Wi‑Fi turns on for it. The
+keys are kept with GZreader's other sign-ins, off the Kindle's USB drive,
+and never written to the log. If a reading fails, the writing stays as you
+wrote it and a message says why.
+

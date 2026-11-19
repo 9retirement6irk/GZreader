@@ -7,6 +7,13 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Drawing: write by hand and it turns into typed text, as on the Apple Newton", text = "The drawing screen's text tool has a Write by hand switch (tap Text again for its panel). Write with the pen, or a finger on Kindles without one, and a moment after you lift it what you wrote becomes typed text where you wrote it. Go on writing after it and the words join the same box; Undo brings the writing back as ink. It's read on the Kindle (nothing leaves it, no Wi-Fi: best with printed writing), or online by Claude or an OpenAI-style service with your own key (Settings → Notes → Handwriting to text), which read joined-up writing too. The on-Kindle reader is Ink Away's (github.com/EmirErtorer/ink-away.koplugin, MIT)." },
+            { short = "Drawing: the lasso's To text turns writing into a text box", text = "Beside Copy, Cut and Delete, what the lasso chose has To text: the writing is read, the words shown to check and change, and Convert puts them in a text box where the writing was (one Undo brings the writing back). Online, only the chosen writing is sent, as a black-and-white picture." },
+        },
+    },
+    {
         version = "1.34.0",
         changes = {
             { short = "Quick panel: Send books is now Connect", text = "The quick panel's Send books tile at Home is now called Connect, with its own icon, because the page it opens does much more than send books: it sets up Grimmory, Notes, Calendar and Music from your phone or computer. It opens that page at its first tab; Send books is one tap away there. If you'd hidden the tile it stays hidden." },

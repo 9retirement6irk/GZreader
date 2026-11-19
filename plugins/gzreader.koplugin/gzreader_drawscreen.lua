@@ -251,6 +251,8 @@ function DrawScreen:init()
     self.pressure_on = DrawScreen.pressureOn()
     -- draw and hold: a rough shape becomes a clean one (on unless turned off in the Shapes panel)
     self.snap_shapes = not (G_reader_settings and G_reader_settings:isFalse("gzreader_drawing_snap"))
+    -- the text tool's Write: what's written with it turns into text (gzreader_handwriting.lua)
+    self.write_text = G_reader_settings ~= nil and G_reader_settings:isTrue("gzreader_drawing_write_text")
     local was = DrawScreen.loadPenRange()
     self._pen_range_was = { p_seen = was.p_seen, t_seen = was.t_seen, n = was.n }
     self.color = DrawScreen.lastColor()
@@ -346,14 +348,17 @@ function DrawScreen:syncTool()
     local sk = self.sketch
     if not sk then return end
     local hl = self.tool == "highlighter"
-    sk.tool = hl and "pen" or self.tool
-    sk.writing = hl and "highlighter" or self.writing
-    sk.width = hl and self.hl_width or self.width
+    -- (the text tool's Write: the pen writes, and it's read as words after a pause)
+    local hw = self.tool == "text" and self.write_text == true
+    sk.tool = (hl or hw) and "pen" or self.tool
+    sk.writing = hl and "highlighter" or hw and "pen" or self.writing
+    sk.width = hl and self.hl_width or hw and 2 or self.width
+    sk.hw = hw or nil
     sk.color = self.color
     sk.shape = self.shape
     sk.eraser_width = self.eraser_width
     sk.pressure_on = self.pressure_on
-    sk.snap_shapes = self.snap_shapes
+    sk.snap_shapes = self.snap_shapes and not hw
     -- the lasso: how near a corner of the frame counts as its handle; another tool lets go of what's chosen
     sk.lasso_handle, sk.lasso_pad = S(26), S(10)
     if self.tool ~= "lasso" then
@@ -388,6 +393,9 @@ function DrawScreen:flyoutRows(which)
         end
         -- (or with any pen: draw it roughly and hold the pen still at the end: gzreader_shapesnap.lua)
         rows[#rows + 1] = { id = "snap", row = true, switch = self.snap_shapes, label = _("Draw and hold: clean shapes") }
+    elseif which == "text" then
+        rows[#rows + 1] = { id = "write-text", row = true, switch = self.write_text == true, label = _("Write by hand: it turns into text") }
+        rows[#rows + 1] = { id = "hw-how", row = true, label = T(_("Read: %1"), DrawScreen.hwEngineName(self.plugin)) }
     elseif which == "eraser" then
         for k, w in ipairs(Sketch.ERASER_WIDTHS) do
             rows[#rows + 1] = { id = "e" .. tostring(w), row = true, eraser_width = w, bar = k, hollow = true, label = DrawScreen.WIDTH_NAMES[k] }
@@ -435,6 +443,7 @@ DrawScreen.SELECTION_TOOLS = {
     { id = "sel-copy", icon = "copy", label = _("Copy") },
     { id = "sel-cut", icon = "cut", label = _("Cut") },
     { id = "sel-delete", icon = "lasso-delete", label = _("Delete") },
+    { id = "sel-text", icon = "text", label = _("To text") },
 }
 DrawScreen.SHORTCUT_NAMES = { eraser = _("Eraser"), pen = _("Pen"), pencil = _("Pencil"), fountain = _("Fountain pen"),
     marker = _("Marker"), highlighter = _("Highlighter") }
@@ -556,13 +565,13 @@ function DrawScreen:layoutBar()
     else
         self.flyout = nil
     end
-    -- the lasso: Copy, Cut, Delete beside what's chosen (not while it's being dragged); Paste where an empty place was tapped
+    -- the lasso: Copy, Cut, Delete, To text beside what's chosen (not while it's being dragged); Paste where an empty place was tapped
     local sk0 = self.sketch
     local box = sk0 and sk0.selection and not sk0.selection.preview and sk0:selectionBox()
     if box then
         local cv = self.canvas
         local bs = S(44)
-        local mw, mh = bs + 2 * pad, 3 * bs + 2 * pad
+        local mw, mh = bs + 2 * pad, #DrawScreen.SELECTION_TOOLS * bs + 2 * pad
         local mx = cv.x + box.x0 - mw - S(14)
         local tools = self.frames.toolbar or self.frames.fold
         local blocked = self.toolbar_side == "left" and tools and mx < tools.x + tools.w + S(6)
@@ -643,6 +652,10 @@ function DrawScreen:hint()
     end
     if self.tool == "lasso" and self.sketch.selection then
         return _("Drag inside the frame to move, a corner to resize; tap elsewhere when it's in place")
+    end
+    if self.tool == "text" and self.write_text then
+        return self.pen_only and _("Write with the pen: each word turns into text when you lift it")
+            or _("Write with your finger: each word turns into text when you lift it")
     end
     if self.tool == "text" then
         return self.text_sel and _("Drag the box to move it, its corner to resize it; tap it to change its words")
@@ -1532,6 +1545,7 @@ function DrawScreen:apply(out)
         Log.info("drawing: lasso,", sel and #sel.strokes or 0, "strokes and", sel and #(sel.pictures or {}) or 0, "pictures chosen")
     end
     if out.stroke_done then self:flushInk(true) end
+    if out.stroke_done and self.sketch.hw then self:hwSoon() end
     if out.stroke_done then
         local d = self._stroke_area
         local clean = d and (self._stroke_grey or DrawScreen.inkRefreshFor(self.sketch.locked) ~= "a2")
@@ -1735,14 +1749,14 @@ function DrawScreen:textTap(t)
 end
 
 --- Asks for the words of a box: `text` to start with; on_done(text) or on_delete().
-function DrawScreen:askText(title, text, on_done, on_delete)
+function DrawScreen:askText(title, text, on_done, on_delete, ok_text)
     local InputDialog = require("ui/widget/inputdialog")
     local d
     local row = { { text = _("Cancel"), id = "close", callback = function() UIManager:close(d) end } }
     if on_delete then
         row[#row + 1] = { text = _("Delete"), callback = function() UIManager:close(d); on_delete() end }
     end
-    row[#row + 1] = { text = text == "" and _("Add") or _("Save"), is_enter_default = false, callback = function()
+    row[#row + 1] = { text = ok_text or (text == "" and _("Add") or _("Save")), is_enter_default = false, callback = function()
         local v = d:getInputText() or ""
         UIManager:close(d)
         on_done(v)
@@ -1793,6 +1807,164 @@ function DrawScreen:editText(el)
         self:redrawAll()
         Log.info("drawing: a text box deleted")
     end)
+end
+
+-- ---------------------------------------------------- handwriting to text
+
+--- How writing is read now, for the text tool's panel.
+function DrawScreen.hwEngineName(plugin)
+    local e = require("gzreader_handwriting").engine(plugin)
+    return e == "claude" and _("with Claude") or e == "openai" and _("online (your service)") or _("on the Kindle")
+end
+
+function DrawScreen.hwHow(plugin)
+    local e = require("gzreader_handwriting").engine(plugin)
+    if e == "kindle" then
+        return _("Your writing is read on the Kindle: nothing leaves it, and no Wi-Fi is needed. It reads printed writing best: letters apart, English words and digits.\n\nFor joined-up writing, Claude or another online service reads much better: Settings → Notes → Handwriting to text.")
+    end
+    return T(_("Your writing is read %1: only the writing being read is sent, as a black-and-white picture, never the page or your other notes. Wi-Fi turns on for it.\n\nSettings → Notes → Handwriting to text changes this."),
+        DrawScreen.hwEngineName(plugin))
+end
+
+--- The text size (scene units) for writing whose lines are `line_h` canvas pixels high.
+function DrawScreen:hwSize(line_h)
+    local DrawText = require("gzreader_drawtext")
+    local size = math.floor(line_h / self.sketch.per_unit * 0.7 + 0.5)
+    return math.max(DrawText.SIZE * 0.8, math.min(48, size))
+end
+
+--- `strokes` (live, on this page) read as `text`: they go and the words go
+--- in a text box: box `into` (the Write box) when given, at its end (a new
+--- line when `newline`), else a new box where the writing was. One undo.
+function DrawScreen:placeText(strokes, text, into, newline)
+    local sk = self.sketch
+    local live = {}
+    for _i, st in ipairs(strokes) do if not st.gone then live[#live + 1] = st end end
+    if #live == 0 or text:gsub("%s", "") == "" then return nil end
+    local DrawText = require("gzreader_drawtext")
+    local area = sk:strokesArea(live)
+    local el, fields
+    if into then
+        local joined = (into.text or "") .. ((into.text or "") == "" and "" or (newline and "\n" or " ")) .. text
+        local probe = { text = joined, width = into.width, fontSize = into.fontSize }
+        el, fields = into, { text = joined, height = Drawing.round2(math.max(into.height, self:textHeight(probe))) }
+    else
+        local lines = 1
+        for _l in text:gmatch("\n") do lines = lines + 1 end
+        local size = self:hwSize((area.y1 - area.y0) / lines)
+        local sx, sy = sk:toScene(area.x0, area.y0)
+        local c = self.canvas
+        local w = math.max(area.x1 - area.x0, math.min(c.w * 0.6, c.w - area.x0 - S(16))) / sk.per_unit
+        el = DrawText.element(sx, sy, w, text, self.color, size)
+        el.height = Drawing.round2(math.max(el.height, self:textHeight(el)))
+    end
+    sk:convertWriting(live, el, fields)
+    self:touched()
+    self:redrawAll()
+    return el
+end
+
+--- The text tool's Write: the pen lifted, writing read a moment later
+--- (DrawScreen.HW_PAUSE; a new stroke meanwhile puts it off).
+function DrawScreen:hwSoon()
+    local Hw = require("gzreader_handwriting")
+    if not self._hw_task then
+        self._hw_task = function()
+            if self._closed then return end
+            -- (still writing: later)
+            if self.sketch.drawing_slot ~= nil then return UIManager:scheduleIn(Hw.PAUSE, self._hw_task) end
+            self:hwNow()
+        end
+    end
+    UIManager:unschedule(self._hw_task)
+    UIManager:scheduleIn(Hw.PAUSE, self._hw_task)
+end
+
+--- What's been written with Write since the last reading: read, and into the box.
+function DrawScreen:hwNow()
+    local Hw = require("gzreader_handwriting")
+    local sk = self.sketch
+    local pending = {}
+    for _i, st in ipairs(sk:live()) do
+        if st.hw and not st.hw_reading then pending[#pending + 1] = st end
+    end
+    if #pending == 0 then return end
+    for _i, st in ipairs(pending) do st.hw_reading = true end
+    local area = sk:strokesArea(pending)
+    -- into the box being written in, when this follows on from it (the same line, or the next)
+    local into, newline = self.hw_box, false
+    if into and (sk.text_gone[into] or not self:hwFollows(into, area)) then into = nil end
+    if into then newline = self:hwNextLine(into, area) end
+    local t0 = os.time()
+    Hw.read(self.plugin, Hw.flat(pending), function(text, why)
+        if self._closed or sk ~= self.sketch then return end
+        for _i, st in ipairs(pending) do st.hw_reading = nil end
+        if not text or text:gsub("%s", "") == "" then
+            -- (not read: the writing stays as it is, and isn't tried again)
+            for _i, st in ipairs(pending) do st.hw = nil end
+            Log.info("drawing: writing not read:", tostring(why or "nothing in it"))
+            if why then
+                UIManager:show(require("ui/widget/infomessage"):new{ timeout = 3,
+                    text = T(_("Your writing couldn't be read (%1). It's kept as you wrote it."), why) })
+            end
+            return
+        end
+        local el = self:placeText(pending, (text:gsub("\n+", " ")), into, newline)
+        if el then
+            self.hw_box = el
+            Log.info("drawing: writing turned into text,", #pending, "strokes,", #text, "characters,", os.time() - t0, "s")
+        end
+    end, { radius = sk:radius(2) })
+end
+
+--- Does writing in canvas `area` follow on from box `el`: to its right on its
+--- last line, or on the line under it, near its left edge?
+function DrawScreen:hwFollows(el, area)
+    local DrawText = require("gzreader_drawtext")
+    local r = DrawText.rect(el, function(x, y) return self.sketch:toCanvas(x, y) end)
+    local line = (el.fontSize or DrawText.SIZE) * 1.25 * self.sketch.per_unit
+    local cy = (area.y0 + area.y1) / 2
+    return cy >= r.y - line * 0.5 and cy <= r.y + r.h + line * 1.6 and area.x0 >= r.x - line * 2
+end
+
+function DrawScreen:hwNextLine(el, area)
+    local DrawText = require("gzreader_drawtext")
+    local r = DrawText.rect(el, function(x, y) return self.sketch:toCanvas(x, y) end)
+    local line = (el.fontSize or DrawText.SIZE) * 1.25 * self.sketch.per_unit
+    return (area.y0 + area.y1) / 2 > r.y + r.h + line * 0.2
+end
+
+--- The lasso's To text: the chosen writing read, shown to check and change,
+--- then a text box where it was (Convert), or left as it is (Cancel).
+function DrawScreen:selectionToText()
+    local Hw = require("gzreader_handwriting")
+    local sk = self.sketch
+    local sel = sk.selection
+    local strokes = {}
+    for _i, st in ipairs(sel and sel.strokes or {}) do if not st.gone and #(st.points or {}) >= 2 then strokes[#strokes + 1] = st end end
+    if #strokes == 0 then
+        return UIManager:show(require("ui/widget/infomessage"):new{ timeout = 3, text = _("Choose some writing with the lasso first.") })
+    end
+    local busy = require("ui/widget/infomessage"):new{ text = _("Reading your writing…") }
+    UIManager:show(busy)
+    UIManager:forceRePaint()
+    Log.info("drawing: lasso, to text:", #strokes, "strokes")
+    Hw.read(self.plugin, Hw.flat(strokes), function(text, why)
+        UIManager:close(busy)
+        if self._closed then return end
+        if not text or text:gsub("%s", "") == "" then
+            return UIManager:show(require("ui/widget/infomessage"):new{ timeout = 4,
+                text = why and T(_("Your writing couldn't be read (%1)."), why) or _("Nothing in it could be read as words.") })
+        end
+        self:askText(_("Text from your writing"), text, function(v)
+            if self:placeText(strokes, v) then
+                self.paste_at = nil
+                self:layoutBar()
+                UIManager:setDirty(self, "ui")
+                Log.info("drawing: lasso, writing turned into text,", #v, "characters")
+            end
+        end, nil, _("Convert"))
+    end, { radius = sk:radius(2) })
 end
 
 --- How fresh ink is put on the e-ink screen. A2 (the quickest) only goes
@@ -2118,8 +2290,22 @@ function DrawScreen:use(t)
     elseif t.id == "fingers" then
         self:setDrawWithFinger(self.pen_only)
     elseif t.id == "text" then
-        self:setTool("text"); self:setFlyout(nil)
-        Log.info("drawing: the text tool")
+        -- (in hand already: its panel, Type or Write by hand)
+        if self.tool == "text" then self:setFlyout(self.flyout ~= "text" and "text" or nil)
+        else self:setTool("text"); self:setFlyout(nil) end
+        Log.info("drawing: the text tool", self.write_text and "(write by hand)" or "")
+    elseif t.id == "write-text" then
+        self.write_text = not self.write_text
+        keep("gzreader_drawing_write_text", self.write_text)
+        self.hw_box = nil
+        self:setTool("text")
+        Log.info("drawing: the text tool:", self.write_text and "write by hand" or "type")
+        self:setFlyout("text")
+    elseif t.id == "hw-how" then
+        self:setFlyout(nil)
+        UIManager:show(require("ui/widget/infomessage"):new{ text = DrawScreen.hwHow(self.plugin) })
+    elseif t.id == "sel-text" then
+        self:selectionToText()
     elseif t.id == "more" or t.id == "options" then self:setFlyout(self.flyout ~= t.id and t.id or nil)
     elseif t.id == "shortcut" then self:nextShortcut(); self:setFlyout("more")
     elseif t.id == "penmode" then
@@ -2354,6 +2540,7 @@ function DrawScreen:onShow()
 end
 
 function DrawScreen:onCloseWidget()
+    if self._hw_task then UIManager:unschedule(self._hw_task) end
     self._closed = true
     -- (beside a book: the book has the whole screen again)
     if self.pane and not self.journal then pcall(function() require("gzreader_splitview").closed(self) end) end
