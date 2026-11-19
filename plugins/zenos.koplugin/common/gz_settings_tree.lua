@@ -146,7 +146,9 @@ function M.accountsItems(opts)
         row(_("Photos"), "Immich", "immichSettingsItems", "wallpaper"),
         opts.wifi and iconFile({ text = _("House"), mandatory = "Home Assistant", sub_item_table_func = page("houseSettingsItems") },
             "tab_house", opts.plugin_root) or nil,
-    }, 7)
+        -- GZreader: the daily paper (its feeds, fetched once a day; read on Home: the owner, 2026-11-18)
+        row(_("Daily paper"), _("Feeds"), "dailySettingsItems", "history"),
+    }, 8)
 end
 
 --- Software update's value: the version waiting, if one is known.

@@ -14,7 +14,7 @@ The daily paper on the screen (the edition itself: gzreader_daily.lua).
   behind (swipe, the page keys, or the arrows at the foot). A tap on a story
   (the 5-way: move the frame, press) opens it as text to page through, with
   a QR code of its link for the rest of it on a phone.
-- Settings → Home → Daily paper: on/off, on the bookshelf, as a row, the feeds.
+- Settings → Accounts and services → Daily paper: on/off, on the bookshelf, as a row, the feeds.
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
@@ -152,7 +152,7 @@ function Paper.homeWidget(plugin, ctx)
     local mast = TextWidget:new{ text = _("The Daily Paper"), face = serifBold(14) }
     local small = serifItalic(8)
     local date = TextWidget:new{ text = Paper.dateText(now), face = small, fgcolor = Blitbuffer.COLOR_DARK_GRAY }
-    local status = TextWidget:new{ text = on and Paper.statusText(plugin, now) or _("off: Settings → Home → Daily paper"),
+    local status = TextWidget:new{ text = on and Paper.statusText(plugin, now) or _("off: Settings → Accounts and services → Daily paper"),
         face = small, fgcolor = Blitbuffer.COLOR_DARK_GRAY }
     local lead_face, line_face = serifBold(11), serif(9)
     local probe_lead = TextWidget:new{ text = "Ag", face = lead_face }
@@ -1034,7 +1034,10 @@ local function pageClass()
     function PaperPage:onGzSwipe(_arg, ges)
         if ges.direction == "west" then return self:turn(1) end
         if ges.direction == "east" then return self:turn(-1) end
-        return false -- (down from the top: the quick panel)
+        -- down from the top: the quick panel, as at Home and in a book (nothing under the
+        -- paper gets the swipe: it was lost)
+        if Paper.pulledDown(ges) then return Paper.openPanel(self.plugin) end
+        return false
     end
 
     function PaperPage:onCloseWidget()
@@ -1064,7 +1067,7 @@ function Paper.show(plugin)
     local D = Daily()
     if D.noWifi() then return info(D.why("usb")) end
     if not D.enabled(plugin) then
-        return info(_("The daily paper is off. Turn it on in Settings → Home → Daily paper."))
+        return info(_("The daily paper is off. Turn it on in Settings → Accounts and services → Daily paper."))
     end
     if Paper.instance and not Paper.instance.closed then return Paper.instance end
     local self = pageClass():new{ plugin = plugin }
@@ -1091,24 +1094,135 @@ function Paper.articleText(item)
     return table.concat(parts, "\n\n")
 end
 
-function Paper.article(_plugin, item)
-    local TextViewer = require("ui/widget/textviewer")
-    local viewer
-    local buttons = { {} }
-    if item.link then
-        buttons[1][#buttons[1] + 1] = { text = _("QR code"), callback = function()
+--- A swipe that opens the quick panel: down, starting near the top of the screen.
+Paper.PULL_ZONE = 0.12 -- (of the screen's height)
+function Paper.pulledDown(ges)
+    if not (ges and ges.direction == "south" and ges.pos) then return false end
+    return ges.pos.y < Device.screen:getHeight() * Paper.PULL_ZONE
+end
+
+function Paper.openPanel(plugin)
+    local ok, Panel = pcall(require, "gzreader_panel")
+    if not ok then return false end
+    require("gzreader_log").info("daily paper: the quick panel pulled down")
+    Panel.show(plugin)
+    return true
+end
+
+--- A story's buttons at the top: its link as a QR code (when it has one), and ✕.
+function Paper.articleButtons(item)
+    local out = {}
+    if item and item.link then out[#out + 1] = "qr" end
+    out[#out + 1] = "close"
+    return out
+end
+
+--- A story, as text that scrolls with the finger (not page by page): its
+--- headline, where it's from, the story; ✕ and QR code (its link, for a
+--- phone) at the top. Page keys and the 5-way ▲ ▼ scroll by most of a
+--- screen; Back closes; a swipe down from the top: the quick panel.
+local ArticleView
+function Paper.article(plugin, item)
+    local FrameContainer = require("ui/widget/container/framecontainer")
+    local GestureRange = require("ui/gesturerange")
+    local HorizontalGroup = require("ui/widget/horizontalgroup")
+    local HorizontalSpan = require("ui/widget/horizontalspan")
+    local InputContainer = require("ui/widget/container/inputcontainer")
+    local LineWidget = require("ui/widget/linewidget")
+    local OverlapGroup = require("ui/widget/overlapgroup")
+    local LeftContainer = require("ui/widget/container/leftcontainer")
+    local RightContainer = require("ui/widget/container/rightcontainer")
+    local ScrollableContainer = require("ui/widget/container/scrollablecontainer")
+    local TextBoxWidget = require("ui/widget/textboxwidget")
+    local TextWidget = require("ui/widget/textwidget")
+    local VerticalGroup = require("ui/widget/verticalgroup")
+    local VerticalSpan = require("ui/widget/verticalspan")
+    local Size = require("ui/size")
+    local Screen = Device.screen
+    local function S(n) return Screen:scaleBySize(n) end
+    if not ArticleView then
+        ArticleView = InputContainer:extend{ covers_fullscreen = true, name = "gz_daily_article" }
+        function ArticleView:init()
+            local sw, sh = Screen:getWidth(), Screen:getHeight()
+            self.dimen = Geom:new{ x = 0, y = 0, w = sw, h = sh }
+            local margin = S(18)
+            local inner = sw - 2 * margin
+            local bar_h = S(52)
+            local it = self.item
+            local function button(text, fn)
+                local w = FrameContainer:new{ padding = S(6), padding_left = S(14), padding_right = S(14), margin = 0, radius = S(6),
+                    bordersize = Size.border.thick, TextWidget:new{ text = text, face = Font:getFace("cfont", 16), bold = true } }
+                local box = InputContainer:new{ dimen = Geom:new{ w = w:getSize().w, h = w:getSize().h }, w }
+                box.ges_events = { TapButton = { GestureRange:new{ ges = "tap", range = function() return box.dimen end } } }
+                function box:onTapButton() fn(); return true end
+                return box
+            end
+            local right = HorizontalGroup:new{ align = "center" }
+            for _i, id in ipairs(Paper.articleButtons(it)) do
+                if id == "qr" then right[#right + 1] = button(_("QR code"), function() self:onShowQR() end)
+                else right[#right + 1] = button("\u{2715}", function() self:onClose() end) end
+                right[#right + 1] = HorizontalSpan:new{ width = S(8) }
+            end
+            local bar = VerticalGroup:new{
+                OverlapGroup:new{ dimen = Geom:new{ w = sw, h = bar_h },
+                    LeftContainer:new{ dimen = Geom:new{ w = sw, h = bar_h },
+                        HorizontalGroup:new{ HorizontalSpan:new{ width = margin },
+                            TextWidget:new{ text = it.source or _("Daily paper"), face = serifItalic(10),
+                                max_width = sw - right:getSize().w - 2 * margin } } },
+                    RightContainer:new{ dimen = Geom:new{ w = sw, h = bar_h }, right } },
+                LineWidget:new{ background = Blitbuffer.COLOR_BLACK, dimen = Geom:new{ w = sw, h = Size.line.medium } },
+            }
+            local col = VerticalGroup:new{ align = "left",
+                VerticalSpan:new{ width = S(16) },
+                TextBoxWidget:new{ text = it.title or "", face = serifBold(18), width = inner },
+                VerticalSpan:new{ width = S(10) },
+                TextBoxWidget:new{ text = Paper.articleText(it), face = serif(12), width = inner },
+                VerticalSpan:new{ width = S(30) },
+            }
+            self.scroller = ScrollableContainer:new{
+                dimen = Geom:new{ w = sw, h = sh - bar_h - Size.line.medium }, show_parent = self,
+                HorizontalGroup:new{ align = "top", HorizontalSpan:new{ width = margin }, col },
+            }
+            -- (the story moves with the finger, and settles where it lifts: gzreader_livescroll.lua)
+            require("gzreader_livescroll").on(self.scroller)
+            self[1] = FrameContainer:new{ width = sw, height = sh, padding = 0, bordersize = 0, background = Blitbuffer.COLOR_WHITE,
+                VerticalGroup:new{ bar, self.scroller } }
+            if Device:hasKeys() then
+                local g = Device.input.group
+                self.key_events = {
+                    Close = { { g.Back } },
+                    PageDown = { { g.PgFwd }, { "Down" } },
+                    PageUp = { { g.PgBack }, { "Up" } },
+                    ShowQR = { { "Press" } },
+                }
+            end
+            if Device:isTouchDevice() then
+                self.ges_events = { PullPanel = { GestureRange:new{ ges = "swipe", range = function()
+                    return Geom:new{ x = 0, y = 0, w = sw, h = math.floor(sh * Paper.PULL_ZONE) } end } } }
+            end
+        end
+        function ArticleView:scroll(dir)
+            if self.scroller and self.scroller._scrollBy then self.scroller:_scrollBy(0, dir * math.floor(self.scroller.dimen.h * 0.85)) end
+            UIManager:setDirty(self, function() return "ui", self.scroller.dimen end)
+            return true
+        end
+        function ArticleView:onPageDown() return self:scroll(1) end
+        function ArticleView:onPageUp() return self:scroll(-1) end
+        function ArticleView:onShowQR()
+            if not self.item.link then return true end
             local QRMessage = require("ui/widget/qrmessage")
-            UIManager:show(QRMessage:new{ text = item.link, width = Device.screen:getWidth(), height = Device.screen:getHeight() })
-        end }
+            UIManager:show(QRMessage:new{ text = self.item.link, width = Screen:getWidth(), height = Screen:getHeight() })
+            return true
+        end
+        function ArticleView:onPullPanel(_arg, ges)
+            if not Paper.pulledDown(ges) then return false end
+            return Paper.openPanel(self.plugin)
+        end
+        function ArticleView:onClose() UIManager:close(self, "full"); return true end
     end
-    buttons[1][#buttons[1] + 1] = { text = _("Close"), id = "close", callback = function() UIManager:close(viewer) end }
-    viewer = TextViewer:new{
-        title = item.title, title_multilines = true, text = Paper.articleText(item),
-        width = Device.screen:getWidth(), height = Device.screen:getHeight(),
-        buttons_table = buttons, add_default_buttons = false,
-    }
-    UIManager:show(viewer)
-    return viewer
+    local v = ArticleView:new{ item = item, plugin = plugin }
+    UIManager:show(v, "full")
+    return v
 end
 
 ---------------------------------------------------------------- settings
@@ -1187,7 +1301,7 @@ function Paper.typeAddFeed(plugin, after)
     d:onShowKeyboard()
 end
 
---- Settings → Home → Daily paper → Feeds.
+--- Settings → Accounts and services → Daily paper → Feeds.
 function Paper.feedItems(plugin)
     local D = Daily()
     local st = D.store(plugin)
@@ -1265,7 +1379,7 @@ function Paper.setTown(plugin, town, after)
     end, { reason = "the weather's town" })
 end
 
---- Settings → Home → Daily paper → Weather.
+--- Settings → Accounts and services → Daily paper → Weather.
 function Paper.weatherItems(plugin)
     local W = require("gzreader_weather")
     local function w() return W.store(plugin) end
@@ -1327,7 +1441,7 @@ function Paper.browserSetup(plugin)
     end, { reason = "setting up the daily paper" })
 end
 
---- Settings → Home → Daily paper.
+--- Settings → Accounts and services → Daily paper.
 function Paper.settingsItems(plugin)
     local D = Daily()
     if D.noWifi() then

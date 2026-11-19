@@ -816,16 +816,15 @@ function Grimmory:sectionItems(section)
             })
         end
         return items
-    elseif section == "home" then
-        -- the daily paper (gzreader_daily.lua): feeds fetched once a day, read on Home
-        return {
-            icon("history", {
-                text = _("Daily paper"),
-                sub_item_table_func = function() return require("gzreader_dailyscreen").settingsItems(self) end,
-            }),
-        }
     end
+    -- (no rows of GZreader's in Home: the daily paper is in Accounts and services, with the
+    -- other things fetched from the web: Grimmory:dailySettingsItems; the owner, 2026-11-18)
     return {}
+end
+
+--- Settings → Accounts and services → Daily paper (gzreader_daily.lua: feeds fetched once a day, read on Home).
+function Grimmory:dailySettingsItems()
+    return require("gzreader_dailyscreen").settingsItems(self)
 end
 
 ---------------------------------------------------------------- errors
