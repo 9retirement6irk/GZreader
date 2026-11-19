@@ -506,8 +506,8 @@ check(not L.lead and L.rows == 0, "a very low row: the name alone")
 local text1 = Paper.articleText(stories[1].item)
 check(text1:find("Para one is here.", 1, true) and text1:find("^Mine · " .. os.date("%A, %B ", os.time() - 2 * 3600)),
     "a story opens as text, its source and day first")
-check(table.concat(Paper.articleButtons(stories[1].item), ",") == "qr,close", "with its link as a QR code, and ✕")
-check(table.concat(Paper.articleButtons({ title = "T", text = "x" }), ",") == "close" and Paper.articleText({ title = "T", text = "x" }) == "x",
+check(table.concat(Paper.articleButtons(stories[1].item), ",") == "type,qr,close", "with Aa for its type, its link as a QR code, and ✕")
+check(table.concat(Paper.articleButtons({ title = "T", text = "x" }), ",") == "type,close" and Paper.articleText({ title = "T", text = "x" }) == "x",
     "a story without a link: no QR code")
 check(Paper.pulledDown({ direction = "south", pos = { x = 10, y = 5 } }) and not Paper.pulledDown({ direction = "south", pos = { x = 10, y = 5000 } })
     and not Paper.pulledDown({ direction = "west", pos = { x = 10, y = 5 } }) and not Paper.pulledDown(nil),
@@ -744,6 +744,103 @@ row("Whole stories").callback()
 check(plugin.store.daily.full == nil, "ticked again")
 check(Paper.articleText({ title = "T", text = "x", link = "https://x.example.com/1", full = true }):find("From the story's own page", 1, true), "a whole story says where its text is from")
 check(Daily.MAX_TEXT >= 12000, "a feed that carries whole stories is no longer cut at 4,000 bytes")
+
+print("== a story's type")
+plugin = { store = { daily = { enabled = true } }, save = function() saves = saves + 1 end }
+local sf = Paper.storyFont(plugin)
+check(sf.face.id == "serif" and sf.size == 12 and sf.spacing.id == "normal" and sf.face.regular == "NotoSerif-Regular.ttf", "as it comes: Serif, 12, Normal spacing")
+saves = 0
+local rebuilt = 0
+Paper.story = { rebuild = function() rebuilt = rebuilt + 1 end }
+check(Paper.setStoryFont(plugin, "size", 16) == true and Paper.storyFont(plugin).size == 16 and saves == 1 and rebuilt == 1, "a size chosen: kept, and the open story set again")
+check(Paper.setStoryFont(plugin, "size", 16) == false and saves == 1 and rebuilt == 1, "the same again: nothing to do")
+Paper.setStoryFont(plugin, "size", 999)
+check(Paper.storyFont(plugin).size == Paper.SIZE_MAX, "never bigger than " .. Paper.SIZE_MAX)
+Paper.setStoryFont(plugin, "size", -4)
+check(Paper.storyFont(plugin).size == Paper.SIZE_MIN, "never smaller than " .. Paper.SIZE_MIN)
+check(Paper.setStoryFont(plugin, "face", "sans") and Paper.storyFont(plugin).face.bold == "NotoSans-Bold.ttf" and Paper.setStoryFont(plugin, "spacing", "wide")
+    and Paper.storyFont(plugin).spacing.em > 0.3, "a typeface and a line spacing chosen")
+check(Paper.setStoryFont(plugin, "face", "comic") == false and Paper.setStoryFont(plugin, "spacing", "huge") == false and Paper.setStoryFont(plugin, "colour", "red") == false
+    and Paper.storyFont(plugin).face.id == "sans", "one that isn't offered changes nothing")
+plugin.store.daily.font = { face = "gone", size = "x", spacing = 7 }
+check(Paper.storyFont(plugin).face.id == "serif" and Paper.storyFont(plugin).size == 12 and Paper.storyFont(plugin).spacing.id == "normal", "kept values that make no sense: as it comes")
+Paper.story = { closed = true, rebuild = function() rebuilt = rebuilt + 100 end }
+Paper.setStoryFont(plugin, "size", 14)
+check(rebuilt < 100, "no story open: none is set again")
+Paper.story = nil
+local ids = {}
+for _i, c in ipairs(Paper.FACES) do ids[#ids + 1] = Paper.faceLabel(c.id) end
+check(table.concat(ids, ",") == "Serif,Sans,Classic,Typewriter", "four typefaces: " .. table.concat(ids, ", "))
+local fonts_ok = true
+for _i, c in ipairs(Paper.FACES) do
+    for _j, file in ipairs({ c.regular, c.bold }) do
+        local found = false
+        for _k, dir in ipairs({ "noto", "freefont", "droid" }) do
+            local f = io.open(REPO .. "/fonts/" .. dir .. "/" .. file, "rb") or io.open((arg[4] or "") .. "/fonts/" .. dir .. "/" .. file, "rb")
+            if f then f:close(); found = true end
+        end
+        if not found and arg[4] then fonts_ok = false; print("    missing font: " .. file) end
+    end
+end
+check(fonts_ok, "each is a font GZreader ships" .. (arg[4] and "" or " (not checked: no KOReader tree given)"))
+local trows = Paper.typeRows(plugin)
+check(#trows == 3 and trows[1][1].text == "A\u{2212}" and trows[1][2].text == "Size 14" and trows[1][2].enabled == false and trows[1][3].text == "A+"
+    and #trows[2] == 4 and trows[2][1].on == true and #trows[3] == 3 and trows[3][2].on == true, "the Aa box: A−, the size, A+; the typefaces; the spacings; the chosen ones marked")
+check(trows[1][3].run() == true and Paper.storyFont(plugin).size == 15 and trows[2][2].run() == true and Paper.storyFont(plugin).face.id == "sans", "A+ makes it one bigger; a typeface's button chooses it")
+Paper.setStoryFont(plugin, "size", Paper.SIZE_MAX)
+check(Paper.typeRows(plugin)[1][3].enabled == false and Paper.typeRows(plugin)[1][1].enabled == true, "at the biggest, A+ is greyed")
+rows = Paper.settingsItems(plugin)
+local frows = Paper.fontItems(plugin)
+check(row("Story text") and #frows == 3 and frows[1].text_func() == "Typeface: Sans" and frows[2].text_func() == "Size: " .. Paper.SIZE_MAX and frows[3].text_func() == "Line spacing: Normal",
+    "Settings → Daily paper → Story text: typeface, size, line spacing")
+frows[2].sub_item_table[4].callback()
+check(Paper.storyFont(plugin).size == 12 and frows[2].sub_item_table[4].checked_func() == true and frows[2].sub_item_table[5].checked_func() == false, "a size picked there")
+frows[1].sub_item_table[3].callback()
+frows[3].sub_item_table[1].callback()
+check(Paper.storyFont(plugin).face.id == "classic" and Paper.storyFont(plugin).spacing.id == "tight", "a typeface and a spacing picked there")
+local dsrc = read(PLUGIN .. "/gzreader_dailyscreen.lua")
+check(dsrc:find("line_height = font.spacing.em", 1, true) and dsrc:find("face(font.face.regular, font.size", 1, true) and dsrc:find('ShowType = { { "Menu" } }', 1, true),
+    "the story is set in the type chosen; Menu opens the box on a Kindle with keys")
+
+print("== a story rests where the finger leaves it")
+local LS = require("gzreader_livescroll")
+local fdx, fdy = LS.freeEnd({ rel_x = 0, rel_y = -340, moved_x = 0, moved_y = 300 }, { direction = "north", distance = 900 })
+check(fdx == 0 and fdy == 40, "a drag ending as a swipe: the page goes the 40 px the finger went since its last step, not a screenful")
+fdx, fdy = LS.freeEnd({ rel_x = 0, rel_y = 200, moved_x = 0, moved_y = -200 }, { direction = "south", distance = 500 })
+check(fdx == 0 and fdy == 0, "already where the finger left it: it stays")
+fdx, fdy = LS.freeEnd({}, { direction = "north", distance = 120 })
+check(fdx == 0 and fdy == 120 and select(2, LS.freeEnd({}, { direction = "south", distance = 80 })) == -80 and select(2, LS.freeEnd({}, { direction = "northeast", distance = 100 })) == 70,
+    "a flick too quick to be seen as a drag: its own length, never a screenful")
+local moved_by = {}
+local function scroller()
+    return { _is_scrollable = true, _scrolling = false, _scroll_offset_x = 0, _scroll_offset_y = 1000, _max_scroll_offset_x = 0, _max_scroll_offset_y = 5000,
+        dimen = { x = 0, y = 0, w = 600, h = 800 }, show_parent = {},
+        _scrollBy = function(self, _dx, dy) moved_by[#moved_by + 1] = dy; self._scroll_offset_y = math.max(0, math.min(self._max_scroll_offset_y, self._scroll_offset_y + dy)) end,
+        onScrollablePan = function(self) self._scrolling = true; return true end,
+        onScrollablePanRelease = function(self) self._scrolling = false; return true end,
+        onScrollableSwipe = function(self, _a, ges) self:_scrollBy(0, ges.direction == "north" and 800 or -800); return true end }
+end
+local fake = scroller()
+package.loaded["ui/uimanager"].setDirty = function() end
+local clock = 0
+LS.now = function() clock = clock + 1; return clock end
+LS.on(fake, { free = true })
+local pos = { intersectWith = function() return true end }
+fake:onScrollablePan(nil, { relative = { x = 0, y = -100 } })
+fake:onScrollablePan(nil, { relative = { x = 0, y = -230 } })
+fake:onScrollablePan(nil, { relative = { x = 0, y = -235 } })
+check(fake._scroll_offset_y == 1230, "the page follows the finger in steps (230 px so far; the last 5 px wait)")
+fake:onScrollableSwipe(nil, { direction = "north", distance = 240, pos = pos })
+check(fake._scroll_offset_y == 1235 and fake._scrolling == false, "the finger lifts still moving: the page rests 235 px on, where the finger was (was: a screenful further) … " .. fake._scroll_offset_y)
+fake:onScrollablePan(nil, { relative = { x = 0, y = 60 } })
+fake:onScrollablePanRelease(nil, {})
+check(fake._gz_live.rel_y == nil or fake._scrolling == false, "the next drag starts afresh")
+local snapper = scroller()
+LS.on(snapper)
+snapper:onScrollablePan(nil, { relative = { x = 0, y = -100 } })
+snapper:onScrollableSwipe(nil, { direction = "north", distance = 120, pos = pos })
+check(snapper._scroll_offset_y == 1800, "where it isn't asked for (the notes), a swipe still moves a screenful … " .. snapper._scroll_offset_y)
+check(dsrc:find('require("gzreader_livescroll").on(self.scroller, { free = true })', 1, true), "the story asks for it")
 
 print("== today's calendar events on the front page")
 local function tm(day, h, m) return os.time{ year = 2026, month = 11, day = day, hour = h, min = m or 0 } end
