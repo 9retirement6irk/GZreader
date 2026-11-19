@@ -42,8 +42,19 @@ and how it begins.
   code for your phone, for the rest of it or its pictures.
 - **Close**: the cross in the corner, or Back.
 
-The paper shows what a feed carries. Some feeds carry whole stories; many
-carry only a sentence or two, and the paper says so under such a story.
+**Whole stories**: many feeds carry only a sentence or two of each story.
+For those, GZreader also fetches the story's own web page with the day's
+paper and takes the article out of it, as a browser's reader view does, so
+you read the whole story with Wi‑Fi off. Feeds that carry whole stories are
+used as they are (up to about 2,500 words a story).
+
+- It makes the day's fetch longer: a page for each short story, in the
+  background, five minutes at most; stories it didn't get to keep their
+  summary.
+- A story behind a paywall, or on a page built by scripts, keeps the feed's
+  summary, and says so at its end.
+- **Settings → Home → Daily paper → Whole stories** turns it off (a faster
+  fetch, summaries only).
 
 **Weather**: a box under the date shows now, today and the next two days,
 each with a small drawing of its sky, the high and low, and the chance of
@@ -133,6 +144,10 @@ GZreader asked. Nothing else is sent: no account, no cookies, nothing about
 you or what you read. Nothing goes through anyone else's server. With
 **Pictures** on, a story's picture is fetched the same way from wherever the
 feed says it is, often a picture server on another site than the feed's.
+With **Whole stories** on, each short story's own page is fetched too. It's
+usually on the feed's site, but not always (Hacker News links anywhere); that
+site then sees the Kindle's internet address as well. Story addresses are not
+written to the log.
 For the weather, Open‑Meteo is sent the town's name once (to find where it
 is) and after that only its coordinates rounded to two decimals, about a
 kilometre, with each day's request; it sees the Kindle's internet address

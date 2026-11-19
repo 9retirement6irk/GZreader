@@ -260,6 +260,7 @@ local function paperSection(st, base)
     parts[#parts + 1] = status(p.enabled, p.enabled and (p.stories and ("On · the last paper has " .. esc(p.stories) .. " stories") or "On · no paper fetched yet") or "Off")
     if p.error then parts[#parts + 1] = '<p class="err">' .. esc(p.error) .. "</p>" end
     local rows = { tick("enabled", p.enabled, "<b>Daily paper</b>"), tick("shelf", p.shelf, "Show it on Home's bookshelf"),
+        tick("full", p.full, "Whole stories (each short story's own page is fetched too)"),
         tick("pictures", p.pictures, "With pictures (the lead story's and a few more)"),
         tick("calendar", p.calendar, "Today's calendar events on the front page") }
     local wx = p.weather or {}
