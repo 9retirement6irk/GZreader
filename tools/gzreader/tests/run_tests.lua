@@ -9887,6 +9887,23 @@ print("Notes (Memos v0.31)")
         local top2 = Notes.onTop()
         UIM._window_stack = stack
         check(top1 and not top2, "the Notes tab is on top only when nothing is over it")
+    do -- auto brightness (autolight_test.lua has the curve; emulator/auto_light.lua the tile and the looks)
+        local psrc = io.open(PLUGIN .. "/gzreader_panel.lua"):read("*a")
+        local msrc_a = io.open(PLUGIN .. "/main.lua"):read("*a")
+        check(psrc:find('list[#list + 1] = require("gzreader_autolight").tile()', 1, true) ~= nil
+            and psrc:find('if not dragging then pcall(function() require("gzreader_autolight").userSet(v) end) end', 1, true) ~= nil
+            and msrc_a:find('require("gzreader_autolight").onSuspend()', 1, true) ~= nil
+            and msrc_a:find('require("gzreader_autolight").onResume()', 1, true) ~= nil
+            and msrc_a:find('require("gzreader_autolight").start()', 1, true) ~= nil,
+            "auto brightness: the quick panel's tile, the slider teaches it, no looks while asleep, it starts with GZreader")
+        local gsrc_a = io.open(PLUGIN .. "/../zenos.koplugin/modules/settings/sections/global_settings.lua"):read("*a")
+        check(gsrc_a:find("local rows = AutoLight.settingsItems{", 1, true) ~= nil
+            and gsrc_a:find("for i, row in ipairs(rows) do table.insert(brightness.sub_item_table, i, row) end", 1, true) ~= nil
+            and select(2, gsrc_a:gsub("gz_auto_light_off%(%) %-%-", "")) == 2,
+            "auto brightness: first in Settings → Brightness with its adjustments; the schedule and light / dark mode brightness turn it off")
+        local AL = require("gzreader_autolight")
+        check(AL.tile() == nil or AL.available(), "…no tile on a Kindle without a light sensor")
+    end
         -- a note's page in the editor's font, the sticky notes handwritten
         do
             local nsrc6 = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")

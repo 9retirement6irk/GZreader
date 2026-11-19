@@ -180,6 +180,7 @@ function Panel.catalog()
             { id = "night", label = _("Night mode"), available = function() return not nightGuarded() end },
             { id = "rotate", label = _("Rotate") },
             { id = "autorotate", label = _("Auto-rotate"), note = _("Kindles that turn the screen by themselves"), available = function() return require("gzreader_rotation").hasAuto() end },
+            { id = "autolight", label = _("Auto light"), note = _("Kindles with a light sensor"), available = function() return require("gzreader_autolight").available() end },
             { id = "restart", label = _("Restart") },
             { id = "sleep", label = _("Sleep") },
             { id = "home", label = _("Home"), fixed = true },
@@ -417,6 +418,7 @@ function Panel.controls(plugin)
     end
     list[#list + 1] = { id = "rotate", icon = "rotate", label = _("Rotate"), run = function() dispatch("iterate_rotation") end }
     list[#list + 1] = require("gzreader_rotation").autoTile() -- (Kindles with an accelerometer: Oasis, Scribe)
+    list[#list + 1] = require("gzreader_autolight").tile() -- (Kindles with a light sensor: Voyage, Oasis, Scribe…)
     list[#list + 1] = { id = "restart", icon = "restart", label = _("Restart"), run = function() dispatch("restart") end }
     list[#list + 1] = { id = "sleep", icon = "sleep", label = _("Sleep"), run = function() dispatch("suspend") end }
     list[#list + 1] = { id = "home", icon = "home", label = _("Home"), run = function() require("gzreader_tabs").goHome() end }
@@ -958,6 +960,8 @@ function PanelWidget:setLight(v, dragging)
     local powerd, min, max = self:lightInfo()
     v = math.max(min, math.min(max, math.floor(v + 0.5)))
     powerd:setIntensity(v)
+    -- (auto brightness on: where you leave it is remembered as how you like it)
+    if not dragging then pcall(function() require("gzreader_autolight").userSet(v) end) end
     self:sliderDirty("light", dragging)
 end
 

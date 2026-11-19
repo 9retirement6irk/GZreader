@@ -216,6 +216,10 @@ echo "== Nook: GZreader's files on the card"
 timeout 120 python3 "$T/nook_app_test.py" 2>&1 | grep -E "FAIL|passed|shell"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
 
+echo "== auto brightness (the light follows the room: Kindles with a light sensor)"
+(cd "$T" && luajit autolight_test.lua "$REPO/plugins/gzreader.koplugin") 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+
 echo "== Wi-Fi power saving off while downloading"
 (cd "$T" && luajit wifips_test.lua "$REPO") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
