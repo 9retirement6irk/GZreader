@@ -504,7 +504,7 @@ function R.sendLogs(path, note, post)
             return select(2, http.request{
                 url = u, method = "POST",
                 headers = { ["Content-Type"] = "application/json", ["Content-Length"] = tostring(#body),
-                    ["User-Agent"] = "GZreader/" .. version },
+                    ["User-Agent"] = socketutil.USER_AGENT },
                 source = ltn12.source.string(body), sink = ltn12.sink.null(),
             })
         end)

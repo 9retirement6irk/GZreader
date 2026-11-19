@@ -274,6 +274,12 @@ end
 --- doesn't fetch "tomorrow's" paper with the evening's stories).
 function Daily.day(t) return os.date("%Y-%m-%d", (t or os.time()) - Daily.EDITION_HOUR * 3600) end
 
+--- What every request says it is: GZreader/<version> (socketutil.USER_AGENT; "GZreader" where that can't be loaded).
+local function userAgent()
+    local ok, su = pcall(require, "socketutil")
+    return ok and type(su) == "table" and su.USER_AGENT or "GZreader"
+end
+
 local function key(item)
     return (item.title or ""):lower():gsub("[%s%p]+", " ")
 end
@@ -388,7 +394,7 @@ function Daily.fetch(url)
         headers = {
             ["Accept"] = "application/rss+xml, application/atom+xml, application/xml, text/xml, */*",
             ["Accept-Encoding"] = Gzip.available() and "gzip" or "identity",
-            ["User-Agent"] = "GZreader (daily paper; +https://github.com/9retirement6irk/GZreader)",
+            ["User-Agent"] = userAgent(),
         },
         sink = sink, timeouts = { 15, 45 }, log_url = "https://" .. Daily.site(url) .. "/\u{2026} (feed)",
     }) }
@@ -433,7 +439,7 @@ function Daily.fetchPage(url)
     end
     local answer = { Api.rawRequest("GET", url, {
         headers = { ["Accept"] = "text/html, application/xhtml+xml", ["Accept-Encoding"] = Gzip.available() and "gzip" or "identity",
-            ["User-Agent"] = "GZreader (daily paper; +https://github.com/9retirement6irk/GZreader)" },
+            ["User-Agent"] = userAgent() },
         sink = sink, timeouts = { 10, 25 }, log_url = "https://" .. Daily.site(url) .. "/\u{2026} (story)",
     }) }
     if too_big then return nil, "too big" end
@@ -512,7 +518,7 @@ function Daily.fetchPicture(url)
     end
     local answer = { Api.rawRequest("GET", url, {
         headers = { ["Accept"] = "image/jpeg, image/png, image/webp, image/gif", ["Accept-Encoding"] = "identity",
-            ["User-Agent"] = "GZreader (daily paper; +https://github.com/9retirement6irk/GZreader)" },
+            ["User-Agent"] = userAgent() },
         sink = sink, timeouts = { 10, 30 }, log_url = "https://" .. Daily.site(url) .. "/\u{2026} (picture)",
     }) }
     if too_big then return nil, "too big" end

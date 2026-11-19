@@ -3,7 +3,7 @@ local json = require("json")
 local logger = require("common/zen_logger").new("metadata_http")
 
 local M = {}
-local USER_AGENT = "ZenOS metadata (https://github.com/xZenLabs/zen-os)"
+local USER_AGENT = require("socketutil").USER_AGENT -- GZreader: every request says GZreader/<version>
 local BLOCK_TIMEOUT = 6
 local TOTAL_TIMEOUT = 12
 local MAX_RESPONSE_BYTES = 2 * 1024 * 1024
