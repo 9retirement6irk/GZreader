@@ -19,7 +19,15 @@ DX: KOReader's Kindle 2 class at 824 × 1200), `dxg` (DX Graphite), `k4`
 (Kindle 4: 5-way, no keyboard, an 8-bit framebuffer with inverted levels),
 `kt` (Kindle Touch: touch at 600 × 800, its panel's 0–4095 coordinates),
 `pw3` or `scribe`, each with its serial, framebuffer and key codes (the model's own
-event map, so a key it doesn't have fails the step).
+event map, so a key it doesn't have fails the step). `k2`, `dx` and `dxg`
+have no Wi-Fi, like the real ones: KOReader's network is off and offline,
+and anything asking to turn it on is counted (`E.wifi_asked`; `keeps.lua`
+checks it stays zero). CI runs `keeps.lua` on `dx` and `dxg` too.
+
+Not emulated on the Kindle 2/DX: their 2011 BusyBox (no `head -c`), the
+2.6.22 kernel (no close-on-exec), the firmware 2.x speech service, 128 MB of
+RAM, and the start script (`koreader.sh`; its USB step-aside has its own
+test, `tests/kindle_usb_test.py`).
 
 `GZ_EMU_MODEL=scribe` runs it as a **Kindle Scribe** (also the Scribe 2 to
 KOReader): its serial (device code 27J, so the real `KindleScribe` class: MTK

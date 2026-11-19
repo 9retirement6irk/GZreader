@@ -9,8 +9,12 @@ write to a USB drive). Any other Kindle can sync this way too: Settings → Gene
 1. On the Kindle: Menu (the quick panel) → **Sync** → **Connect to computer (USB drive)**. KOReader turns the
    Kindle's USB drive off while it runs, so GZreader steps aside and waits;
    after you eject the Kindle it starts again by itself. (Or Menu → Exit to
-   the Kindle.) On a Kobo, KOReader's own USB mode shares the drive the same
-   way, and GZreader comes back after you eject it.
+   the Kindle.) On the Kindle 2, 3, DX and 4 the Kindle's own screen comes
+   up first: the computer sees the drive once it has finished starting (a
+   minute or two on a DX). The diagnostic log has a "last USB drive step-aside"
+   section with each step (kept even if the Kindle restarts meanwhile).
+   On a Kobo, KOReader's own USB mode shares the drive the same way, and
+   GZreader comes back after you eject it.
 2. Plug the Kindle into the computer (unplug and plug it again if it was
    already plugged in), open the page and choose the Kindle's
    drive (or its `documents/GZreader` folder). Nothing else can be set up
