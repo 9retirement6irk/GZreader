@@ -10214,7 +10214,7 @@ print("Notes (Memos v0.31)")
                 "pen: only pressure and tilt are taken from it (not its positions or keys)")
             local dsrcq = io.open(PLUGIN .. "/gzreader_drawscreen.lua"):read("*a")
             check(dsrcq:find('elseif raw and raw.pressure ~= nil and pen_slot ~= nil and tev.slot == pen_slot then', 1, true) ~= nil
-                and dsrcq:find('if self.pen_only and not self.penraw then', 1, true) ~= nil
+                and dsrcq:find('if self.has_pen and not self.penraw then', 1, true) ~= nil
                 and dsrcq:find('require("gzreader_penraw").close(self.penraw)', 1, true) ~= nil,
                 "drawing: the digitizer's pressure goes to the pen's slot when KOReader's event has none; read only on pen Kindles, closed with the screen")
         end)()
@@ -10304,7 +10304,7 @@ print("Notes (Memos v0.31)")
                 and dsrcs:find("sk.snap_shapes = self.snap_shapes", 1, true) ~= nil,
                 "drawing: draw and hold for clean shapes, on unless turned off in the Shapes panel")
             -- the Scribe's pen mode and the partial repaint (penmode_test.lua and emulator/pen_mode.lua, partial_repaint.lua check them working)
-            check(dsrcs:find('self.pen_fast = self.pen_only and require("gzreader_penmode").supported(Device)', 1, true) ~= nil
+            check(dsrcs:find('self.pen_fast = self.has_pen and require("gzreader_penmode").supported(Device)', 1, true) ~= nil
                 and dsrcs:find('fast = PenMode.ink(Screen, rects)', 1, true) ~= nil
                 and dsrcs:find('if self.pen_fast and require("gzreader_penmode").on then', 1, true) ~= nil
                 and dsrcs:find('UIManager:scheduleIn(DrawScreen.SETTLE, self._settle_timer)', 1, true) ~= nil
@@ -10387,8 +10387,30 @@ print("Notes (Memos v0.31)")
             "drawing: the page is the whole screen, the top bar and the tools fold away; a new drawing's name and tags come from the top bar and Done saves it")
         local ids = {}
         for _i, t in ipairs(require("gzreader_drawscreen").SIDE_TOOLS) do ids[#ids + 1] = t.id end
-        check(table.concat(ids, ",") == "pen,highlighter,shape,text,eraser,lasso,hand,sep,undo,redo,more",
-            "drawing: the tools down the side, as the Scribe's: " .. table.concat(ids, ","))
+        check(table.concat(ids, ",") == "pen,highlighter,shape,text,eraser,lasso,hand,fingers,sep,undo,redo,more",
+            "drawing: the tools down the side, as the Scribe's (pen / finger on pen Kindles): " .. table.concat(ids, ","))
+        -- the pen / finger button (pen Kindles): what draws, kept for next time
+        do
+            local DS = require("gzreader_drawscreen")
+            local tool
+            for _i, t in ipairs(DS.SIDE_TOOLS) do if t.id == "fingers" then tool = t end end
+            local was = G_reader_settings:readSetting("gzreader_draw_with_finger")
+            local fake = { has_pen = true, pen_only = true, sketch = { pen_only = true }, layoutBar = function() end }
+            local icon0, sel0 = DS.toolIcon(fake, "fingers"), DS.selected(fake, tool)
+            DS.setDrawWithFinger(fake, true)
+            local on = not fake.pen_only and not fake.sketch.pen_only and G_reader_settings:isTrue("gzreader_draw_with_finger")
+                and DS.toolIcon(fake, "fingers") == "finger" and DS.selected(fake, tool)
+            DS.setDrawWithFinger(fake, false)
+            local off = fake.pen_only and fake.sketch.pen_only and not G_reader_settings:isTrue("gzreader_draw_with_finger")
+            local nopen = { has_pen = false, pen_only = false, sketch = { pen_only = false }, layoutBar = function() end }
+            DS.setDrawWithFinger(nopen, false)
+            G_reader_settings:saveSetting("gzreader_draw_with_finger", was)
+            check(tool and tool.pen_device and icon0 == "stylus" and not sel0 and on and off and nopen.pen_only == false,
+                "drawing, pen Kindles: the pen / finger button draws with a finger (its icon a finger), then the pen again; kept; nothing on a Kindle without a pen")
+            check(dsrcp:find('self.pen_only = self.has_pen and not (G_reader_settings and G_reader_settings:isTrue("gzreader_draw_with_finger"))', 1, true) ~= nil
+                and dsrcp:find('if not t.pen_device or self.has_pen then', 1, true) ~= nil,
+                "…a drawing opens as it was left; the button only on pen Kindles")
+        end
         check(dsrcp:find("if opts.choose_paper and DrawScreen.asksPaper(opts.pages) then", 1, true) ~= nil
             and dsrcp:find("on_back = function() if opts.on_cancel then opts.on_cancel() end end", 1, true) ~= nil
             and esrc2:find("choose_paper = true, -- (a new drawing: which paper first)", 1, true) ~= nil

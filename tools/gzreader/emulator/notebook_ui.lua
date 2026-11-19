@@ -47,8 +47,9 @@ add({ fn = function(E)
     local d = screen()
     check(ids("top") == "cancel,done,options,tag,paper,pages,title" and d.canvas.y == 0 and d.canvas.h == H,
         "the top bar: Back, the name, pages, paper, tags, options, Done (" .. ids("top") .. "); the page is the whole screen")
-    check(ids("toolbar") == "pen,highlighter,shape,text,eraser,lasso,hand,sep,undo,redo,more" and ids("fold") == "hide",
-        "the tools: pen, highlighter, shapes, text, eraser, hand; undo, redo, more; a round button above (" .. ids("toolbar") .. ")")
+    local want = PEN and "pen,highlighter,shape,text,eraser,lasso,hand,fingers,sep,undo,redo,more" or "pen,highlighter,shape,text,eraser,lasso,hand,sep,undo,redo,more"
+    check(ids("toolbar") == want and ids("fold") == "hide",
+        "the tools: pen, highlighter, shapes, text, eraser, lasso, hand" .. (PEN and ", pen / finger" or "") .. "; undo, redo, more; a round button above (" .. ids("toolbar") .. ")")
     check(d:heading() == "Untitled drawing", "a new drawing: Untitled drawing, a pencil after it")
     tap(E, (button("pen")))
 end, after = 3 })
@@ -130,6 +131,48 @@ add({ fn = function(E)
     check(math.abs(d.sketch.oy - E.hand_oy) > H * 0.03 and #d.sketch:live() == E.hand_n,
         "a drag with it: the zoomed page moves (" .. math.floor(d.sketch.oy - E.hand_oy) .. " of the page), nothing drawn")
     d.sketch:unzoom(); d:redrawAll()
+end, after = 3 })
+-- a pen Kindle: the pen / finger button. The pen draws and a finger doesn't; tapped, a finger draws; again, back to the pen
+add({ fn = function(E)
+    local d = screen()
+    d:setTool("pen") -- (the hand put down)
+    E.fing_n = #d.sketch:live()
+    if PEN then
+        check(d.pen_only and d.sketch.pen_only and d:toolIcon("fingers") == "stylus", "the pen / finger button: drawing with the pen (its icon a pen)")
+        E.finger({ { W * 0.3, H * 0.55 }, { W * 0.4, H * 0.55 }, { W * 0.5, H * 0.55 } }, 0.4)
+    end
+end, after = 3 })
+add({ fn = function(E)
+    local d = screen()
+    if PEN then
+        check(#d.sketch:live() == E.fing_n, "…a finger draws nothing")
+        tap(E, (button("fingers")))
+    else
+        check(button("fingers") == nil, "no pen / finger button where there's no pen")
+    end
+end, after = 3 })
+add({ fn = function(E)
+    local d = screen()
+    if PEN then
+        check(not d.pen_only and not d.sketch.pen_only and d:toolIcon("fingers") == "finger"
+            and G_reader_settings:isTrue("gzreader_draw_with_finger"), "tapped: a finger draws (its icon a finger), kept for next time")
+        E.finger({ { W * 0.3, H * 0.6 }, { W * 0.4, H * 0.6 }, { W * 0.5, H * 0.6 } }, 0.4)
+    end
+end, after = 3 })
+add({ shot = "5c-drawn-with-a-finger", after = 0.5 })
+add({ fn = function(E)
+    local d = screen()
+    if PEN then
+        check(#d.sketch:live() == E.fing_n + 1, "…a finger stroke drawn")
+        d.sketch:undo(); d:redrawAll() -- (taken back: the checks after count the arrow as the last stroke)
+        tap(E, (button("fingers")))
+    end
+end, after = 3 })
+add({ fn = function(E)
+    local d = screen()
+    if PEN then
+        check(d.pen_only and d.sketch.pen_only and not G_reader_settings:isTrue("gzreader_draw_with_finger"), "tapped again: back to the pen")
+    end
     tap(E, (button("shape")))
 end, after = 3 })
 add({ fn = function(E)

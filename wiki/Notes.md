@@ -352,6 +352,11 @@ API to `/api` are found too.
       Memos stay where they are.
     - **Hand:** the pen (or a finger, where fingers draw) takes hold of the
       page and moves it; nothing is drawn. For a page you've zoomed in on.
+    - **Pen / finger** (Kindle Scribe): what draws. Its icon is a pen while
+      the pen draws (fingers don't, and your hand can rest on the screen);
+      tap it and it shows a finger: one finger draws, as on the other
+      Kindles (the pen still draws too, but a resting hand would draw).
+      Tap it again for the pen. Kept for next time.
     - **Undo**, **Redo**, and **⋮**: **Move to right side** (for the other
       hand; kept) and, with a pen, **Stylus shortcut** (what the pen's side
       button does; each tap takes the next tool) and, on the Kindle Scribe,
@@ -472,7 +477,8 @@ API to `/api` are found too.
     finger has to land within a third of a second of the first (later, it's
     ignored as before); on the Scribe, two fingers zoom when the pen is
     away, and a whole hand, or any touch while the pen is near, doesn't.
-  - **With a pen** (Kindle Scribe): only the pen draws. Fingers on the page
+  - **With a pen** (Kindle Scribe): only the pen draws (unless the toolbar's
+    pen / finger button is on finger). Fingers on the page
     draw nothing, and while the pen is near the screen, and for a moment
     after it leaves, your hand can rest anywhere on it: it's ignored (palm
     rejection), even a whole hand while you write (before 1.32, a hand's
