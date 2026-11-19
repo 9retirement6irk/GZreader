@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Note editor: Draw and Photos in the top bar", text = "On touch Kindles the note editor's ✎ Draw and + Photos were buttons in the row under the title. They're now icons in the top bar, beside the tag and ⋮ buttons, as on the drawing screen and an opened note: ✎ draws, the picture adds photos from Immich (when it's connected). The row under the title keeps the note's sheets and photos as small pictures." },
+        },
+    },
+    {
         version = "1.33.0",
         changes = {
             { short = "Drawing: the pencil and the highlighter draw much faster", text = "The pencil and the highlighter were several times slower than the pen: every pixel under the line was read and written through a slow route, several times over. They now write the page's pixels directly, the pencil's texture is looked up instead of worked out for each pixel, and its line is painted in fewer steps. In GZreader's emulator the highlighter's ink takes about a tenth of the time it did and the pencil's about a quarter, close to the pen's. A long stroke's line in the diagnostic log now also says how long each of its frames took to handle." },
