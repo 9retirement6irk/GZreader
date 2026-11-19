@@ -1370,6 +1370,35 @@ end)()
             cl * 100, cm * 100, ch * 100, edge * 100))
 end)()
 
+print("== writing turned into text (handwriting to text)")
+;(function()
+    local DrawText = require("gzreader_drawtext")
+    local sk = Sketch.new({ canvas = CANVAS, per_unit = 2 })
+    local a = { points = { { 100, 100 }, { 140, 100 } }, width = 2, kind = "pen", hw = true }
+    local b = { points = { { 160, 100 }, { 200, 110 } }, width = 2, kind = "pen", hw = true }
+    sk.strokes = { a, b }
+    local el = DrawText.element(50, 50, 200, "hello", "#1e1e1e")
+    sk:convertWriting({ a, b }, el)
+    check(#sk:live() == 0 and #sk:liveTexts() == 1 and sk:liveTexts()[1].text == "hello", "the writing goes, a text box with its words comes")
+    local c = { points = { { 220, 100 }, { 260, 100 } }, width = 2, kind = "pen", hw = true }
+    sk.strokes[#sk.strokes + 1] = c
+    sk:convertWriting({ c }, el, { text = "hello world" })
+    check(#sk:live() == 0 and #sk:liveTexts() == 1 and el.text == "hello world", "more writing: its words at the end of the same box")
+    sk:undo()
+    check(#sk:live() == 1 and sk:live()[1] == c and el.text == "hello" and c.hw == nil,
+        "one Undo: that writing back as ink (not read again by itself), the box as it was")
+    sk:undo()
+    check(#sk:live() == 3 and #sk:liveTexts() == 0, "…another: all the writing back, no box")
+    sk:redo()
+    check(#sk:live() == 1 and #sk:liveTexts() == 1 and el.text == "hello", "Redo: the box again, the writing gone")
+    sk:redo()
+    check(#sk:live() == 0 and el.text == "hello world", "…and the rest")
+    local s2 = Sketch.new{ canvas = CANVAS, pen_only = true, pen_slot = PEN_SLOT, per_unit = 2 }
+    s2.hw = true
+    run(s2, { { hover(300, 300) }, { pen(300, 300) }, { pen(320, 310) }, { pen(340, 300) }, { hover(340, 300) }, { penGone() } }, 0)
+    check(s2:live()[1] and s2:live()[1].hw == true, "a stroke written with the text tool's Write is marked to be read")
+end)()
+
 print("== the eraser on a full page: only strokes near it tested point by point")
 ;(function()
     local sk = Sketch.new({ canvas = CANVAS, per_unit = 2 })

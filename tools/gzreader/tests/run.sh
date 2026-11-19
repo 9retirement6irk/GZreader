@@ -70,6 +70,17 @@ timeout 60 python3 -I "$T/drawing_format_test.py" "$WORK/drawings" 2>&1 | grep -
 echo "== the drawing screen's input (finger; pen only, palm rejection)"
 (cd "$T" && luajit sketch_test.lua "$REPO/plugins/gzreader.koplugin" "$T/lib" "$KOBASE") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+echo "== handwriting read on the Kindle (Ink Away's own tests, on GZreader's copies: tests/hwr/README.md)"
+HWD="$WORK/hwr"; mkdir -p "$HWD/ink/data" "$HWD/tests"
+for m in hwr hwrnet hwrwords; do cp "$REPO/plugins/gzreader.koplugin/gzreader_$m.lua" "$HWD/ink/$m.lua"; done
+cp "$REPO/plugins/gzreader.koplugin/data/handwriting/"hwr_* "$HWD/ink/data/"
+cp "$T/hwr/"*.lua "$HWD/tests/"
+(cd "$HWD" && for t in hwrnet hwrwords hwr; do luajit "tests/$t.lua" || echo "FAIL: tests/$t.lua stopped"; done) > "$WORK/hwr.txt" 2>&1
+grep -E "FAIL|checks" "$WORK/hwr.txt"
+grep -q "FAIL" "$WORK/hwr.txt" && failed=$((failed + 1))
+echo "== handwriting to text (on the Kindle, Claude, an OpenAI-style service)"
+(cd "$T" && luajit handwriting_test.lua "$REPO/plugins/gzreader.koplugin" "$T/lib" "$KOBASE") 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
 echo "== a safety net under every timer (a round's budget, runaway tasks, GZreader's tasks failing alone)"
 (cd "$T" && luajit tasksafe_test.lua "$REPO/plugins/gzreader.koplugin" "$T/lib" "$KOBASE") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))

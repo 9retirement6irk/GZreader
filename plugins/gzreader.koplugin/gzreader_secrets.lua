@@ -5,7 +5,8 @@ On a Kindle, KOReader's settings live on the USB drive (/mnt/us/koreader/
 settings): any computer the Kindle is plugged into can read them. GZreader's
 state (settings/gzreader.lua, and gzreader_recent.lua between full saves)
 held the sign-ins in it: the CalDAV password, the Home Assistant, Memos and
-Plex tokens, the Immich key, the Access key and Cloudflare token, Grimmory's
+Plex tokens, the Immich key, the Access key and Cloudflare token, the handwriting
+services' keys (Claude, OpenAI-style), Grimmory's
 sign-in tokens and the calendar links (their keys are in the address).
 
 Those (PATHS, and each calendar link's url) are kept in SECRET_FILE on the
@@ -40,6 +41,7 @@ local Secrets = {
         { "homeassistant", "token" },
         { "immich", "key" },
         { "access", "key" }, { "access", "cf_id" }, { "access", "cf_secret" },
+        { "handwriting", "claude", "key" }, { "handwriting", "openai", "key" },
     },
     written = nil, -- (what the file holds, as last written or read)
     on = nil,      -- (active(), worked out once)

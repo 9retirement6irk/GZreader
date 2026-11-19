@@ -388,6 +388,25 @@ function Sketch:changeText(el, fields)
     textChanged(self, el, before)
 end
 
+--- Writing turned into text (gzreader_handwriting.lua): the `strokes` go, and
+--- box `el` is put on the page (a new one) or given `fields` (text, height…);
+--- one Undo brings the writing back as it was.
+function Sketch:convertWriting(strokes, el, fields)
+    local DrawText = require("gzreader_drawtext")
+    local known = false
+    for _i, t in ipairs(self.texts) do if t == el then known = true end end
+    local before = known and DrawText.snap(el, self.text_gone[el])
+        or { gone = true, x = el.x, y = el.y, width = el.width, height = el.height, text = el.text }
+    if not known then self.texts[#self.texts + 1] = el end
+    self.text_gone[el] = nil
+    for k, v in pairs(fields or {}) do el[k] = v end
+    for _i, st in ipairs(strokes) do st.gone = true end
+    self.history[#self.history + 1] = { kind = "convert", strokes = strokes, el = el, before = before,
+        after = DrawText.snap(el, self.text_gone[el]) }
+    self.redone = {}
+    self.selection = nil
+end
+
 --- A box taken off the page; Undo brings it back.
 function Sketch:removeText(el)
     local before = require("gzreader_drawtext").snap(el, self.text_gone[el])
@@ -745,6 +764,8 @@ local function addPoint(self, contact, x, y, out)
         end
         if not contact.stroke then
             contact.stroke = { points = {}, width = contact.width, color = contact.color, kind = contact.writing }
+            -- (the text tool's Write: writing to be turned into text, gzreader_handwriting.lua)
+            if self.hw then contact.stroke.hw = true end
             if prev and not prev[3] then
                 -- back on the paper: from its edge
                 local ex, ey = Sketch.edgePoint(page, { cx, cy }, prev)
@@ -989,6 +1010,8 @@ local function startContact(self, s, now, out)
         c.writing = kind
         c.color = not style.gray and self.color or nil
         c.stroke = { points = {}, width = self.width, color = c.color, kind = kind }
+        -- (the text tool's Write: writing to be turned into text, gzreader_handwriting.lua)
+        if self.hw then c.stroke.hw = true end
         self.drawing_slot = s.slot
         if self.tool == "shape" and Sketch.SHAPE_SET[self.shape or ""] then
             -- a shape: from where the pen lands to where it lifts (drawn then), in the pen's ink
@@ -1596,6 +1619,12 @@ function Sketch:redo()
         self.history[#self.history + 1] = h
         return true
     end
+    if h.kind == "convert" then
+        self.text_gone[h.el] = not require("gzreader_drawtext").restore(h.el, h.after) or nil
+        for _i, st in ipairs(h.strokes) do st.gone = true end
+        self.history[#self.history + 1] = h
+        return true
+    end
     for _i, el in ipairs(h.texts or {}) do self.text_gone[el] = h.kind == "clear" or nil end
     if h.kind == "add" then
         for _i, st in ipairs(h.strokes) do
@@ -1629,6 +1658,12 @@ function Sketch:undo()
     end
     if h.kind == "text" then
         self.text_gone[h.el] = not require("gzreader_drawtext").restore(h.el, h.before) or nil
+        return true
+    end
+    if h.kind == "convert" then
+        -- (the writing back as ink, the box as it was before: not read again by itself)
+        self.text_gone[h.el] = not require("gzreader_drawtext").restore(h.el, h.before) or nil
+        for _i, st in ipairs(h.strokes) do st.gone = false; st.hw = nil end
         return true
     end
     for _i, el in ipairs(h.texts or {}) do self.text_gone[el] = nil end
