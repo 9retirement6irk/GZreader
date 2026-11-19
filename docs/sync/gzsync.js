@@ -1833,6 +1833,10 @@ gets a password or token.
   function memoCreateBody(q) {
     var b = { content: q.content, visibility: q.visibility || "PRIVATE" };
     if (q.space) b.space = q.space;
+    // a journal entry's place: the note's own location, as the web's journal sets it
+    var loc = q.location;
+    if (loc && typeof loc.latitude === "number" && typeof loc.longitude === "number")
+      b.location = { placeholder: String(loc.placeholder || ""), latitude: loc.latitude, longitude: loc.longitude };
     return b;
   }
   function memoUpdateBody(q) {

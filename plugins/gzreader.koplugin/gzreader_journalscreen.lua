@@ -86,6 +86,7 @@ function JournalScreen:init()
         prompt_i = (self.prompt_i or (os.time() % #Journal.PROMPTS)) % #Journal.PROMPTS + 1,
     }
     self.state.prompt = Journal.PROMPTS[self.state.prompt_i]
+    self.moment = self.moment or os.time() -- (the entry's moment: its place and weather are for it)
     -- touch Kindles: the words typed right under the prompt, formatted, on lined paper
     self.inline = Touch.on() and not Touch.keys()
     if self.inline then
@@ -104,6 +105,10 @@ function JournalScreen:init()
         self.key_events.GzKey = { { { "T", "F", "I", "A", "G", "P", "W", "S" } } }
     end
     self:build()
+    -- (where you are and the weather, as the web's journal adds them: in the background)
+    if self.settings.addLocation ~= false or self.settings.addWeather ~= false then
+        UIManager:nextTick(function() if not self.closed then self:lookUpPlace() end end)
+    end
 end
 
 -- ------------------------------------------------------------ what's chosen
@@ -146,7 +151,125 @@ function JournalScreen:goalsDone()
 end
 
 --- The entry as it would be saved.
-function JournalScreen:content() return Journal.entry(self.state, self.settings, os.time()) end
+function JournalScreen:content()
+    return Journal.entry(self.state, self.settings, self.moment or os.time(), { drawn = #self:drawings() > 0 })
+end
+
+-- ------------------------------------------------------------ place and weather (gzreader_journalplace)
+
+--- When the entry opens: where Dawarich had you (when the journal settings add a
+--- location and this Memos has Dawarich connected), then the weather there, or
+--- in the default city. In the background; the screen shows them when they come.
+function JournalScreen:lookUpPlace()
+    local set = self.settings
+    if self.looked or not self.plugin then return end
+    self.looked = true
+    local Place = require("gzreader_journalplace")
+    local memos = self.plugin.store and self.plugin.store.memos
+    local at = self.moment
+    local srv = memos and { server = memos.server, token = memos.token } or nil
+    Place.run("place and weather", function()
+        local place, why
+        local dawarich = Place.dawarichConnected(srv)
+        if set.addLocation ~= false and dawarich then place, why = Place.fromDawarich(srv, at) end
+        local weather = set.addWeather ~= false and Place.weather(place, set, at) or nil
+        return place, weather, dawarich, why
+    end, function(place, weather, dawarich)
+        if self.closed then return end
+        self.dawarich = dawarich == true
+        if type(place) == "table" and not self.state.place and self.state.place_source ~= "none" then
+            self.state.place = place
+        end
+        if type(weather) == "table" then self.state.weather = weather end
+        Log.info("journal: place", self.state.place and "found" or "none", "· weather", weather and "found" or "none",
+            self.dawarich and "· Dawarich connected" or "")
+        if self:isShown() and not self.writing and not self.drawing then self:rebuild() end
+    end)
+end
+
+--- The weather again, for the place chosen now (or the default city).
+function JournalScreen:weatherAgain()
+    local set = self.settings
+    if set.addWeather == false then return end
+    local Place = require("gzreader_journalplace")
+    local place, at = self.state.place, self.moment
+    Place.run("weather", function() return Place.weather(place, set, at) end, function(weather)
+        if self.closed then return end
+        self.state.weather = type(weather) == "table" and weather or nil
+        if self:isShown() and not self.writing and not self.drawing then self:rebuild() end
+    end)
+end
+
+--- The location's menu (the web's): where Dawarich had you, a place by name, or none.
+function JournalScreen:pickPlace()
+    local Place = require("gzreader_journalplace")
+    local dialog
+    local function chose(place, source)
+        self.state.place, self.state.place_source = place, source
+        if place then place.source = source end
+        self:rebuild("place")
+        self:weatherAgain()
+    end
+    local rows = {}
+    if self.dawarich then
+        rows[#rows + 1] = { { text = T(_("Where Dawarich had you (%1)"), os.date("%H:%M", self.moment)), align = "left", callback = function()
+            UIManager:close(dialog)
+            local memos = self.plugin and self.plugin.store and self.plugin.store.memos
+            local srv = memos and { server = memos.server, token = memos.token } or nil
+            local at = self.moment
+            Place.run("Dawarich", function() return Place.fromDawarich(srv, at) end, function(place)
+                if type(place) == "table" then return chose(place, "dawarich") end
+                UIManager:show(require("ui/widget/infomessage"):new{ text = _("Dawarich has no place for this time."), timeout = 3 })
+            end)
+        end } }
+    end
+    rows[#rows + 1] = { { text = _("Search for a place…"), align = "left", callback = function()
+        UIManager:close(dialog)
+        local InputDialog = require("ui/widget/inputdialog")
+        local d
+        d = InputDialog:new{ title = _("Search for a place"), input = "", input_hint = _("A place, an address or a city"),
+            buttons = { { { text = _("Cancel"), id = "close", callback = function() UIManager:close(d) end },
+                { text = _("Search"), is_enter_default = true, callback = function()
+                    local q = (d:getInputText() or ""):gsub("^%s+", ""):gsub("%s+$", "")
+                    UIManager:close(d)
+                    if q == "" then return end
+                    Place.run("search", function() return Place.search(q) end, function(place)
+                        if type(place) == "table" then return chose(place, "search") end
+                        UIManager:show(require("ui/widget/infomessage"):new{ timeout = 3,
+                            text = _("No place found by that name (or no connection).") })
+                    end)
+                end } } } }
+        UIManager:show(d)
+        d:onShowKeyboard()
+    end } }
+    rows[#rows + 1] = { { text = _("No location"), align = "left", callback = function()
+        UIManager:close(dialog)
+        chose(nil, "none")
+    end } }
+    dialog = ButtonDialog:new{ title = _("Location"), buttons = rows }
+    UIManager:show(dialog)
+    return dialog
+end
+
+--- The line above the prompt (the web's journal header): the location chip, the weather.
+function JournalScreen:placeRow(inner)
+    local st, set = self.state, self.settings
+    if set.addLocation == false and set.addWeather == false then return nil end
+    local row = HorizontalGroup:new{ align = "center" }
+    if set.addLocation ~= false then
+        local name = st.place and (st.place.name or _("A place")) or _("Location")
+        row[#row + 1] = self:chip({ id = "place", text = name .. "  \u{25BE}", icon = "map-pin", ghost = not st.place, on = false, size = 14,
+            callback = function() self:pickPlace() end }, math.floor(inner * 0.6))
+        self.layout[#self.layout + 1] = { self.buttons["place"] }
+        row[#row + 1] = HorizontalSpan:new{ width = S(12) }
+    end
+    local line = st.weather and require("gzreader_journalplace").weatherLine(st.weather)
+    if line then
+        row[#row + 1] = TextWidget:new{ text = line, face = Font:getFace("cfont", 14), fgcolor = Blitbuffer.COLOR_DARK_GRAY,
+            max_width = math.floor(inner * 0.4) }
+    end
+    return row
+end
 
 -- ------------------------------------------------------------ dialogs
 
@@ -262,7 +385,7 @@ function JournalScreen:save()
     self.saved = true
     require("gzreader_drawdraft").clear(self.draft_id, "the journal entry saved")
     UIManager:close(self, "full")
-    if self.on_save then self.on_save(content, #drawings > 0 and drawings or nil) end
+    if self.on_save then self.on_save(content, #drawings > 0 and drawings or nil, self.state.place) end
 end
 
 -- ------------------------------------------------------------ writing, drawing (touch)
@@ -1073,6 +1196,12 @@ function JournalScreen:buildWeb(col, inner, sw, sh, margin, gap, label)
             gap(8)
         end
     end
+    -- where and the weather (the web's journal header)
+    local prow = self:placeRow(inner)
+    if prow then
+        col[#col + 1] = prow
+        gap(8)
+    end
     -- the prompt (Another at its right) and the words right under it, lined
     if set.showPrompt then
         local another = self:chip({ id = "prompt", text = "\u{21BB} " .. _("Another"), ghost = true, size = 14,
@@ -1123,6 +1252,11 @@ function JournalScreen:rebuild(focus_id)
     end
     if not Touch.on() then self:moveFocusTo(self.selected.x, self.selected.y, FocusManager.FORCED_FOCUS) end
     UIManager:setDirty(self, "ui")
+end
+
+function JournalScreen:onCloseWidget()
+    self.closed = true -- (a place or the weather coming afterwards: nothing to show it on)
+    if FocusManager.onCloseWidget then return FocusManager.onCloseWidget(self) end
 end
 
 function JournalScreen:onShow()

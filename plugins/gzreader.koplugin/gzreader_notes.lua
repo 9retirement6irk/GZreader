@@ -3153,7 +3153,14 @@ end
 
 --- A new note with `content` (and `drawings`, { path, filename } each, in
 --- order), queued for Memos and shown on the board at once.
-function Notes.addNote(plugin, content, visibility, space, drawings)
+--- A journal entry's place ({ lat, lon, name }) as Memos keeps a note's
+--- location ({ placeholder, latitude, longitude }), or nil.
+function Notes.locationOf(place)
+    if type(place) ~= "table" or type(place.lat) ~= "number" or type(place.lon) ~= "number" then return nil end
+    return { placeholder = type(place.name) == "string" and place.name or "", latitude = place.lat, longitude = place.lon }
+end
+
+function Notes.addNote(plugin, content, visibility, space, drawings, location)
     local list = {}
     for _i, d in ipairs(drawings or {}) do
         if d.path then list[#list + 1] = { path = d.path, filename = d.filename } end
@@ -3164,7 +3171,7 @@ function Notes.addNote(plugin, content, visibility, space, drawings)
         for i, d in ipairs(list) do order[i] = d.filename end
     end
     local q = Notes.enqueue(plugin, { op = "create", content = content, visibility = visibility or "PRIVATE", space = space,
-        drawings = #list > 0 and list or nil, order = order })
+        drawings = #list > 0 and list or nil, order = order, location = location })
     if #list > 0 then Notes.showDrawingNow(q) end
     if Notes.notes then
         table.insert(Notes.notes, 1, { local_id = q.id, content = content, tags = Notes.tagsIn(content),
@@ -3204,8 +3211,9 @@ function Notes.journal(plugin)
     return require("gzreader_journalscreen").show{
         plugin = plugin,
         settings = Notes.journalSettings(plugin),
-        on_save = function(content, drawings)
-            Notes.addNote(plugin, content, "PRIVATE", Notes.journalSpace(plugin), drawings)
+        on_save = function(content, drawings, place)
+            -- (its place: the note's own location in Memos, as the web's journal sets it)
+            Notes.addNote(plugin, content, "PRIVATE", Notes.journalSpace(plugin), drawings, Notes.locationOf(place))
             Log.info("notes: a journal entry queued", drawings and (#drawings .. " drawing(s)") or "")
             info(require("gzreader_net").usb and _("Journal entry saved. It goes to Memos at the next sync with your computer.")
                 or _("Journal entry saved."), 2)

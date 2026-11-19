@@ -125,6 +125,8 @@ function Journal.defaults()
     return {
         space = "", moodTagPrefix = "mood/", feelingTagPrefix = "felt/", impactTagPrefix = "impact/", hiddenImpacts = {},
         activityTagPrefix = "did/", activities = acts, goals = {}, showPrompt = true, dateHeading = false,
+        -- (place and weather: gzreader_journalplace.lua)
+        addLocation = true, addWeather = true, defaultCity = "", temperatureUnit = "fahrenheit",
     }
 end
 
@@ -144,9 +146,11 @@ function Journal.settings(stored)
     for _i, k in ipairs({ "space", "moodTagPrefix", "feelingTagPrefix", "impactTagPrefix", "activityTagPrefix" }) do
         if type(stored[k]) == "string" then s[k] = stored[k] end
     end
-    for _i, k in ipairs({ "showPrompt", "dateHeading" }) do
+    for _i, k in ipairs({ "showPrompt", "dateHeading", "addLocation", "addWeather" }) do
         if type(stored[k]) == "boolean" then s[k] = stored[k] end
     end
+    if type(stored.defaultCity) == "string" then s.defaultCity = stored.defaultCity:sub(1, 120) end
+    if stored.temperatureUnit == "celsius" or stored.temperatureUnit == "fahrenheit" then s.temperatureUnit = stored.temperatureUnit end
     if not s.space:match("^spaces/[A-Za-z0-9_-]+$") then s.space = "" end
     if type(stored.hiddenImpacts) == "table" then s.hiddenImpacts = strings(stored.hiddenImpacts) end
     if type(stored.goals) == "table" then s.goals = strings(stored.goals) end
@@ -210,12 +214,15 @@ local function trim(s) return (tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", "
 
 --- The entry as Markdown (the fork's composeEntry).
 --- parts: heading, prompt, body, goals = { { label, done } }, weather, mind,
---- mindKind, activities = { ids }, and the settings' tag prefixes.
+--- mindKind, activities = { ids }, and the settings' tag prefixes; drawn:
+--- the prompt was answered with a drawing (no words): kept, as the web keeps
+--- it when there are words (the owner, 2026-11-19: an entry drawn on the
+--- Kindle lost its prompt).
 function Journal.compose(parts)
     local blocks = {}
     local body = trim(parts.body)
     if parts.heading and parts.heading ~= "" then blocks[#blocks + 1] = "## " .. parts.heading end
-    if parts.prompt and parts.prompt ~= "" and body ~= "" then blocks[#blocks + 1] = "> " .. parts.prompt end
+    if parts.prompt and parts.prompt ~= "" and (body ~= "" or parts.drawn) then blocks[#blocks + 1] = "> " .. parts.prompt end
     if body ~= "" then blocks[#blocks + 1] = body end
     if parts.goals and #parts.goals > 0 then
         local lines = {}
@@ -250,15 +257,18 @@ function Journal.has(list, id) return indexOf(list or {}, id) ~= nil end
 
 --- An entry from the journal screen's state and the settings.
 --- state: valence, kind, feelings, impacts, activities (lists of ids, in the
---- order chosen), goals = { [i] = true }, prompt, body
-function Journal.entry(state, settings, time)
+--- order chosen), goals = { [i] = true }, prompt, body, weather ({ temperature,
+--- unit, kind }: gzreader_journalplace.lua); opts.drawn: there's a drawing.
+function Journal.entry(state, settings, time, opts)
     local goals = {}
     for i, label in ipairs(settings.goals or {}) do goals[i] = { label = label, done = state.goals and state.goals[i] == true } end
     return Journal.compose{
         heading = settings.dateHeading and Journal.heading(time) or nil,
         prompt = settings.showPrompt and state.prompt or nil,
         body = state.body or "",
+        drawn = opts and opts.drawn or nil,
         goals = goals,
+        weather = settings.addWeather ~= false and state.weather and require("gzreader_journalplace").weatherLine(state.weather) or nil,
         mind = { valence = state.valence, kind = state.kind, feelings = state.feelings or {}, impacts = state.impacts or {} },
         mindKind = "today",
         activities = state.activities or {},
