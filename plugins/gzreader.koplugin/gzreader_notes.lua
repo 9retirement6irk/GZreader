@@ -2326,10 +2326,12 @@ function NoteView:build()
     local space = Notes.spaceTitle(self.plugin, m.space)
     -- (the date and the rest are under the note's name in the top bar, on every Kindle)
     local para = {}
+    -- (the lines gathered, as Memos shows them: bold, italic, struck, code and links drawn so, quotes,
+    -- list items, rules and tables; gzreader_inline.lua)
+    local Inline = require("gzreader_inline")
     local function flush()
-        local t = table.concat(para, "\n"):gsub("^%s+", ""):gsub("%s+$", "")
+        for _i, w in ipairs(Inline.widgets(para, inner, Notes.PAGE_TEXT)) do add(w) end
         para = {}
-        if t ~= "" then add(TextBoxWidget:new{ text = t, face = Notes.pageFace(Notes.PAGE_TEXT), width = inner }) end
     end
     -- a journal entry's mood: its face (as the web shows it by the note's time) and the step's name
     local mood = Notes.moodOf(m)
@@ -2377,13 +2379,13 @@ function NoteView:build()
                     HorizontalGroup:new{ align = "center", sc or HorizontalSpan:new{ width = Touch.keys() and S(26) or 0 }, HorizontalSpan:new{ width = Touch.keys() and S(10) or 0 },
                         TextWidget:new{ text = l.done and "\u{2611}" or "\u{2610}", face = Font:getFace("cfont", 26) },
                         HorizontalSpan:new{ width = S(8) },
-                        TextWidget:new{ text = Sticky.plain(l.text), face = Notes.pageFace(Notes.PAGE_TEXT), max_width = width - S(90),
-                            fgcolor = l.done and Blitbuffer.COLOR_DARK_GRAY or Blitbuffer.COLOR_BLACK } } }))
+                        -- (its words formatted, and wrapped when they're long)
+                        Inline.text{ text = l.text, width = width - S(90), size = Notes.PAGE_TEXT,
+                            color = l.done and Blitbuffer.COLOR_DARK_GRAY or Blitbuffer.COLOR_BLACK } } }))
             elseif l.kind == "heading" then
                 done()
                 put(VerticalSpan:new{ width = S(6) })
-                put(TextBoxWidget:new{ text = Sticky.plain(l.text), face = Notes.pageFace(Notes.PAGE_HEADING[l.level] or Notes.PAGE_TEXT, true),
-                    width = width })
+                put(Inline.text{ text = l.text, width = width, size = Notes.PAGE_HEADING[l.level] or Notes.PAGE_TEXT, bold = true })
             elseif l.kind == "image" then
                 done()
                 local pic = Notes.pictureFor(self.plugin, m, l.src, width, math.floor(sh * 0.45), function()
@@ -2435,9 +2437,8 @@ function NoteView:build()
                     local sub = VerticalGroup:new{ align = "left" }
                     local sub_words = {}
                     local function sub_done()
-                        local t = table.concat(sub_words, "\n"):gsub("^%s+", ""):gsub("%s+$", "")
+                        for _i, w in ipairs(Inline.widgets(sub_words, width - S(28), Notes.PAGE_TEXT)) do sub[#sub + 1] = w end
                         sub_words = {}
-                        if t ~= "" then sub[#sub + 1] = TextBoxWidget:new{ text = t, face = Notes.pageFace(Notes.PAGE_TEXT), width = width - S(28) } end
                     end
                     lay(l.items, width - S(28), where, function(w) sub[#sub + 1] = w end,
                         function(t) sub_words[#sub_words + 1] = t end, sub_done)
@@ -2447,7 +2448,7 @@ function NoteView:build()
                     n_check = n_check + Sticky.pageChecks(l.items) -- (Sticky.toggle counts them)
                 end
             else
-                say(Sticky.plain(l.text))
+                say(l.text)
             end
         end
         done()

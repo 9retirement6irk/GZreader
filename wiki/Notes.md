@@ -90,7 +90,10 @@ API to `/api` are found too.
   its top bar, beside **⋮**: a note that is only a drawing opens straight on
   that screen.) Below it, the text
   in the note editor's font (the sticky notes on the
-  Notes tab stay handwritten, in Patrick Hand), checklist items with letter keys
+  Notes tab stay handwritten, in Patrick Hand) and formatted as Memos shows
+  it: bold, italic, struck words, `code` and links (underlined), quotes
+  with a bar at their left, bulleted and numbered lists, rules, and tables
+  with their lines (the head in bold; long cells wrap); checklist items with letter keys
   (press one to tick or untick it; the change goes to Memos), pictures from
   the note shown inline, its tags and place, and its attachments (PDFs and
   other documents open in the reader, pictures in the image viewer; each is
