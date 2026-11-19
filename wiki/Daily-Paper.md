@@ -50,7 +50,14 @@ and how it begins.
   story behind is set again at each tap, at the same place, so you can try
   them; **Done** closes the box. The choices are kept, and are also in the
   daily paper's settings under **Story text**. They set opened stories; the
-  front page keeps its own type.
+  paper's own pages have their own (next).
+- **The paper's pages**: **Aa** at the foot of the paper (**Menu** on a
+  Kindle with keys) sets the type of the pages themselves: the headlines, how
+  each story begins, the weather and TODAY boxes. Four sizes (Small, Normal,
+  Large, Larger) and the same typefaces. Bigger type puts fewer stories on a
+  page, so the paper has more pages, and shows fewer days in the weather box.
+  Also in the daily paper's settings under **The paper's pages**. The paper's
+  name keeps its own face.
 - **Close**: the cross in the corner, or Back.
 - **The quick panel**: swipe down from the top of the paper or of a story,
   as anywhere else.

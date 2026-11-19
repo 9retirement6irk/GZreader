@@ -841,6 +841,42 @@ local dsrc = read(PLUGIN .. "/gzreader_dailyscreen.lua")
 check(dsrc:find("line_height = font.spacing.em", 1, true) and dsrc:find("face(font.face.regular, font.size", 1, true) and dsrc:find('ShowType = { { "Menu" } }', 1, true),
     "the story is set in the type chosen; Menu opens the box on a Kindle with keys")
 
+print("== the type of the paper's own pages")
+plugin = { store = { daily = { enabled = true } }, save = function() saves = saves + 1 end }
+local pf = Paper.frontFont(plugin)
+check(pf.face.id == "serif" and pf.size.id == "normal" and pf.scale == 1, "as it comes: Serif, Normal")
+saves = 0
+local reloaded = 0
+Paper.instance = { reload = function() reloaded = reloaded + 1 end }
+check(Paper.setFrontFont(plugin, "size", "large") == true and Paper.frontFont(plugin).scale == 1.2 and saves == 1 and reloaded == 1, "Large chosen: kept, and the open paper laid out again")
+check(Paper.setFrontFont(plugin, "size", "large") == false and reloaded == 1, "the same again: nothing to do")
+check(Paper.setFrontFont(plugin, "face", "sans") == true and Paper.frontFont(plugin).face.regular == "NotoSans-Regular.ttf" and reloaded == 2, "a typeface chosen")
+check(Paper.setFrontFont(plugin, "size", "huge") == false and Paper.setFrontFont(plugin, "face", "comic") == false and Paper.setFrontFont(plugin, "spacing", "wide") == false
+    and Paper.frontFont(plugin).size.id == "large", "one that isn't offered changes nothing")
+check(Paper.storyFont(plugin).face.id == "serif" and Paper.storyFont(plugin).size == 12, "the pages' type and a story's are separate choices")
+plugin.store.daily.front = { face = 3, size = "gone" }
+check(Paper.frontFont(plugin).face.id == "serif" and Paper.frontFont(plugin).scale == 1, "kept values that make no sense: as it comes")
+Paper.instance = { closed = true, reload = function() reloaded = reloaded + 100 end }
+Paper.setFrontFont(plugin, "size", "small")
+check(reloaded < 100 and Paper.frontFont(plugin).scale < 1, "no paper open: none is laid out again")
+Paper.instance = nil
+local prows = Paper.frontRows(plugin)
+local sizes_t = {}
+for _i, b in ipairs(prows[1]) do sizes_t[#sizes_t + 1] = (b.on and "*" or "") .. b.text end
+check(table.concat(sizes_t, ",") == "*Small,Normal,Large,Larger" and #prows[2] == 4 and prows[2][1].on == true, "the pages' Aa box: four sizes, the typefaces, the chosen ones marked")
+check(prows[1][4].run() == true and Paper.frontFont(plugin).size.id == "larger", "a size's button chooses it")
+rows = Paper.settingsItems(plugin)
+local prs = Paper.frontItems(plugin)
+check(row("The paper's pages") and #prs == 2 and prs[1].text_func() == "Typeface: Serif" and prs[2].text_func() == "Size: Larger", "Settings → Daily paper → The paper's pages: typeface, size")
+prs[2].sub_item_table[2].callback()
+prs[1].sub_item_table[4].callback()
+check(Paper.frontFont(plugin).size.id == "normal" and Paper.frontFont(plugin).face.id == "typewriter" and prs[2].sub_item_table[2].checked_func() == true, "picked there")
+check(Paper.weatherDays(0.85) == 4 and Paper.weatherDays(1) == 4 and Paper.weatherDays(1.2) == 3 and Paper.weatherDays(1.45) == 2, "bigger type: fewer days in the weather box, so each still fits")
+check(row("The paper's pages").help_text:find("fewer stories on a page", 1, true), "the setting says bigger type means more pages")
+local fsrc = read(PLUGIN .. "/gzreader_dailyscreen.lua")
+check(fsrc:find("local head_face = face(ff.face.bold, fz(lead and 17 or 12)", 1, true) and fsrc:find("local body_face = face(ff.face.regular, fz(10)", 1, true)
+    and fsrc:find('GzType = { { "Menu" } }', 1, true) and fsrc:find('return "type"', 1, true), "headlines and stories' beginnings are set in it; Aa at the foot and Menu open the box")
+
 print("== a story rests where the finger leaves it")
 local LS = require("gzreader_livescroll")
 local fdx, fdy = LS.freeEnd({ rel_x = 0, rel_y = -340, moved_x = 0, moved_y = 300 }, { direction = "north", distance = 900 })
