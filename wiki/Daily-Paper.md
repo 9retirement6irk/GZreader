@@ -104,9 +104,16 @@ across the front page, a few more stories have theirs in the columns, and the
 lead's is on the newspaper's front page on the shelf. They are the pictures
 the feeds name for their stories (or, failing that, the one the story's own
 page names), fetched with the paper, kept until the next edition and shown in
-grey. Pictures between a story's paragraphs aren't shown.
+grey (in colour on a colour Kindle). Pictures between a story's paragraphs aren't shown.
 **Settings → Accounts and services → Daily paper → Pictures** turns them off
 (the paper is fetched faster without them).
+
+**On a colour Kindle** (Colorsoft, Scribe Colorsoft): each section's heading
+is printed in its own colour (World red, Technology blue, Science green,
+Books violet, Curiosities orange; a section of your own gets one of a few
+others, always the same one), and the heavy rule under the nameplate, on the
+paper and on Home, is the paper's red. Turning off KOReader's colour rendering
+puts it back in black.
 
 ## When it's fetched
 

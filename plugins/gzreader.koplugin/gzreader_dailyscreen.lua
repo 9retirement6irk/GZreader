@@ -35,6 +35,35 @@ local Paper = {
 
 local function info(text, timeout) UIManager:show(InfoMessage:new{ text = text, timeout = timeout }) end
 
+---------------------------------------------------------------- colour
+
+-- On a colour screen each section's heading has its colour, and the
+-- nameplate's heavy rule is the paper's red. (Greys everywhere else.)
+Paper.TOPIC_COLORS = {
+    World = "#c92a2a", Technology = "#1971c2", Science = "#2f9e44",
+    Books = "#7048e8", Curiosities = "#e8590c",
+}
+-- (your own sections: one of these, always the same one for a name)
+Paper.OTHER_COLORS = { "#0c8599", "#d6336c", "#5c940d", "#9c36b5", "#e67700" }
+Paper.MAST_COLOR = "#b02525"
+
+--- A section's colour, "#rrggbb".
+function Paper.topicColor(topic)
+    topic = tostring(topic or "")
+    if Paper.TOPIC_COLORS[topic] then return Paper.TOPIC_COLORS[topic] end
+    local n = 0
+    for i = 1, #topic do n = (n * 31 + topic:byte(i)) % 1000003 end
+    return Paper.OTHER_COLORS[n % #Paper.OTHER_COLORS + 1]
+end
+
+--- `hex` as a colour to paint with on a colour screen; nil on a grey one.
+function Paper.ink(hex)
+    if not require("gzreader_colour").enabled() or type(hex) ~= "string" then return nil end
+    local r, g, b = hex:match("^#(%x%x)(%x%x)(%x%x)$")
+    if not r or not Blitbuffer.ColorRGB32 then return nil end
+    return Blitbuffer.ColorRGB32(tonumber(r, 16), tonumber(g, 16), tonumber(b, 16), 0xFF)
+end
+
 ---------------------------------------------------------------- words
 
 --- "Tuesday, November 17".
@@ -237,7 +266,9 @@ function Paper.homeWidget(plugin, ctx)
         date:paintTo(bb, ix + key_w, side_y)
         status:paintTo(bb, ix + L.inner_w - status:getSize().w, side_y)
         local ry = iy + sizes.mast_h + S(1)
-        bb:paintRect(ix, ry, L.inner_w, S(2), Blitbuffer.COLOR_BLACK)
+        local mast_ink = Paper.ink(Paper.MAST_COLOR)
+        if mast_ink and bb.paintRectRGB32 then bb:paintRectRGB32(ix, ry, L.inner_w, S(2), mast_ink)
+        else bb:paintRect(ix, ry, L.inner_w, S(2), Blitbuffer.COLOR_BLACK) end
         bb:paintRect(ix, ry + S(3), L.inner_w, 1, Blitbuffer.COLOR_BLACK)
         local by = iy + sizes.mast_h + sizes.rules_h
         if empty then
@@ -772,7 +803,8 @@ local function pageClass()
         local head_face = face(ff.face.bold, fz(lead and 17 or 12), "smallinfofontbold")
         local body_face = face(ff.face.regular, fz(10), "smallinfofont")
         if story.kicker then
-            add(TextWidget:new{ text = D.topicLabel(story.topic):upper(), face = Font:getFace("smallinfofontbold", fz(8)), max_width = w }, S(1))
+            add(TextWidget:new{ text = D.topicLabel(story.topic):upper(), face = Font:getFace("smallinfofontbold", fz(8)), max_width = w,
+                fgcolor = Paper.ink(Paper.topicColor(story.topic)) }, S(1))
         end
         local head = TextBoxWidget:new{ text = story.item.title, face = head_face, width = w, alignment = "left" }
         local max_lines = lead and 3 or 4
@@ -824,7 +856,7 @@ local function pageClass()
         end
         local name = TextWidget:new{ text = _("The Daily Paper"), face = serifBold(first and 26 or 13), max_width = inner_w - S(60) }
         head(name, margin + math.floor((inner_w - name:getSize().w) / 2), S(2))
-        self.rules = { { y = y, h = S(first and 3 or 2) }, { y = y + S(first and 5 or 4), h = 1 } }
+        self.rules = { { y = y, h = S(first and 3 or 2), color = Paper.ink(Paper.MAST_COLOR) }, { y = y + S(first and 5 or 4), h = 1 } }
         y = y + S(first and 8 or 6)
         if first then
             local line = TextWidget:new{ text = Paper.dateText(edition and edition.at or nil) .. os.date(", %Y", edition and edition.at or nil),
@@ -954,7 +986,10 @@ local function pageClass()
         local margin = S(12)
         bb:paintRect(x, y, W, H, Blitbuffer.COLOR_WHITE)
         for _i, hd in ipairs(self.header) do hd.widget:paintTo(bb, x + hd.x, y + hd.y) end
-        for _i, r in ipairs(self.rules) do bb:paintRect(x + margin, y + r.y, W - margin * 2, r.h, Blitbuffer.COLOR_BLACK) end
+        for _i, r in ipairs(self.rules) do
+            if r.color and bb.paintRectRGB32 then bb:paintRectRGB32(x + margin, y + r.y, W - margin * 2, r.h, r.color)
+            else bb:paintRect(x + margin, y + r.y, W - margin * 2, r.h, Blitbuffer.COLOR_BLACK) end
+        end
         if self.close_w > 0 then
             -- a cross in the corner
             local cx, cy, arm = x + W - math.floor(self.close_w / 2), y + math.floor(self.close_w / 2), S(7)
