@@ -29,6 +29,9 @@ local ltn12 = require("ltn12")
 local Stickers = {
     PATH = "/kidpix/sticker-png/",
     MAX_BYTES = 512 * 1024, -- (a sticker picture; the biggest is about 60 kB)
+    MAX_INDEX_BYTES = 1024 * 1024, -- (the list; the fork's is about 100 kB)
+    MAX_CATEGORIES = 100, -- (the fork has 42)
+    MAX_ITEMS = 500, -- (in a category; the fork's biggest has about 60)
     -- the sizes offered: the sticker's own size (1x: as Kid Pix put it down) times these
     SIZES = { 1, 1.6, 2.4 },
     DEFAULT_SIZE = 2,
@@ -60,9 +63,11 @@ function Stickers.parseIndex(data)
     if type(data) ~= "table" or tonumber(data.version) ~= 1 or type(data.categories) ~= "table" then return nil end
     local out = { scale = tonumber(data.scale) or 2, categories = {} }
     for _i, c in ipairs(data.categories) do
+        if #out.categories >= Stickers.MAX_CATEGORIES then break end
         if type(c) == "table" and safe(c.slug) and type(c.items) == "table" then
             local cat = { slug = c.slug, name = type(c.name) == "string" and c.name or c.slug, items = {} }
             for n, it in ipairs(c.items) do
+                if n > Stickers.MAX_ITEMS then break end
                 local file = type(it) == "table" and it.file
                 local w, h = tonumber(type(it) == "table" and it.width), tonumber(type(it) == "table" and it.height)
                 if file == c.slug .. "/" .. (n - 1) .. ".png" and w and h and w > 0 and h > 0 then
@@ -98,16 +103,30 @@ function Stickers.have(cat)
     return n
 end
 
-local function get(url, sink)
+--- GET `url` into `sink`, at most `max` bytes (more: the download stops).
+--- Returns the HTTP code (nil: no answer, or stopped) and whether it was too big.
+local function get(url, sink, max)
     local Api = require("gzreader_api")
-    return Api.rawRequest("GET", url, { headers = { Accept = sink and "image/png" or "application/json" }, sink = sink,
-        want_raw = not sink or nil, timeouts = { 10, 30 } })
+    local got, over = 0, false
+    local function capped(chunk, err)
+        if chunk then
+            got = got + #chunk
+            if got > max then over = true; return nil, "too big" end
+        end
+        return sink(chunk, err)
+    end
+    local code = Api.rawRequest("GET", url, { headers = { Accept = "image/png, application/json" }, sink = capped,
+        timeouts = { 10, 30 } })
+    return code, over
 end
 
 --- Fetches the list from `server` and keeps it: the list, or nil, err.
 --- (In a background process or with Wi-Fi up: it waits for the answer.)
 function Stickers.fetchIndex(server)
-    local code, text = get(server .. Stickers.PATH .. "index.json")
+    local parts = {}
+    local code, over = get(server .. Stickers.PATH .. "index.json", ltn12.sink.table(parts), Stickers.MAX_INDEX_BYTES)
+    local text = table.concat(parts)
+    if over then return nil, "too_big" end
     if type(code) ~= "number" then return nil, "unreachable" end
     if code == 404 then return nil, "no_stickers" end -- (a Memos without the fork's sticker pictures)
     if code ~= 200 then return nil, "http_" .. code end
@@ -132,7 +151,8 @@ function Stickers.fetchCategory(server, cat)
             local part = path .. ".part"
             local fh = io.open(part, "wb")
             if not fh then err = "write"; break end
-            local code = get(server .. Stickers.PATH .. it.file, ltn12.sink.file(fh))
+            local code, over = get(server .. Stickers.PATH .. it.file, ltn12.sink.file(fh), Stickers.MAX_BYTES)
+            pcall(fh.close, fh) -- (stopped part way: the sink didn't close it)
             local size = lfs.attributes(part, "size") or 0
             local head
             local rf = io.open(part, "rb")
@@ -141,7 +161,7 @@ function Stickers.fetchCategory(server, cat)
                 os.rename(part, path)
             else
                 os.remove(part)
-                err = type(code) == "number" and ("http_" .. code) or "unreachable"
+                err = over and "too_big" or type(code) == "number" and ("http_" .. code) or "unreachable"
                 if err == "unreachable" then break end
             end
         end

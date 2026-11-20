@@ -15118,6 +15118,9 @@ print("Stickers in drawings (gzreader_stickers.lua): the Memos fork's Kid Pix st
         { slug = "../x", name = "Nope", items = { { name = "a", file = "../x/0.png", width = 1, height = 1 } } },
     } }
     local idx = Stickers.parseIndex(good)
+    local many = { version = 1, categories = { { slug = "lots", name = "Lots", items = {} } } }
+    for k = 1, 600 do many.categories[1].items[k] = { name = "x", file = "lots/" .. (k - 1) .. ".png", width = 1, height = 1 } end
+    check(#Stickers.parseIndex(many).categories[1].items == Stickers.MAX_ITEMS, "stickers: a list naming too many stickers: only the first " .. Stickers.MAX_ITEMS .. " of a category")
     check(idx and #idx.categories == 1 and #idx.categories[1].items == 2 and idx.categories[1].items[2].file == "animals/2.png"
         and idx.categories[1].items[1].w == 40 and Stickers.parseIndex({ version = 2, categories = {} }) == nil and Stickers.parseIndex("x") == nil,
         "stickers: the fork's list read; a file name that isn't <category>/<n>.png (or a strange category) left out")
@@ -15152,6 +15155,19 @@ print("Stickers in drawings (gzreader_stickers.lua): the Memos fork's Kid Pix st
     check(#fetched() == before, "…and kept: opened again, nothing is fetched")
     local f = io.open(Stickers.path(animals.items[2]), "rb"); local head = f:read(8); f:close()
     check(head == "\137PNG\r\n\26\n", "…each a PNG")
+    -- a server that sends too much: the download stops, nothing kept
+    local max_i, max_b = Stickers.MAX_INDEX_BYTES, Stickers.MAX_BYTES
+    Stickers.MAX_INDEX_BYTES = 100
+    local big, berr = Stickers.fetchIndex(server)
+    Stickers.MAX_INDEX_BYTES = max_i
+    Stickers.MAX_BYTES = 50
+    local food = index.categories[2]
+    local fn, fe = Stickers.fetchCategory(server, food)
+    Stickers.MAX_BYTES = max_b
+    local leftovers = 0
+    for name in lfs.dir(Stickers.dir() .. "/food") do if name:match("%.part$") or name:match("%.png$") then leftovers = leftovers + 1 end end
+    check(big == nil and berr == "too_big" and fn == 0 and fe == "too_big" and leftovers == 0 and Stickers.index() ~= nil,
+        "stickers: a list or picture bigger than it may be: stopped, nothing of it kept (the list kept from before stays)")
     stop()
 
     -- how one goes on the page
