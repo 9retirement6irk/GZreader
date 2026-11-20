@@ -1422,13 +1422,19 @@ gets a password or token.
     if (Opt.details) await details(books);
   }
 
-  async function shrink(blob, w, h) {
+  // A colour Kindle (Colorsoft, Scribe Colorsoft, with colour rendering on)
+  // gets its covers in colour; every other one in grey.
+  function colourKindle() { return !!(((K.out || {}).kindle || {}).colour); }
+  // (what covers/index.json keeps for a cover: its stamp, ":c" when it was made in colour)
+  function coverStamp(stamp, colour) { return String(stamp) + (colour ? ":c" : ""); }
+
+  async function shrink(blob, w, h, colour) {
     var img = await createImageBitmap(blob);
     var scale = Math.min(w / img.width, h / img.height, 1);
     var cw = Math.max(1, Math.round(img.width * scale)), ch = Math.max(1, Math.round(img.height * scale));
     var canvas = typeof OffscreenCanvas !== "undefined" ? new OffscreenCanvas(cw, ch) : Object.assign(document.createElement("canvas"), { width: cw, height: ch });
     var ctx = canvas.getContext("2d");
-    ctx.filter = "grayscale(1)"; // (e-ink: smaller files, the same picture)
+    if (!colour) ctx.filter = "grayscale(1)"; // (grey e-ink: smaller files, the same picture)
     ctx.drawImage(img, 0, 0, cw, ch);
     if (img.close) img.close();
     if (canvas.convertToBlob) return canvas.convertToBlob({ type: "image/jpeg", quality: 0.8 });
@@ -1459,12 +1465,13 @@ gets a password or token.
   async function covers(books) {
     mediaReadable = null;
     var index = (await Drive.readJSON(Drive.sync, "covers/index.json")) || {};
-    var todo = [];
+    var todo = [], colour = colourKindle();
     books.forEach(function (b) {
       var audio = String(b.primaryFileType || "").toUpperCase() === "AUDIOBOOK";
-      var stamp = String((audio ? b.audiobookCoverUpdatedOn || b.coverUpdatedOn : b.coverUpdatedOn) || "0");
+      var updated = String((audio ? b.audiobookCoverUpdatedOn || b.coverUpdatedOn : b.coverUpdatedOn) || "0");
+      var stamp = coverStamp(updated, colour); // (a grey cover is made again in colour for a colour Kindle)
       var name = b.id + (audio ? "-a" : "");
-      if (index[name] !== stamp && index[name] !== stamp + ":none") todo.push({ id: b.id, name: name, stamp: stamp, audio: audio });
+      if (index[name] !== stamp && index[name] !== updated + ":none") todo.push({ id: b.id, name: name, stamp: stamp, updated: updated, audio: audio });
     });
     if (!todo.length) return;
     phase("Small covers for the Catalog tab…");
@@ -1472,9 +1479,9 @@ gets a password or token.
     await pool(todo, 6, async function (t) {
       try {
         var r = await coverOf(t.id, t.audio);
-        if (!r || r.status === 404) index[t.name] = t.stamp + ":none";
+        if (!r || r.status === 404) index[t.name] = t.updated + ":none";
         else if (r.ok) {
-          var small = await shrink(await r.blob(), COVER_W, t.audio ? COVER_W : COVER_H);
+          var small = await shrink(await r.blob(), COVER_W, t.audio ? COVER_W : COVER_H, colour);
           await Drive.write(Drive.sync, "covers/" + t.name + ".jpg", small);
           index[t.name] = t.stamp;
           got++;
@@ -3341,7 +3348,7 @@ gets a password or token.
     open: openDrive, sync: runSync, demuxTs: demuxTs, memoFileName: memoFileName, slimMemo: slimMemo,
     G: G, M: M, P: P, K: K, Cal: Cal, Vault: Vault, Picks: Picks, Update: Update, zipEntryText: zipEntryText, Browse: Browse,
     testKindle: testKindle, setPanel: setPanel, isoWeekOfYear: isoWeekOfYear, Sleep: Sleep, Heic: Heic, Mp4: Mp4, Report: Report,
-    sendJobs: sendJobs, jobAllowed: jobAllowed,
+    sendJobs: sendJobs, jobAllowed: jobAllowed, shrink: shrink, coverStamp: coverStamp, colourKindle: colourKindle,
   };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
 })();
