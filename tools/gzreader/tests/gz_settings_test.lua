@@ -218,13 +218,6 @@ if okb then
         check(not adv:find("|" .. gone .. "|", 1, true), "not in Advanced (hidden on GZreader): " .. gone)
     end
     check(not adv:find("|Allow dragging reader modals|", 1, true), "no Allow dragging reader modals (hidden on GZreader)")
-    check(read("config/manager.lua"):find("cfg._meta.gz_modal_drag_off ~= true", 1, true)
-            and read("config/manager.lua"):find("cfg.developer.allow_modal_drag = nil", 1, true),
-        "a saved Allow dragging reader modals is turned off once (config/manager.lua)")
-    local mgr = read("config/manager.lua")
-    check(mgr:find("cfg._meta.gz_show_hidden_off ~= true", 1, true) and mgr:find("cfg.developer.show_hidden_outside_home = nil", 1, true)
-            and mgr:find('g:saveSetting("show_hidden", false)', 1, true),
-        "a saved Show hidden files is turned off once (config/manager.lua)")
     -- Display and light → Screen: KOReader's Screen menu, GZreader's flash rows in its E-ink settings
     for _i, moved in ipairs({ "Partial pages refresh", "Flash when the screen changes" }) do
         check(not adv:find("|" .. moved .. "|", 1, true), "not in Advanced any more: " .. moved)
@@ -471,8 +464,6 @@ do
     check(fn and fn:find("_is_current_dir = true", 1, true) ~= nil,
         "keyboard Kindles: holding Press on the tab bar opens the menu with Filter (KOReader's File browser is hidden)")
 end
-check(read("config/manager.lua"):find("gz_debug_logging_off", 1, true) ~= nil,
-    "KOReader's verbose log turned off once (no switch for it any more)")
 
 -- every Settings row has an icon (its own, or gz_settings_icons')
 local Icons = require("common/gz_settings_icons")

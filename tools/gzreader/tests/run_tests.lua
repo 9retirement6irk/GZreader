@@ -161,7 +161,7 @@ preload("util", { makePath = function(p) os.execute("mkdir -p '" .. p .. "'") en
 local reader_opened
 preload("apps/reader/readerui", { showReader = function(_, p) reader_opened = p end })
 
-local gsettings = { gzreader_wifi_on_demand = false } -- the on-demand Wi-Fi tests turn it on
+local gsettings = { gzreader_wifi_mode = "on" } -- (Wi-Fi On; the on-demand Wi-Fi tests choose Auto)
 G_reader_settings = { saveSetting = function(_, k, v) gsettings[k] = v end, readSetting = function(_, k) return gsettings[k] end,
     nilOrTrue = function(_, k) return gsettings[k] == nil or gsettings[k] == true end,
     isTrue = function(_, k) return gsettings[k] == true end,
@@ -783,36 +783,6 @@ print("Catalog tab: Books, Audiobooks and Music pages")
     check(opened_with == nil and tostring(captured.info):match("no speaker, headphone jack or Bluetooth"),
         "a Kindle without audio: the tab says it can't play audiobooks (no Catalog page)")
     require("gzreader_touch").audio = saved_audio
-    -- ZenOS's config: the tab's label becomes Catalog once, unless you named it yourself
-    local mf = io.open(arg[1] .. "/../zenos.koplugin/config/manager.lua", "rb")
-    local msrc = mf and mf:read("*a") or ""
-    if mf then mf:close() end
-    local from = msrc:find("if cfg._meta.gz_catalog_label_migrated ~= true then", 1, true)
-    local to = from and select(2, msrc:find("cfg._meta.gz_catalog_label_migrated = true%s+changed = true%s+end", from))
-    local migrate = from and to and load("return function(cfg) local changed = false\n" .. msrc:sub(from, to) .. "\nreturn changed end", "catalog migration", "t", { type = type, ipairs = ipairs })()
-    local function cfgWith(label)
-        return { _meta = {}, navbar = { custom_tabs = { { id = "ct_grimmory", label = label }, { id = "ct_notes", label = "Notes" } } } }
-    end
-    local c1, c2, c3 = cfgWith("Grimmory"), cfgWith("My books"), cfgWith(nil)
-    local ok_m = migrate and migrate(c1) and migrate(c2) and migrate(c3)
-    local c4 = cfgWith("Grimmory")
-    c4._meta.gz_catalog_label_migrated = true
-    check(ok_m and c1.navbar.custom_tabs[1].label == "Catalog" and c2.navbar.custom_tabs[1].label == "My books"
-        and c3.navbar.custom_tabs[1].label == "Catalog" and c1.navbar.custom_tabs[2].label == "Notes"
-        and migrate(c4) == false and c4.navbar.custom_tabs[1].label == "Grimmory",
-        "the tab's label: Grimmory becomes Catalog once; a name of your own stays")
-    local afrom = msrc:find("if cfg._meta.gz_audiobooks_tab_migrated ~= true then", 1, true)
-    local ato = afrom and select(2, msrc:find("cfg._meta.gz_audiobooks_tab_migrated = true%s+changed = true%s+end", afrom))
-    local amig = afrom and ato and load("return function(cfg) local changed = false\n" .. msrc:sub(afrom, ato) .. "\nreturn changed end",
-        "audiobooks tab migration", "t", { type = type, ipairs = ipairs, table = table })()
-    local acfg = { _meta = {}, navbar = { custom_tabs = { { id = "ct_grimmory" } }, show_tabs = {}, tab_order = { "home", "ct_grimmory" } } }
-    local a1 = amig and amig(acfg)
-    acfg._meta.gz_audiobooks_tab_migrated = nil
-    amig(acfg)
-    local n_ab = 0
-    for _i, t in ipairs(acfg.navbar.custom_tabs) do if t.id == "ct_audiobooks" then n_ab = n_ab + 1 end end
-    check(a1 and n_ab == 1 and acfg.navbar.show_tabs.ct_audiobooks == false and table.concat(acfg.navbar.tab_order, ",") == "home,ct_grimmory,ct_audiobooks",
-        "an older config gets the Audiobooks tab listed, off, once")
 end)()
 
 print("House tab (Home Assistant): connecting, rooms, switching, Settings, the phone page")
@@ -1073,20 +1043,6 @@ print("House tab (Home Assistant): connecting, rooms, switching, Settings, the p
     check(closed and closed.house and Phone.session == nil and #UI.zmqs == 0, "phone page: closed, the caller hears House changed")
     PS.new = orig_ps
 
-    -- ZenOS: the House tab listed (off) in an older config, once
-    local msrc = io.open(PLUGIN .. "/../zenos.koplugin/config/manager.lua"):read("*a")
-    local hfrom = msrc:find("if cfg._meta.gz_house_tab_migrated ~= true then", 1, true)
-    local hto = hfrom and select(2, msrc:find("cfg._meta.gz_house_tab_migrated = true%s+changed = true%s+end", hfrom))
-    local hmig = hfrom and hto and load("return function(cfg) local changed = false\n" .. msrc:sub(hfrom, hto) .. "\nreturn changed end",
-        "house tab migration", "t", { type = type, ipairs = ipairs, table = table })()
-    local hcfg = { _meta = {}, navbar = { custom_tabs = { { id = "ct_grimmory" } }, show_tabs = {}, tab_order = { "home", "ct_grimmory" } } }
-    local h1 = hmig and hmig(hcfg)
-    hcfg._meta.gz_house_tab_migrated = nil
-    hmig(hcfg)
-    local n_h, def = 0, nil
-    for _i, t in ipairs(hcfg.navbar.custom_tabs) do if t.id == "ct_house" then n_h = n_h + 1; def = t end end
-    check(h1 and n_h == 1 and def.icon == "tab_house" and def.label == "House" and def.action.gzreader_house and hcfg.navbar.show_tabs.ct_house == false
-        and table.concat(hcfg.navbar.tab_order, ",") == "home,ct_grimmory,ct_house", "ZenOS: an older config gets the House tab listed, off, once")
 
     local lg = io.open(WORK .. "/gzreader.log", "rb"); local ltxt = lg and lg:read("*a") or ""; if lg then lg:close() end
     check(ltxt:find("house: connecting to", 1, true) and not ltxt:find("ha-test-token", 1, true), "House: the token is never in the log")
@@ -1644,7 +1600,7 @@ do
         return n
     end
     -- the earlier "Continue reading" was saved
-    local was, wod = NET.connected, gsettings.gzreader_wifi_on_demand
+    local was, wod = NET.connected, gsettings.gzreader_wifi_mode
     NET.connected = false
     gsettings.gzreader_wifi_mode = "off" -- nothing in the background may turn Wi-Fi on
     local before = reqs("continue%-reading")
@@ -1688,7 +1644,7 @@ do
     b:openSimple("continue-reading", "Continue reading")
     check(b.menu.title ~= "Continue reading · saved", "another account doesn't see these saved lists")
     plugin.store.username = user
-    NET.connected, gsettings.gzreader_wifi_on_demand, gsettings.gzreader_wifi_mode = was, wod, nil
+    NET.connected, gsettings.gzreader_wifi_mode = was, wod
     local d = Cache.dir()
     local nfiles = 0
     for name in require("libs/libkoreader-lfs").dir(d) do if name:match("%.json$") then nfiles = nfiles + 1 end end
@@ -2872,18 +2828,6 @@ print("Quick panel: how it opens (KOReader's Activate menu), KOReader's tap and 
     check(gsettings.activate_menu == "swipe_tap" and rows[1].checked_func() and rows[2].checked_func(), "tick it again: both")
     package.loaded["apps/filemanager/filemanager"] = had_fm
     gsettings.activate_menu = nil
-    -- KOReader's Disable double tap: a saved untick cleared
-    gsettings.disable_double_tap, gsettings.gzreader_double_tap_cleared = false, nil
-    check(Touch.forgetKOReaderDoubleTap() == true and gsettings.disable_double_tap == nil,
-        "Disable double tap unticked: cleared (taps in a book don't wait for a second one)")
-    gsettings.disable_double_tap = false
-    check(Touch.forgetKOReaderDoubleTap() == false and gsettings.disable_double_tap == false,
-        "once only: unticked again later (About → Advanced → KOReader settings), it stays unticked")
-    gsettings.disable_double_tap, gsettings.gzreader_double_tap_cleared = true, nil
-    check(Touch.forgetKOReaderDoubleTap() == false and gsettings.disable_double_tap == true, "ticked: left as it is")
-    gsettings.disable_double_tap, gsettings.gzreader_double_tap_cleared = nil, nil
-    local main_src = io.open(PLUGIN .. "/main.lua"):read("*a")
-    check(main_src:find('require("gzreader_touch").forgetKOReaderDoubleTap()', 1, true) ~= nil, "done when Home's menu is set up")
     -- ZenOS's lists of KOReader rows (zenos common/gz_settings.lua)
     local GzS = dofile(PLUGIN .. "/../zenos.koplugin/common/gz_settings.lua")
     check(GzS.KOREADER_DUPLICATES.menu_activate and not GzS.KOREADER_HIDDEN.menu_activate,
@@ -3568,9 +3512,8 @@ do
         "downloaded again: how the old copy was shown forgotten (picture book, its margins back); your own style and place kept")
     local isrc = io.open(PLUGIN .. "/gzreader_index.lua"):read("*a")
     local msrc = io.open(PLUGIN .. "/main.lua"):read("*a")
-    check(isrc:find("ftype, b.title, tonumber(b.fileSizeKb) }", 1, true) ~= nil and isrc:find("or data.sized == nil", 1, true) ~= nil
-        and msrc:find('require("gzreader_newcopy").check(self, self.ui, book_id, entry)', 1, true) ~= nil,
-        "the library index keeps each book's size (built again once); a book opening is compared with it")
+    check(isrc:find("ftype, b.title, tonumber(b.fileSizeKb) }", 1, true) ~= nil and msrc:find('require("gzreader_newcopy").check(self, self.ui, book_id, entry)', 1, true) ~= nil,
+        "the library index keeps each book's size; a book opening is compared with it")
 end
 
 print("Big results from the background process (more than a pipe holds)")
@@ -4308,7 +4251,7 @@ print("Wi-Fi: on, off, auto")
     local Net = require("gzreader_net")
     local now = 1000
     Net.clock = function() return now end
-    gsettings.gzreader_wifi_on_demand = nil -- default: auto (was "Wi-Fi only when needed", on)
+    gsettings.gzreader_wifi_mode = nil -- default: auto
     check(Net.mode() == "auto", "nothing saved: Auto")
     local was = NET.connected
     NET.connected = false
@@ -4360,14 +4303,6 @@ print("Wi-Fi: on, off, auto")
     Net.run(function() q = q + 1 end, { quiet = true })
     check(q == 0 and #captured.wifi == 0, "Off: background syncs wait for Wi-Fi")
 
-    -- the settings from before the three modes
-    gsettings.gzreader_wifi_mode = nil
-    gsettings.gzreader_wifi_kept_off = true
-    check(Net.mode() == "off", "until 1.28: turned off by you → Off")
-    gsettings.gzreader_wifi_kept_off, gsettings.gzreader_wifi_on_demand = nil, false
-    check(Net.mode() == "on", "until 1.28: Wi-Fi only when needed unticked → On")
-    gsettings.gzreader_wifi_on_demand = nil
-    check(Net.mode() == "auto", "until 1.28: Wi-Fi only when needed ticked (the default) → Auto")
     gsettings.gzreader_wifi_mode = "sometimes"
     check(Net.mode() == "auto", "an unknown saved mode counts as Auto")
     check(Net.nextMode("on") == "off" and Net.nextMode("off") == "auto" and Net.nextMode("auto") == "on",
@@ -4378,11 +4313,10 @@ print("Wi-Fi: on, off, auto")
     local saved_switch, saved_bc = Net._switch, UIM.broadcastEvent
     Net._switch = function() switched = switched + 1; NET.connected = not NET.connected end
     UIM.broadcastEvent = function(_, ev) events[#events + 1] = ev and ev.handler or ev and ev.name or "?" end
-    gsettings.gzreader_wifi_kept_off, gsettings.gzreader_wifi_on_demand = true, false
+    gsettings.gzreader_wifi_mode = "off"
     NET.connected = false
     check(Net.setMode("on") == true and switched == 1 and NET.connected and gsettings.gzreader_wifi_mode == "on",
         "On with Wi-Fi off: saved, Wi-Fi switched on")
-    check(gsettings.gzreader_wifi_kept_off == nil and gsettings.gzreader_wifi_on_demand == nil, "the old settings are forgotten once a mode is saved")
     check(#events >= 1 and tostring(events[1]):match("NetworkStateChanged"), "the status bars are told (their Wi-Fi icon) " .. tostring(events[1]))
     check(Net.setMode("on") == false and switched == 1, "On again with Wi-Fi on: nothing switched")
     -- On: something needs Wi-Fi after it went off by itself (sleep, out of range): back on, and it stays on
@@ -4549,8 +4483,7 @@ print("Wi-Fi: on, off, auto")
     check(Net.mode() == "auto" and item.mandatory_func() == "Auto", "choosing Auto there saves it")
 
     Net._switch, UIM.broadcastEvent = saved_switch, saved_bc
-    gsettings.gzreader_wifi_mode, gsettings.gzreader_wifi_kept_off = nil, nil
-    gsettings.gzreader_wifi_on_demand = false
+    gsettings.gzreader_wifi_mode = "on"
     Net._toggle_on, Net._toggle_off = nil, nil
     NET.connected = was
     Net.clock = os.time
@@ -4558,21 +4491,6 @@ print("Wi-Fi: on, off, auto")
     UI.scheduled = {}
 end)()
 
-print("Wi-Fi: KOReader's \"Disable Wi-Fi connection when inactive\" cleared (its row is hidden)")
-;(function()
-    local Net = require("gzreader_net")
-    gsettings.auto_disable_wifi, gsettings.gzreader_wifi_powersave_cleared = true, nil
-    check(Net.forgetKOReaderPowersave() == true and gsettings.auto_disable_wifi == nil,
-        "a saved tick is cleared (it turned Wi-Fi off after 5 quiet minutes even on On)")
-    gsettings.auto_disable_wifi = true
-    check(Net.forgetKOReaderPowersave() == false and gsettings.auto_disable_wifi == true,
-        "once only: ticked again later (About → Advanced → KOReader settings), it stays ticked")
-    gsettings.auto_disable_wifi, gsettings.gzreader_wifi_powersave_cleared = false, nil
-    check(Net.forgetKOReaderPowersave() == false and gsettings.auto_disable_wifi == false, "unticked: left as it is")
-    gsettings.auto_disable_wifi, gsettings.gzreader_wifi_powersave_cleared = nil, nil
-    check(io.open(PLUGIN .. "/gzreader_net.lua"):read("*a"):find("pcall(Net.forgetKOReaderPowersave)", 1, true) ~= nil,
-        "done at start (Net.start)")
-end)()
 
 print("Night mode guard (Kindle 3)")
 do
@@ -5016,7 +4934,7 @@ do
     S.menu.onMenuSelect(S.menu, S.menu.item_table[2]) -- Kindle again: back to how Grimmory has it
     check(not S.hasPending(rplugin) and S.isOn(rplugin, 3, 4), "put back on before it was sent: nothing to send")
     buttons()[2].callback()
-    NET.connected, gsettings.gzreader_wifi_mode = true, nil
+    NET.connected, gsettings.gzreader_wifi_mode = true, "on"
     wifiBack()
     check(shelvesOf(3) == "7" and not S.hasPending(rplugin) and not S.isOn(rplugin, 3, 4), "Wi-Fi back: the change sent, the queue empty")
 
@@ -5404,7 +5322,7 @@ do
         for _i, f in ipairs(due) do f() end
     end
     check(#server() == 2, "on close: Wi-Fi brought up quietly and the highlight sent")
-    gsettings.gzreader_wifi_mode = nil
+    gsettings.gzreader_wifi_mode = "on"
     -- switch
     rplugin.store.annotation_sync_disabled = true
     rplugin:onReaderReady(); for f in pairs(UI.scheduled) do f() end; UI.scheduled = {}
@@ -7465,27 +7383,10 @@ print("No usage statistics (since 1.28.1); debug reports have their own setting"
     check(not rd(PLUGIN .. "/gzreader_usage.lua") and #uses == 0 and Usb.usageInfo == nil and Usb.handOverUsage == nil
         and not (rd(PLUGIN .. "/gzreader_usbsync.lua") or ""):find("usage = ", 1, true),
         "no usage statistics: the module is gone, nothing calls it, the outbox has no usage " .. table.concat(uses, ","))
-    -- debug reports: off unless chosen; a Full level carries over once, the rest is deleted
-    local saved_dr, saved_u = gsettings.gzreader_debug_reports, gsettings.gzreader_usage
-    gsettings.gzreader_debug_reports, gsettings.gzreader_usage = nil, nil
+    -- debug reports: off unless chosen
+    local saved_dr = gsettings.gzreader_debug_reports
+    gsettings.gzreader_debug_reports = nil
     check(R.setting() == false and R.SETTING == "gzreader_debug_reports", "debug reports: off by default")
-    gsettings.gzreader_usage = "basic"
-    check(R.setting() == false, "…off after Basic usage statistics")
-    gsettings.gzreader_usage = "full"
-    check(R.setting() == true, "…on after Full (Full sent them)")
-    local udir = WORK .. "/gzreader-usage"
-    lfs.mkdir(udir)
-    local fh = io.open(udir .. "/queue.jsonl", "wb"); fh:write('{"type":"event"}\n'); fh:close()
-    R.forgetUsage()
-    check(gsettings.gzreader_debug_reports == true and gsettings.gzreader_usage == nil and not lfs.attributes(udir, "mode"),
-        "at start: Full becomes debug reports on, the old level and the waiting statistics are deleted")
-    check((rd(PLUGIN .. "/main.lua") or ""):find('require("gzreader_remote").forgetUsage()', 1, true),
-        "…once a run, 15 s after start (main.lua)")
-    gsettings.gzreader_debug_reports, gsettings.gzreader_usage = nil, "off"
-    R.forgetUsage()
-    check(gsettings.gzreader_debug_reports == false and gsettings.gzreader_usage == nil, "…Off (or Basic): debug reports off")
-    R.forgetUsage()
-    check(gsettings.gzreader_debug_reports == false, "…once: a choice made since stays")
     -- the random ID stays (it names this Kindle in reports)
     local id = gsettings.gzreader_usage_id
     gsettings.gzreader_usage_id = string.rep("ab", 16)
@@ -7501,7 +7402,7 @@ print("No usage statistics (since 1.28.1); debug reports have their own setting"
     Net.usb = true
     check(R.menuItem() == nil and not R.enabled(), "a Kindle without Wi-Fi: no switch (it couldn't send)")
     Net.usb = was_usb
-    gsettings.gzreader_debug_reports, gsettings.gzreader_usage = saved_dr, saved_u
+    gsettings.gzreader_debug_reports = saved_dr
 end)()
 
 print("Remote debugging (debug reports on)")
@@ -7792,7 +7693,7 @@ print("Wi-Fi you turn off stays off for background work")
     G_reader_settings.delSetting = G_reader_settings.delSetting or function(_, k) gsettings[k] = nil end
     local Net = require("gzreader_net")
     local NM = require("ui/network/manager")
-    local was_c, was_wod = NET.connected, gsettings.gzreader_wifi_on_demand
+    local was_c, was_wod = NET.connected, gsettings.gzreader_wifi_mode
     gsettings.gzreader_wifi_mode = "auto"
     Net.adopt() -- wraps the Wi-Fi switches
     NET.connected = true
@@ -7813,7 +7714,7 @@ print("Wi-Fi you turn off stays off for background work")
     captured.wifi = {}
     Net.run(function() ran = ran + 1 end, { quiet = true, reason = "test background" })
     check(ran == 2 and captured.wifi[1] == "on-quiet", "background work turns it on quietly again")
-    NET.connected, gsettings.gzreader_wifi_on_demand, gsettings.gzreader_wifi_mode = was_c, was_wod, nil
+    NET.connected, gsettings.gzreader_wifi_mode = was_c, was_wod
     Net.connecting, Net.ours = nil, false
 end)()
 

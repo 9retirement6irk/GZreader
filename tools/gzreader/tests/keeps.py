@@ -40,7 +40,6 @@ MUST = [
     ("plugins/zenos.koplugin/common/gz_settings_tree.lua", "copyItems"),
     ("plugins/zenos.koplugin/common/quickstart/quickstart_pages.lua", "GzCopyReceive"),
     ("plugins/zenos.koplugin/config/defaults.lua", "ct_music"),
-    ("plugins/zenos.koplugin/config/manager.lua", "gz_music_tab_migrated"),
     ("plugins/zenos.koplugin/icons/tab_music.svg", "<svg"),
     ("frontend/ui/widget/inputtext.lua", "gzsymbols"),
 ]

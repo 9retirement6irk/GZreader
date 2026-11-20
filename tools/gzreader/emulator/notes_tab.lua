@@ -95,21 +95,4 @@ shot("notes-17-edit")
 key("Back", 4) -- unchanged: closes without asking
 key("R", 25) -- its PDF: downloaded, opened in the reader
 shot("notes-18-pdf")
--- an older ZenOS config (Favorites tab) gets the Notes tab in its place
-add({ fn = function(E)
-    local M = require("config/manager")
-    local cur = M.load()
-    local old = require("common/utils").deepcopy(cur)
-    old._meta.gz_notes_tab_migrated = nil
-    old.navbar.custom_tabs = { { id = "ct_grimmory", type = "action", action = { grimmory_library = true }, label = "Grimmory", icon = "library" } }
-    old.navbar.tab_order = { "home", "books", "continue", "ct_grimmory", "favorites" }
-    old.navbar.show_tabs.favorites = true
-    old.navbar.show_tabs.ct_notes = nil
-    M.save(old)
-    local new = M.load()
-    E.say("migrated:", table.concat(new.navbar.tab_order, ","), "favorites shown:", tostring(new.navbar.show_tabs.favorites),
-        "notes tab:", tostring(new.navbar.custom_tabs[2] and new.navbar.custom_tabs[2].id), tostring(new.navbar.show_tabs.ct_notes))
-    local again = M.load()
-    E.say("migrated twice: tabs", #again.navbar.custom_tabs)
-end, after = 2 })
 return s

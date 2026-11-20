@@ -34,8 +34,6 @@ Format 1:
     screensavers = { names, mode = "auto"|"always"|"immich_auto"|"immich"|"other" }; kindle.screen = { w, h },
     immich = { album = { id, name }, have = { asset ids }, count, wallpaper },
     daily = { feeds = { { url, name, topic } }, full, per_feed, pages, max_bytes, have } (the paper on) }
-- usage/*.jsonl: usage statistics GZreader up to 1.28.1 left for the page;
-  the page deletes them without sending (no usage statistics since).
   inbox = { format, written_at, done = { job ids }, failed = { { id, error } },
     books = { { id, file, name, title, authors, format, file_id, subtitle, progress } },
     audiobooks = { { id, dir, info, primaryFileName, title, progress } },
