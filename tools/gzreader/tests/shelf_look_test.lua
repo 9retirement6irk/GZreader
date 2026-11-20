@@ -508,5 +508,46 @@ do
     check(head:sub(1, 4) == "\137PNG" and head:byte(20) == 480 % 256 and head:byte(24) == 32, "the oak plank's picture: 480 x 32 (24 rows of its top, 8 of its front)")
 end
 
+print("Reading stats in colour (the notebook page, the goals' bars; colour screens)")
+do
+    local BBm = require("ffi/blitbuffer")
+    local Device = require("device")
+    local was_screen, was_font = Device.screen, package.loaded["ui/font"]
+    Device.screen = { scaleBySize = function(_s, v) return v end }
+    package.loaded["ui/font"] = { getFace = function() return {} end }
+    package.loaded["gzreader_sticky"] = nil
+    local okS, Sticky = pcall(dofile, REPO .. "/plugins/gzreader.koplugin/gzreader_sticky.lua")
+    check(okS and Sticky.rotate, "gzreader_sticky loads " .. tostring(not okS and Sticky or ""))
+    if okS then
+        -- a colour page turned keeps its colour (it was always made grey)
+        local c = BBm.new(60, 40, BBm.TYPE_BBRGB32)
+        c:fill(BBm.COLOR_WHITE)
+        c:paintRectRGB32(10, 10, 40, 20, BBm.ColorRGB32(200, 30, 40, 0xFF))
+        local t = Sticky.rotate(c, -0.8)
+        local mid = t:getPixel(math.floor(t:getWidth() / 2), math.floor(t:getHeight() / 2)):getColorRGB32()
+        local corner = t:getPixel(0, 0):getColorRGB32()
+        check(t:getType() == BBm.TYPE_BBRGB32 and math.abs(mid.r - 200) <= 2 and math.abs(mid.g - 30) <= 2 and math.abs(mid.b - 40) <= 2
+            and corner.r == 255 and corner.g == 255 and corner.b == 255,
+            "a colour picture turned stays in colour (its middle red, outside white) " .. string.format("%d,%d,%d", mid.r, mid.g, mid.b))
+        local g = BBm.new(60, 40, BBm.TYPE_BB8)
+        g:fill(BBm.COLOR_WHITE)
+        g:paintRect(10, 10, 40, 20, BBm.Color8(60))
+        local tg = Sticky.rotate(g, -0.8)
+        check(tg:getType() == BBm.TYPE_BB8 and math.abs(tg:getPixel(math.floor(tg:getWidth() / 2), math.floor(tg:getHeight() / 2)):getColor8().a - 60) <= 2,
+            "a grey one as before")
+        c:free(); t:free(); g:free(); tg:free()
+    end
+    Device.screen, package.loaded["ui/font"] = was_screen, was_font
+    local W = REPO .. "/plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/"
+    local function read(p) local f = io.open(p, "rb"); local x = f and f:read("*a") or ""; if f then f:close() end; return x end
+    local st, rg = read(W .. "stats_triplet.lua"), read(W .. "reading_goals.lua")
+    check(st:find("col and Blitbuffer.TYPE_BBRGB32 or Blitbuffer.TYPE_BB8", 1, true) and st:find("col and col.margin", 1, true)
+        and st:find("col and col.line", 1, true) and st:find("col and col.tape", 1, true) and st:find("fgcolor = col and col.pen", 1, true)
+        and st:find("streak, th, col and col.pen", 1, true),
+        "the stats notebook on a colour screen: blue lines, a red margin, blue pen, yellow tape (greys elsewhere)")
+    check(rg:find("local col = goal_color(pct >= 1)", 1, true) and rg:find("bb:paintRectRGB32(rx, ry, rw, rh, col)", 1, true),
+        "reading goals' bars green on a colour screen (a deeper green when reached)")
+end
+
 print(string.format("\n%d passed, %d failed", pass, fail))
 os.exit(fail == 0 and 0 or 1)

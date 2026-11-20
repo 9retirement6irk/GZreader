@@ -60,6 +60,15 @@ local function paint_pill(bb, x, y, w, h, color)
     end
 end
 
+-- GZreader: a goal's bar on a colour screen (nil: the greys)
+local GOAL_COLORS = { going = "#51cf66", done = "#2b8a3e" }
+local function goal_color(done)
+    local ok, Colour = pcall(require, "gzreader_colour")
+    if not (ok and Colour and Colour.enabled() and Blitbuffer.ColorRGB32) then return nil end
+    local hex = done and GOAL_COLORS.done or GOAL_COLORS.going
+    return Blitbuffer.ColorRGB32(tonumber(hex:sub(2, 3), 16), tonumber(hex:sub(4, 5), 16), tonumber(hex:sub(6, 7), 16), 0xFF)
+end
+
 local function progress_bar(width, current, target, bar_h)
     local pct = 0
     if target > 0 then
@@ -80,7 +89,13 @@ local function progress_bar(width, current, target, bar_h)
         paintTo = function(_self, bb, x, y)
             paint_pill(bb, x, y, bar_w, bar_h, Blitbuffer.COLOR_LIGHT_GRAY)
             if fill_w > 0 then
-                paint_pill(bb, x, y, fill_w, bar_h, Blitbuffer.COLOR_GRAY_5)
+                -- GZreader: green on a colour screen (a goal reached: a deeper green)
+                local col = goal_color(pct >= 1)
+                if col then
+                    paint_pill({ paintRect = function(_b, rx, ry, rw, rh) bb:paintRectRGB32(rx, ry, rw, rh, col) end }, x, y, fill_w, bar_h)
+                else
+                    paint_pill(bb, x, y, fill_w, bar_h, Blitbuffer.COLOR_GRAY_5)
+                end
             end
         end,
     }
