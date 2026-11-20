@@ -2726,11 +2726,13 @@ end
 function DrawScreen:stampSticker(x, y)
     local Stickers = require("gzreader_stickers")
     local item = self.sticker
-    local url = item and Stickers.dataURL(item)
+    if not item then return self:pickSticker() end
+    local w, h = Stickers.size(item, self.sticker_size)
+    -- (drawn from its SVG at the size it goes down: sharp at any size)
+    local url = Stickers.dataURL(item, w, h)
     if not url then return self:pickSticker() end
     local sk = self.sketch
     local sx, sy = sk:toScene(x, y)
-    local w, h = Stickers.size(item, self.sticker_size)
     local el = sk:addPicture(url, "image/png", w, h, sx, sy)
     self:touched()
     Log.info("drawing: a sticker,", item.file)

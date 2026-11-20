@@ -68,18 +68,8 @@ function Grid:thumb(item, side)
     self.bbs = self.bbs or {}
     local key = item.file .. ":" .. side
     if self.bbs[key] == nil then
-        local bb
-        local path = Stickers.path(item)
-        if path then
-            local RenderImage = require("ui/renderimage")
-            local ok, img = pcall(RenderImage.renderImageFile, RenderImage, path, false)
-            if ok and img then
-                local iw, ih = img:getWidth(), img:getHeight()
-                local k = math.min(side / iw, side / ih, 3) -- (a small sticker shown bigger, to see what it is)
-                local nw, nh = math.max(1, math.floor(iw * k)), math.max(1, math.floor(ih * k))
-                bb = (nw ~= iw or nh ~= ih) and RenderImage:scaleBlitBuffer(img, nw, nh, true) or img
-            end
-        end
+        -- (drawn from its SVG, fitted into the square)
+        local bb = Stickers.render(item, side, side)
         self.bbs[key] = bb or false
     end
     return self.bbs[key] or nil

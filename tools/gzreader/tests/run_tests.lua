@@ -15113,17 +15113,18 @@ print("Stickers in drawings (gzreader_stickers.lua): the Memos fork's Kid Pix st
 
     -- the fork's list, checked
     local good = { version = 1, scale = 2, categories = {
-        { slug = "animals", name = "Animals", items = { { name = "Fox", file = "animals/0.png", width = 40, height = 30 },
-            { name = "Bad", file = "../../etc/passwd", width = 1, height = 1 }, { name = "Owl", file = "animals/2.png", width = 20, height = 25 } } },
-        { slug = "../x", name = "Nope", items = { { name = "a", file = "../x/0.png", width = 1, height = 1 } } },
+        { slug = "animals", name = "Animals", items = { { name = "Fox", file = "animals/0.svgz", width = 40, height = 30 },
+            { name = "Bad", file = "../../etc/passwd", width = 1, height = 1 }, { name = "Owl", file = "animals/2.svgz", width = 20, height = 25 } } },
+        { slug = "../x", name = "Nope", items = { { name = "a", file = "../x/0.svgz", width = 1, height = 1 } } },
     } }
     local idx = Stickers.parseIndex(good)
     local many = { version = 1, categories = { { slug = "lots", name = "Lots", items = {} } } }
-    for k = 1, 600 do many.categories[1].items[k] = { name = "x", file = "lots/" .. (k - 1) .. ".png", width = 1, height = 1 } end
+    for k = 1, 600 do many.categories[1].items[k] = { name = "x", file = "lots/" .. (k - 1) .. ".svgz", width = 1, height = 1 } end
     check(#Stickers.parseIndex(many).categories[1].items == Stickers.MAX_ITEMS, "stickers: a list naming too many stickers: only the first " .. Stickers.MAX_ITEMS .. " of a category")
-    check(idx and #idx.categories == 1 and #idx.categories[1].items == 2 and idx.categories[1].items[2].file == "animals/2.png"
+    check(idx and #idx.categories == 1 and #idx.categories[1].items == 2 and idx.categories[1].items[2].file == "animals/2.svgz"
+        and idx.categories[1].items[2].here == "animals/2.svg"
         and idx.categories[1].items[1].w == 40 and Stickers.parseIndex({ version = 2, categories = {} }) == nil and Stickers.parseIndex("x") == nil,
-        "stickers: the fork's list read; a file name that isn't <category>/<n>.png (or a strange category) left out")
+        "stickers: the fork's list read; a file name that isn't <category>/<n>.svgz (or a strange category) left out; kept unzipped as .svg")
     local saved_memos = plugin.store.memos
     plugin.store.memos = nil
     check(Stickers.server(plugin) == nil, "stickers: no Memos sign-in: no server to fetch them from")
@@ -15153,8 +15154,9 @@ print("Stickers in drawings (gzreader_stickers.lua): the Memos fork's Kid Pix st
     local before = #fetched()
     Stickers.fetchCategory(server, animals)
     check(#fetched() == before, "…and kept: opened again, nothing is fetched")
-    local f = io.open(Stickers.path(animals.items[2]), "rb"); local head = f:read(8); f:close()
-    check(head == "\137PNG\r\n\26\n", "…each a PNG")
+    local f = io.open(Stickers.path(animals.items[2]), "rb"); local svgtext = f:read("*a"); f:close()
+    check(Stickers.path(animals.items[2]):match("animals/1%.svg$") and svgtext:match("^<svg ") and svgtext:find("<circle", 1, true) ~= nil,
+        "…each a gzipped SVG, kept unzipped")
     -- a server that sends too much: the download stops, nothing kept
     local max_i, max_b = Stickers.MAX_INDEX_BYTES, Stickers.MAX_BYTES
     Stickers.MAX_INDEX_BYTES = 100
@@ -15165,7 +15167,7 @@ print("Stickers in drawings (gzreader_stickers.lua): the Memos fork's Kid Pix st
     local fn, fe = Stickers.fetchCategory(server, food)
     Stickers.MAX_BYTES = max_b
     local leftovers = 0
-    for name in lfs.dir(Stickers.dir() .. "/food") do if name:match("%.part$") or name:match("%.png$") then leftovers = leftovers + 1 end end
+    for name in lfs.dir(Stickers.dir() .. "/food") do if name:match("%.part$") or name:match("%.svg$") then leftovers = leftovers + 1 end end
     check(big == nil and berr == "too_big" and fn == 0 and fe == "too_big" and leftovers == 0 and Stickers.index() ~= nil,
         "stickers: a list or picture bigger than it may be: stopped, nothing of it kept (the list kept from before stays)")
     stop()
@@ -15177,8 +15179,19 @@ print("Stickers in drawings (gzreader_stickers.lua): the Memos fork's Kid Pix st
         "stickers: Small is the sticker's own size (as Kid Pix put it down), Medium and Large bigger")
     check(Stickers.number(animals.items[3]) == 2 and Stickers.find(kept, "animals", 2).name == "Blue Bunny" and Stickers.find(kept, "nope", 0) == nil,
         "stickers: one found again by its category and number (the one last used, kept)")
-    local url = Stickers.dataURL(animals.items[1])
-    check(url and url:find("^data:image/png;base64,iVBORw0KGgo") ~= nil, "stickers: its picture as the drawing keeps a picture (a PNG data URL)")
+    -- drawn from its SVG at the size it goes down (KOReader's SVG renderer, stood in for here)
+    local RI = package.loaded["ui/renderimage"]
+    local RI_asked
+    package.loaded["ui/renderimage"] = { renderSVGImageFile = function(_r, path, w, h)
+        return { asked = { path = path, w = w, h = h }, free = function() end,
+            writePNG = function(bb, out) RI_asked = bb.asked; local o = io.open(out, "wb"); o:write("\137PNG\r\n\26\nTEST"); o:close() end }
+    end }
+    local url = Stickers.dataURL(animals.items[1], 64, 48)
+    local big = Stickers.dataURL(animals.items[1], 2000, 1000)
+    local asked_big = RI_asked
+    check(url and url:find("^data:image/png;base64,iVBORw0KGg") ~= nil and asked_big and asked_big.w == Stickers.MAX_SIDE and asked_big.h == Stickers.MAX_SIDE / 2
+        and asked_big.path:match("animals/0%.svg$") and big ~= nil,
+        "stickers: drawn from its SVG at the size it's put down (2 pixels a unit, at most " .. Stickers.MAX_SIDE .. " a side), kept as a PNG data URL")
 
     -- the drawing screen: a tap with the Stickers tool
     local sk = Sketch.new{ canvas = { x = 0, y = 0, w = 1000, h = 1400 }, per_unit = 2 }
@@ -15194,6 +15207,7 @@ print("Stickers in drawings (gzreader_stickers.lua): the Memos fork's Kid Pix st
         and painted >= el.width * sk.per_unit,
         "drawing: a tap with the Stickers tool puts the sticker down there (Medium), only that part of the page drawn again")
     check(sk:undo() and #sk:movablePictures() == 0, "…Undo takes it off")
+    package.loaded["ui/renderimage"] = RI
     -- its panel
     local rows = DS.flyoutRows(fake, "sticker")
     local labels = {}

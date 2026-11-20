@@ -4,20 +4,22 @@ picked in gzreader_stickergrid.lua).
 
 The stickers are the Memos fork's: Kid Pix Deluxe 4's 935 stickers, which the
 fork draws from their Flash movies in its own drawing sheet. A Kindle can't read
-Flash, so the fork also serves them as PNG pictures (its
-web/scripts/render-kidpix-stickers.mjs):
+Flash, so the fork also serves them as SVG pictures, gzipped (its
+web/scripts/render-kidpix-stickers.mjs; swf.ts's svg()):
 
-    <memos>/kidpix/sticker-png/index.json
-        { version = 1, scale = 2, categories = { { slug, name, items = { { name, file, width, height } } } } }
-    <memos>/kidpix/sticker-png/<slug>/<n>.png   (twice the sticker's own size, 256 colours, a clear ground)
+    <memos>/kidpix/sticker-svg/index.json
+        { version = 1, categories = { { slug, name, items = { { name, file, width, height } } } } }
+    <memos>/kidpix/sticker-svg/<slug>/<n>.svgz   (the sticker's shapes, at its own size, a clear ground)
 
 They're public files of the web app (no sign-in). The list and a category's
-pictures are fetched the first time they're opened (over Wi-Fi) and kept in
-cache/gzreader-stickers/, so a category opened once works without Wi-Fi.
+pictures are fetched the first time they're opened (over Wi-Fi), unzipped and
+kept in cache/gzreader-stickers/ as <slug>/<n>.svg, so a category opened once
+works without Wi-Fi.
 
 A sticker goes on the page as a picture (Sketch:addPicture), as the fork's own
-Kid Pix mode puts its stickers into the drawing: Memos shows it, the lasso
-moves and sizes it, Undo takes it off.
+Kid Pix mode puts its stickers into the drawing: drawn from its SVG at the size
+it's put down (sharp at any size), kept in the drawing as a PNG. Memos shows it,
+the lasso moves and sizes it, Undo takes it off.
 ]]
 
 local DataStorage = require("datastorage")
@@ -27,8 +29,11 @@ local lfs = require("libs/libkoreader-lfs")
 local ltn12 = require("ltn12")
 
 local Stickers = {
-    PATH = "/kidpix/sticker-png/",
-    MAX_BYTES = 512 * 1024, -- (a sticker picture; the biggest is about 60 kB)
+    PATH = "/kidpix/sticker-svg/",
+    MAX_BYTES = 512 * 1024, -- (a sticker as fetched, gzipped; the biggest is about 60 kB)
+    MAX_SVG_BYTES = 4 * 1024 * 1024, -- (unzipped; the biggest is about 250 kB)
+    PX_PER_UNIT = 2, -- (a sticker put down: drawn at 2 pixels a drawing unit, as sharp as a Scribe shows it)
+    MAX_SIDE = 1600, -- (… and never more than this many pixels a side)
     MAX_INDEX_BYTES = 1024 * 1024, -- (the list; the fork's is about 100 kB)
     MAX_CATEGORIES = 100, -- (the fork has 42)
     MAX_ITEMS = 500, -- (in a category; the fork's biggest has about 60)
@@ -58,7 +63,7 @@ end
 local function safe(s) return type(s) == "string" and s:match("^[%w][%w%-_]*$") ~= nil end
 
 --- The fork's index.json, checked: { categories = { { slug, name, items = { { name, file, w, h } } } } } or nil.
---- (A file name must be "<slug>/<n>.png": nothing else is fetched or written.)
+--- (A file name must be "<slug>/<n>.svgz": nothing else is fetched or written.)
 function Stickers.parseIndex(data)
     if type(data) ~= "table" or tonumber(data.version) ~= 1 or type(data.categories) ~= "table" then return nil end
     local out = { scale = tonumber(data.scale) or 2, categories = {} }
@@ -70,8 +75,9 @@ function Stickers.parseIndex(data)
                 if n > Stickers.MAX_ITEMS then break end
                 local file = type(it) == "table" and it.file
                 local w, h = tonumber(type(it) == "table" and it.width), tonumber(type(it) == "table" and it.height)
-                if file == c.slug .. "/" .. (n - 1) .. ".png" and w and h and w > 0 and h > 0 then
-                    cat.items[#cat.items + 1] = { name = type(it.name) == "string" and it.name or "", file = file, w = w, h = h, slug = c.slug }
+                if file == c.slug .. "/" .. (n - 1) .. ".svgz" and w and h and w > 0 and h > 0 then
+                    cat.items[#cat.items + 1] = { name = type(it.name) == "string" and it.name or "", file = file,
+                        here = c.slug .. "/" .. (n - 1) .. ".svg", w = w, h = h, slug = c.slug }
                 end
             end
             if #cat.items > 0 then out.categories[#out.categories + 1] = cat end
@@ -90,9 +96,9 @@ function Stickers.index()
     return ok and Stickers.parseIndex(data) or nil
 end
 
---- A sticker's picture on the Kindle (its path), or nil when it isn't there yet.
+--- A sticker's picture on the Kindle (its SVG's path), or nil when it isn't there yet.
 function Stickers.path(item)
-    local p = Stickers.dir() .. "/" .. item.file
+    local p = Stickers.dir() .. "/" .. item.here
     return lfs.attributes(p, "mode") == "file" and p or nil
 end
 
@@ -115,7 +121,7 @@ local function get(url, sink, max)
         end
         return sink(chunk, err)
     end
-    local code = Api.rawRequest("GET", url, { headers = { Accept = "image/png, application/json" }, sink = capped,
+    local code = Api.rawRequest("GET", url, { headers = { Accept = "image/svg+xml, application/gzip, application/json" }, sink = capped,
         timeouts = { 10, 30 } })
     return code, over
 end
@@ -139,29 +145,34 @@ function Stickers.fetchIndex(server)
     return index
 end
 
---- Fetches the pictures of category `cat` that aren't on the Kindle yet:
---- how many it has now, and an error when some couldn't be fetched.
+--- Fetches the pictures of category `cat` that aren't on the Kindle yet
+--- (each gzipped SVG, unzipped and checked): how many it has now, and an
+--- error when some couldn't be fetched.
 function Stickers.fetchCategory(server, cat)
+    local Gzip = require("gzreader_gzip")
+    if not Gzip.available() then return Stickers.have(cat), "no_gzip" end
     local dir = Stickers.dir() .. "/" .. cat.slug
     if lfs.attributes(dir, "mode") ~= "directory" then lfs.mkdir(dir) end
     local err
     for _i, it in ipairs(cat.items) do
         if not Stickers.path(it) then
-            local path = Stickers.dir() .. "/" .. it.file
-            local part = path .. ".part"
-            local fh = io.open(part, "wb")
-            if not fh then err = "write"; break end
-            local code, over = get(server .. Stickers.PATH .. it.file, ltn12.sink.file(fh), Stickers.MAX_BYTES)
-            pcall(fh.close, fh) -- (stopped part way: the sink didn't close it)
-            local size = lfs.attributes(part, "size") or 0
-            local head
-            local rf = io.open(part, "rb")
-            if rf then head = rf:read(8); rf:close() end
-            if code == 200 and size > 0 and size <= Stickers.MAX_BYTES and head == "\137PNG\r\n\26\n" then
-                os.rename(part, path)
+            local parts = {}
+            local code, over = get(server .. Stickers.PATH .. it.file, ltn12.sink.table(parts), Stickers.MAX_BYTES)
+            local data = table.concat(parts)
+            local svg, zerr
+            if code == 200 and not over and data:sub(1, 2) == "\31\139" then
+                svg, zerr = Gzip.inflate(data, Stickers.MAX_SVG_BYTES)
+            end
+            if svg and svg:match("^%s*<svg[%s>]") then
+                local path = Stickers.dir() .. "/" .. it.here
+                local fh = io.open(path .. ".part", "wb")
+                if not fh then err = "write"; break end
+                fh:write(svg)
+                fh:close()
+                os.rename(path .. ".part", path)
             else
-                os.remove(part)
-                err = over and "too_big" or type(code) == "number" and ("http_" .. code) or "unreachable"
+                err = (over or zerr == "too big") and "too_big" or type(code) ~= "number" and "unreachable"
+                    or code ~= 200 and ("http_" .. code) or "not_svg"
                 if err == "unreachable" then break end
             end
         end
@@ -179,14 +190,36 @@ function Stickers.size(item, k)
     return item.w * f, item.h * f
 end
 
---- The sticker's picture as the drawing keeps it: a PNG data URL, or nil.
-function Stickers.dataURL(item)
+--- Sticker `item` drawn from its SVG `w` x `h` pixels (its shape kept,
+--- centred): a BlitBuffer (RGB with a clear ground), or nil.
+function Stickers.render(item, w, h)
     local p = Stickers.path(item)
-    local f = p and io.open(p, "rb")
-    if not f then return nil end
-    local data = f:read("*a")
-    f:close()
-    if not data or #data == 0 then return nil end
+    if not p then return nil end
+    local ok, bb = pcall(function()
+        return require("ui/renderimage"):renderSVGImageFile(p, math.max(1, math.floor(w + 0.5)), math.max(1, math.floor(h + 0.5)))
+    end)
+    if not ok or not bb then
+        Log.warn("stickers: couldn't draw", item.here, ok and "" or tostring(bb))
+        return nil
+    end
+    return bb
+end
+
+--- The sticker's picture as the drawing keeps it, for a sticker `w` x `h`
+--- drawing units: drawn from its SVG at that size (PX_PER_UNIT, at most
+--- MAX_SIDE a side), as a PNG data URL; or nil.
+function Stickers.dataURL(item, w, h)
+    local k = math.min(Stickers.PX_PER_UNIT, Stickers.MAX_SIDE / math.max(w, h))
+    local bb = Stickers.render(item, w * k, h * k)
+    if not bb then return nil end
+    local tmp = Stickers.dir() .. "/stamp.png"
+    local ok = pcall(bb.writePNG, bb, tmp)
+    bb:free()
+    local f = ok and io.open(tmp, "rb")
+    local data = f and f:read("*a")
+    if f then f:close() end
+    os.remove(tmp)
+    if not data or data:sub(1, 8) ~= "\137PNG\r\n\26\n" then return nil end
     return "data:image/png;base64," .. require("ffi/sha2").bin_to_base64(data)
 end
 
@@ -205,7 +238,7 @@ function Stickers.find(index, slug, n)
 end
 
 --- The number of a sticker in its category (0-based, as its file).
-function Stickers.number(item) return tonumber(item.file:match("/(%d+)%.png$")) end
+function Stickers.number(item) return tonumber(item.file:match("/(%d+)%.svgz$")) end
 
 --- Why fetching failed, in words.
 function Stickers.why(err)
@@ -213,6 +246,7 @@ function Stickers.why(err)
     if err == "no_server" then return _("Stickers come from your Memos server: sign in to Memos first (Settings → Accounts and services → Memos).") end
     if err == "no_stickers" then return _("Your Memos server has no stickers. They come with the Memos fork's Kid Pix stickers (sticker pictures from November 2026 on).") end
     if err == "unreachable" then return _("Couldn't reach your Memos server for the stickers.") end
+    if err == "no_gzip" then return _("This Kindle can't unpack the stickers (no zlib).") end
     return _("Couldn't fetch the stickers.") .. " (" .. tostring(err) .. ")"
 end
 
