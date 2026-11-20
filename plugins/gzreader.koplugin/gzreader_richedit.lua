@@ -1137,10 +1137,10 @@ end
 --- A toolbar button (`id`: heading, bullet, task, ordered, bold, italic, tag).
 function RichEdit:useTool(id)
     if id == "bold" then return self:toggleMark("b")
-    elseif id == "italic" then return self:toggleMark("i")
     elseif id == "block" then
         if self.editor and self.editor.blockMenu then return self.editor:blockMenu() end
         return
+    elseif id == "italic" then return self:toggleMark("i")
     elseif id == "tag" then
         if self.editor and self.editor.pickTag then return self.editor:pickTag() end
         return

@@ -392,6 +392,45 @@ do
     pd:onPanReleaseEdit(nil, {})
 end
 
+-- ------------------------------------------------------------ Memos' block menu ("/", the bar's +)
+do
+    local r = editor("Plan", false)
+    local asked = {}
+    r.editor.blockMenu = function(_e, o) asked[#asked + 1] = o or {} end
+    check(RE.BAR[#RE.BAR].id == "block" and RE.BAR[#RE.BAR].label == "+", "the selection bar ends with + (a block)")
+    r:useTool("block")
+    check(#asked == 1 and not asked[1].slash, "+: the note editor's block menu")
+    -- "/" on a line with words: just a /
+    r:addChars("/")
+    for _i, fn in ipairs(ticks) do fn() end
+    ticks = {}
+    check(#asked == 1 and text(r) == "Plan/", "a / after words is just a /")
+    r:delChar()
+    -- "/" on an empty line: the menu, as in Memos
+    r:addChars("\n")
+    r:addChars("/")
+    for _i, fn in ipairs(ticks) do fn() end
+    ticks = {}
+    check(#asked == 2 and asked[2].slash == true, "/ on an empty line: the block menu")
+    r:addBlock("quote", nil, true)
+    r:addChars("Less is more")
+    check(text(r) == "Plan\n\n> Less is more" and kinds(r) == "paragraph,raw",
+        "Quote chosen: the / taken out, a quote typed into (" .. show(text(r)) .. ")")
+    -- a heading on the cursor's line; a callout after it
+    r.cur = at(r, 1, 3)
+    r:addBlock("h4")
+    check(block(r, 1).kind == "heading" and block(r, 1).level == 4, "Heading 4 on the cursor's line")
+    r:addBlock("callout", "NOTE")
+    r:addChars("Read later")
+    check(text(r) == "#### Plan\n\n> [!NOTE]\n> Read later\n\n> Less is more", "Callout after it: > [!NOTE] (" .. show(text(r)) .. ")")
+    -- closed without choosing: the / stays
+    local r2 = editor("", true)
+    r2.editor.blockMenu = function() end
+    r2:addChars("/")
+    ticks = {}
+    check(text(r2) == "/", "the menu closed without a choice: the / stays, as in Memos")
+end
+
 -- ------------------------------------------------------------ a long note scrolls
 do
     local parts = {}
@@ -675,45 +714,6 @@ do
     check(text(r2) == "one\n\ntwo", "Delete the section: with what's in it (" .. show(text(r2)) .. ")")
     UIM.show = real_show
     package.loaded["ui/widget/buttondialog"] = nil
-end
-
--- ------------------------------------------------------------ Memos' block menu ("/", the bar's +)
-do
-    local r = editor("Plan", false)
-    local asked = {}
-    r.editor.blockMenu = function(_e, o) asked[#asked + 1] = o or {} end
-    check(RE.BAR[#RE.BAR].id == "block" and RE.BAR[#RE.BAR].label == "+", "the selection bar ends with + (a block)")
-    r:useTool("block")
-    check(#asked == 1 and not asked[1].slash, "+: the note editor's block menu")
-    -- "/" on a line with words: just a /
-    r:addChars("/")
-    for _i, fn in ipairs(ticks) do fn() end
-    ticks = {}
-    check(#asked == 1 and text(r) == "Plan/", "a / after words is just a /")
-    r:delChar()
-    -- "/" on an empty line: the menu, as in Memos
-    r:addChars("\n")
-    r:addChars("/")
-    for _i, fn in ipairs(ticks) do fn() end
-    ticks = {}
-    check(#asked == 2 and asked[2].slash == true, "/ on an empty line: the block menu")
-    r:addBlock("quote", nil, true)
-    r:addChars("Less is more")
-    check(text(r) == "Plan\n\n> Less is more" and kinds(r) == "paragraph,raw",
-        "Quote chosen: the / taken out, a quote typed into (" .. show(text(r)) .. ")")
-    -- a heading on the cursor's line; a callout after it
-    r.cur = at(r, 1, 3)
-    r:addBlock("h4")
-    check(block(r, 1).kind == "heading" and block(r, 1).level == 4, "Heading 4 on the cursor's line")
-    r:addBlock("callout", "NOTE")
-    r:addChars("Read later")
-    check(text(r) == "#### Plan\n\n> [!NOTE]\n> Read later\n\n> Less is more", "Callout after it: > [!NOTE] (" .. show(text(r)) .. ")")
-    -- closed without choosing: the / stays
-    local r2 = editor("", true)
-    r2.editor.blockMenu = function() end
-    r2:addChars("/")
-    ticks = {}
-    check(text(r2) == "/", "the menu closed without a choice: the / stays, as in Memos")
 end
 
 print(("richedit: %d passed, %d failed"):format(pass, fail))

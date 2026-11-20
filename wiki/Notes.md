@@ -164,7 +164,6 @@ API to `/api` are found too.
     - **•**, **☐** and **1.** make the lines a list, a checklist or a numbered
       list; tap the same one again to make them text.
     - **#** adds a tag at the cursor.
-    - **+** adds a block (below).
     The button in use is black. The bar stays for another button; a tap on
     the text, or typing, puts it away. (It sits above the selection, or
     under it on the first line, where it covers the next line until it goes.)
