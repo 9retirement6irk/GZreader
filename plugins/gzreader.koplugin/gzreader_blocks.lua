@@ -121,12 +121,10 @@ Blocks.markset = markset
 local function colorSpanAt(s)
     local tag = s:match("^<span%s+[^<>]*>")
     if not tag then return nil end
-    -- (data-gz-color / data-gz-mark: the names a few test builds wrote; written back as the new ones)
-    local fg = tag:match('%sdata%-color="([%w%-]+)"') or tag:match('%sdata%-gz%-color="([%w%-]+)"')
-    local hl = tag:match('%sdata%-highlight="([%w%-]+)"') or tag:match('%sdata%-gz%-mark="([%w%-]+)"')
+    local fg = tag:match('%sdata%-color="([%w%-]+)"')
+    local hl = tag:match('%sdata%-highlight="([%w%-]+)"')
     -- (only a colour span: nothing else in it)
     local rest = tag:gsub('%sdata%-color="[%w%-]+"', ""):gsub('%sdata%-highlight="[%w%-]+"', "")
-        :gsub('%sdata%-gz%-color="[%w%-]+"', ""):gsub('%sdata%-gz%-mark="[%w%-]+"', "")
     if not (fg or hl) or not rest:match("^<span%s*>$") then return nil end
     fg, hl = TEXT_COLOR[fg or ""] and fg or nil, MARK_COLOR[hl or ""] and hl or nil
     if not (fg or hl) then return nil end -- (a colour we don't know: left as it is)

@@ -334,13 +334,6 @@ print("== colours (a colour screen's A: data-color / data-highlight spans)")
     Blocks.setColorRange(d2, { b = b2, i = 1 }, { b = b2, i = #b2.chars + 1 }, "hl", nil)
     Blocks.setColor(b2, "fg", nil, 1, #b2.chars)
     eq(Blocks.write(d2), "one **twos** three", "…and no colours again: plain Markdown")
-    -- the names a few test builds wrote: read, and written back as the new ones
-    local old = Blocks.parse('a <span data-gz-color="red">b</span> <span data-gz-mark="pink">c</span>')
-    local ob = old.blocks[1]
-    check(ob.marks[3] and ob.marks[3].fg == "red" and ob.marks[5] and ob.marks[5].hl == "pink" and Blocks.textOf(ob) == "a b c",
-        "data-gz-color / data-gz-mark from a test build: read as colours")
-    Blocks.insert(ob, 6, "!")
-    eq(Blocks.write(old), 'a <span data-color="red">b</span> <span data-highlight="pink">c!</span>', "…and written as data-color / data-highlight once the line changes")
     local back = Blocks.parse(Blocks.write(Blocks.parse('x\n<span data-color="red">y</span>')))
     check(#back.blocks >= 1, "a coloured second line reads back")
     local html = Blocks.html(doc.blocks[1])
