@@ -441,6 +441,12 @@ class H(BaseHTTPRequestHandler):
         q = {k: v[0] for k, v in parse_qs(u.query).items()}
         if p == "/auth/me":
             return self.send(200, {"user": {"name": "users/1", "username": "will", "displayName": "Will", "role": "HOST"}})
+        if p == "/users/1/settings/TAGS":
+            # Memos' Settings → Tags: a tag name or pattern and its label's colour (google.type.Color)
+            return self.send(200, {"name": "users/1/settings/TAGS", "tagsSetting": {"tags": {
+                "kindle": {"backgroundColor": {"red": 0.098, "green": 0.443, "blue": 0.761}},
+                "project/.*": {"backgroundColor": {"red": 0.184, "green": 0.62, "blue": 0.267}},
+                "secret": {"blurContent": True}}}})
         if p == "/users/1:getStats":
             counts = {}
             for m in STATE["memos"]:
