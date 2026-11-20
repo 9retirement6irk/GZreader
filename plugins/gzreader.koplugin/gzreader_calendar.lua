@@ -208,7 +208,23 @@ end
 
 -- Calendars told apart by shade (e-ink): black, dark gray, gray, light.
 local SHADES = { 1.0, 0.7, 0.45, 0.25 }
+-- On a colour screen, by colour: each calendar's own (CalDAV's calendar-color, a link's
+-- X-APPLE-CALENDAR-COLOR), else these in turn; holidays in red.
+Calendar.COLORS = { "#1971c2", "#2f9e44", "#f08c00", "#7048e8", "#0c8599", "#d6336c" }
+Calendar.HOLIDAY_COLOR = "#e03131"
+--- The colour ("#rrggbb") of the calendar an event is in.
+function Calendar.colorOf(plugin, ev)
+    local cal = plugin and Calendar.calendars(plugin)[ev.cal or 0]
+    if cal and cal.kind == "holidays" then return Calendar.HOLIDAY_COLOR end
+    local own = cal and type(cal.ref) == "table" and CalDAV.color(cal.ref.color)
+    return own or Calendar.COLORS[((ev.cal or 1) - 1) % #Calendar.COLORS + 1]
+end
 local function shade(ev)
+    if require("gzreader_colour").enabled() then
+        local hex = Calendar.colorOf(Calendar.plugin, ev)
+        local r, g, b = hex:match("^#(%x%x)(%x%x)(%x%x)$")
+        return Blitbuffer.ColorRGB32(tonumber(r, 16), tonumber(g, 16), tonumber(b, 16), 0xFF)
+    end
     return Blitbuffer.gray(SHADES[((ev.cal or 1) - 1) % #SHADES + 1])
 end
 
@@ -246,7 +262,8 @@ function Calendar.refresh(plugin, on_done)
         local renamed = false
         for _i, n in ipairs(res.names or {}) do
             local f = feeds[tonumber(n.index) or 0]
-            if f and f.own_name ~= n.name then f.own_name = n.name; renamed = true end
+            if f and n.name and f.own_name ~= n.name then f.own_name = n.name; renamed = true end
+            if f and n.color and f.color ~= n.color then f.color = n.color; renamed = true end
         end
         if renamed then plugin:save() end
         Calendar.events = res.events or {}
@@ -319,7 +336,11 @@ end
 --- A line (horizontal or vertical) of a shade.
 local Line = WidgetContainer:extend{ w = 1, h = 1, color = nil }
 function Line:getSize() return Geom:new{ w = self.w, h = self.h } end
-function Line:paintTo(bb, x, y) bb:paintRect(x, y, self.w, self.h, self.color or Blitbuffer.COLOR_DARK_GRAY) end
+function Line:paintTo(bb, x, y)
+    local c = self.color or Blitbuffer.COLOR_DARK_GRAY
+    -- (a calendar's colour, on a colour screen)
+    if self.rgb then bb:paintRectRGB32(x, y, self.w, self.h, c) else bb:paintRect(x, y, self.w, self.h, c) end
+end
 
 --- `self[1]` with a thick frame when the 5-way is on it.
 local Outline = WidgetContainer:extend{ w = 0, h = 0, on = false }
@@ -365,7 +386,7 @@ end
 --- (A Line, whose size is its own: a FrameContainer's height only paints, so a
 --- row centring it centred a 1-pixel widget and the bar hung below the title.)
 local function marker(ev, h)
-    return Line:new{ w = S(3), h = h, color = shade(ev) }
+    return Line:new{ w = S(3), h = h, color = shade(ev), rgb = require("gzreader_colour").enabled() or nil }
 end
 Calendar.marker = marker
 

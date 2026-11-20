@@ -11113,8 +11113,23 @@ print("Calendar tab")
     check(#lines == 2 and lines[2].name == "Work" and lines[2].url == "webcal://x.example/w.ics", "pasted lines: one link each, optional name")
     local from = os.time{ year = 2026, month = 10, day = 20, hour = 0 }
     local to = os.time{ year = 2026, month = 12, day = 31, hour = 0 }
+    -- (the link gives its colour, as Apple's calendars do: "#RRGGBBAA")
+    local icsPath = WORK .. "/feeds/api/calendar/v1/url/abc123/calendar.ics"
+    local icsF = io.open(icsPath, "rb"); local ics = icsF:read("*a"); icsF:close()
+    ics = ics:gsub("(\nX%-WR%-CALNAME[^\r\n]*\r?\n)", "%1X-APPLE-CALENDAR-COLOR:#FF2968FF\r\n", 1)
+    icsF = io.open(icsPath, "wb"); icsF:write(ics); icsF:close()
     local feed = CalDAV.fetchFeed(link, from, to)
     check(feed and feed.name == "Family" and feed.count == 6, "a calendar link fetched: its name and events")
+    check(feed and feed.color == "#ff2968" and CalDAV.color("#1971C2") == "#1971c2" and CalDAV.color("blue") == nil and CalDAV.color(nil) == nil,
+        "a calendar's colour: the link's X-APPLE-CALENDAR-COLOR (#RRGGBBAA) as #rrggbb")
+    -- each calendar's colour on a colour screen: its own, else the list's in turn; holidays red
+    do
+        local fakeP = { store = { caldav = { calendars = { { name = "Work", color = "#0B8043FF" }, { name = "Home" } } },
+            calendar_feeds = { { url = "https://cal.example.com/f.ics", color = "#ff2968" } } } }
+        check(Cal.colorOf(fakeP, { cal = 1 }) == "#0b8043" and Cal.colorOf(fakeP, { cal = 2 }) == Cal.COLORS[2]
+            and Cal.colorOf(fakeP, { cal = 3 }) == "#ff2968" and Cal.colorOf(nil, { cal = 1 }) == Cal.COLORS[1],
+            "a colour screen: each event's bar in its calendar's colour (CalDAV's, a link's), else one of six in turn")
+    end
     local by = {}
     for _i, ev in ipairs(feed and feed.events or {}) do by[ev.title] = by[ev.title] or {}; table.insert(by[ev.title], ev) end
     local b1, b2 = by["Call with Berlin office"], by["Call with Berlin office (after the US change)"]
