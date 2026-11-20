@@ -240,7 +240,10 @@ API to `/api` are found too.
 - **Spaces** (Memos v0.31 and newer): beside who can see the note, the editor
   shows its **space** (tap it, Alt+A, or on a Kindle 4 Menu → ◀ ▶ to it).
   Choose **No space** or one of the spaces you're a member of. A new note
-  starts in the space the board is showing (Filter → Space…). In a space,
+  starts in the space the board is showing (Filter → Space…), otherwise in
+  your **default space** (Settings → Accounts and services → Notes →
+  **Default space**; none at first). Journal entries keep going to the journal
+  space set in Memos' journal settings. In a space,
   who can see it also offers **Space members** (only that space's members);
   taking a note out of its space turns Space members into Private, as Memos
   does. The note's page says which space it's in. With an older Memos (no
@@ -621,6 +624,9 @@ API to `/api` are found too.
   **Sync** all notes or only notes with chosen tags (Memos has no notebooks,
   so tags are the way to pick, and Filter → Space… for spaces; the list comes from Memos' tag
   counts, `users/<id>:getStats`, and the filter is `tag in [...]`);
+  **Default space** (when your Memos has spaces): where a new note starts
+  when the board shows no space (**No space** or one of yours; journal entries
+  use Memos' journal space);
   **Storage used** with *Free up space* (downloaded attachments, kept
   notes); **Notes kept on the Kindle** (50–500, fetched a page at a time);
   **Attachment storage limit** (10–100 MB or none; the attachments used

@@ -198,6 +198,27 @@ function NoteSettings.storageItems(plugin)
     }
 end
 
+--- Settings → Notes → Default space: none, or one of your spaces.
+function NoteSettings.spaceItems(plugin)
+    local Notes = require("gzreader_notes")
+    local store = plugin.store.memos or {}
+    local function choose(name)
+        store.default_space = name
+        plugin:save()
+        Log.info("notes: default space", name and "set" or "none")
+    end
+    local items = {
+        { text = _("No space"), radio = true, checked_func = function() return Notes.defaultSpace(plugin) == nil end,
+            callback = function() choose(nil) end, separator = true },
+    }
+    for _i, sp in ipairs(Notes.spaces(plugin) or {}) do
+        items[#items + 1] = { text = sp.title or sp.name, radio = true,
+            checked_func = function() return Notes.defaultSpace(plugin) == sp.name end,
+            callback = function() choose(sp.name) end }
+    end
+    return items
+end
+
 function NoteSettings.items(plugin)
     local rows = NoteSettings._items(plugin)
     local out = {}
@@ -321,6 +342,15 @@ function NoteSettings._items(plugin)
             sub_item_table_func = function() return NoteSettings.syncItems(plugin) end,
             separator = true,
         }),
+        -- (with spaces in Memos v0.31: where a new note starts; journal entries keep Memos' journal space)
+        Notes.spaces(plugin) and icon("folder", {
+            text_func = function()
+                return T(_("Default space: %1"), Notes.spaceTitle(plugin, Notes.defaultSpace(plugin)) or _("none"))
+            end,
+            help_text = _("The space a new note starts in (you can still choose another in the editor). While the Notes tab shows a space, a new note starts in that one. Journal entries go to the journal space set in Memos' journal settings."),
+            enabled_func = connected,
+            sub_item_table_func = function() return NoteSettings.spaceItems(plugin) end,
+        }) or false,
         icon("view_mosaic", {
             text_func = function() return T(_("Layout: %1"), Notes.viewLabel(Notes.view(plugin))) end,
             help_text = _("How the Notes tab shows your notes: in a list or side by side (Auto: as many as fit the screen), and all the same size (Compact: a long note is cut off; open it to read it all) or whole (Full: as long as each note needs), and full screen (no tab bar). Also Layout in the Notes tab (or L)."),
