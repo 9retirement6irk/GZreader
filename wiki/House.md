@@ -65,12 +65,20 @@ What tapping (or the device's letter key) does:
 - **Dimmable light**: a dimmer with **On**, **Off**, **− 10%** / **+ 10%**
   (it stays open for another step) and **10% / 40% / 80% / 100%**. Steps
   instead of a slider: each press is one change and one screen refresh.
-- **Thermostat**: the temperature now and the target, a step down or up.
+  A bulb that takes a colour also has **Warm, Red, Orange, Yellow, Green,
+  Blue, Purple, Pink** (● marks the one it has).
+- **Thermostat**: the temperature now and the target, a step down or up, and
+  its modes: **Heat**, **Cool**, **Heat · cool**, **Auto**, **Off**, the ones
+  it has (● marks the one it's in).
 - **Lock**: unlocks (asks first) or locks.
 - **Garage door, gate**: opens (asks first) or closes; blinds open and close
   without asking.
 - **Scene, script**: runs it.
 - **Sensors**: show their value only.
+
+On a colour Kindle (Colorsoft, Scribe Colorsoft) a light that's on shows its
+bulb in its colour (warm yellow when it has none of its own), and a
+thermostat's icon is orange while it heats and blue while it cools.
 
 **Refresh** (the first row) fetches everything again. The list also refreshes
 every 30 seconds while the tab is on the screen, and Wi‑Fi stays on while it's
