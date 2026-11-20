@@ -1561,7 +1561,7 @@ function RichEdit:paintTo(bb, x, y)
                         local x1 = l.xs[c - l.a + 1]
                         local x2 = l.xs[j - l.a + 1]
                         local color = st.color or Blitbuffer.COLOR_BLACK
-                        -- colours (Blocks: data-gz-color / data-gz-mark): a highlight is a marker's band
+                        -- colours (Blocks: data-color / data-highlight): a highlight is a marker's band
                         -- over the lower part of the line, under the words; a text colour, on a colour screen
                         if m and m.hl then
                             local band = math.floor(l.h * 0.55)

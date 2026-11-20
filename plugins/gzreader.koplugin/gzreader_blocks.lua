@@ -30,8 +30,8 @@ Colours (a colour screen's formatting bar): Markdown has none, so they're
 written as Memos' raw HTML allows them, a span with data attributes (Memos
 keeps `data-*` on a span, and the GZreader fork of Memos colours them):
 
-    <span data-gz-color="red">words</span>
-    <span data-gz-mark="yellow">words</span>     (a highlight)
+    <span data-color="red">words</span>
+    <span data-highlight="yellow">words</span> (a highlight)
 
 outside any ** … ** or link, one span per stretch of the same colours. Only
 these are read as colours; any other HTML is left as it is.
@@ -81,7 +81,7 @@ end
 
 -- ------------------------------------------------------------ inline: read
 
---- The text colours (data-gz-color) and highlight colours (data-gz-mark),
+--- The text colours (data-color) and highlight colours (data-highlight),
 --- by id, with the colour each is shown in: the drawing pen's and
 --- highlighter's (gzreader_sketch.lua), so a note's words and its drawings
 --- match.
@@ -121,10 +121,12 @@ Blocks.markset = markset
 local function colorSpanAt(s)
     local tag = s:match("^<span%s+[^<>]*>")
     if not tag then return nil end
-    local fg = tag:match('%sdata%-gz%-color="([%w%-]+)"')
-    local hl = tag:match('%sdata%-gz%-mark="([%w%-]+)"')
-    -- (only ours: nothing else in it)
-    local rest = tag:gsub('%sdata%-gz%-color="[%w%-]+"', ""):gsub('%sdata%-gz%-mark="[%w%-]+"', "")
+    -- (data-gz-color / data-gz-mark: the names a few test builds wrote; written back as the new ones)
+    local fg = tag:match('%sdata%-color="([%w%-]+)"') or tag:match('%sdata%-gz%-color="([%w%-]+)"')
+    local hl = tag:match('%sdata%-highlight="([%w%-]+)"') or tag:match('%sdata%-gz%-mark="([%w%-]+)"')
+    -- (only a colour span: nothing else in it)
+    local rest = tag:gsub('%sdata%-color="[%w%-]+"', ""):gsub('%sdata%-highlight="[%w%-]+"', "")
+        :gsub('%sdata%-gz%-color="[%w%-]+"', ""):gsub('%sdata%-gz%-mark="[%w%-]+"', "")
     if not (fg or hl) or not rest:match("^<span%s*>$") then return nil end
     fg, hl = TEXT_COLOR[fg or ""] and fg or nil, MARK_COLOR[hl or ""] and hl or nil
     if not (fg or hl) then return nil end -- (a colour we don't know: left as it is)
@@ -477,7 +479,7 @@ function Blocks.writeInline(chars, marks)
             local ends = k > #chars or chars[k] == "\n"
             local text = writePlain(sc, sm, not starts, not ends)
             if fg or hl then
-                out[#out + 1] = "<span" .. (fg and (' data-gz-color="' .. fg .. '"') or "") .. (hl and (' data-gz-mark="' .. hl .. '"') or "") .. ">"
+                out[#out + 1] = "<span" .. (fg and (' data-color="' .. fg .. '"') or "") .. (hl and (' data-highlight="' .. hl .. '"') or "") .. ">"
                     .. text .. "</span>"
             else
                 out[#out + 1] = text

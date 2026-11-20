@@ -699,10 +699,10 @@ do
     local r = editor("Red word here")
     r.cur = at(r, 1, 2)
     r:setColor("fg", "red")
-    check(text(r):find('<span data-gz-color="red">Red</span> word here', 1, true) ~= nil, "text colour: the word at the cursor … " .. text(r))
+    check(text(r):find('<span data-color="red">Red</span> word here', 1, true) ~= nil, "text colour: the word at the cursor … " .. text(r))
     select(r, at(r, 1, 5), at(r, 1, 9))
     r:setColor("hl", "yellow")
-    check(text(r):find('<span data-gz-mark="yellow">word</span>', 1, true) ~= nil, "highlight: the selection … " .. text(r))
+    check(text(r):find('<span data-highlight="yellow">word</span>', 1, true) ~= nil, "highlight: the selection … " .. text(r))
 end
 
 print(("richedit: %d passed, %d failed"):format(pass, fail))
