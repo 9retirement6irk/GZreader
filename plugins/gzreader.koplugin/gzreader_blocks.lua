@@ -23,7 +23,18 @@ section ("start" / "end": a raw block that starts or ends a <details>
 section; a start's `folded`, how the editor shows it, from `open`),
 marker, chars = { utf-8 characters }, marks = { per character: a mark set
 or false }, src (its Markdown as read), sep (what came before it), dirty }.
-A mark set: { b, i, s, c (code), link = url } (shared, never changed).
+A mark set: { b, i, s, c (code), link = url, fg = a text colour's id,
+hl = a highlight colour's id } (shared, never changed).
+
+Colours (a colour screen's formatting bar): Markdown has none, so they're
+written as Memos' raw HTML allows them, a span with data attributes (Memos
+keeps `data-*` on a span, and the GZreader fork of Memos colours them):
+
+    <span data-gz-color="red">words</span>
+    <span data-gz-mark="yellow">words</span>     (a highlight)
+
+outside any ** … ** or link, one span per stretch of the same colours. Only
+these are read as colours; any other HTML is left as it is.
 ]]
 
 local Blocks = {}
@@ -70,19 +81,55 @@ end
 
 -- ------------------------------------------------------------ inline: read
 
+--- The text colours (data-gz-color) and highlight colours (data-gz-mark),
+--- by id, with the colour each is shown in: the drawing pen's and
+--- highlighter's (gzreader_sketch.lua), so a note's words and its drawings
+--- match.
+Blocks.TEXT_COLORS = {
+    { id = "gray", hex = "#868e96" }, { id = "red", hex = "#e03131" }, { id = "orange", hex = "#f08c00" },
+    { id = "yellow", hex = "#e0b400" }, { id = "green", hex = "#2f9e44" }, { id = "aqua", hex = "#0c8599" },
+    { id = "blue", hex = "#1971c2" }, { id = "purple", hex = "#7048e8" }, { id = "pink", hex = "#d6336c" },
+}
+Blocks.MARK_COLORS = {
+    { id = "yellow", hex = "#ffd43b" }, { id = "green", hex = "#8ce99a" }, { id = "blue", hex = "#74c0fc" },
+    { id = "pink", hex = "#f783ac" }, { id = "orange", hex = "#ffa94d" },
+}
+local TEXT_COLOR, MARK_COLOR = {}, {}
+for _i, c in ipairs(Blocks.TEXT_COLORS) do TEXT_COLOR[c.id] = c.hex end
+for _i, c in ipairs(Blocks.MARK_COLORS) do MARK_COLOR[c.id] = c.hex end
+--- A colour id's "#rrggbb" (`kind`: "fg" or "hl"), or nil.
+function Blocks.colorHex(kind, id) return (kind == "hl" and MARK_COLOR or TEXT_COLOR)[id or ""] end
+
 local MARKSETS = {}
 --- The shared mark set for these marks (false: none).
-local function markset(b, i, s, c, link)
-    if not (b or i or s or c or link) then return false end
+local function markset(b, i, s, c, link, fg, hl)
+    fg = TEXT_COLOR[fg or ""] and fg or nil
+    hl = MARK_COLOR[hl or ""] and hl or nil
+    if not (b or i or s or c or link or fg or hl) then return false end
     local key = (b and "b" or "") .. (i and "i" or "") .. (s and "s" or "") .. (c and "c" or "") .. "|" .. (link or "")
+        .. "|" .. (fg or "") .. "|" .. (hl or "")
     local m = MARKSETS[key]
     if not m then
-        m = { b = b or nil, i = i or nil, s = s or nil, c = c or nil, link = link }
+        m = { b = b or nil, i = i or nil, s = s or nil, c = c or nil, link = link, fg = fg, hl = hl }
         MARKSETS[key] = m
     end
     return m
 end
 Blocks.markset = markset
+
+--- A colour span's opening tag at the start of `s`: its length, text colour and highlight (nil: not one).
+local function colorSpanAt(s)
+    local tag = s:match("^<span%s+[^<>]*>")
+    if not tag then return nil end
+    local fg = tag:match('%sdata%-gz%-color="([%w%-]+)"')
+    local hl = tag:match('%sdata%-gz%-mark="([%w%-]+)"')
+    -- (only ours: nothing else in it)
+    local rest = tag:gsub('%sdata%-gz%-color="[%w%-]+"', ""):gsub('%sdata%-gz%-mark="[%w%-]+"', "")
+    if not (fg or hl) or not rest:match("^<span%s*>$") then return nil end
+    fg, hl = TEXT_COLOR[fg or ""] and fg or nil, MARK_COLOR[hl or ""] and hl or nil
+    if not (fg or hl) then return nil end -- (a colour we don't know: left as it is)
+    return #tag, fg, hl
+end
 
 local PUNCT = "%p" -- (ASCII punctuation: what a backslash can escape)
 local opensOrCloses
@@ -117,11 +164,12 @@ end
 function Blocks.readInline(s)
     s = tostring(s or "")
     local chars, marks = {}, {}
-    local st = { b = false, i = false, s = false, link = nil }
+    local st = { b = false, i = false, s = false, link = nil, fg = nil, hl = nil }
     local stack_link = {}
+    local spans = {} -- the colour spans open (and other spans, kept as text: false)
     local function put(ch, code)
         chars[#chars + 1] = ch
-        marks[#marks + 1] = markset(st.b, st.i, st.s, code, st.link)
+        marks[#marks + 1] = markset(st.b, st.i, st.s, code, st.link, st.fg, st.hl)
     end
     local pos, n = 1, #s
     while pos <= n do
@@ -165,13 +213,32 @@ function Blocks.readInline(s)
                 for k, ch in ipairs(inner_c) do
                     local im = inner_m[k] or {}
                     chars[#chars + 1] = ch
-                    marks[#marks + 1] = markset(st.b or im.b, st.i or im.i, st.s or im.s, im.c, url)
+                    marks[#marks + 1] = markset(st.b or im.b, st.i or im.i, st.s or im.s, im.c, url, im.fg or st.fg, im.hl or st.hl)
                 end
                 st.link = table.remove(stack_link)
                 pos = j + #s:match("^%([^%)]*%)", j)
             else
                 put("["); pos = pos + 1
             end
+        elseif c == "<" and colorSpanAt(s:sub(pos, pos + 120)) then
+            local len, fg, hl = colorSpanAt(s:sub(pos, pos + 120))
+            spans[#spans + 1] = { fg = st.fg, hl = st.hl }
+            st.fg, st.hl = fg or st.fg, hl or st.hl
+            pos = pos + len
+        elseif c == "<" and s:sub(pos, pos + 6) == "</span>" and #spans > 0 and spans[#spans] then
+            local was = table.remove(spans)
+            st.fg, st.hl = was.fg, was.hl
+            pos = pos + 7
+        elseif c == "<" and s:match("^<span[%s>]", pos) then
+            -- (someone else's span: kept as it is, its end too)
+            spans[#spans + 1] = false
+            local tag = s:match("^<span[^>]*>", pos) or "<"
+            for _i, ch in ipairs(Blocks.chars(tag)) do put(ch) end
+            pos = pos + #tag
+        elseif c == "<" and s:sub(pos, pos + 6) == "</span>" and #spans > 0 then
+            table.remove(spans)
+            for _i, ch in ipairs(Blocks.chars("</span>")) do put(ch) end
+            pos = pos + 7
         elseif c == "<" and s:match("^<(%a[%w+.-]*:[^%s<>]*)>", pos) then
             local url = s:match("^<(%a[%w+.-]*:[^%s<>]*)>", pos)
             local was = st.link
@@ -260,8 +327,9 @@ end
 local MARK_ORDER = { "b", "i", "s" }
 local OPEN = { b = "**", i = "*", s = "~~" }
 
---- Characters and marks as Memos Markdown (inline: no block marker).
-function Blocks.writeInline(chars, marks)
+--- Characters and marks as Memos Markdown (inline: no block marker), colours aside.
+--- `mid_start` / `mid_end`: this stretch doesn't start / end the line (a colour span's edge).
+local function writePlain(chars, marks, mid_start, mid_end)
     marks = marks or {}
     -- a space takes only the emphasis both its neighbours have (spaces at a
     -- marked stretch's ends go outside its ** … **, as Markdown wants)
@@ -276,7 +344,7 @@ function Blocks.writeInline(chars, marks)
         if (ch == " " or ch == "\n") and m and not m.c then
             local p, q = nonspace(k, -1) or false, nonspace(k, 1) or false
             local function both(key) return m[key] and p and p[key] and q and q[key] end
-            m = markset(both("b"), both("i"), both("s"), false, m.link)
+            m = markset(both("b"), both("i"), both("s"), false, m.link, m.fg, m.hl)
         end
         eff[k] = m
     end
@@ -293,7 +361,7 @@ function Blocks.writeInline(chars, marks)
     local function closeTo(keep)
         while #open > 0 and not keep[open[#open]] do out[#out + 1] = OPEN[table.remove(open)] end
     end
-    local at_line_start = true
+    local at_line_start = not mid_start
     for idx, r in ipairs(split) do
         local m = r.m or {}
         -- a link: closes what's open, written whole as [text](url)
@@ -373,13 +441,50 @@ function Blocks.writeInline(chars, marks)
                 end
             end
             if #line > 0 then
-                flush(idx == #split)
+                flush(idx == #split and not mid_end)
                 at_line_start = false
             end
         end
     end
     closeTo({})
     if link_open then out[#out + 1] = "](" .. link_open .. ")" end
+    return table.concat(out)
+end
+
+--- Characters and marks as Memos Markdown (inline: no block marker): each
+--- stretch of the same colours in a span of its own, the rest as before.
+function Blocks.writeInline(chars, marks)
+    marks = marks or {}
+    local coloured = false
+    for k = 1, #chars do local m = marks[k]; if m and (m.fg or m.hl) then coloured = true; break end end
+    if not coloured then return writePlain(chars, marks) end
+    local out = {}
+    local k = 1
+    while k <= #chars do
+        local m0 = marks[k] or false
+        local fg, hl = m0 and m0.fg, m0 and m0.hl
+        local sc, sm = {}, {}
+        -- (a stretch: the same colours; a line break ends it, so a span never holds one)
+        while k <= #chars and chars[k] ~= "\n" do
+            local m = marks[k] or false
+            if (m and m.fg) ~= fg or (m and m.hl) ~= hl then break end
+            sc[#sc + 1] = chars[k]
+            sm[#sm + 1] = m and markset(m.b, m.i, m.s, m.c, m.link) or false
+            k = k + 1
+        end
+        if #sc > 0 then
+            local starts = k - #sc == 1 or chars[k - #sc - 1] == "\n"
+            local ends = k > #chars or chars[k] == "\n"
+            local text = writePlain(sc, sm, not starts, not ends)
+            if fg or hl then
+                out[#out + 1] = "<span" .. (fg and (' data-gz-color="' .. fg .. '"') or "") .. (hl and (' data-gz-mark="' .. hl .. '"') or "") .. ">"
+                    .. text .. "</span>"
+            else
+                out[#out + 1] = text
+            end
+        end
+        if chars[k] == "\n" then out[#out + 1] = "\n"; k = k + 1 end
+    end
     return table.concat(out)
 end
 
@@ -434,7 +539,11 @@ local function isDivider(line)
     return line:match("^[ \t]*%-[ \t]*%-[ \t]*%-[ \t%-]*$") or line:match("^[ \t]*%*[ \t]*%*[ \t]*%*[ \t%*]*$")
         or line:match("^[ \t]*_[ \t]*_[ \t]*_[ \t_]*$")
 end
-local function isHtml(line) return line:match("^[ \t]*</?%a") ~= nil end
+local function isHtml(line)
+    -- (a line starting with coloured words is a paragraph: its span is inline, as in Memos)
+    if colorSpanAt(line:match("^[ \t]*(.*)$")) then return false end
+    return line:match("^[ \t]*</?%a") ~= nil
+end
 local function isImageLine(line) return line:match("^[ \t]*!%[[^%]]*%]%([^%)]*%)[ \t]*$") ~= nil end
 
 --- Starts a block other than a paragraph's next line.
@@ -660,7 +769,7 @@ function Blocks.setText(b, text)
     if like then
         local inside = before and after and before.link and before.link == after.link
         local code = before and after and before.c and after.c
-        typed = markset(like.b, like.i, like.s, code, inside and before.link or nil)
+        typed = markset(like.b, like.i, like.s, code, inside and before.link or nil, like.fg, like.hl)
     end
     for k = pre + 1, #new - suf do marks[k] = typed end
     for k = 1, suf do marks[#new - suf + k] = om[#old - suf + k] or false end
@@ -693,7 +802,23 @@ function Blocks.toggleMark(b, key, a, z)
         local m = b.marks[k] or {}
         local f = { b = m.b, i = m.i, s = m.s }
         f[key] = not all or nil
-        b.marks[k] = markset(f.b, f.i, f.s, m.c, m.link)
+        b.marks[k] = markset(f.b, f.i, f.s, m.c, m.link, m.fg, m.hl)
+    end
+    b.dirty = true
+    return true
+end
+
+--- Sets characters a…z of `b` to colour `id` (`kind`: "fg" for the text's,
+--- "hl" for a highlight; nil id: none). Code keeps its look: no colour.
+function Blocks.setColor(b, kind, id, a, z)
+    if not a or b.kind == "raw" or b.kind == "image" then return false end
+    for k = a, z do
+        local m = b.marks[k] or {}
+        if not m.c then
+            local fg, hl = m.fg, m.hl
+            if kind == "fg" then fg = id else hl = id end
+            b.marks[k] = markset(m.b, m.i, m.s, m.c, m.link, fg, hl)
+        end
     end
     b.dirty = true
     return true
@@ -708,7 +833,7 @@ local function typedMarks(b, pos)
     if not like then return false end
     local inside = before and after and before.link and before.link == after.link
     local code = before and after and before.c and after.c
-    return markset(like.b, like.i, like.s, code, inside and before.link or nil)
+    return markset(like.b, like.i, like.s, code, inside and before.link or nil, like.fg, like.hl)
 end
 Blocks.typedMarks = typedMarks
 
@@ -807,11 +932,23 @@ function Blocks.toggleMarkRange(doc, p, q, key)
             local m = b.marks[k] or {}
             local f = { b = m.b, i = m.i, s = m.s }
             f[key] = not all or nil
-            b.marks[k] = markset(f.b, f.i, f.s, m.c, m.link)
+            b.marks[k] = markset(f.b, f.i, f.s, m.c, m.link, m.fg, m.hl)
         end
         b.dirty = true
     end
     return true
+end
+
+--- Colours from position `p` to `q` (Blocks.setColor), across blocks.
+function Blocks.setColorRange(doc, p, q, kind, id)
+    p, q = Blocks.order(doc, p, q)
+    local done = false
+    for _i, b in ipairs(Blocks.span(doc, p, q)) do
+        local a = b == p.b and p.i or 1
+        local z = b == q.b and (q.i - 1) or #b.chars
+        if z >= a and Blocks.setColor(b, kind, id, a, z) then done = true end
+    end
+    return done
 end
 
 --- A new empty block of `kind` (a list item takes `like`'s marker and indent).
@@ -949,6 +1086,7 @@ function Blocks.html(b)
     local cur = false
     local function close(m)
         if not m then return end
+        if m.fg or m.hl then out[#out + 1] = "</span>" end
         if m.link then out[#out + 1] = "</u>" end
         if m.c then out[#out + 1] = "</code>" end
         if m.s then out[#out + 1] = "</s>" end
@@ -962,6 +1100,10 @@ function Blocks.html(b)
         if m.s then out[#out + 1] = "<s>" end
         if m.c then out[#out + 1] = "<code>" end
         if m.link then out[#out + 1] = "<u>" end
+        if m.fg or m.hl then
+            out[#out + 1] = '<span style="' .. (m.fg and ("color:" .. TEXT_COLOR[m.fg] .. ";") or "")
+                .. (m.hl and ("background-color:" .. MARK_COLOR[m.hl] .. ";") or "") .. '">'
+        end
     end
     for k, ch in ipairs(b.chars) do
         local m = b.marks[k] or false

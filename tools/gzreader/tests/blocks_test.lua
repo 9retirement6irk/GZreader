@@ -300,5 +300,46 @@ end)()
         "…written without blank lines: still its own blocks, open, kept as written (" .. table.concat(k2, ",") .. ")")
 end)()
 
+print("== colours (a colour screen's A: data-gz-color / data-gz-mark spans)")
+;(function()
+    local md = 'Some <span data-gz-color="red">red **bold** words</span> and <span data-gz-mark="yellow">a highlight</span>.'
+    local doc = Blocks.parse(md)
+    local b = doc.blocks[1]
+    local t = Blocks.textOf(b)
+    local function at(word) return b.marks[t:find(word, 1, true)] or {} end
+    check(b.kind == "paragraph" and t == "Some red bold words and a highlight." and at("red").fg == "red" and at("bold").fg == "red"
+        and at("bold").b and at("highlight").hl == "yellow" and not at("Some").fg and not at("and").fg,
+        "read: the words in a colour span take its colour (bold inside it too); a highlight span's, a highlight")
+    eq(Blocks.write(doc), md, "unchanged: written back exactly")
+    b.dirty = true
+    eq(Blocks.write(doc), md, "…and written again the same way: one span per stretch, outside ** … **")
+    local first = Blocks.parse('<span data-gz-color="blue">Blue first</span> then plain')
+    check(first.blocks[1].kind == "paragraph" and first.blocks[1].marks[1].fg == "blue",
+        "a line starting with coloured words is a paragraph (not raw HTML)")
+    local other = Blocks.parse('a <span class="x">kept</span> b <span data-gz-color="nope">unknown</span>')
+    check(Blocks.textOf(other.blocks[1]) == 'a <span class="x">kept</span> b <span data-gz-color="nope">unknown</span>',
+        "any other span (and a colour we don't know) is left as it is, as text")
+    -- colouring: a word, across a selection, cleared; bold keeps the colour; typing takes it
+    local d2 = Blocks.parse("one two three")
+    local b2 = d2.blocks[1]
+    Blocks.setColor(b2, "fg", "green", 5, 7)
+    eq(Blocks.write(d2), 'one <span data-gz-color="green">two</span> three', "a word coloured green")
+    Blocks.toggleMark(b2, "b", 5, 7)
+    eq(Blocks.write(d2), 'one <span data-gz-color="green">**two**</span> three', "…bold too: the colour stays, the span outside")
+    Blocks.insert(b2, 8, "s")
+    check(b2.marks[8] and b2.marks[8].fg == "green", "…what's typed right after it is green too")
+    Blocks.setColorRange(d2, { b = b2, i = 1 }, { b = b2, i = #b2.chars + 1 }, "hl", "pink")
+    eq(Blocks.write(d2), '<span data-gz-mark="pink">one </span><span data-gz-color="green" data-gz-mark="pink">**twos**</span><span data-gz-mark="pink"> three</span>',
+        "the whole line highlighted pink: spans with both, where the colours change")
+    Blocks.setColorRange(d2, { b = b2, i = 1 }, { b = b2, i = #b2.chars + 1 }, "hl", nil)
+    Blocks.setColor(b2, "fg", nil, 1, #b2.chars)
+    eq(Blocks.write(d2), "one **twos** three", "…and no colours again: plain Markdown")
+    local back = Blocks.parse(Blocks.write(Blocks.parse('x\n<span data-gz-color="red">y</span>')))
+    check(#back.blocks >= 1, "a coloured second line reads back")
+    local html = Blocks.html(doc.blocks[1])
+    check(html:find('<span style="color:#e03131;">red </span>', 1, true) and html:find("background-color:#ffd43b", 1, true),
+        "shown (HtmlBox): the colours as styles")
+end)()
+
 print(string.format("blocks: %d passed, %d failed", pass, fail))
 os.exit(fail == 0 and 0 or 1)
