@@ -52,7 +52,8 @@ HA.__index = HA
 --- device: i(d), s(tate), n(ame), b(rightness 0–255), d(immable),
 --- u(nit), c (device class), t (current temperature), g (target),
 --- a (heating/cooling now), lo/hi (target range), st (target step),
---- p (cover position). The first line marks it for the test server.
+--- p (cover position), rgb (a light's colour now), cm (it can take a
+--- colour), hm (a thermostat's modes). The first line marks it for the test server.
 HA.TEMPLATE = [==[
 {#- gzreader-house-v1 -#}
 {%- set C = ['light','switch','fan','input_boolean','climate','lock','cover','script'] -%}
@@ -65,7 +66,9 @@ HA.TEMPLATE = [==[
  'u': s.attributes.get('unit_of_measurement'), 'c': s.attributes.get('device_class'),
  't': s.attributes.get('current_temperature'), 'g': s.attributes.get('temperature'),
  'a': s.attributes.get('hvac_action'), 'lo': s.attributes.get('min_temp'), 'hi': s.attributes.get('max_temp'),
- 'st': s.attributes.get('target_temp_step'), 'p': s.attributes.get('current_position')} | to_json }}
+ 'st': s.attributes.get('target_temp_step'), 'p': s.attributes.get('current_position'),
+ 'rgb': s.attributes.get('rgb_color'), 'hm': s.attributes.get('hvac_modes'),
+ 'cm': ((s.attributes.get('supported_color_modes') or []) | select('in', ['hs', 'rgb', 'rgbw', 'rgbww', 'xy']) | list | count) > 0} | to_json }}
 {%- endmacro -%}
 {"v":1,"rooms":[
 {%- for a in areas() -%}
@@ -174,20 +177,54 @@ function HA.entity(o)
         dim = o.d == true or (domain == "light" and b ~= nil) or nil,
         unit = str(o.u), dc = str(o.c), cur = num(o.t), target = num(o.g), action = str(o.a),
         min = num(o.lo), max = num(o.hi), step = num(o.st), pos = num(o.p),
+        rgb = HA.rgbHex(o.rgb), col = o.cm == true or nil, modes = HA.modeList(o.hm),
     }
+end
+
+--- [r, g, b] (0–255) as "#rrggbb", or nil.
+function HA.rgbHex(v)
+    if type(v) ~= "table" then return nil end
+    local out = {}
+    for i = 1, 3 do
+        local x = num(v[i])
+        if not x then return nil end
+        out[i] = math.max(0, math.min(255, math.floor(x + 0.5)))
+    end
+    return string.format("#%02x%02x%02x", out[1], out[2], out[3])
+end
+
+-- the thermostat modes the tab offers (in this order), of the ones it has
+HA.MODES = { "heat", "cool", "heat_cool", "auto", "off" }
+
+--- A thermostat's modes as HA.MODES orders them (others left out), or nil.
+function HA.modeList(v)
+    if type(v) ~= "table" then return nil end
+    local have, out = {}, {}
+    for _i, m in ipairs(v) do if type(m) == "string" then have[m] = true end end
+    for _i, m in ipairs(HA.MODES) do if have[m] then out[#out + 1] = m end end
+    return #out > 0 and out or nil
+end
+
+--- A mode's name on its button.
+function HA.modeName(m)
+    local words = { heat = _("Heat"), cool = _("Cool"), heat_cool = _("Heat · cool"), auto = _("Auto"), off = _("Off") }
+    return words[m] or m
 end
 
 --- One device from /api/states' answer ({ entity_id, state, attributes }).
 function HA.entityFromState(st)
     if type(st) ~= "table" then return nil end
     local a = type(st.attributes) == "table" and st.attributes or {}
-    local dim = false
+    local dim, col = false, false
+    local COLOUR = { hs = true, rgb = true, rgbw = true, rgbww = true, xy = true }
     for _i, m in ipairs(type(a.supported_color_modes) == "table" and a.supported_color_modes or {}) do
         if m ~= "onoff" and m ~= "unknown" then dim = true end
+        if COLOUR[m] then col = true end
     end
     return HA.entity({ i = st.entity_id, s = st.state, n = a.friendly_name, b = a.brightness, d = dim,
         u = a.unit_of_measurement, c = a.device_class, t = a.current_temperature, g = a.temperature,
-        a = a.hvac_action, lo = a.min_temp, hi = a.max_temp, st = a.target_temp_step, p = a.current_position })
+        a = a.hvac_action, lo = a.min_temp, hi = a.max_temp, st = a.target_temp_step, p = a.current_position,
+        rgb = a.rgb_color, cm = col, hm = a.hvac_modes })
 end
 
 --- Whether the tab shows this device at all.
@@ -424,6 +461,16 @@ function HA.service(e, what, arg)
         data.brightness_pct = math.max(1, math.min(100, math.floor((tonumber(arg) or 100) + 0.5)))
         return "light", "turn_on", data
     end
+    if what == "color" then
+        local r, g, b = tostring(arg):match("^#(%x%x)(%x%x)(%x%x)$")
+        if not r then return nil end
+        data.rgb_color = { tonumber(r, 16), tonumber(g, 16), tonumber(b, 16) }
+        return "light", "turn_on", data
+    end
+    if what == "mode" then
+        data.hvac_mode = tostring(arg)
+        return "climate", "set_hvac_mode", data
+    end
     if what == "target" then
         data.temperature = tonumber(arg)
         return "climate", "set_temperature", data
@@ -446,9 +493,65 @@ function HA.nextTarget(e, dir, unit)
     return t
 end
 
---- The icon file for a device's row (icons/house/…).
 local here = (debug.getinfo(1, "S").source or ""):match("^@(.*)/[^/]+$") or "plugins/gzreader.koplugin"
-function HA.iconFile(e)
+
+-- a bulb's colours to choose (any light that takes a colour)
+HA.BULB_COLORS = {
+    { "#ffb86b", _("Warm") }, { "#ff3b30", _("Red") }, { "#ff9500", _("Orange") }, { "#ffd60a", _("Yellow") },
+    { "#34c759", _("Green") }, { "#0a84ff", _("Blue") }, { "#bf5af2", _("Purple") }, { "#ff4fa3", _("Pink") },
+}
+HA.WARM = "#ffc94d"   -- a light that's on, with no colour of its own
+HA.HEAT = "#e8590c"
+HA.COOL = "#1971c2"
+
+--- The colour a row's icon shows on a colour screen ("#rrggbb"), or nil
+--- (drawn as before): a light that's on, in its colour (warm when it has
+--- none); a thermostat heating (orange) or cooling (blue).
+function HA.iconColor(e)
+    if type(e) ~= "table" then return nil end
+    if e.domain == "light" and e.state == "on" then return e.rgb or HA.WARM end
+    if e.domain == "climate" then
+        local a = e.action or ""
+        if a == "heating" or a == "preheating" then return HA.HEAT end
+        if a == "cooling" then return HA.COOL end
+    end
+    return nil
+end
+
+--- icons/house/<name>.svg drawn in `hex`: a copy in the cache with the
+--- colour filled in (made once). nil when it can't be made.
+function HA.tintedIcon(name, hex)
+    if not tostring(hex):match("^#%x%x%x%x%x%x$") then return nil end
+    local dir = DataStorage:getDataDir() .. "/cache/gzreader-house-icons"
+    local path = dir .. "/" .. name .. "-" .. hex:sub(2):lower() .. ".svg"
+    local f = io.open(path, "rb")
+    if f then f:close(); return path end
+    local src = io.open(here .. "/icons/house/" .. name .. ".svg", "rb")
+    if not src then return nil end
+    local svg = src:read("*a")
+    src:close()
+    -- the shape filled in the colour, its lines a darker shade of it
+    local r, g, b = tonumber(hex:sub(2, 3), 16), tonumber(hex:sub(4, 5), 16), tonumber(hex:sub(6, 7), 16)
+    local dark = string.format("#%02x%02x%02x", math.floor(r * 0.45), math.floor(g * 0.45), math.floor(b * 0.45))
+    svg = svg:gsub('fill="none" stroke="#000000"', 'fill="' .. hex .. '" stroke="' .. dark .. '"', 1)
+    svg = svg:gsub('fill="#000000"', 'fill="' .. dark .. '"')
+    local lfs = require("libs/libkoreader-lfs")
+    if lfs.attributes(dir, "mode") ~= "directory" then lfs.mkdir(dir) end
+    local out = io.open(path, "wb")
+    if not out then return nil end
+    out:write(svg)
+    out:close()
+    return path
+end
+
+--- The icon file for a device's row (icons/house/…). `colour` (a colour
+--- screen): a light that's on, a thermostat heating or cooling, in colour.
+function HA.iconFile(e, colour)
+    if colour then
+        local hex = HA.iconColor(e)
+        local tinted = hex and HA.tintedIcon(e.domain == "light" and "light" or "thermostat", hex)
+        if tinted then return tinted end
+    end
     local d, name = e and e.domain, "switch"
     if d == "light" then name = "light"
     elseif d == "fan" then name = "fan"

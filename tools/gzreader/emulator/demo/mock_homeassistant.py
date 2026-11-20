@@ -46,13 +46,13 @@ def initial():
            supported_color_modes=["brightness"]),
         st("light.floor_lamp", "off", friendly_name="Floor lamp", supported_color_modes=["onoff"]),
         st("climate.thermostat", "heat", friendly_name="Thermostat", current_temperature=20.5, temperature=21,
-           hvac_action="heating", min_temp=7, max_temp=35, target_temp_step=0.5),
+           hvac_action="heating", min_temp=7, max_temp=35, target_temp_step=0.5, hvac_modes=["off", "heat", "cool", "dry"]),
         st("sensor.living_room_temperature", "20.5", friendly_name="Living room Temperature",
            device_class="temperature", unit_of_measurement="°C"),
         st("sensor.living_room_power", "120", friendly_name="Living room Power", device_class="power",
            unit_of_measurement="W"),
         st("light.under_cabinet", "off", friendly_name="Kitchen Under-cabinet lights",
-           supported_color_modes=["brightness"]),
+           supported_color_modes=["hs", "color_temp"]),
         st("switch.kettle", "off", friendly_name="Kettle"),
         st("light.porch", "on", friendly_name="Porch light", supported_color_modes=["onoff"]),
         st("lock.front_door", "locked", friendly_name="Front door"),
@@ -101,7 +101,9 @@ def obj(s):
             "b": a.get("brightness"), "d": len(modes) > 0, "u": a.get("unit_of_measurement"),
             "c": a.get("device_class"), "t": a.get("current_temperature"), "g": a.get("temperature"),
             "a": a.get("hvac_action"), "lo": a.get("min_temp"), "hi": a.get("max_temp"),
-            "st": a.get("target_temp_step"), "p": a.get("current_position")}
+            "st": a.get("target_temp_step"), "p": a.get("current_position"),
+            "rgb": a.get("rgb_color"), "hm": a.get("hvac_modes"),
+            "cm": any(m in ("hs", "rgb", "rgbw", "rgbww", "xy") for m in (a.get("supported_color_modes") or []))}
 
 
 def render_house():
@@ -148,8 +150,17 @@ def call(domain, service, data):
                     a.setdefault("brightness", 255)
                 elif not on:
                     a.pop("brightness", None)
+                if on and "rgb_color" in data:
+                    a["rgb_color"] = [int(x) for x in data["rgb_color"]]
+                elif on and any(m in ("hs", "rgb", "xy") for m in a.get("supported_color_modes", [])):
+                    a.setdefault("rgb_color", [255, 180, 107])
+                elif not on:
+                    a.pop("rgb_color", None)
         elif domain == "climate" and service == "set_temperature":
             a["temperature"] = data.get("temperature")
+        elif domain == "climate" and service == "set_hvac_mode" and data.get("hvac_mode") in a.get("hvac_modes", []):
+            s["state"] = data["hvac_mode"]
+            a["hvac_action"] = {"heat": "heating", "cool": "cooling", "off": "off"}.get(data["hvac_mode"], "idle")
         elif domain == "lock" and service in ("lock", "unlock"):
             s["state"] = "locked" if service == "lock" else "unlocked"
         elif domain == "cover" and service in ("open_cover", "close_cover"):
