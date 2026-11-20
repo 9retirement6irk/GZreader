@@ -138,6 +138,10 @@ API to `/api` are found too.
   activity tags (`#mood/…`, `#felt/…`, `#impact/…`, `#did/…`, or the
   prefixes set in Memos' journal settings) are always at the top, under the
   entry's heading. There's no list of every tag at the bottom any more.
+- **Tag colours** (Colorsoft, Scribe Colorsoft): a tag you gave a colour in
+  Memos (Settings → Tags, a name or a pattern such as `project/.*`) shows in
+  it, in a note and on the tag chips at the top of the Notes tab, as on the
+  web. Other Kindles keep them grey.
 - **Editing on a touch Kindle** works like Memos' web editor. The note shows
   formatted on one page (headings big, lists with • and numbers, checklists
   with ☐ ☑, **bold** and *italic*), with no Markdown and no `&nbsp;` to see,

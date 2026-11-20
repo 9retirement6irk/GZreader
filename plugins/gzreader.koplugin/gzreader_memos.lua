@@ -205,6 +205,7 @@ function Memos:listAll(filter, max, order)
     until not token or #out >= max
     local res = { memos = out }
     res.tags = self:tagCounts() -- nil if this Memos doesn't say
+    res.tag_colors = self:tagColors() -- nil: no answer (kept as they were)
     res.spaces = self:spaces() -- nil: a Memos without spaces (before v0.31)
     res.journal = self:journalSettings() -- false: a Memos without journaling mode (stock Memos)
     -- (run in a background process: the API address it found goes back with the notes)
@@ -227,6 +228,37 @@ function Memos:tagCounts()
     local t = {}
     for tag, n in pairs(counts) do t[tag] = tonumber(n) or 0 end
     return t
+end
+
+--- Your tags' colours, as Memos' Settings → Tags gives them (your TAGS
+--- setting: a tag name or pattern, anchored, and its label's background):
+--- { { pattern = "work", color = "#rrggbb" }, … } in Memos' order of names,
+--- or nil when this Memos doesn't say.
+function Memos:tagColors()
+    if self:lacks("tag_colors") then return nil end
+    local name = self.store.user_name
+    if not name then
+        local user = self:me()
+        name = user and user.name
+        if not name then return nil end
+    end
+    local code, data, err = self:request("GET", "/" .. name .. "/settings/TAGS", nil, nil, { here_only = true })
+    if code == 404 or code == 405 or code == 501 then self:noteLacks("tag_colors", false); return nil end
+    if err or type(data) ~= "table" then return nil end
+    local tags = type(data.tagsSetting) == "table" and data.tagsSetting.tags
+    local out = {}
+    if type(tags) ~= "table" then return out end
+    local names = {}
+    for k in pairs(tags) do names[#names + 1] = k end
+    table.sort(names)
+    for _i, k in ipairs(names) do
+        local c = type(tags[k]) == "table" and tags[k].backgroundColor
+        if type(c) == "table" then
+            local function ch(v) return math.max(0, math.min(255, math.floor((tonumber(v) or 0) * 255 + 0.5))) end
+            out[#out + 1] = { pattern = k, color = string.format("#%02x%02x%02x", ch(c.red), ch(c.green), ch(c.blue)) }
+        end
+    end
+    return out
 end
 
 --- Your spaces (Memos v0.31: the ones you're a member of), in Memos'
