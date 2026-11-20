@@ -367,6 +367,18 @@ API to `/api` are found too.
       and the words go into the same box. **Undo** brings the writing back
       as ink. How it's read is in the panel (**Read: …**) and in
       [Settings → Notes → Handwriting to text](#handwriting-to-text).
+    - **Stickers:** the 935 Kid Pix stickers of the Memos fork's drawing
+      sheet (animals, food, flags, vehicles, praise…). The first tap opens
+      them: the category's name at the top lists the 42 categories, ‹ ›
+      turn the pages; tap one to take it. Then each tap on the page puts it
+      down there; tap **Stickers** again for another sticker and its size
+      (**Small** is the size Kid Pix put it down at, **Medium**, **Large**).
+      A sticker is a picture in the drawing, as in Memos' Kid Pix mode:
+      **Undo** takes it off, the **lasso** moves it and makes it bigger or
+      smaller, and Memos shows it. They come from your Memos server (the
+      fork's, with its sticker pictures): a category is fetched over Wi‑Fi
+      the first time it's opened, then kept on the Kindle. On a colour
+      Kindle (Colorsoft, Scribe Colorsoft) they're in colour.
     - **Eraser:** rubs out whole strokes, as in Memos; five sizes (how near
       a stroke it has to pass) and **Erase page**. It keeps up with the pen
       on a full page too.

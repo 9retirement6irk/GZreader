@@ -46,8 +46,8 @@ end
 
 function Gzip.available() return lib() ~= nil end
 
---- Decompress gzip data; nil, err on failure.
-function Gzip.inflate(data)
+--- Decompress gzip data; nil, err on failure. `max`: give up past that many bytes ("too big").
+function Gzip.inflate(data, max)
     local z = lib()
     if not z then return nil, "no zlib" end
     local strm = ffi.new("gz_z_stream")
@@ -59,6 +59,7 @@ function Gzip.inflate(data)
     local chunk = math.max(65536, #data * 4)
     local buf = ffi.new("unsigned char[?]", chunk)
     local parts = {}
+    local total = 0
     local ret
     repeat
         strm.next_out = buf
@@ -69,6 +70,11 @@ function Gzip.inflate(data)
             return nil, "inflate error " .. tostring(ret)
         end
         parts[#parts + 1] = ffi.string(buf, chunk - strm.avail_out)
+        total = total + chunk - strm.avail_out
+        if max and total > max then
+            z.inflateEnd(strm)
+            return nil, "too big"
+        end
     until ret == 1 or (strm.avail_in == 0 and strm.avail_out ~= 0)
     z.inflateEnd(strm)
     return table.concat(parts)
