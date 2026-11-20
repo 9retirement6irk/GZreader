@@ -3053,10 +3053,24 @@ function Notes.sendSoon(plugin)
     end)
 end
 
---- The space a new note starts in: the one the board is showing, if any.
-function Notes.newNoteSpace()
+--- Your default space (Settings → Notes → Default space), when it's still
+--- one of yours; nil: none.
+function Notes.defaultSpace(plugin)
+    local name = plugin and plugin.store.memos and plugin.store.memos.default_space
+    if type(name) ~= "string" or name == "" then return nil end
+    for _i, sp in ipairs(Notes.spaces(plugin) or {}) do
+        if sp.name == name then return name end
+    end
+    return nil
+end
+
+--- The space a new note starts in: the one the board is showing, if any;
+--- else your default space. (A journal entry goes to the journal space set
+--- in Memos' journal settings instead: Notes.journalSpace.)
+function Notes.newNoteSpace(plugin)
     local f = Notes.filter
-    return f.kind == "space" and f.value ~= "" and f.value or nil
+    if f.kind == "space" and f.value ~= "" then return f.value end
+    return Notes.defaultSpace(plugin)
 end
 
 --- New note (memo nil) or edit one: the full-page editor, or with
@@ -3070,7 +3084,7 @@ function Notes.edit(plugin, memo, opts)
         memo = memo,
         tags = Notes.allTags(plugin),
         spaces = Notes.spaces(plugin),
-        space = (memo == nil) and Notes.newNoteSpace() or nil, -- (an edit: the note's own)
+        space = (memo == nil) and Notes.newNoteSpace(plugin) or nil, -- (an edit: the note's own)
         space_title = function(name) return Notes.spaceTitle(plugin, name) end,
         can_draw = Notes.canDraw(plugin),
         -- the Photos chip: when a way to Immich is set up (the Memos fork's or GZreader's)
