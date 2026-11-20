@@ -14779,17 +14779,15 @@ print("Immich: an album's pictures for the sleep screen and the Home wallpaper")
     os.remove(Immich.fileOf(SleepMode.IMMICH_DIR, Immich.have()[1])) -- (one to fetch again)
     Immich.refresh(plugin, { force = true }, function(okr, res) done = { okr, res } end)
     check(#asked == 1 and asked[1] == "grey", "a black-and-white Kindle: the pictures are made grey")
-    -- a colour Kindle (Colorsoft): in colour; pictures made grey before are fetched again, once
+    -- a colour Kindle (Colorsoft): in colour
     local Colour = require("gzreader_colour")
     local was_enabled = Colour.enabled
     Colour.enabled = function() return true end
     asked = {}
+    os.remove(Immich.fileOf(SleepMode.IMMICH_DIR, Immich.have()[1]))
     Immich.refresh(plugin, { force = true }, function(okr, res) done = { okr, res } end)
-    check(done[1] and done[2].recoloured == 3 and #Immich.have() == 3 and #asked == 3 and asked[1] == "colour"
-        and io.open(SleepMode.IMMICH_DIR .. "/.colour") ~= nil,
-        "a colour Kindle: the grey pictures fetched again, in colour (" .. table.concat(asked, ",") .. ")")
-    Immich.refresh(plugin, { force = true }, function(okr, res) done = { okr, res } end)
-    check(done[1] and done[2].recoloured == nil, "…only once: the next time as usual")
+    check(done[1] and #Immich.have() == 3 and #asked == 1 and asked[1] == "colour",
+        "a colour Kindle: a picture fetched is kept in colour (" .. table.concat(asked, ",") .. ")")
     Immich.fit = real_fit
     Colour.enabled = was_enabled
     -- an older Immich: no album search, the album's own list

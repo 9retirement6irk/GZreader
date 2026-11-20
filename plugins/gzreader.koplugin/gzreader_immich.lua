@@ -289,20 +289,6 @@ function Immich:refreshPictures(opts)
     if lfs.attributes(dir, "mode") ~= "directory" then lfs.mkdir(dir) end
     local album, err = self:albumPictures(opts.album)
     if not album then return { err = err } end
-    -- (a colour Kindle with pictures made grey before: all of them fetched again, in colour)
-    local marker = dir .. "/.colour"
-    local redo = 0
-    if opts.colour and lfs.attributes(marker, "mode") ~= "file" then
-        for _i, id in ipairs(Immich.have(dir)) do
-            local f = Immich.fileOf(dir, id)
-            while f do os.remove(f); f = Immich.fileOf(dir, id) end
-            redo = redo + 1
-        end
-        local m = io.open(marker, "w")
-        if m then m:write("pictures in colour\n"); m:close() end
-    elseif not opts.colour then
-        os.remove(marker)
-    end
     local keep, get, drop = Immich.plan(album, Immich.have(dir), opts.count or Immich.COUNT)
     local got, failed = 0, 0
     for _i, id in ipairs(get) do
@@ -328,7 +314,7 @@ function Immich:refreshPictures(opts)
         while f do os.remove(f); f = Immich.fileOf(dir, id) end
     end
     -- (a picture fitted with an older screen size stays: it's still shown whole)
-    return { got = got, dropped = #drop, total = #album, failed = failed, kept = #keep, recoloured = redo > 0 and redo or nil }
+    return { got = got, dropped = #drop, total = #album, failed = failed, kept = #keep }
 end
 
 ---------------------------------------------------------------- on the Kindle

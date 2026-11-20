@@ -200,8 +200,7 @@ in your phone's browser; Kindles without Wi‑Fi on the
 - **Pictures kept on the Kindle**: 10, 20 or 50. They're made to fit the
   screen, in grey (in colour on a Colorsoft or Scribe Colorsoft), and kept
   on the Kindle (`gzreader-immich/` in GZreader's app folder), so they show
-  without Wi‑Fi. A colour Kindle whose pictures were made grey before fetches
-  them all again, in colour, the next time it gets new pictures.
+  without Wi‑Fi.
 - **Get new pictures now**. Otherwise, whenever Wi‑Fi comes on and the last
   time was over 6 hours ago, about half of them are swapped for others from
   the album (all of them when the album changed), and the wallpaper changes
