@@ -1882,7 +1882,7 @@ function Paper.settingsItems(plugin)
         },
         {
             text = _("Pictures"),
-            help_text = _("Stories' pictures, fetched with the paper and shown in grey: in an opened story under its headline (24 stories at most), and for the lead story and a few more on the paper's pages. Pictures often come from another site than the feed's (a picture server), which then also sees this Kindle's internet address. Without them the paper is fetched faster and takes less room."),
+            help_text = _("Stories' pictures, fetched with the paper and shown in grey (in colour on a colour Kindle): in an opened story under its headline (24 stories at most), and for the lead story and a few more on the paper's pages. Pictures often come from another site than the feed's (a picture server), which then also sees this Kindle's internet address. Without them the paper is fetched faster and takes less room."),
             enabled_func = on,
             checked_func = function() return on() and D.pictures(plugin) end,
             callback = function()
