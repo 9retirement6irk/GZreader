@@ -300,5 +300,68 @@ end)()
         "…written without blank lines: still its own blocks, open, kept as written (" .. table.concat(k2, ",") .. ")")
 end)()
 
+print("== Memos' block menu (\"/\")")
+;(function()
+    local ids = {}
+    for _i, m in ipairs(Blocks.MENU) do ids[#ids + 1] = m.id end
+    eq(table.concat(ids, ","), "h1,h2,h3,h4,bullet,ordered,task,quote,callout,details,code,table,divider",
+        "the menu has what Memos' \"/\" menu has, in its order")
+    eq(table.concat(Blocks.CALLOUTS, ","), "NOTE,TIP,IMPORTANT,WARNING,CAUTION", "…callouts of Memos' five kinds")
+    -- the Markdown each one writes (the plain page), and where the cursor goes
+    local function md(id, c) local t, at = Blocks.menuMarkdown(id, c); return t .. "@" .. at end
+    eq(md("h3"), "### @5", "Heading 3: ### ")
+    eq(md("task"), "- [ ] @7", "To-do list: - [ ] ")
+    eq(md("quote"), "> @3", "Quote: > ")
+    eq(md("callout", "TIP"), "> [!TIP]\n> @12", "Callout: > [!TIP] and a line for its words")
+    eq(md("code"), "```\n\n```@5", "Code block: a fence, the cursor on the empty line inside")
+    eq(md("divider"), "---@4", "Divider: ---")
+    local det, at = Blocks.menuMarkdown("details")
+    check(det == "<details open>\n<summary></summary>\n\n\n\n</details>" and Blocks.chars(det)[at] == "\n"
+        and table.concat(Blocks.chars(det), "", 1, at - 1):sub(-2) == "\n\n",
+        "Collapsible section: <details open>, its summary, an empty line inside, </details>")
+    local tb, tat = Blocks.menuMarkdown("table")
+    check(tb:match("^| Column 1 | Column 2 |\n| %-%-%- | %-%-%- |\n|  |  |$") and table.concat(Blocks.chars(tb), "", 1, tat - 1):sub(-3) == "\n| ",
+        "Table: two columns, the cursor in its first cell")
+
+    -- into the formatted page: a heading or list turns the line into it
+    local doc = Blocks.parse("Shopping\n\nmilk")
+    local b, i = Blocks.addFromMenu(doc, doc.blocks[1], "h2")
+    check(b == doc.blocks[1] and b.kind == "heading" and b.level == 2 and i == 9, "Heading 2 on a line: the line becomes it, the cursor at its end")
+    Blocks.addFromMenu(doc, doc.blocks[2], "task")
+    eq(Blocks.write(doc), "## Shopping\n\n- [ ] milk", "…and a To-do list: written as Memos writes it")
+    -- the others: on an empty line, in its place; else after the line
+    doc = Blocks.parse("Notes\n\n&nbsp;\n\nend")
+    b, i = Blocks.addFromMenu(doc, doc.blocks[2], "callout", "WARNING")
+    check(b.kind == "raw" and T(b) == "> [!WARNING]\n> " and i == 16 and #doc.blocks == 3, "Callout on an empty line: in its place, the cursor on its words' line")
+    Blocks.insert(b, i, "Mind the step")
+    eq(Blocks.write(doc), "Notes\n\n> [!WARNING]\n> Mind the step\n\nend", "…written as Memos writes a callout")
+    eq(Blocks.parse(Blocks.write(doc)).blocks[2].kind, "raw", "…and read back as the same block")
+    doc = Blocks.parse("Notes")
+    b, i = Blocks.addFromMenu(doc, doc.blocks[1], "code")
+    check(doc.blocks[2] == b and i == 5, "Code block after a line with words: on a new line after it")
+    Blocks.insert(b, i, "print(1)")
+    eq(Blocks.write(doc), "Notes\n\n```\nprint(1)\n```", "…the code inside the fence")
+    doc = Blocks.parse("Notes")
+    b = Blocks.addFromMenu(doc, doc.blocks[1], "divider")
+    check(doc.blocks[2].kind == "raw" and T(doc.blocks[2]) == "---" and b == doc.blocks[3] and b.kind == "paragraph",
+        "Divider: ---, the cursor on a new line after it")
+    Blocks.insert(b, 1, "after")
+    eq(Blocks.write(doc), "Notes\n\n---\n\nafter", "…written with the words after it")
+    doc = Blocks.parse("Notes")
+    b = Blocks.addFromMenu(doc, doc.blocks[1], "details")
+    check(doc.blocks[2].section == "start" and doc.blocks[2].folded == false and b == doc.blocks[3] and doc.blocks[4].section == "end",
+        "Collapsible section: its row, a line inside (the cursor), its end")
+    Blocks.insert(b, 1, "hidden words")
+    local out = Blocks.write(doc)
+    eq(out, "Notes\n\n<details open>\n<summary></summary>\n\nhidden words\n\n</details>", "…written as the web editor writes a section")
+    local back = Blocks.parse(out)
+    check(back.blocks[2].section == "start" and back.blocks[4].section == "end", "…and read back as a section")
+    doc = Blocks.parse("Notes")
+    b, i = Blocks.addFromMenu(doc, doc.blocks[1], "table")
+    Blocks.insert(b, i, "a")
+    eq(Blocks.write(doc), "Notes\n\n| Column 1 | Column 2 |\n| --- | --- |\n| a |  |", "Table: typed into its first cell")
+    eq(Blocks.parse(Blocks.write(doc)).blocks[2].kind, "raw", "…read back as a table")
+end)()
+
 print(string.format("blocks: %d passed, %d failed", pass, fail))
 os.exit(fail == 0 and 0 or 1)

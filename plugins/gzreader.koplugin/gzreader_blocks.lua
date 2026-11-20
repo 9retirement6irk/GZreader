@@ -975,4 +975,101 @@ end
 --- Memos' `&nbsp;` lines and other leftovers: no block shows them.
 function Blocks.isEmptyParagraph(b) return b.kind == "paragraph" and #b.chars == 0 end
 
+-- ------------------------------------------------------------ Memos' block menu
+
+--- What Memos' web editor's "/" menu adds, in its order (the labels are the
+--- note editor's): headings 1–4, the three lists, a quote, a callout, a
+--- collapsible section, a code block, a table, a divider. `raw`: written as
+--- this Markdown, edited as text (`at`: where the cursor goes in it).
+Blocks.MENU = {
+    { id = "h1", kind = "heading", level = 1 },
+    { id = "h2", kind = "heading", level = 2 },
+    { id = "h3", kind = "heading", level = 3 },
+    { id = "h4", kind = "heading", level = 4 },
+    { id = "bullet", kind = "bullet" },
+    { id = "ordered", kind = "ordered" },
+    { id = "task", kind = "task" },
+    { id = "quote", raw = "> " },
+    { id = "callout" }, -- (`> [!NOTE]` and a line for its words: Blocks.CALLOUTS)
+    { id = "details" }, -- (a <details> section: its title row, a line inside, its end)
+    { id = "code", raw = "```\n\n```", at = 5 },
+    { id = "table", raw = "| Column 1 | Column 2 |\n| --- | --- |\n|  |  |", at = 41 },
+    { id = "divider", raw = "---" },
+}
+
+--- A callout's kinds, as GitHub and Memos write them (`> [!NOTE]`).
+Blocks.CALLOUTS = { "NOTE", "TIP", "IMPORTANT", "WARNING", "CAUTION" }
+
+--- The menu's entry `id`, or nil.
+function Blocks.menuItem(id)
+    for _i, m in ipairs(Blocks.MENU) do if m.id == id then return m end end
+end
+
+--- The Markdown entry `id` adds (`callout`: its kind, NOTE by default) and
+--- where the cursor goes in it (a character position, 1-based), as Memos'
+--- editor writes it. For the Markdown editor (keyboard Kindles' plain page).
+function Blocks.menuMarkdown(id, callout)
+    local m = Blocks.menuItem(id)
+    if not m then return nil end
+    local md
+    if m.kind == "heading" then md = string.rep("#", m.level) .. " "
+    elseif m.kind == "bullet" then md = "- "
+    elseif m.kind == "ordered" then md = "1. "
+    elseif m.kind == "task" then md = "- [ ] "
+    elseif id == "callout" then md = "> [!" .. (callout or "NOTE") .. "]\n> "
+    elseif id == "details" then
+        md = Blocks.sectionMarkdown("", true) .. "\n\n\n\n</details>"
+        return md, #Blocks.chars(Blocks.sectionMarkdown("", true)) + 3
+    else md = m.raw end
+    return md, m.at or (#Blocks.chars(md) + 1)
+end
+
+--- Adds entry `id` of the menu at block `b` of `doc` (the cursor's), as the
+--- "/" menu in Memos' web editor: a heading or list turns the line into it;
+--- the others replace an empty line, or go on a new line after it. Returns
+--- the block the cursor goes to and its position there.
+function Blocks.addFromMenu(doc, b, id, callout)
+    local m = Blocks.menuItem(id)
+    local idx
+    for k, x in ipairs(doc.blocks) do if x == b then idx = k end end
+    if not m or not idx then return b, 1 end
+    doc.changed = true
+    if m.kind and b.kind ~= "raw" and b.kind ~= "image" then
+        if not (b.kind == m.kind and (m.kind ~= "heading" or (b.level or 1) == m.level)) then
+            Blocks.setKind(b, m.kind, m.level)
+        end
+        return b, #b.chars + 1
+    end
+    local empty = b.kind == "paragraph" and #b.chars == 0
+    local pos = empty and idx or idx + 1
+    if empty then table.remove(doc.blocks, idx) end
+    local function put(nb)
+        nb.dirty = true
+        table.insert(doc.blocks, pos, nb)
+        pos = pos + 1
+        return nb
+    end
+    if m.kind then
+        local nb = put(Blocks.new(m.kind))
+        if m.kind == "heading" then nb.level = m.level end
+        if m.kind == "task" then nb.done = false end
+        return nb, 1
+    end
+    if id == "details" then
+        put(newBlock("raw", Blocks.sectionMarkdown("", true), { section = "start", folded = false }))
+        local inside = put(Blocks.new("paragraph"))
+        put(newBlock("raw", "</details>", { section = "end" }))
+        return inside, 1
+    end
+    local md, at = Blocks.menuMarkdown(id, callout)
+    local nb = put(newBlock("raw", md))
+    if id == "divider" then
+        -- (a divider takes no words: the cursor goes to a line after it)
+        local after = doc.blocks[pos]
+        if not (after and after.kind == "paragraph" and #after.chars == 0) then after = put(Blocks.new("paragraph")) end
+        return after, 1
+    end
+    return nb, at
+end
+
 return Blocks

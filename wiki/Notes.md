@@ -164,6 +164,7 @@ API to `/api` are found too.
     - **•**, **☐** and **1.** make the lines a list, a checklist or a numbered
       list; tap the same one again to make them text.
     - **#** adds a tag at the cursor.
+    - **+** adds a block (below).
     The button in use is black. The bar stays for another button; a tap on
     the text, or typing, puts it away. (It sits above the selection, or
     under it on the first line, where it covers the next line until it goes.)
@@ -183,8 +184,17 @@ API to `/api` are found too.
     doesn't fit is in ⋮. For a moment
     after the drawing screen's **Done**, a tap on this bar is ignored, so a
     second tap on a slow Done doesn't save the note before you meant to.
-  - Code, quotes, tables and pictures show as their Markdown in grey and edit
-    as text.
+  - **Adding a block, as Memos' "/" menu:** type **/** on an empty line (or
+    tap **+** on the formatting bar, or **⋮ → Add a block**) for **Heading 1**
+    to **Heading 4**, **Bullet list**, **Numbered list**, **To-do list**,
+    **Quote**, **Callout** (then its kind: Note, Tip, Important, Warning or
+    Caution), **Collapsible section**, **Code block**, **Table** and
+    **Divider**. A heading or a list turns the line into it; the others take
+    an empty line's place, or go on a new line after it. The **/** goes away
+    when you choose; close the menu and it stays, as in Memos.
+  - Code, quotes, callouts, tables and pictures show as their Markdown in grey
+    and edit as text. An opened note shows a callout with its kind in bold
+    over it (the bar in the kind's colour on a colour Kindle).
   - Save writes the note the way Memos' rich editor writes it. Lines you
     didn't change are kept exactly as they were.
 - **The on-screen keyboard** keeps **⮠ Enter** and **← →** on its letters page
@@ -200,18 +210,19 @@ API to `/api` are found too.
   list items with their bullets and numbers, checklist items with their
   boxes, pictures shown, a folded section as one row. You type with the
   Kindle's keys. A toolbar at the bottom has List, Check, Num, Head, *I*,
-  **B**, # Tag and Save; a tool acts on the line or the word the cursor is
+  **B**, # Tag, **+ Block** (the block menu above; also **/** on an empty
+  line, and **Alt+F**) and Save; a tool acts on the line or the word the cursor is
   on (or what's selected). **Menu** jumps to the toolbar from
   anywhere in the text (on the tool used last) and the cursor stays where it
   is; Menu again (or ▲) goes back to the text. ▼
   from the last line also reaches the toolbar; ◀ ▶ choose, Press applies. Shortcuts:
   Alt+L list, Alt+C checklist, Alt+N numbered, Alt+H heading, Alt+K italic,
-  Alt+B bold, Alt+G tag, Alt+S save, Alt+V who can see it, Alt+A its space,
+  Alt+B bold, Alt+G tag, Alt+F a block, Alt+S save, Alt+V who can see it, Alt+A its space,
   **Alt+X** ticks or unticks the checklist item the cursor is on.
   **Shift + the 5-way** selects (for bold or italic over several words).
   **Press** is a new line; on a folded section's row it opens the section
   (and folds it again).
-  **Alt+M** opens a menu with who can see it, its space, **Archive note**,
+  **Alt+M** opens a menu with **Add a block**, who can see it, its space, **Archive note**,
   **Delete note…** and Close. The top of the screen has the note's name, and
   under it who can see it, its space and its tags.
   Tables, code and quotes are shown in grey as they're written, and saved
