@@ -782,12 +782,12 @@ DrawScreen.EDGE = function() return S(24) end
 DrawScreen.FLYOUT_ANCHOR = { tags = "tag" }
 
 function DrawScreen:selected(t)
+    if t.sticker_size then return self.sticker_size == t.sticker_size end
     if t.writing then return self.tool == "pen" and self.writing == t.writing end
     if t.width then return self.tool ~= "highlighter" and self.width == t.width end
     if t.hl_width then return self.hl_width == t.hl_width end
     if t.shape then return self.tool == "shape" and self.shape == t.shape end
     if t.eraser_width then return self.eraser_width == t.eraser_width end
-    if t.sticker_size then return self.sticker_size == t.sticker_size end
     if t.color then return Sketch.inkColor(t.color) == self.color end
     if t.tagname then
         for _i, name in ipairs(self.meta and self.meta.tags or {}) do if name == t.tagname then return true end end
@@ -2463,6 +2463,9 @@ function DrawScreen:use(t)
         self.eraser_width = t.eraser_width
         keep("gzreader_drawing_eraser_width", t.eraser_width)
         self:setTool("eraser"); self:setFlyout(nil)
+    elseif t.color then self:setColor(t.color); self:setFlyout(nil)
+    elseif t.tagname then self:toggleTag(t.tagname); self:setFlyout("tags")
+    elseif t.id == "newtag" then self:newTag()
     elseif t.sticker_size then
         self.sticker_size = t.sticker_size
         keep("gzreader_drawing_sticker_size", t.sticker_size)
@@ -2473,9 +2476,6 @@ function DrawScreen:use(t)
         elseif self.sticker then self:setTool("sticker"); self:setFlyout(nil)
         else self:setFlyout(nil); self:pickSticker() end
     elseif t.id == "sticker-pick" then self:setFlyout(nil); self:pickSticker()
-    elseif t.color then self:setColor(t.color); self:setFlyout(nil)
-    elseif t.tagname then self:toggleTag(t.tagname); self:setFlyout("tags")
-    elseif t.id == "newtag" then self:newTag()
     elseif t.id == "tag" then self:setFlyout(self.flyout ~= "tags" and "tags" or nil)
     elseif t.id == "title" then self:setFlyout(nil); self:rename()
     elseif t.id == "snap" then
