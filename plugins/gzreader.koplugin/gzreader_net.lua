@@ -1,9 +1,7 @@
 --[[--
 Wi-Fi: on, off or auto (the quick panel's Wi-Fi tile cycles through them;
 Settings → Wi-Fi offers them too). The mode is kept in
-G_reader_settings "gzreader_wifi_mode"; until 1.28 it was two settings
-("Wi-Fi only when needed" and "you turned it off"), read by Net.mode() when
-no mode has been saved yet.
+G_reader_settings "gzreader_wifi_mode" (Auto when none is saved).
 
 - **Auto** (the default; it was "Wi-Fi only when needed"). The Kindle 3's
   Wi-Fi is one of its biggest battery drains. GZreader turns Wi-Fi on by
@@ -52,11 +50,7 @@ local VALID = { on = true, off = true, auto = true }
 --- "on", "off" or "auto".
 function Net.mode()
     local m = G_reader_settings:readSetting("gzreader_wifi_mode")
-    if VALID[m] then return m end
-    -- (until 1.28: "Wi-Fi only when needed" (on by default) and "you turned it off")
-    if G_reader_settings:isTrue("gzreader_wifi_kept_off") then return "off" end
-    if G_reader_settings:readSetting("gzreader_wifi_on_demand") == false then return "on" end
-    return "auto"
+    return VALID[m] and m or "auto"
 end
 
 --- The next mode on the quick panel's tile: on → off → auto → on.
@@ -77,8 +71,6 @@ local check
 local function saveMode(m)
     if Net.mode() ~= m then Log.info("wifi: mode", m) end
     G_reader_settings:saveSetting("gzreader_wifi_mode", m)
-    G_reader_settings:delSetting("gzreader_wifi_on_demand")
-    G_reader_settings:delSetting("gzreader_wifi_kept_off")
     -- the status bars' Wi-Fi icon (the auto mark) and open settings pages
     pcall(function()
         UIManager:broadcastEvent(require("ui/event"):new("NetworkStateChanged"))

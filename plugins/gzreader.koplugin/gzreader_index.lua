@@ -105,8 +105,7 @@ local function collect(api, report)
         end
         wpage = wpage + 1
     end
-    return { authors = authors, series = series, libraries = libraries, files = files, total = total, subtitles = subtitles,
-        sized = true }
+    return { authors = authors, series = series, libraries = libraries, files = files, total = total, subtitles = subtitles }
 end
 
 --- Build (or rebuild) the index. `show` = show a progress dialog.

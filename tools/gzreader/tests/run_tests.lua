@@ -161,7 +161,7 @@ preload("util", { makePath = function(p) os.execute("mkdir -p '" .. p .. "'") en
 local reader_opened
 preload("apps/reader/readerui", { showReader = function(_, p) reader_opened = p end })
 
-local gsettings = { gzreader_wifi_on_demand = false } -- the on-demand Wi-Fi tests turn it on
+local gsettings = { gzreader_wifi_mode = "on" } -- (Wi-Fi On; the on-demand Wi-Fi tests choose Auto)
 G_reader_settings = { saveSetting = function(_, k, v) gsettings[k] = v end, readSetting = function(_, k) return gsettings[k] end,
     nilOrTrue = function(_, k) return gsettings[k] == nil or gsettings[k] == true end,
     isTrue = function(_, k) return gsettings[k] == true end,
@@ -1600,7 +1600,7 @@ do
         return n
     end
     -- the earlier "Continue reading" was saved
-    local was, wod = NET.connected, gsettings.gzreader_wifi_on_demand
+    local was, wod = NET.connected, gsettings.gzreader_wifi_mode
     NET.connected = false
     gsettings.gzreader_wifi_mode = "off" -- nothing in the background may turn Wi-Fi on
     local before = reqs("continue%-reading")
@@ -1644,7 +1644,7 @@ do
     b:openSimple("continue-reading", "Continue reading")
     check(b.menu.title ~= "Continue reading · saved", "another account doesn't see these saved lists")
     plugin.store.username = user
-    NET.connected, gsettings.gzreader_wifi_on_demand, gsettings.gzreader_wifi_mode = was, wod, nil
+    NET.connected, gsettings.gzreader_wifi_mode = was, wod
     local d = Cache.dir()
     local nfiles = 0
     for name in require("libs/libkoreader-lfs").dir(d) do if name:match("%.json$") then nfiles = nfiles + 1 end end
@@ -4251,7 +4251,7 @@ print("Wi-Fi: on, off, auto")
     local Net = require("gzreader_net")
     local now = 1000
     Net.clock = function() return now end
-    gsettings.gzreader_wifi_on_demand = nil -- default: auto (was "Wi-Fi only when needed", on)
+    gsettings.gzreader_wifi_mode = nil -- default: auto
     check(Net.mode() == "auto", "nothing saved: Auto")
     local was = NET.connected
     NET.connected = false
@@ -4303,14 +4303,6 @@ print("Wi-Fi: on, off, auto")
     Net.run(function() q = q + 1 end, { quiet = true })
     check(q == 0 and #captured.wifi == 0, "Off: background syncs wait for Wi-Fi")
 
-    -- the settings from before the three modes
-    gsettings.gzreader_wifi_mode = nil
-    gsettings.gzreader_wifi_kept_off = true
-    check(Net.mode() == "off", "until 1.28: turned off by you → Off")
-    gsettings.gzreader_wifi_kept_off, gsettings.gzreader_wifi_on_demand = nil, false
-    check(Net.mode() == "on", "until 1.28: Wi-Fi only when needed unticked → On")
-    gsettings.gzreader_wifi_on_demand = nil
-    check(Net.mode() == "auto", "until 1.28: Wi-Fi only when needed ticked (the default) → Auto")
     gsettings.gzreader_wifi_mode = "sometimes"
     check(Net.mode() == "auto", "an unknown saved mode counts as Auto")
     check(Net.nextMode("on") == "off" and Net.nextMode("off") == "auto" and Net.nextMode("auto") == "on",
@@ -4321,11 +4313,10 @@ print("Wi-Fi: on, off, auto")
     local saved_switch, saved_bc = Net._switch, UIM.broadcastEvent
     Net._switch = function() switched = switched + 1; NET.connected = not NET.connected end
     UIM.broadcastEvent = function(_, ev) events[#events + 1] = ev and ev.handler or ev and ev.name or "?" end
-    gsettings.gzreader_wifi_kept_off, gsettings.gzreader_wifi_on_demand = true, false
+    gsettings.gzreader_wifi_mode = "off"
     NET.connected = false
     check(Net.setMode("on") == true and switched == 1 and NET.connected and gsettings.gzreader_wifi_mode == "on",
         "On with Wi-Fi off: saved, Wi-Fi switched on")
-    check(gsettings.gzreader_wifi_kept_off == nil and gsettings.gzreader_wifi_on_demand == nil, "the old settings are forgotten once a mode is saved")
     check(#events >= 1 and tostring(events[1]):match("NetworkStateChanged"), "the status bars are told (their Wi-Fi icon) " .. tostring(events[1]))
     check(Net.setMode("on") == false and switched == 1, "On again with Wi-Fi on: nothing switched")
     -- On: something needs Wi-Fi after it went off by itself (sleep, out of range): back on, and it stays on
@@ -4492,8 +4483,7 @@ print("Wi-Fi: on, off, auto")
     check(Net.mode() == "auto" and item.mandatory_func() == "Auto", "choosing Auto there saves it")
 
     Net._switch, UIM.broadcastEvent = saved_switch, saved_bc
-    gsettings.gzreader_wifi_mode, gsettings.gzreader_wifi_kept_off = nil, nil
-    gsettings.gzreader_wifi_on_demand = false
+    gsettings.gzreader_wifi_mode = "on"
     Net._toggle_on, Net._toggle_off = nil, nil
     NET.connected = was
     Net.clock = os.time
@@ -4944,7 +4934,7 @@ do
     S.menu.onMenuSelect(S.menu, S.menu.item_table[2]) -- Kindle again: back to how Grimmory has it
     check(not S.hasPending(rplugin) and S.isOn(rplugin, 3, 4), "put back on before it was sent: nothing to send")
     buttons()[2].callback()
-    NET.connected, gsettings.gzreader_wifi_mode = true, nil
+    NET.connected, gsettings.gzreader_wifi_mode = true, "on"
     wifiBack()
     check(shelvesOf(3) == "7" and not S.hasPending(rplugin) and not S.isOn(rplugin, 3, 4), "Wi-Fi back: the change sent, the queue empty")
 
@@ -5332,7 +5322,7 @@ do
         for _i, f in ipairs(due) do f() end
     end
     check(#server() == 2, "on close: Wi-Fi brought up quietly and the highlight sent")
-    gsettings.gzreader_wifi_mode = nil
+    gsettings.gzreader_wifi_mode = "on"
     -- switch
     rplugin.store.annotation_sync_disabled = true
     rplugin:onReaderReady(); for f in pairs(UI.scheduled) do f() end; UI.scheduled = {}
@@ -7703,7 +7693,7 @@ print("Wi-Fi you turn off stays off for background work")
     G_reader_settings.delSetting = G_reader_settings.delSetting or function(_, k) gsettings[k] = nil end
     local Net = require("gzreader_net")
     local NM = require("ui/network/manager")
-    local was_c, was_wod = NET.connected, gsettings.gzreader_wifi_on_demand
+    local was_c, was_wod = NET.connected, gsettings.gzreader_wifi_mode
     gsettings.gzreader_wifi_mode = "auto"
     Net.adopt() -- wraps the Wi-Fi switches
     NET.connected = true
@@ -7724,7 +7714,7 @@ print("Wi-Fi you turn off stays off for background work")
     captured.wifi = {}
     Net.run(function() ran = ran + 1 end, { quiet = true, reason = "test background" })
     check(ran == 2 and captured.wifi[1] == "on-quiet", "background work turns it on quietly again")
-    NET.connected, gsettings.gzreader_wifi_on_demand, gsettings.gzreader_wifi_mode = was_c, was_wod, nil
+    NET.connected, gsettings.gzreader_wifi_mode = was_c, was_wod
     Net.connecting, Net.ours = nil, false
 end)()
 
