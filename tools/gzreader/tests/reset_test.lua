@@ -87,7 +87,7 @@ local plugin = { libraryDir = function() return d.library end, path = d.program 
 local plan = Reset.plan(plugin, d)
 local labels = {}
 for _i, e in ipairs(plan.empty) do labels[#labels + 1] = e.label end
-check(table.concat(labels, ",") == "settings,cache,screensavers,gzreader-remote,gzreader-usage,docsettings,hashdocsettings,sign-ins,library"
+check(table.concat(labels, ",") == "settings,cache,screensavers,gzreader-remote,docsettings,hashdocsettings,sign-ins,library"
     and plan.library == d.library and #plan.skipped == 0, "the plan: settings, caches, sign-ins, the GZreader folder " .. table.concat(labels, ","))
 
 -- a library set to something that holds the program: left alone

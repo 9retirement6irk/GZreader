@@ -182,7 +182,7 @@ function Reset.plan(plugin, over)
         file(data .. "/statistics.sqlite3" .. suffix)
     end
     empty(d.settings, nil, "settings")
-    for _i, name in ipairs({ "cache", "screensavers", "gzreader-remote", "gzreader-usage", "docsettings", "hashdocsettings" }) do
+    for _i, name in ipairs({ "cache", "screensavers", "gzreader-remote", "docsettings", "hashdocsettings" }) do
         empty(data .. "/" .. name, nil, name)
     end
     if d.secrets then empty(d.secrets, nil, "sign-ins") end

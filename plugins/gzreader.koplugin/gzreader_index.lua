@@ -44,8 +44,6 @@ end
 function Index.isStale(data)
     return not data or type(data.built_at) ~= "number" or os.time() - data.built_at > MAX_AGE
         or data.built_at > os.time() + 3600 -- clock went backwards a lot
-        or data.subtitles == nil -- built before GZreader 1.0.19 (no subtitles yet)
-        or data.sized == nil -- built before 1.35 (no file sizes: gzreader_newcopy.lua)
 end
 
 --- Child process: page through readable books and aggregate.

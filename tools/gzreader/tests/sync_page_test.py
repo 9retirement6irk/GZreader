@@ -193,15 +193,9 @@ OUTBOX = {
               "full": True, "per_feed": 5, "pages": 40, "max_bytes": 1572864},
     # (each book's bookmarks and highlights in a file of its own, marks/<id>.json)
     "copy": {"marks_files": True},
-    # (GZreader up to 1.28.1 also wrote usage statistics' server here; the page ignores it)
-    "usage": {"level": "basic", "server": "http://127.0.0.1:%d" % GP, "app": "test-app"},
     # Send to the developer: the reports in reports/ go to this feed (gzreader_usbreport.lua)
     "report": {"feed": "http://127.0.0.1:%d/open/feed/testfeed" % GP, "device": "Kindle2-ab12cd", "test_build": False},
 }
-USAGE_LINES = "\n".join(json.dumps(x) for x in [
-    {"type": "identify", "payload": {"application": "test-app", "os": "Kindle2", "language": "en", "data": {"id": "k", "version": "1.25.2"}}},
-    {"type": "event", "payload": {"application": "test-app", "name": "start", "os": "Kindle2", "language": "en", "data": {"install": "k"}}},
-]) + "\n"
 
 from playwright.sync_api import sync_playwright
 
@@ -225,17 +219,15 @@ with sync_playwright() as pw:
     page.wait_for_function("window.GZSync")
     check(page.locator("h1").inner_text() == "Sync with computer" and page.locator("#sync").is_disabled(),
           "the page opens; Sync waits for a Kindle and a connection")
-    page.evaluate("""async ({ outbox, usage }) => {
+    page.evaluate("""async ({ outbox }) => {
         const root = await navigator.storage.getDirectory();
         for await (const name of root.keys()) await root.removeEntry(name, { recursive: true });
         const gz = await (await root.getDirectoryHandle('documents', { create: true })).getDirectoryHandle('GZreader', { create: true });
         const sync = await gz.getDirectoryHandle('.gzsync', { create: true });
         const w = await (await sync.getFileHandle('outbox.json', { create: true })).createWritable();
         await w.write(JSON.stringify(outbox)); await w.close();
-        const u = await (await (await sync.getDirectoryHandle('usage', { create: true })).getFileHandle('sending-1.jsonl', { create: true })).createWritable();
-        await u.write(usage); await u.close();
         window.testRoot = root;
-    }""", {"outbox": OUTBOX, "usage": USAGE_LINES})
+    }""", {"outbox": OUTBOX})
     # a report saved on the Kindle (Diagnostics → Send to the developer), the log exported when
     # Sync was pressed, and the log files themselves (gzreader_usbreport.lua)
     page.evaluate("""async () => {
@@ -818,9 +810,6 @@ check(isearch and isearch[-1]["body"]["albumIds"] == [immich_uid(1, "b")] and is
       and len([r for r in istate["log"] if "/thumbnail?size=preview" in r["path"] and r["key"] == "ok"]) == 10,
       "Immich: the album's photos found with its search, 10 previews asked for, all with the API key")
 check("Immich: 10 new pictures" in log, "the sync's log says what came from Immich")
-usage = state.get("usage", [])
-check(len(usage) == 0 and not [k for k in files if k.startswith(G + "usage/")],
-      "usage statistics an older GZreader left: deleted, not sent (GZreader sends none since 1.28.1)")
 mus = {m["key"]: m for m in inbox.get("music", [])}
 def col(key):
     m = mus.get(key)

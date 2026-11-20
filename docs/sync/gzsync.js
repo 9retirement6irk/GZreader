@@ -2199,16 +2199,6 @@ gets a password or token.
     return base + "." + ext;
   }
 
-  // Usage statistics GZreader up to 1.28.1 left in usage/: deleted, not sent
-  // (GZreader sends no usage statistics since).
-  async function dropUsage() {
-    var dir = await Drive.tryDir(Drive.sync, "usage");
-    if (!dir) return;
-    var names = [];
-    for await (var entry of dir.values()) if (entry.kind === "file") names.push(entry.name);
-    for (var i = 0; i < names.length; i++) await dir.removeEntry(names[i]);
-  }
-
   // Send to the developer for a Kindle without Wi-Fi: what the Kindle saved in
   // reports/ (Diagnostics → Send to the developer, gzreader_usbreport.lua) goes
   // at the sync; the Diagnostics box on the Sync tab sends the Kindle's logs
@@ -2435,7 +2425,6 @@ gets a password or token.
         return !inbox.music.some(function (m) { return m.kind === p.kind && String(m.key) === String(p.key); });
       }));
       Picks.prune(out);
-      try { await dropUsage(); } catch (e) {}
       try { await Report.sendSaved(out); } catch (e) { log("Reports for the developer: " + e.message); }
       if (Sleep.count()) { try { await Sleep.bring(inbox); } catch (e) { log("Sleep screen pictures: " + e.message, "bad"); } }
       if (I.st) { try { await I.bring(out, inbox); } catch (e) { bar.hide(); log("Immich: " + e.message, "bad"); } }

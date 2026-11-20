@@ -2099,8 +2099,6 @@ function Notes.decorate(menu, label)
     return require("gzreader_tabs").decorate(menu, label or Notes.title())
 end
 
---- (kept for callers from 1.5.2) see gzreader_tabs
-function Notes.closeOtherTabs(keep_id) return require("gzreader_tabs").closeOthers(keep_id) end
 
 Notes.ICON_DIR = (debug.getinfo(1, "S").source:match("^@(.*)/[^/]*$") or ".") .. "/icons/panel/"
 
@@ -2188,7 +2186,7 @@ Notes.KEY_HINT = _("N note  \u{00B7}  J journal  \u{00B7}  K search  \u{00B7}  G
 
 --- The Notes tab (the tab bar's Notes button).
 function Notes.show(plugin)
-    Notes.closeOtherTabs(Notes.TAB_ID)
+    require("gzreader_tabs").closeOthers(Notes.TAB_ID)
     Notes._mood_prefix = Notes.journalSettings(plugin).moodTagPrefix -- (the faces beside entries' times)
     if Notes.board and not Notes.board._gz_closed then
         Notes.reloadBoard(true)
