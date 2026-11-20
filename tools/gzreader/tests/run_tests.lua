@@ -10583,7 +10583,7 @@ print("Notes (Memos v0.31)")
             "drawing: the page is the whole screen, the top bar and the tools fold away; a new drawing's name and tags come from the top bar and Done saves it")
         local ids = {}
         for _i, t in ipairs(require("gzreader_drawscreen").SIDE_TOOLS) do ids[#ids + 1] = t.id end
-        check(table.concat(ids, ",") == "pen,highlighter,shape,text,eraser,lasso,hand,fingers,sep,undo,redo,more",
+        check(table.concat(ids, ",") == "pen,highlighter,shape,text,sticker,eraser,lasso,hand,fingers,sep,undo,redo,more",
             "drawing: the tools down the side, as the Scribe's (pen / finger on pen Kindles): " .. table.concat(ids, ","))
         -- drawing keeps the Kindle awake (AutoSuspend's idle timer: KOReader's InputEvent hook), at most every few seconds
         do
@@ -15086,6 +15086,119 @@ print("Immich photos for notes and drawings (gzreader_immichpick.lua): the Memos
     for _i, f in ipairs(ifiles or {}) do os.remove(f.path) end
     stop("pi")
     plugin.store.memos, plugin.store.immich = saved.memos, saved.immich
+end)()
+
+print("Stickers in drawings (gzreader_stickers.lua): the Memos fork's Kid Pix stickers, as PNG pictures")
+;(function()
+    local Stickers = require("gzreader_stickers")
+    local DS = require("gzreader_drawscreen")
+    local Sketch = require("gzreader_sketch")
+    local lfs = require("libs/libkoreader-lfs")
+    local SP = PORT + 88
+    local function start(flags)
+        os.execute("python3 -I " .. PLUGIN .. "/../../tools/gzreader/emulator/demo/mock_memos.py " .. SP .. " " .. flags
+            .. " > " .. WORK .. "/stk.log 2>&1 & echo $! > " .. WORK .. "/stk.pid")
+        for _try = 1, 50 do
+            local pp = io.popen("curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:" .. SP .. "/__state"); local cc = pp:read("*a"); pp:close()
+            if cc == "200" then break end
+            socket.sleep(0.2)
+        end
+    end
+    local function stop() os.execute("kill $(cat " .. WORK .. "/stk.pid) 2>/dev/null") end
+    local function fetched()
+        local st = json.decode(io.popen("curl -s http://127.0.0.1:" .. SP .. "/__state"):read("*a"))
+        return st.stickers_fetched or {}
+    end
+    os.execute("rm -rf '" .. Stickers.dir() .. "'")
+
+    -- the fork's list, checked
+    local good = { version = 1, scale = 2, categories = {
+        { slug = "animals", name = "Animals", items = { { name = "Fox", file = "animals/0.png", width = 40, height = 30 },
+            { name = "Bad", file = "../../etc/passwd", width = 1, height = 1 }, { name = "Owl", file = "animals/2.png", width = 20, height = 25 } } },
+        { slug = "../x", name = "Nope", items = { { name = "a", file = "../x/0.png", width = 1, height = 1 } } },
+    } }
+    local idx = Stickers.parseIndex(good)
+    check(idx and #idx.categories == 1 and #idx.categories[1].items == 2 and idx.categories[1].items[2].file == "animals/2.png"
+        and idx.categories[1].items[1].w == 40 and Stickers.parseIndex({ version = 2, categories = {} }) == nil and Stickers.parseIndex("x") == nil,
+        "stickers: the fork's list read; a file name that isn't <category>/<n>.png (or a strange category) left out")
+    local saved_memos = plugin.store.memos
+    plugin.store.memos = nil
+    check(Stickers.server(plugin) == nil, "stickers: no Memos sign-in: no server to fetch them from")
+    plugin.store.memos = { server = "http://127.0.0.1:" .. SP .. "/", token = "memos-test-token" }
+    local server = Stickers.server(plugin)
+    check(server == "http://127.0.0.1:" .. SP, "stickers: from GZreader's Memos server")
+
+    -- a stock Memos (no sticker pictures)
+    start("")
+    local none, err = Stickers.fetchIndex(server)
+    check(none == nil and err == "no_stickers" and Stickers.why(err):find("Memos fork", 1, true) ~= nil and Stickers.index() == nil,
+        "stickers: a Memos without them: said so (they come with the Memos fork)")
+    stop()
+
+    -- the fork's
+    start("--stickers")
+    local index = Stickers.fetchIndex(server)
+    check(index and #index.categories == 2 and index.categories[1].name == "Animals" and #index.categories[1].items == 3,
+        "stickers: the list fetched from the fork")
+    local kept = Stickers.index()
+    check(kept and #kept.categories == 2 and kept.categories[2].items[2].name == "Pie", "…and kept on the Kindle (opened again without Wi-Fi)")
+    local animals = index.categories[1]
+    check(Stickers.have(animals) == 0 and Stickers.path(animals.items[1]) == nil, "…the pictures aren't fetched until their category is opened")
+    local n, ferr = Stickers.fetchCategory(server, animals)
+    check(n == 3 and ferr == nil and Stickers.have(animals) == 3 and Stickers.have(index.categories[2]) == 0,
+        "stickers: a category opened: its pictures fetched (only its own)")
+    local before = #fetched()
+    Stickers.fetchCategory(server, animals)
+    check(#fetched() == before, "…and kept: opened again, nothing is fetched")
+    local f = io.open(Stickers.path(animals.items[2]), "rb"); local head = f:read(8); f:close()
+    check(head == "\137PNG\r\n\26\n", "…each a PNG")
+    stop()
+
+    -- how one goes on the page
+    local w, h = Stickers.size(animals.items[1], 1)
+    local w3 = Stickers.size(animals.items[1], 3)
+    check(w == 40 and h == 30 and w3 == 40 * Stickers.SIZES[3] and Stickers.size(animals.items[1], 99) == 40 * Stickers.SIZES[Stickers.DEFAULT_SIZE],
+        "stickers: Small is the sticker's own size (as Kid Pix put it down), Medium and Large bigger")
+    check(Stickers.number(animals.items[3]) == 2 and Stickers.find(kept, "animals", 2).name == "Blue Bunny" and Stickers.find(kept, "nope", 0) == nil,
+        "stickers: one found again by its category and number (the one last used, kept)")
+    local url = Stickers.dataURL(animals.items[1])
+    check(url and url:find("^data:image/png;base64,iVBORw0KGgo") ~= nil, "stickers: its picture as the drawing keeps a picture (a PNG data URL)")
+
+    -- the drawing screen: a tap with the Stickers tool
+    local sk = Sketch.new{ canvas = { x = 0, y = 0, w = 1000, h = 1400 }, per_unit = 2 }
+    local painted = 0
+    local fake = setmetatable({ sketch = sk, sticker = animals.items[1], sticker_size = 2,
+        touched = function(self) self.was_touched = true end,
+        repaintArea = function(_self, area) painted = area.x1 - area.x0; return true end,
+        refreshBar = function() end, redrawAll = function() end }, { __index = function(_t, k) return rawget(DS, k) end })
+    local el = fake:stampSticker(300, 400)
+    local sx, sy = sk:toScene(300, 400)
+    check(el and el.type == "image" and el.width == 40 * Stickers.SIZES[2] and math.abs(el.x + el.width / 2 - sx) < 0.01
+        and math.abs(el.y + el.height / 2 - sy) < 0.01 and sk.base.files[el.fileId].dataURL == url and fake.was_touched
+        and painted >= el.width * sk.per_unit,
+        "drawing: a tap with the Stickers tool puts the sticker down there (Medium), only that part of the page drawn again")
+    check(sk:undo() and #sk:movablePictures() == 0, "…Undo takes it off")
+    -- its panel
+    local rows = DS.flyoutRows(fake, "sticker")
+    local labels = {}
+    for _i, r in ipairs(rows) do labels[#labels + 1] = r.label end
+    check(table.concat(labels, "|") == "Choose a sticker…|Small|Medium|Large" and DS.selected(fake, rows[3]) and not DS.selected(fake, rows[2]),
+        "drawing: the Stickers tool's panel: choose another, its size (the one in use marked)")
+    -- pictures with a clear ground (stickers) go on through it; others are copied (quicker)
+    local Blitbuffer = require("ffi/blitbuffer")
+    local calls = {}
+    local dst = { blitFrom = function() calls[#calls + 1] = "copy" end, alphablitFrom = function() calls[#calls + 1] = "alpha" end }
+    local was_t = { rawget(Blitbuffer, "TYPE_BB8"), rawget(Blitbuffer, "TYPE_BB8A"), rawget(Blitbuffer, "TYPE_BBRGB32") }
+    rawset(Blitbuffer, "TYPE_BB8", 1); rawset(Blitbuffer, "TYPE_BB8A", 2); rawset(Blitbuffer, "TYPE_BBRGB32", 5)
+    DS.blitPicture(dst, { getType = function() return 5 end }, 0, 0, 0, 0, 1, 1)
+    DS.blitPicture(dst, { getType = function() return 2 end }, 0, 0, 0, 0, 1, 1)
+    DS.blitPicture(dst, { getType = function() return 1 end }, 0, 0, 0, 0, 1, 1)
+    rawset(Blitbuffer, "TYPE_BB8", was_t[1]); rawset(Blitbuffer, "TYPE_BB8A", was_t[2]); rawset(Blitbuffer, "TYPE_BBRGB32", was_t[3])
+    check(calls[1] == "alpha" and calls[2] == "alpha" and calls[3] == "copy", "drawing: a sticker's clear ground shows the page under it (a grey picture: copied)")
+    local dsrc = io.open(PLUGIN .. "/gzreader_drawscreen.lua"):read("*a")
+    check(select(2, dsrc:gsub("DrawScreen%.blitPicture%(", "")) >= 6 and dsrc:find("if out.sticker_tap then self:stampSticker", 1, true) ~= nil,
+        "drawing: every picture of the page goes on that way; the tap reaches stampSticker")
+    plugin.store.memos = saved_memos
 end)()
 
 print(string.format("\n%d passed, %d failed", pass, fail))

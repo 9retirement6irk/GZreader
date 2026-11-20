@@ -963,6 +963,9 @@ local function startContact(self, s, now, out)
         local el, part = self:textAt(s.x - self.canvas.x, s.y - self.canvas.y)
         c.kind, c.el, c.part, c.at = "text", el, part, now
         if el then c.orig = { x = el.x, y = el.y, width = el.width, height = el.height } end
+    elseif self.tool == "sticker" then
+        -- the Stickers tool: a tap puts the sticker down there (the pen or a finger); a drag does nothing
+        c.kind = "sticker"
     elseif self.pen_only and not pen and self.zoomed then
         -- A pen Kindle, zoomed in: a finger moves the page (a second, at once: a pinch).
         -- Whatever else rests on the screen: only "the first finger down, nothing else
@@ -1186,6 +1189,10 @@ local function endContact(self, slot, out)
     if c.kind == "pan" then
         applyPan(self, c, out)
         if self.pan_slot == slot then self.pan_slot = nil end
+        return
+    end
+    if c.kind == "sticker" then
+        if c.moved <= self.tap_slop then out.sticker_tap = { x = c.x0 - self.canvas.x, y = c.y0 - self.canvas.y } end
         return
     end
     if c.kind == "text" then

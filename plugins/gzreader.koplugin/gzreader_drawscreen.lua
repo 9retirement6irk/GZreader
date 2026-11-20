@@ -108,6 +108,8 @@ DrawScreen.SIDE_TOOLS = {
     { id = "highlighter", icon = "highlighter", label = _("Highlighter") },
     { id = "shape", icon = "shapes", label = _("Shapes") },
     { id = "text", icon = "text", label = _("Text") },
+    -- (Kid Pix's stickers, from the Memos server: gzreader_stickers.lua)
+    { id = "sticker", icon = "sticker", label = _("Stickers") },
     { id = "eraser", icon = "eraser", label = _("Eraser") },
     { id = "lasso", icon = "lasso", label = _("Lasso") },
     { id = "hand", icon = "hand", label = _("Move the page") },
@@ -248,6 +250,16 @@ function DrawScreen:init()
     if self.writing == "highlighter" then self.tool, self.writing = "highlighter", "pen" end
     self.hl_width = oneOf("gzreader_drawing_hl_width", Sketch.WIDTHS, 2)
     self.eraser_width = oneOf("gzreader_drawing_eraser_width", Sketch.ERASER_WIDTHS, 4)
+    -- the sticker last put down, and its size (the Stickers tool stamps it)
+    do
+        local Stickers = require("gzreader_stickers")
+        local last, size = Stickers.last()
+        self.sticker_size = size
+        if last then
+            local item = Stickers.find(Stickers.index(), last.slug, last.n)
+            if item and Stickers.path(item) then self.sticker = item end
+        end
+    end
     local shape = G_reader_settings and G_reader_settings:readSetting("gzreader_drawing_shape")
     self.shape = Sketch.SHAPE_SET[shape or ""] and shape or "square"
     self.has_color = DrawScreen.hasColor()
@@ -525,6 +537,11 @@ function DrawScreen:flyoutRows(which)
             rows[#rows + 1] = { id = "e" .. tostring(w), row = true, eraser_width = w, bar = k, hollow = true, label = DrawScreen.WIDTH_NAMES[k] }
         end
         rows[#rows + 1] = { id = "clear", row = true, label = _("Erase page") }
+    elseif which == "sticker" then
+        rows[#rows + 1] = { id = "sticker-pick", row = true, label = _("Choose a sticker…") }
+        for k, _f in ipairs(require("gzreader_stickers").SIZES) do
+            rows[#rows + 1] = { id = "ss" .. k, row = true, sticker_size = k, label = DrawScreen.STICKER_SIZE_NAMES[k] }
+        end
     elseif which == "more" then
         rows[#rows + 1] = { id = "side", row = true, label = self.toolbar_side == "left" and _("Move to right side") or _("Move to left side") }
         if self.has_pen then
@@ -770,12 +787,13 @@ function DrawScreen:selected(t)
     if t.hl_width then return self.hl_width == t.hl_width end
     if t.shape then return self.tool == "shape" and self.shape == t.shape end
     if t.eraser_width then return self.eraser_width == t.eraser_width end
+    if t.sticker_size then return self.sticker_size == t.sticker_size end
     if t.color then return Sketch.inkColor(t.color) == self.color end
     if t.tagname then
         for _i, name in ipairs(self.meta and self.meta.tags or {}) do if name == t.tagname then return true end end
         return false
     end
-    if t.id == "pen" or t.id == "highlighter" or t.id == "shape" or t.id == "eraser" or t.id == "text" or t.id == "hand" or t.id == "lasso" then return self.tool == t.id end
+    if t.id == "pen" or t.id == "highlighter" or t.id == "shape" or t.id == "eraser" or t.id == "text" or t.id == "hand" or t.id == "lasso" or t.id == "sticker" then return self.tool == t.id end
     if t.id == "fingers" then return not self.pen_only end
     if t.id == "more" or t.id == "options" then return self.flyout == t.id end
     if t.id == "tag" then return self.flyout == "tags" end
@@ -1144,6 +1162,26 @@ local function strokeSegments(sk, st)
     return out
 end
 
+--- A picture onto the page: through its transparency when it has one (a
+--- sticker, a PNG with a clear ground: the paper and the ink under it show),
+--- else copied as it is (quicker).
+function DrawScreen.blitPicture(dst, src, dx, dy, sx, sy, w, h)
+    local t = src.getType and src:getType()
+    if t ~= nil and (t == Blitbuffer.TYPE_BB8A or t == Blitbuffer.TYPE_BBRGB32) then
+        if dst.getType and dst:getType() == Blitbuffer.TYPE_BBRGB24 then
+            -- (KOReader's blitter can't blend into 24-bit colour, the PNG's page: through a 32-bit copy of that part)
+            local tmp = Blitbuffer.new(w, h, Blitbuffer.TYPE_BBRGB32)
+            tmp:blitFrom(dst, 0, 0, dx, dy, w, h)
+            tmp:alphablitFrom(src, 0, 0, sx, sy, w, h)
+            dst:blitFrom(tmp, dx, dy, 0, 0, w, h)
+            tmp:free()
+            return
+        end
+        return dst:alphablitFrom(src, dx, dy, sx, sy, w, h)
+    end
+    return dst:blitFrom(src, dx, dy, sx, sy, w, h)
+end
+
 --- Picture `el` of the page's scene, at w x h (cached for the page): a
 --- BlitBuffer, or nil when it can't be read.
 function DrawScreen:picture(el, w, h)
@@ -1195,12 +1233,12 @@ function DrawScreen:paintPicture(el)
     local dx, dy = math.max(0, x1), math.max(0, y1)
     local bw, bh = math.min(w - sx, c.w - dx), math.min(h - sy, c.h - dy)
     if bw <= 0 or bh <= 0 then return true end
-    self.canvas_bb:blitFrom(bb, dx, dy, sx, sy, bw, bh)
+    DrawScreen.blitPicture(self.canvas_bb, bb, dx, dy, sx, sy, bw, bh)
     if not self.color_bb then
         self.color_bb = Blitbuffer.new(c.w, c.h, Blitbuffer.TYPE_BBRGB24)
         self.color_bb:fill(Blitbuffer.ColorRGB24(DrawScreen.hexRGB(Drawing.PAPER)))
     end
-    self.color_bb:blitFrom(bb, dx, dy, sx, sy, bw, bh)
+    DrawScreen.blitPicture(self.color_bb, bb, dx, dy, sx, sy, bw, bh)
     return true
 end
 
@@ -1223,12 +1261,12 @@ function DrawScreen:paintPicturePart(el, x1, y1, w, h)
         return require("ui/renderimage"):scaleBlitBuffer(view, dx1 - dx0, dy1 - dy0, false)
     end)
     if not ok or not part then return false end
-    self.canvas_bb:blitFrom(part, dx0, dy0, 0, 0, dx1 - dx0, dy1 - dy0)
+    DrawScreen.blitPicture(self.canvas_bb, part, dx0, dy0, 0, 0, dx1 - dx0, dy1 - dy0)
     if not self.color_bb then
         self.color_bb = Blitbuffer.new(c.w, c.h, Blitbuffer.TYPE_BBRGB24)
         self.color_bb:fill(Blitbuffer.ColorRGB24(DrawScreen.hexRGB(Drawing.PAPER)))
     end
-    self.color_bb:blitFrom(part, dx0, dy0, 0, 0, dx1 - dx0, dy1 - dy0)
+    DrawScreen.blitPicture(self.color_bb, part, dx0, dy0, 0, 0, dx1 - dx0, dy1 - dy0)
     part:free()
     return true
 end
@@ -1374,8 +1412,8 @@ function DrawScreen:repaintArea(area)
         local dx0, dy0 = math.max(x0, p.x), math.max(y0, p.y)
         local dx1, dy1 = math.min(x1, p.x + p.w), math.min(y1, p.y + p.h)
         if dx1 > dx0 and dy1 > dy0 then
-            self.canvas_bb:blitFrom(part.bb, dx0, dy0, dx0 - p.x, dy0 - p.y, dx1 - dx0, dy1 - dy0)
-            if self.color_bb then self.color_bb:blitFrom(part.bb, dx0, dy0, dx0 - p.x, dy0 - p.y, dx1 - dx0, dy1 - dy0) end
+            DrawScreen.blitPicture(self.canvas_bb, part.bb, dx0, dy0, dx0 - p.x, dy0 - p.y, dx1 - dx0, dy1 - dy0)
+            if self.color_bb then DrawScreen.blitPicture(self.color_bb, part.bb, dx0, dy0, dx0 - p.x, dy0 - p.y, dx1 - dx0, dy1 - dy0) end
         end
     end
     -- …and the bits of line that cross it (highlighters under the rest, as on the whole page;
@@ -1779,6 +1817,7 @@ function DrawScreen:apply(out)
         self._stroke_area, self._stroke_grey = nil, nil
     end
     for _i, tap in ipairs(out.taps) do self:tapAt(tap.x, tap.y) end
+    if out.sticker_tap then self:stampSticker(out.sticker_tap.x, out.sticker_tap.y) end
     if out.text_tap then self:textTap(out.text_tap) end
     if out.pull then self:pullPanel() end
 end
@@ -2424,6 +2463,16 @@ function DrawScreen:use(t)
         self.eraser_width = t.eraser_width
         keep("gzreader_drawing_eraser_width", t.eraser_width)
         self:setTool("eraser"); self:setFlyout(nil)
+    elseif t.sticker_size then
+        self.sticker_size = t.sticker_size
+        keep("gzreader_drawing_sticker_size", t.sticker_size)
+        self:setTool("sticker"); self:setFlyout(nil)
+    elseif t.id == "sticker" then
+        -- in hand already: its panel (another sticker, its size); none chosen yet: the stickers to choose from
+        if self.tool == "sticker" then self:setFlyout(self.flyout ~= "sticker" and "sticker" or nil)
+        elseif self.sticker then self:setTool("sticker"); self:setFlyout(nil)
+        else self:setFlyout(nil); self:pickSticker() end
+    elseif t.id == "sticker-pick" then self:setFlyout(nil); self:pickSticker()
     elseif t.color then self:setColor(t.color); self:setFlyout(nil)
     elseif t.tagname then self:toggleTag(t.tagname); self:setFlyout("tags")
     elseif t.id == "newtag" then self:newTag()
@@ -2656,6 +2705,42 @@ function DrawScreen:pageThumb(i, w, h)
 end
 
 -- ------------------------------------------------------------ pictures
+
+DrawScreen.STICKER_SIZE_NAMES = { _("Small"), _("Medium"), _("Large") }
+
+--- The Stickers tool's picker (gzreader_stickergrid.lua): the sticker picked is the one each tap puts down.
+function DrawScreen:pickSticker()
+    return require("gzreader_stickergrid").show(self.plugin, { on_pick = function(item)
+        if self._closed then return end
+        self.sticker = item
+        if G_reader_settings then
+            G_reader_settings:saveSetting("gzreader_drawing_sticker", { slug = item.slug, n = require("gzreader_stickers").number(item) })
+        end
+        self:setTool("sticker"); self:setFlyout(nil)
+    end })
+end
+
+--- A tap with the Stickers tool at canvas point (x, y): the sticker put down
+--- there, centred on it (a picture in the drawing, as Memos' Kid Pix mode puts
+--- its stickers in; Undo takes it off, the lasso moves and sizes it).
+function DrawScreen:stampSticker(x, y)
+    local Stickers = require("gzreader_stickers")
+    local item = self.sticker
+    local url = item and Stickers.dataURL(item)
+    if not url then return self:pickSticker() end
+    local sk = self.sketch
+    local sx, sy = sk:toScene(x, y)
+    local w, h = Stickers.size(item, self.sticker_size)
+    local el = sk:addPicture(url, "image/png", w, h, sx, sy)
+    self:touched()
+    Log.info("drawing: a sticker,", item.file)
+    -- (only where it went)
+    local x0, y0 = sk:toCanvas(el.x, el.y)
+    local x1, y1 = sk:toCanvas(el.x + el.width, el.y + el.height)
+    local area = { x0 = math.floor(x0) - 1, y0 = math.floor(y0) - 1, x1 = math.ceil(x1) + 1, y1 = math.ceil(y1) + 1 }
+    if self:repaintArea(area) then self:refreshBar() else self:redrawAll() end
+    return el
+end
 
 --- Photos from Immich (gzreader_immichpick.lua), placed on the page as
 --- memos' drawing sheet places them: in the middle of what's shown.
