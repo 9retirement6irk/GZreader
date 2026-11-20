@@ -488,6 +488,28 @@ local stories = Paper.stories(Daily.edition)
 check(#stories == 4 and stories[1].kicker == true and stories[2].kicker == false and stories[1].topic == Daily.OWN_TOPIC
     and stories[1].item.title == "First story & more", "the paper's stories in reading order, a section's first one marked for its heading")
 check(#Paper.stories(nil) == 0, "no edition: no stories")
+do
+    -- colour: each section's heading, the nameplate's rule
+    local ok_hex = true
+    for _i, t in ipairs(Daily.TOPICS) do ok_hex = ok_hex and Paper.topicColor(t):match("^#%x%x%x%x%x%x$") ~= nil end
+    check(ok_hex and Paper.topicColor("World") ~= Paper.topicColor("Science"), "each built-in section has its own colour")
+    check(Paper.topicColor("Local news") == Paper.topicColor("Local news") and Paper.topicColor(Daily.OWN_TOPIC):match("^#%x+$")
+        and Paper.topicColor(nil):match("^#%x+$"), "… your own sections one of a few, always the same one for a name")
+    local Colour = require("gzreader_colour")
+    local was = Colour.enabled
+    Colour.enabled = function() return false end
+    check(Paper.ink(Paper.MAST_COLOR) == nil, "a grey screen: no colour (black as before)")
+    local BB = require("ffi/blitbuffer")
+    BB.ColorRGB32 = function(r, g, b, a) return { r = r, g = g, b = b, a = a } end
+    Colour.enabled = function() return true end
+    local c = Paper.ink("#c92a2a")
+    check(c and c.r == 0xc9 and c.g == 0x2a and c.b == 0x2a and c.a == 0xFF and Paper.ink("red") == nil, "a colour screen: the colour to paint with")
+    BB.ColorRGB32 = nil
+    Colour.enabled = was
+    local src = read(PLUGIN .. "/gzreader_dailyscreen.lua")
+    check(src:find("fgcolor = Paper.ink(Paper.topicColor(story.topic))", 1, true) and src:find("color = Paper.ink(Paper.MAST_COLOR)", 1, true)
+        and select(2, src:gsub("paintRectRGB32", "")) >= 4, "the section headings and the nameplate's rule (page and Home) use them")
+end
 check(Paper.excerpt("One.\n\nTwo\nthree.", 100) == "One. Two three." and #Paper.excerpt(string.rep("word ", 300), 420) <= 423
     and Paper.excerpt(nil) == "", "how a story begins on the page: one paragraph, cut at a word")
 check(Paper.columnCount(600, 167) == 2 and Paper.columnCount(1072, 300) == 2 and Paper.columnCount(824, 150) == 3 and Paper.columnCount(1860, 300) == 3,
