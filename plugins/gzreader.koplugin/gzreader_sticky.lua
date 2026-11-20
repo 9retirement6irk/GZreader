@@ -91,18 +91,22 @@ end
 
 local rshift, band = bit.rshift, bit.band
 
---- `src` (8-bit gray) turned by `deg` degrees on white, smoothed (bilinear).
+--- `src` (8-bit gray, or RGB32 on a colour screen) turned by `deg` degrees
+--- on white, smoothed (bilinear).
 --- In whole numbers: the place in `src` in 1/65536ths of a pixel, stepped
 --- along each row, the blend in 1/256ths, and only over the part of the row
 --- that lands on `src` (the rest filled white at once): 4.4× faster than in
 --- fractions on a Kindle's LuaJIT, the same picture within 2 levels of 255.
+--- In colour each of a pixel's 4 bytes is blended the same way.
 function Sticky.rotate(src, deg)
     local a = math.rad(deg)
     local ca, sa = math.cos(a), math.sin(a)
     local sw, sh = src:getWidth(), src:getHeight()
     local dw = math.ceil(math.abs(sw * ca) + math.abs(sh * sa))
     local dh = math.ceil(math.abs(sw * sa) + math.abs(sh * ca))
-    local dst = Blitbuffer.new(dw, dh, Blitbuffer.TYPE_BB8)
+    local rgb = Blitbuffer.TYPE_BBRGB32 ~= nil and src.getType ~= nil and src:getType() == Blitbuffer.TYPE_BBRGB32
+    local bpp = rgb and 4 or 1
+    local dst = Blitbuffer.new(dw, dh, rgb and Blitbuffer.TYPE_BBRGB32 or Blitbuffer.TYPE_BB8)
     local sp, ss = ffi.cast("uint8_t*", src.data), tonumber(src.stride)
     local dp, ds = ffi.cast("uint8_t*", dst.data), tonumber(dst.stride)
     local scx, scy, dcx, dcy = sw / 2, sh / 2, dw / 2, dh / 2
@@ -129,19 +133,35 @@ function Sticky.rotate(src, deg)
         inside(fx, dfx, max_x)
         inside(fy, dfy, max_y)
         if hi < lo then
-            ffi.fill(dp + row, dw, 255)
+            ffi.fill(dp + row, dw * bpp, 255)
         else
-            if lo > 0 then ffi.fill(dp + row, lo, 255) end
-            if hi < dw - 1 then ffi.fill(dp + row + hi + 1, dw - 1 - hi, 255) end
+            if lo > 0 then ffi.fill(dp + row, lo * bpp, 255) end
+            if hi < dw - 1 then ffi.fill(dp + row + (hi + 1) * bpp, (dw - 1 - hi) * bpp, 255) end
             fx, fy = fx + lo * dfx, fy + lo * dfy
-            for x = lo, hi do
-                local i = rshift(fy, 16) * ss + rshift(fx, 16)
-                local tx, ty = rshift(band(fx, 0xffff), 8), rshift(band(fy, 0xffff), 8)
-                local p00, p10 = sp[i], sp[i + ss]
-                local top = p00 * 256 + (sp[i + 1] - p00) * tx
-                local bot = p10 * 256 + (sp[i + ss + 1] - p10) * tx
-                dp[row + x] = rshift(top * 256 + (bot - top) * ty + 32768, 16)
-                fx, fy = fx + dfx, fy + dfy
+            if bpp == 1 then
+                for x = lo, hi do
+                    local i = rshift(fy, 16) * ss + rshift(fx, 16)
+                    local tx, ty = rshift(band(fx, 0xffff), 8), rshift(band(fy, 0xffff), 8)
+                    local p00, p10 = sp[i], sp[i + ss]
+                    local top = p00 * 256 + (sp[i + 1] - p00) * tx
+                    local bot = p10 * 256 + (sp[i + ss + 1] - p10) * tx
+                    dp[row + x] = rshift(top * 256 + (bot - top) * ty + 32768, 16)
+                    fx, fy = fx + dfx, fy + dfy
+                end
+            else
+                for x = lo, hi do
+                    local i = rshift(fy, 16) * ss + rshift(fx, 16) * 4
+                    local tx, ty = rshift(band(fx, 0xffff), 8), rshift(band(fy, 0xffff), 8)
+                    local o = row + x * 4
+                    for c = 0, 3 do
+                        local j = i + c
+                        local p00, p10 = sp[j], sp[j + ss]
+                        local top = p00 * 256 + (sp[j + 4] - p00) * tx
+                        local bot = p10 * 256 + (sp[j + ss + 4] - p10) * tx
+                        dp[o + c] = rshift(top * 256 + (bot - top) * ty + 32768, 16)
+                    end
+                    fx, fy = fx + dfx, fy + dfy
+                end
             end
         end
     end
