@@ -16,6 +16,10 @@ toolbar adds it for you:
   Alt+V who can see it. (Alt + the top row types 1–0 on the Kindle Keyboard,
   so those letters aren't shortcuts here.)
 - # Tag: your tags, or a new one (the keyboard has no # key; Sym+G also types #).
+- + Block (Alt+F; "/" on an empty line, as in Memos; the selection bar's +
+  and ⋮ on touch Kindles): what Memos' "/" menu adds (Heading 1–4, the
+  lists, Quote, Callout, Collapsible section, Code block, Table, Divider;
+  gzreader_blocks.lua's MENU).
 - New notes are private unless you choose otherwise.
 - Draw (touch Kindles): drawings to go with the note
   (`gzreader_drawscreen.lua`: pages, each on its paper), sent to Memos as
@@ -68,7 +72,19 @@ NoteEditor.TOOLS = {
     { id = "italic", label = "I", key = "K", wrap = "*", help = _("italic") },
     { id = "bold", label = "B", key = "B", wrap = "**", help = _("bold") },
     { id = "tag", label = "# " .. _("Tag"), key = "G", help = _("add a tag") },
+    { id = "block", label = "+ " .. _("Block"), key = "F", help = _("heading, quote, callout, code, table…") },
 }
+
+--- Memos' "/" menu (gzreader_blocks.lua's MENU), as the editor names it.
+NoteEditor.BLOCK_LABELS = {
+    h1 = "H1   " .. _("Heading 1"), h2 = "H2   " .. _("Heading 2"), h3 = "H3   " .. _("Heading 3"),
+    h4 = "H4   " .. _("Heading 4"), bullet = "\u{2022}    " .. _("Bullet list"), ordered = "1.   " .. _("Numbered list"),
+    task = "\u{2610}    " .. _("To-do list"), quote = "\u{275D}    " .. _("Quote"), callout = "\u{24D8}    " .. _("Callout"),
+    details = "\u{25B8}    " .. _("Collapsible section"), code = "{ }  " .. _("Code block"), table = "\u{25A6}    " .. _("Table"),
+    divider = "\u{2014}   " .. _("Divider"),
+}
+NoteEditor.CALLOUT_LABELS = { NOTE = _("Note"), TIP = _("Tip"), IMPORTANT = _("Important"), WARNING = _("Warning"),
+    CAUTION = _("Caution") }
 
 -- Touch Kindles edit the note formatted (Memos' web editor); false: Markdown, as on keyboard Kindles.
 NoteEditor.RICH = true
@@ -257,9 +273,49 @@ local Editor = InputContainer:extend{ covers_fullscreen = true,
 -- and Alt + the top row types 1–0 (the Kindle Keyboard's numbers).
 local ALT_DIGITS = { Q = "1", W = "2", E = "3", R = "4", T = "5", Y = "6", U = "7", I = "8", O = "9", P = "0" }
 
+--- Memos' "/" menu entry `id` (gzreader_blocks.lua's MENU; `callout`: its
+--- kind) in Markdown `text` at cursor `pos`: a heading or list turns the
+--- cursor's line into it; the others fill an empty line, or go after the
+--- cursor's line with a blank line between. `slash`: a "/" just typed
+--- before the cursor is taken out first. Returns the new text and cursor.
+function NoteEditor.insertBlock(text, pos, id, callout, slash)
+    local Blocks = require("gzreader_blocks")
+    local m = Blocks.menuItem(id)
+    local chars = util.splitToChars(text)
+    pos = math.max(1, math.min(pos, #chars + 1))
+    if slash and chars[pos - 1] == "/" then
+        table.remove(chars, pos - 1)
+        pos = pos - 1
+        text = table.concat(chars)
+    end
+    local md, at = Blocks.menuMarkdown(id, callout)
+    if not md then return text, pos end
+    if m.kind then return NoteEditor.applyPrefix(text, pos, { id = m.kind == "ordered" and "numbered" or id, prefix = md }) end
+    local s, e = lineBounds(chars, pos)
+    local before, after = table.concat(chars, "", 1, s - 1), table.concat(chars, "", e + 1)
+    if table.concat(chars, "", s, e):match("^%s*$") then
+        return before .. md .. after, s + at - 1
+    end
+    -- (after the line: a blank line before it, and after it when more follows)
+    local lead = "\n\n"
+    local tail = after ~= "" and (after:match("^\n\n") and "" or "\n") or ""
+    local line = table.concat(chars, "", s, e)
+    return before .. line .. lead .. md .. tail .. after, s + #util.splitToChars(line) + 2 + at - 1
+end
+
 local function makeInput(editor, opts)
     local InputText = require("ui/widget/inputtext")
     local Box = InputText:extend{}
+    -- "/" typed on an empty line: Memos' block menu (the "/" goes when one is chosen)
+    function Box:addChars(chars)
+        InputText.addChars(self, chars)
+        if chars == "/" and editor.blockMenu then
+            local c, p = self.charlist or {}, self.charpos or 1
+            if c[p - 1] == "/" and (p - 2 < 1 or c[p - 2] == "\n") and (c[p] == nil or c[p] == "\n") then
+                UIManager:nextTick(function() editor:blockMenu{ slash = true } end)
+            end
+        end
+    end
     function Box:onKeyPress(key)
         if not self.focused then return false end
         if key.modifiers and key.modifiers.Alt and not key.modifiers.Shift then
@@ -867,6 +923,7 @@ function Editor:barOptions()
     local dialog
     local function run(fn) return function() UIManager:close(dialog); fn() end end
     local rows = {
+        { { text = _("Add a block (heading, quote, table…)"), align = "left", callback = run(function() self:blockMenu() end) } },
         { { text = T(_("Who can see it: %1"), NoteEditor.VIS_LABEL[self.visibility] or ""), align = "left",
             callback = run(function() self:onShortcut("V") end) } },
     }
@@ -1032,6 +1089,10 @@ function Editor:useTool(i)
     end
     local t = NoteEditor.TOOLS[i]
     if not t then return self:save() end
+    if t.id == "block" then
+        self.last_tool = i
+        return self:blockMenu()
+    end
     if self.rich then
         -- a keyboard Kindle's formatted page: the tool on the cursor's line or word (or the selection)
         self.last_tool = i
@@ -1066,6 +1127,59 @@ function Editor:backToText()
     self:textKeys(true)
     self:redraw()
     if self.dpad and self.input then self.input:onShowKeyboard() end
+end
+
+--- Memos' "/" menu: Heading 1–4, the lists, Quote, Callout (then its kind),
+--- Collapsible section, Code block, Table, Divider. `o.slash`: opened by a
+--- "/" just typed on an empty line (taken out when something is chosen,
+--- kept when the menu is closed, as in Memos).
+function Editor:blockMenu(o)
+    o = o or {}
+    local Blocks = require("gzreader_blocks")
+    local dialog
+    local rows = {}
+    local function pick(id, callout)
+        UIManager:close(dialog)
+        self:addBlock(id, callout, o.slash)
+    end
+    for _i, m in ipairs(Blocks.MENU) do
+        rows[#rows + 1] = { { text = NoteEditor.BLOCK_LABELS[m.id] or m.id, align = "left", callback = function()
+            if m.id ~= "callout" then return pick(m.id) end
+            UIManager:close(dialog)
+            local kinds = {}
+            for _k, c in ipairs(Blocks.CALLOUTS) do
+                kinds[#kinds + 1] = { { text = NoteEditor.CALLOUT_LABELS[c] or c, align = "left", callback = function() pick("callout", c) end } }
+            end
+            dialog = ButtonDialog:new{ title = _("Callout"), buttons = kinds,
+                tap_close_callback = function() self:backToText() end }
+            self.block_dialog = dialog
+            self:keyboardAside(dialog)
+            UIManager:show(dialog)
+        end } }
+    end
+    dialog = ButtonDialog:new{ title = _("Add a block"), buttons = rows, rows_per_page = 8,
+        tap_close_callback = function() self:backToText() end }
+    if self.keys_bar or not self.touch then
+        local letters = rawget(_G, "__ZEN_DIALOG_SHORTCUTS")
+        if letters then pcall(letters, dialog) end
+    end
+    self.block_dialog = dialog
+    self:keyboardAside(dialog)
+    UIManager:show(dialog)
+    return dialog
+end
+
+--- Adds Memos' block `id` (`callout`: its kind) at the cursor (`slash`: a "/"
+--- just typed before it is taken out first).
+function Editor:addBlock(id, callout, slash)
+    Log.info("notes: a block added:", id)
+    if self.rich and self.rich_input then
+        self.rich_input:addBlock(id, callout, slash)
+    elseif self.input then
+        local pos = self.input.charpos or (#(self.input.charlist or {}) + 1)
+        self:apply(NoteEditor.insertBlock(self:text(), pos, id, callout, slash))
+    end
+    self:backToText()
 end
 
 --- `o.quiet` (from the drawing screen): the tag goes in where the cursor was (at

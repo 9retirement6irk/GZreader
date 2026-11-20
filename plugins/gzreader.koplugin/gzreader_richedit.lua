@@ -13,6 +13,8 @@ editor shows it, typed into directly (no Markdown to see).
   ends the list); ⌫ at a line's start joins it to the line before.
 - Swipe up or down: scroll a long note.
 - Code, quotes, tables show as their Markdown in grey and edit as text.
+- + on the bar (or "/" typed on an empty line, as in Memos): Memos' block
+  menu (the note editor's blockMenu); RichEdit:addBlock puts it in.
 - A picture on a line of its own shows as the picture (when the editor
   gives `pictures`, and it's on the Kindle), at the size and place Memos'
   web editor gave it (`![alt|center|320](…)`, Sticky.altSize). A tap picks
@@ -478,6 +480,31 @@ function RichEdit:addChars(chars)
         end
     end
     self:update(structure and "structure" or true)
+    -- "/" on an empty line: Memos' block menu (the "/" goes when one is chosen)
+    local cb = self.cur.b
+    if chars == "/" and cb.kind == "paragraph" and #cb.chars == 1 and cb.chars[1] == "/"
+            and self.editor and self.editor.blockMenu then
+        UIManager:nextTick(function() self.editor:blockMenu{ slash = true } end)
+    end
+end
+
+--- Memos' block `id` (gzreader_blocks.lua's MENU; `callout`: its kind) at
+--- the cursor: a heading or list turns the line into it, the rest fill an
+--- empty line or go on a new one after it. `slash`: the "/" just typed
+--- before the cursor is taken out first.
+function RichEdit:addBlock(id, callout, slash)
+    local b = self.cur.b
+    if slash and b.chars[self.cur.i - 1] == "/" then
+        table.remove(b.chars, self.cur.i - 1)
+        table.remove(b.marks, self.cur.i - 1)
+        b.dirty = true
+        self.cur.i = self.cur.i - 1
+    end
+    self.anchor, self.picked = nil, nil
+    local nb, i = Blocks.addFromMenu(self.doc, b, id, callout)
+    self.cur = { b = nb, i = i }
+    self:update("structure")
+    return nb
 end
 
 --- Opens the folded <details> sections block `b` is in. True when any was.
@@ -1110,6 +1137,9 @@ end
 --- A toolbar button (`id`: heading, bullet, task, ordered, bold, italic, tag).
 function RichEdit:useTool(id)
     if id == "bold" then return self:toggleMark("b")
+    elseif id == "block" then
+        if self.editor and self.editor.blockMenu then return self.editor:blockMenu() end
+        return
     elseif id == "italic" then return self:toggleMark("i")
     elseif id == "tag" then
         if self.editor and self.editor.pickTag then return self.editor:pickTag() end
@@ -1122,7 +1152,8 @@ end
 
 --- The bar that comes up at a selection (hold a word, drag for more; hold an
 --- empty line for the line itself): Bold, Italic, Heading, List, Checklist,
---- Numbered, Tag, as in Memos' web editor. A tap on the text or typing puts it away.
+--- Numbered, Tag, + (a block: Memos' "/" menu), as in Memos' web editor. A tap
+--- on the text or typing puts it away.
 RichEdit.BAR = {
     { id = "bold", label = "B" },
     { id = "italic", label = "I" },
@@ -1131,6 +1162,7 @@ RichEdit.BAR = {
     { id = "task", label = "\u{2610}" },
     { id = "ordered", label = "1." },
     { id = "tag", label = "#" },
+    { id = "block", label = "+" },
 }
 
 --- Where the bar goes (relative to the widget): above the selection's first

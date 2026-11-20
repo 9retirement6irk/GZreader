@@ -8070,6 +8070,22 @@ print("Notes (Memos v0.31)")
     text, cur = NE.insertTag("trip", 5, "travel")
     check(text == "trip #travel " and cur == 14, "toolbar Tag: #tag with a space before")
     check(NE.cleanTag(" #to read! ") == "to-read", "new tag: cleaned like Memos' tags")
+    -- + Block (Memos' "/" menu) on the Markdown page
+    check(NE.TOOLS[#NE.TOOLS].id == "block" and NE.TOOLS[#NE.TOOLS].key == "F", "toolbar: + Block last (Alt+F)")
+    text, cur = NE.insertBlock("Plan", 3, "h3")
+    check(text == "### Plan" and cur == 7, "+ Block Heading 3: the cursor's line becomes it (the cursor kept in its words)")
+    text, cur = NE.insertBlock("Plan\n/", 7, "quote", nil, true)
+    check(text == "Plan\n> " and cur == 8, "+ Block from a / on an empty line: the / taken out, a quote in its place")
+    text, cur = NE.insertBlock("Plan\nmore", 3, "callout", "TIP")
+    check(text == "Plan\n\n> [!TIP]\n> \n\nmore" and cur == 18, "+ Block Callout after a line with words: on its own lines after it")
+    text, cur = NE.insertBlock("", 1, "code")
+    check(text == "```\n\n```" and cur == 5, "+ Block Code block: the cursor inside the fence")
+    text = NE.insertBlock("Plan", 5, "divider")
+    check(text == "Plan\n\n---", "+ Block Divider: after the line")
+    local nesrc_b = io.open(PLUGIN .. "/gzreader_noteeditor.lua"):read("*a")
+    check(nesrc_b:find('if chars == "/" and editor.blockMenu then', 1, true) ~= nil
+        and nesrc_b:find('UIManager:nextTick(function() editor:blockMenu{ slash = true } end)', 1, true) ~= nil,
+        "the Markdown box: / on an empty line opens the block menu")
 
     -- filters
     check(Notes.cel({ kind = "tag", value = "travel" }) == '"travel" in tags', "filter: tag (Memos CEL)")

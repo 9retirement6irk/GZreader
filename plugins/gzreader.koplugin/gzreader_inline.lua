@@ -1,14 +1,17 @@
 --[[--
 An opened note's words as Memos shows them: **bold**, *italic*,
 ~~struck~~, `code` and [links](…) drawn that way (not as plain words), a
-quote with a bar at its left, list items hung from their bullet or number,
+quote with a bar at its left (a callout, `> [!NOTE]` …, its kind in bold
+over it, the bar in the kind's colour on a colour screen), list items hung
+from their bullet or number,
 a rule as a line, and a table as a table. The note editor on touch Kindles
 has shown the first five since it was made (gzreader_richedit.lua); this is
 the same for reading, on every Kindle.
 
 Pure (inline_test.lua):
-  Inline.classify(line)  → { kind = "blank" | "rule" | "quote" | "bullet" |
-                             "ordered" | "para", text, depth, num }
+  Inline.classify(line)  → { kind = "blank" | "rule" | "callout" | "quote" |
+                             "bullet" | "ordered" | "para", text, depth, num,
+                             callout (note, tip, important, warning, caution) }
   Inline.wrap(chars, w, max_w) → { { a, z }, … } (the lines' first and last characters)
   Inline.cells(line)     → a table row's cells, or nil
   Inline.tableAt(lines, i) → { head = { … }, align = { … }, rows = { { … } }, n = lines used }, or nil
@@ -27,6 +30,10 @@ local Inline = {}
 
 Inline.MONO_SIZE = 16
 
+-- A callout's colour on a colour screen (GitHub's, which Memos' follow): its bar and its name.
+Inline.CALLOUT_RGB = { note = { 0x09, 0x69, 0xDA }, tip = { 0x1A, 0x7F, 0x37 }, important = { 0x82, 0x50, 0xDF },
+    warning = { 0x9A, 0x67, 0x00 }, caution = { 0xD1, 0x24, 0x2F } }
+
 -- ------------------------------------------------------------------ pure
 
 --- What kind of line `line` (a note's Markdown) is, and its words.
@@ -37,6 +44,9 @@ function Inline.classify(line)
     if line:match("^%s*%-%-%-+%s*$") or line:match("^%s*%*%*%*+%s*$") or line:match("^%s*___+%s*$") then
         return { kind = "rule", text = "" }
     end
+    -- a callout's first line (Memos and GitHub: `> [!NOTE]`)
+    local ck = line:match("^%s*>%s?%[!(%a+)%]%s*$")
+    if ck and Inline.CALLOUT_RGB[ck:lower()] then return { kind = "callout", text = "", callout = ck:lower() } end
     local q = line:match("^%s*>%s?(.*)$")
     if q then return { kind = "quote", text = q } end
     local ind, rest = line:match("^(%s*)[%-%*%+]%s+(.*)$")
@@ -260,6 +270,7 @@ function Inline.text(o)
         dimen = u.Geom:new{ w = o.align and o.width or math.min(o.width, widest), h = #lines * lh } }
 end
 
+local CalloutBar -- (a callout's bar, the widget class)
 --- A line of a note's text (`line`: its Markdown) `width` wide, by its kind:
 --- a paragraph's words; a quote, grey, a bar at its left; a list item hung
 --- from its bullet or number; a rule; nil for a blank line.
@@ -277,6 +288,25 @@ function Inline.line(line, width, size)
         return VerticalGroup:new{ VerticalSpan:new{ width = S(8) },
             LineWidget:new{ background = u.Blitbuffer.COLOR_GRAY, dimen = u.Geom:new{ w = width, h = math.max(1, S(1)) } },
             VerticalSpan:new{ width = S(8) } }
+    end
+    if c.kind == "callout" then
+        local _ = require("gettext")
+        local names = { note = _("Note"), tip = _("Tip"), important = _("Important"), warning = _("Warning"), caution = _("Caution") }
+        local rgb = require("gzreader_colour").enabled() and Inline.CALLOUT_RGB[c.callout] or nil
+        local colour = rgb and u.Blitbuffer.ColorRGB32(rgb[1], rgb[2], rgb[3], 0xFF) or nil
+        local words = Inline.text{ text = names[c.callout] or c.callout, width = width - S(16), size = size, bold = true }
+        local h = words:getSize().h
+        if not CalloutBar then
+            -- (painted with the RGB painter on a colour screen, which keeps the colour)
+            CalloutBar = u.Widget:extend{}
+            function CalloutBar:getSize() return self.dimen end
+            function CalloutBar:paintTo(bb, x, y)
+                if self.colour and bb.paintRectRGB32 then bb:paintRectRGB32(x, y, self.dimen.w, self.dimen.h, self.colour)
+                else bb:paintRect(x, y, self.dimen.w, self.dimen.h, u.Blitbuffer.COLOR_DARK_GRAY) end
+            end
+        end
+        return HorizontalGroup:new{ align = "top", CalloutBar:new{ colour = colour, dimen = u.Geom:new{ w = S(4), h = h } },
+            HorizontalSpan:new{ width = S(12) }, words }
     end
     if c.kind == "quote" then
         local words = Inline.text{ text = c.text, width = width - S(16), size = size, color = u.Blitbuffer.COLOR_DARK_GRAY }
