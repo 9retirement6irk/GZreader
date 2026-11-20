@@ -551,7 +551,10 @@ API to `/api` are found too.
     when chosen** (light grey otherwise); activities as chips with **their
     icons** (the ones set in Memos: briefcase, dumbbell, people, book, music,
     coffee, plane, gamepad, palette, cutlery, tree, heart, star). The faces
-    are the web's, in greys of the same lightness as its colours. Keyboard
+    are the web's, in greys of the same lightness as its colours; on a colour
+    Kindle (Colorsoft, Scribe Colorsoft) in the web's own colours, from deep
+    blue for very unpleasant to orange for very pleasant, and the slider's
+    steps too. Keyboard
     Kindles and the Kindle 4 keep the rows of buttons (for the keys and the
     5-way).
   - **Saved entries** show their mood as the web does: the **face beside the

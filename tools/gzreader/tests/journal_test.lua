@@ -141,6 +141,33 @@ check(MF.pixel(20, 32, "neutral", nil, true) > MF.pixel(20, 32, "neutral"), "a f
 local painted = 0
 MF.paint({ setPixel = function() painted = painted + 1 end }, 0, 0, 20, "pleasant")
 check(painted > 200 and painted < 400, "painted pixel by pixel, the round part only (" .. painted .. " of 400)")
+do
+    -- a colour screen: the web's own colours
+    local ch = MF.channels("very-unpleasant")
+    check(ch.r.fill == 0x36 and ch.g.fill == 0x3a and ch.b.fill == 0x8a and ch.r.ink == 255, "a step's colours as channels (fill, light, edge, ink)")
+    local r, g, b = MF.rgbPixel(14, 18, "pleasant")
+    check(r == 0x3d and g == 0x20 and b == 0, "an eye in the step's ink colour")
+    local fr, fg, fb = MF.rgbPixel(20, 34, "pleasant")
+    local gr = MF.pixel(20, 34, "pleasant")
+    check(fr > fb and math.abs((0.299 * fr + 0.587 * fg + 0.114 * fb) - gr) < 3 and MF.rgbPixel(1, 1, "pleasant") == nil,
+        "the fill in orange, as light as its grey; nothing outside the face")
+    local BB = require("ffi/blitbuffer")
+    local Colour = require("gzreader_colour")
+    local was = Colour.enabled
+    check(MF.colour() == false and MF.fillColor("neutral") == MF.greys("neutral").fill, "a grey screen: greys, as before")
+    BB.ColorRGB32 = function(r2, g2, b2, a) return { r = r2, g = g2, b = b2, a = a } end
+    Colour.enabled = function() return true end
+    local got, kinds = 0, 0
+    MF.paint({ setPixel = function(_s, _x, _y, c) got = got + 1; if type(c) == "table" and c.a == 0xFF then kinds = kinds + 1 end end }, 0, 0, 20, "pleasant")
+    local fc = MF.fillColor("very-pleasant")
+    check(got == painted and kinds == got and fc.r == 0xd9 and fc.g == 0x62 and fc.b == 0x1c,
+        "a colour screen: the face painted in colour (the same pixels), the slider's steps in their colours")
+    Colour.enabled = was
+    BB.ColorRGB32 = nil
+    local src = io.open(PLUGIN .. "/gzreader_journalscreen.lua"):read("*a")
+    check(src:find("MoodFace.fillColor(Journal.VALENCES[i])", 1, true) and src:find("bb.paintRoundedRectRGB32", 1, true)
+        and not src:find("Color8(MoodFace.greys", 1, true), "the mood slider's track and thumb use them (the RGB painters on colour)")
+end
 
 print("== a prompt answered with a drawing; place and weather (the owner, 2026-11-19)")
 do
