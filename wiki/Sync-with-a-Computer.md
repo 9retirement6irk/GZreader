@@ -53,7 +53,7 @@ Immich has to be told to answer the page: see
 *Disconnect* there takes the pictures off the Kindle at the next sync.
 
 Sleep screen pictures: the Content tab's **Sleep screen pictures** adds your
-own (made to fit the Kindle's screen, in grey) to the drive's `screensavers`
+own (made to fit the Kindle's screen, in grey, or in colour for a colour Kindle) to the drive's `screensavers`
 folder with the sync, takes off ones that are there, and chooses when they
 show: the book's cover while reading and a picture from Home and menus, or a
 picture always. Any picture the browser can open works, and iPhone photos
@@ -132,6 +132,11 @@ What a sync does:
 | Daily paper | The feeds you ticked (when the [daily paper](Daily-Paper#without-wifi) is on) | Those feeds, and whole stories' pages, from the sites that let a web page read them; the Kindle makes the paper from them |
 
 What's already on the Kindle is never brought again: the page shows it as **On the Kindle**, and a pick that reached the Kindle another way (a sync from another computer, a download over Wi‑Fi) comes off the page's list, so it doesn't come back after you delete it from the Kindle.
+
+The small covers the page brings are grey for a grey Kindle (smaller files)
+and in colour for a colour one (Colorsoft, Scribe Colorsoft, with KOReader's
+colour rendering on). Covers already on the Kindle stay as they are until the
+book's cover changes.
 
 The Catalog tab works from the copy: browse, search, Libraries, Shelves,
 Authors and Series, a book's page with its description. Download puts the

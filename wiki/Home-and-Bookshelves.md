@@ -174,6 +174,10 @@ cover, the sides of a wide one) are cut off. While it's on, **Stretch cover
 to fit screen** just above it, which pulls the cover out of shape instead, is
 greyed out.
 
+On a colour Kindle (Colorsoft, Scribe Colorsoft) the cover is shown in colour,
+and so are the pictures you add: the sync page and the setup page make them in
+colour for a colour Kindle (in grey for the others, which keeps them small).
+
 ### Pictures from Immich
 
 With an [Immich](https://immich.app) album you can have your own photos on

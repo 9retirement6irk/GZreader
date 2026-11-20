@@ -549,6 +549,34 @@ with sync_playwright() as pw:
     check(got["name"] == "Beach.png" and (got["w"], got["h"]) == (824, 1200) and got["worker"]
           and L[0] == L[1] == L[2] and R[0] == R[1] == R[2] and L[0] < 60 and 60 < R[0] < 110,
           "sleep screen pictures: a HEIC photo converted (grey, the screen's size, the blue half darker than the red) %r" % got)
+    cov = page.evaluate("""async () => {
+      const c = new OffscreenCanvas(60, 90), g = c.getContext('2d'); g.fillStyle = '#d02020'; g.fillRect(0, 0, 60, 90);
+      const red = await c.convertToBlob({ type: 'image/png' });
+      const look = async (b) => { const i = await createImageBitmap(b), o = new OffscreenCanvas(i.width, i.height), h = o.getContext('2d');
+        h.drawImage(i, 0, 0); return Array.from(h.getImageData(10, 10, 1, 1).data).concat([i.width, i.height]); };
+      return { grey: await look(await GZSync.shrink(red, 40, 60)), colour: await look(await GZSync.shrink(red, 40, 60, true)),
+        here: GZSync.colourKindle() };
+    }""")
+    gr, co = cov["grey"], cov["colour"]
+    check(abs(gr[0] - gr[1]) < 8 and abs(gr[1] - gr[2]) < 8 and co[0] > 150 and co[1] < 80 and co[2] < 80 and gr[4:6] == [40, 60] == co[4:6]
+          and cov["here"] is False,
+          "small covers: grey for a grey Kindle, in colour for a colour one %r" % cov)
+    ss = page.evaluate("""async () => {
+      const c = new OffscreenCanvas(80, 120), g = c.getContext('2d'); g.fillStyle = '#d02020'; g.fillRect(0, 0, 80, 120);
+      const red = new File([await c.convertToBlob({ type: 'image/png' })], 'red.png', { type: 'image/png' });
+      const look = async (b) => { const i = await createImageBitmap(b), o = new OffscreenCanvas(i.width, i.height), h = o.getContext('2d');
+        h.drawImage(i, 0, 0); return Array.from(h.getImageData(Math.floor(i.width / 2), Math.floor(i.height / 2), 1, 1).data); };
+      const kindle = GZSync.K.out.kindle, was = kindle.colour;
+      const grey = await look(await GZSync.Sleep.make(red, 'cover')), greyFit = await look(await GZSync.Sleep.fitInside(red));
+      kindle.colour = true;
+      const colour = await look(await GZSync.Sleep.make(red, 'cover')), colourFit = await look(await GZSync.Sleep.fitInside(red));
+      kindle.colour = was;
+      return { grey: grey, greyFit: greyFit, colour: colour, colourFit: colourFit };
+    }""")
+    isgrey = lambda p: p[0] == p[1] == p[2]
+    isred = lambda p: p[0] > 180 and p[1] < 60 and p[2] < 60
+    check(isgrey(ss["grey"]) and isgrey(ss["greyFit"]) and isred(ss["colour"]) and isred(ss["colourFit"]),
+          "sleep screen pictures (yours and Immich's): grey for a grey Kindle, in colour for a colour one %r" % ss)
     sniff = page.evaluate("""async (b) => {
       const bytes = Uint8Array.from(atob(b), (c) => c.charCodeAt(0));
       return [await GZSync.Heic.is(new File([bytes], 'IMG_0001', { type: '' })),

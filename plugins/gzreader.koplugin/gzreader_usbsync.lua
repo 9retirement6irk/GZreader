@@ -31,7 +31,7 @@ Format 1:
     have = { books = { [id] = { file_id, format } }, audiobooks = { ids }, music = { "kind-key" } },
     notes = { queue = { Memos changes: id, op, content, visibility, name, pinned } },
     calendar = { from, to }, auto_shelf = { id, magic }, last_import,
-    screensavers = { names, mode = "auto"|"always"|"immich_auto"|"immich"|"other" }; kindle.screen = { w, h },
+    screensavers = { names, mode = "auto"|"always"|"immich_auto"|"immich"|"other" }; kindle.screen = { w, h }, kindle.colour,
     immich = { album = { id, name }, have = { asset ids }, count, wallpaper },
     daily = { feeds = { { url, name, topic } }, full, per_feed, pages, max_bytes, have } (the paper on) }
 - usage/*.jsonl: usage statistics GZreader up to 1.28.1 left for the page;
@@ -470,7 +470,9 @@ function Usb.outbox(plugin)
         -- (Settings → Updates → Test builds: the page then brings those)
         test_builds = G_reader_settings:isTrue("gzreader_update_beta") or nil, -- (gzreader_update.betaEnabled)
         kindle = { model = tostring(Device.model), name = name, id = id, audio = require("gzreader_touch").player() == true,
-            screen = Usb.screenSize() },
+            screen = Usb.screenSize(),
+            -- (a colour screen: the page makes the covers in colour)
+            colour = require("gzreader_colour").enabled() or nil },
         -- (Plex music's quality: the page converts at it, and shrinks bigger MP3/AAC if asked)
         music_quality = Usb.musicQuality(store),
         -- (and its music library, when one was chosen: the page lists that one's albums)
