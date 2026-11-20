@@ -555,12 +555,12 @@ with sync_playwright() as pw:
       const look = async (b) => { const i = await createImageBitmap(b), o = new OffscreenCanvas(i.width, i.height), h = o.getContext('2d');
         h.drawImage(i, 0, 0); return Array.from(h.getImageData(10, 10, 1, 1).data).concat([i.width, i.height]); };
       return { grey: await look(await GZSync.shrink(red, 40, 60)), colour: await look(await GZSync.shrink(red, 40, 60, true)),
-        here: GZSync.colourKindle(), stamps: [GZSync.coverStamp('2026-11-01', false), GZSync.coverStamp('2026-11-01', true)] };
+        here: GZSync.colourKindle() };
     }""")
     gr, co = cov["grey"], cov["colour"]
     check(abs(gr[0] - gr[1]) < 8 and abs(gr[1] - gr[2]) < 8 and co[0] > 150 and co[1] < 80 and co[2] < 80 and gr[4:6] == [40, 60] == co[4:6]
-          and cov["here"] is False and cov["stamps"] == ["2026-11-01", "2026-11-01:c"],
-          "small covers: grey for a grey Kindle, in colour for a colour one (made again once: its stamp says colour) %r" % cov)
+          and cov["here"] is False,
+          "small covers: grey for a grey Kindle, in colour for a colour one %r" % cov)
     ss = page.evaluate("""async () => {
       const c = new OffscreenCanvas(80, 120), g = c.getContext('2d'); g.fillStyle = '#d02020'; g.fillRect(0, 0, 80, 120);
       const red = new File([await c.convertToBlob({ type: 'image/png' })], 'red.png', { type: 'image/png' });

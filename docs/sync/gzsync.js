@@ -1425,8 +1425,6 @@ gets a password or token.
   // A colour Kindle (Colorsoft, Scribe Colorsoft, with colour rendering on)
   // gets its covers in colour; every other one in grey.
   function colourKindle() { return !!(((K.out || {}).kindle || {}).colour); }
-  // (what covers/index.json keeps for a cover: its stamp, ":c" when it was made in colour)
-  function coverStamp(stamp, colour) { return String(stamp) + (colour ? ":c" : ""); }
 
   async function shrink(blob, w, h, colour) {
     var img = await createImageBitmap(blob);
@@ -1469,7 +1467,7 @@ gets a password or token.
     books.forEach(function (b) {
       var audio = String(b.primaryFileType || "").toUpperCase() === "AUDIOBOOK";
       var updated = String((audio ? b.audiobookCoverUpdatedOn || b.coverUpdatedOn : b.coverUpdatedOn) || "0");
-      var stamp = coverStamp(updated, colour); // (a grey cover is made again in colour for a colour Kindle)
+      var stamp = updated;
       var name = b.id + (audio ? "-a" : "");
       if (index[name] !== stamp && index[name] !== updated + ":none") todo.push({ id: b.id, name: name, stamp: stamp, updated: updated, audio: audio });
     });
@@ -3351,7 +3349,7 @@ gets a password or token.
     open: openDrive, sync: runSync, demuxTs: demuxTs, memoFileName: memoFileName, slimMemo: slimMemo,
     G: G, M: M, P: P, K: K, Cal: Cal, Vault: Vault, Picks: Picks, Update: Update, zipEntryText: zipEntryText, Browse: Browse,
     testKindle: testKindle, setPanel: setPanel, isoWeekOfYear: isoWeekOfYear, Sleep: Sleep, Heic: Heic, Mp4: Mp4, Report: Report,
-    sendJobs: sendJobs, jobAllowed: jobAllowed, shrink: shrink, coverStamp: coverStamp, colourKindle: colourKindle,
+    sendJobs: sendJobs, jobAllowed: jobAllowed, shrink: shrink, colourKindle: colourKindle,
   };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
 })();

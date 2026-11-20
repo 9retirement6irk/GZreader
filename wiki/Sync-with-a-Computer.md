@@ -135,8 +135,8 @@ What's already on the Kindle is never brought again: the page shows it as **On t
 
 The small covers the page brings are grey for a grey Kindle (smaller files)
 and in colour for a colour one (Colorsoft, Scribe Colorsoft, with KOReader's
-colour rendering on); a colour Kindle's grey covers are made again in colour
-at its next sync, once.
+colour rendering on). Covers already on the Kindle stay as they are until the
+book's cover changes.
 
 The Catalog tab works from the copy: browse, search, Libraries, Shelves,
 Authors and Series, a book's page with its description. Download puts the
