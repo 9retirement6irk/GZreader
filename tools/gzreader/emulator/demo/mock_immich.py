@@ -40,17 +40,23 @@ def uid(n, kind="a"):
 
 
 def png(w, h, shade):
-    """A grey test picture (a frame and stripes in a shade of its own), as a PNG."""
+    """A test picture in colour (a black frame, stripes of a shade of its own in red
+    and blue), as a PNG: a colour Kindle keeps its colours, the others make it grey."""
     rows = bytearray()
     for y in range(h):
         rows.append(0)
         for x in range(w):
             edge = x < 3 or y < 3 or x >= w - 3 or y >= h - 3
-            rows.append(0 if edge else (shade if (x // 16) % 2 else 255 - shade))
+            if edge:
+                rows += bytes((0, 0, 0))
+            elif (x // 16) % 2:
+                rows += bytes((220, shade // 2, shade // 2))
+            else:
+                rows += bytes((255 - shade, 255 - shade, 230))
     def chunk(t, d):
         c = struct.pack(">I", len(d)) + t + d
         return c + struct.pack(">I", zlib.crc32(t + d) & 0xFFFFFFFF)
-    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 0, 0, 0, 0))
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
             + chunk(b"IDAT", zlib.compress(bytes(rows))) + chunk(b"IEND", b""))
 
 

@@ -198,8 +198,9 @@ in your phone's browser; Kindles without Wi‑Fi on the
   Turning it off puts back the wallpaper you had before; choosing an image
   by hand there turns it off.
 - **Pictures kept on the Kindle**: 10, 20 or 50. They're made to fit the
-  screen, in grey, and kept on the Kindle (`koreader/gzreader-immich/`), so
-  they show without Wi‑Fi.
+  screen, in grey (in colour on a Colorsoft or Scribe Colorsoft), and kept
+  on the Kindle (`gzreader-immich/` in GZreader's app folder), so they show
+  without Wi‑Fi.
 - **Get new pictures now**. Otherwise, whenever Wi‑Fi comes on and the last
   time was over 6 hours ago, about half of them are swapped for others from
   the album (all of them when the album changed), and the wallpaper changes

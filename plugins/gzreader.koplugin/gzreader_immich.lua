@@ -8,8 +8,8 @@ written to the log. The key needs album.read, asset.read and asset.view (and
 user.read to show whose it is; without it the name is left out).
 
 GZreader keeps COUNT pictures from the album on the Kindle (Immich's
-"preview" size, made to fit the screen and grey, as PNGs named after the
-asset) in gzsleepmode.immichDir(), so the sleep screen has them without
+"preview" size, made to fit the screen, as PNGs named after the asset:
+grey, or in colour on a colour Kindle (Colorsoft, Scribe Colorsoft)) in gzsleepmode.immichDir(), so the sleep screen has them without
 Wi‑Fi. On Wi‑Fi (at most every REFRESH_EVERY seconds, or Get new pictures
 now) half of them are swapped for others from the album, so they change over
 time. Kindles without Wi‑Fi get them through the sync page
@@ -249,9 +249,9 @@ function Immich.fileOf(dir, id)
 end
 
 --- The picture at `src` made to fit the screen (w × h; proportions kept, never
---- bigger) and grey, as a PNG at `dest`. False when it can't be read (the
---- caller keeps the original then).
-function Immich.fit(src, dest, w, h)
+--- bigger) and grey (`colour`: in its colours), as a PNG at `dest`. False when
+--- it can't be read (the caller keeps the original then).
+function Immich.fit(src, dest, w, h, colour)
     local ok, err = pcall(function()
         local RenderImage = require("ui/renderimage")
         local Blitbuffer = require("ffi/blitbuffer")
@@ -261,6 +261,14 @@ function Immich.fit(src, dest, w, h)
         local k = math.min(w / iw, h / ih, 1)
         local tw, th = math.max(1, math.floor(iw * k + 0.5)), math.max(1, math.floor(ih * k + 0.5))
         bb = RenderImage:scaleBlitBuffer(bb, tw, th, true)
+        if colour then
+            local tmp = dest .. ".part"
+            bb:writePNG(tmp)
+            bb:free()
+            if (lfs.attributes(tmp, "size") or 0) == 0 then os.remove(tmp); error("nothing written") end
+            os.rename(tmp, dest)
+            return
+        end
         local grey = Blitbuffer.new(tw, th, Blitbuffer.TYPE_BB8)
         grey:blitFrom(bb, 0, 0, 0, 0, tw, th)
         bb:free()
@@ -287,7 +295,7 @@ function Immich:refreshPictures(opts)
         local raw = dir .. "/." .. id .. ".download"
         local ok, what = self:downloadPreview(id, raw) -- (its type, or why not)
         if ok then
-            local fitted = opts.w and opts.h and Immich.fit(raw, dir .. "/" .. id .. ".png", opts.w, opts.h)
+            local fitted = opts.w and opts.h and Immich.fit(raw, dir .. "/" .. id .. ".png", opts.w, opts.h, opts.colour)
             if fitted then
                 os.remove(raw)
             else
@@ -439,7 +447,7 @@ function Immich.refresh(plugin, opts, on_done)
     Immich.refreshing = true
     local Screen = require("device").screen
     local job = { dir = require("gzsleepmode").immichDir(), album = st.album.id, count = Immich.count(plugin),
-        w = Screen:getWidth(), h = Screen:getHeight() }
+        w = Screen:getWidth(), h = Screen:getHeight(), colour = require("gzreader_colour").enabled() or nil }
     if job.w > job.h then job.w, job.h = job.h, job.w end -- (portrait, as the sleep screen is)
     require("gzreader_async").run(client, function(c) return c:refreshPictures(job) end, function(res, err)
         Immich.refreshing = false

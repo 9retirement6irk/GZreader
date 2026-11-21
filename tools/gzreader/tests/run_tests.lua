@@ -14769,6 +14769,27 @@ print("Immich: an album's pictures for the sleep screen and the Home wallpaper")
     Immich.refresh(plugin, { force = true }, function(okr, res) done = { okr, res } end)
     check(done[1] and #Immich.have() == 3 and done[2].total == 3 and gsettings.gzreader_immich_album == "Trip",
         "another album: its 3 photos (not its video), the other album's taken off")
+    -- (a picture's colours: how far apart red and blue are at a stripe, 0 for grey)
+    -- (what each picture is made as: Immich.fit's last argument; KOReader's image code isn't here)
+    local real_fit, asked = Immich.fit, {}
+    Immich.fit = function(src, dest, w, h, colour)
+        asked[#asked + 1] = colour and "colour" or "grey"
+        return real_fit(src, dest, w, h, colour)
+    end
+    os.remove(Immich.fileOf(SleepMode.IMMICH_DIR, Immich.have()[1])) -- (one to fetch again)
+    Immich.refresh(plugin, { force = true }, function(okr, res) done = { okr, res } end)
+    check(#asked == 1 and asked[1] == "grey", "a black-and-white Kindle: the pictures are made grey")
+    -- a colour Kindle (Colorsoft): in colour
+    local Colour = require("gzreader_colour")
+    local was_enabled = Colour.enabled
+    Colour.enabled = function() return true end
+    asked = {}
+    os.remove(Immich.fileOf(SleepMode.IMMICH_DIR, Immich.have()[1]))
+    Immich.refresh(plugin, { force = true }, function(okr, res) done = { okr, res } end)
+    check(done[1] and #Immich.have() == 3 and #asked == 1 and asked[1] == "colour",
+        "a colour Kindle: a picture fetched is kept in colour (" .. table.concat(asked, ",") .. ")")
+    Immich.fit = real_fit
+    Colour.enabled = was_enabled
     -- an older Immich: no album search, the album's own list
     startMock(IP + 1, "--old", "immich-old")
     local old = Immich:new({ server = "http://127.0.0.1:" .. (IP + 1), key = "immich-test-key" })

@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Colour Kindles: Immich photos in colour", text = "On a Kindle Colorsoft or Scribe Colorsoft, the pictures from your Immich album (the sleep screen and the Home wallpaper) are kept in colour instead of being made grey. Pictures already on the Kindle stay grey until they are swapped for others from the album (about half each time GZreader gets new pictures)." },
+        },
+    },
+    {
         version = "1.35.0",
         changes = {
             { short = "Colour Kindles: ten pen colours, coloured highlighters, a shader, and coloured words in notes", text = "For the Kindle Colorsoft and Scribe Colorsoft. Drawing: the pen has ten colours, as on the Scribe Colorsoft (black, grey, red, orange, yellow; green, aqua, blue, purple, pink), and the pencil takes them too. The highlighter comes in five colours (yellow, green, blue, pink, orange). A new Shader, under the pen, lays a broad, soft wash in the pen's colour for shading and backgrounds, a shade deeper with each stroke over it (in grey on other Kindles). Memos gets every stroke in its colour. Notes: the formatting bar has an A that colours the selection's words or highlights them in one of five colours. Memos has no Markdown for colour, so it's written as a small HTML tag that Memos keeps as it is: the GZreader fork of Memos shows the colours, and other copies of Memos show the words uncoloured. Opened notes show the colours too, and a highlight shows as a grey band on other Kindles." },
