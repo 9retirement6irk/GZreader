@@ -10572,6 +10572,110 @@ print("Notes (Memos v0.31)")
                 "drawing: 240 pen points a second are shown " .. keeping_up .. " times (not 240), " .. behind
                     .. " while 200 ms behind (so it catches up); what's due is shown when the stroke ends")
         end)()
+        -- numbers for the log (to tune drawing on each Kindle): full redraws timed, the first few written with
+        -- how the screen is turned and what the page is drawn on; Lua's memory at each page shown; both capped
+        ;(function()
+            local DS = require("gzreader_drawscreen")
+            local LogD -- (the drawing screen's own: gzreader_log)
+            for k = 1, 100 do
+                local name, v = debug.getupvalue(DS.noteRedraw, k)
+                if not name then break end
+                if name == "Log" then LogD = v end
+            end
+            LogD = LogD or require("gzreader_log")
+            local saved_info, saved_on, saved_clock = LogD.info, LogD.enabled, DS.clock
+            local logged = {}
+            LogD.info = function(...)
+                local t = {}
+                for k = 1, select("#", ...) do t[k] = tostring((select(k, ...))) end
+                logged[#logged + 1] = table.concat(t, " ")
+            end
+            LogD.enabled = true
+            local clock = 50
+            DS.clock = function() clock = clock + 0.04; return clock end -- (each redraw: 40 ms)
+            -- (the canvas's kind by its name: the drawing screen's own Blitbuffer, a stub here)
+            local BBv
+            for k = 1, 100 do
+                local name, v = debug.getupvalue(DS.screenInfo, k)
+                if not name then break end
+                if name == "Blitbuffer" then BBv = v end
+            end
+            local had32 = type(BBv) == "table" and rawget(BBv, "TYPE_BBRGB32") or nil
+            if type(BBv) == "table" and type(had32) ~= "number" then rawset(BBv, "TYPE_BBRGB32", 6) end
+            local t32 = type(BBv) == "table" and rawget(BBv, "TYPE_BBRGB32") or 6
+            local bbf = { fill = function() end, getType = function() return t32 end }
+            local stroke = function(kind) return { kind = kind, points = {} } end
+            local sk = { locked = {}, canvas = { x = 0, y = 0 }, radius = function() return 1 end, liveTexts = function() return {} end,
+                live = function() return { stroke("pen"), stroke("highlighter"), stroke("pen") } end, current = function() return nil end,
+                zoomed = true, zoom = function() return 2 end }
+            local d = setmetatable({ canvas = { x = 0, y = 0, w = 1860, h = 2480 }, canvas_bb = bbf, ink_bb = bbf, sketch = sk,
+                pages = { {}, {}, {} }, paintLocked = function() end, paintText = function() end, ink = function() end },
+                { __index = function(_t, k) return rawget(DS, k) end })
+            for _k = 1, DS.DIAG_REDRAWS + 2 do d:repaintCanvas() end
+            local redraws = {}
+            for _k, l in ipairs(logged) do if l:find("drawing: full redraw ", 1, true) then redraws[#redraws + 1] = l end end
+            local r1, r5 = redraws[1] or "", redraws[DS.DIAG_REDRAWS] or ""
+            check(#redraws == DS.DIAG_REDRAWS and r1:find("drawing: full redraw 1: 40 ms, 3 strokes, rotation ", 1, true) == 1
+                and r1:find(", canvas BBRGB32 1860x2480, zoom 2.00x", 1, true) ~= nil and not r1:find("rest only", 1, true)
+                and r5:find("(the rest only counted)", 1, true) ~= nil
+                and d._diag.redraws == DS.DIAG_REDRAWS + 2 and math.abs(d._diag.redraw_s - 0.04 * (DS.DIAG_REDRAWS + 2)) < 1e-6
+                and math.abs(d._diag.redraw_max - 0.04) < 1e-6,
+                "drawing, for the log: each full redraw timed and counted, the first " .. DS.DIAG_REDRAWS
+                    .. " written with its strokes, the screen's turn, the canvas's kind and size and the zoom (" .. r1 .. ")")
+            -- pages shown: Lua's memory (only counted: nothing collected), at most DIAG_PAGES lines
+            logged = {}
+            d.repaintCanvas, d.sketchOf, d.syncTool, d.fitPane = function() end, function() return sk end, function() end, function() end
+            -- (the screen's scaling, whatever stands in for the screen here: sizes as given)
+            local s_at, s_was
+            for k = 1, 100 do
+                local name, v = debug.getupvalue(DS.showPage, k)
+                if not name then break end
+                if name == "S" then s_at, s_was = k, v end
+            end
+            if s_at then debug.setupvalue(DS.showPage, s_at, function(px) return px end) end
+            d:showPage(1, true)
+            for k = 1, DS.DIAG_PAGES + 4 do d:showPage(k % 3 + 1) end
+            local m1, m2, mlast = logged[1] or "", logged[2] or "", logged[DS.DIAG_PAGES] or ""
+            local kb1 = tonumber(m1:match("Lua memory (%d+) KB"))
+            check(#logged == DS.DIAG_PAGES and m1:find("drawing: page 1 of 3 shown (opening), Lua memory ", 1, true) == 1 and kb1 and kb1 > 0
+                and m2:find("drawing: page 2 of 3 shown, Lua memory ", 1, true) == 1 and not m2:find("no more", 1, true)
+                and mlast:find("(no more of these lines this time)", 1, true) ~= nil
+                and d._diag.pages == DS.DIAG_PAGES + 5 and d._diag.mem_max >= kb1,
+                "drawing, for the log: Lua's memory with each page shown, at most " .. DS.DIAG_PAGES .. " lines (" .. m1 .. ")")
+            local dsum = d:diagSummary() or ""
+            check(dsum:find("drawing: full redraws: " .. (DS.DIAG_REDRAWS + 2) .. ", " .. string.format("%.0f", 40 * (DS.DIAG_REDRAWS + 2))
+                .. " ms in all, longest 40 ms; pages shown " .. (DS.DIAG_PAGES + 5) .. "; Lua memory at most " .. d._diag.mem_max .. " KB", 1, true) == 1,
+                "drawing, for the log: when it closes, the redraws' count, time and longest, and the most memory (" .. dsum .. ")")
+            -- what the screen or the canvas can't say: a "?", nothing breaks
+            local turned = DS.screenInfo({ getRotationMode = function() return 1 end }, bbf, 1860, 2480)
+            local no_rot = DS.screenInfo({}, {}, 10, 20)
+            local broken = DS.screenInfo({ getRotationMode = function() error("no") end }, { getType = function() error("no") end })
+            local none = DS.screenInfo(nil, nil)
+            check(turned == "rotation 1 (clockwise), canvas BBRGB32 1860x2480" and no_rot == "rotation ?, canvas ? 10x20"
+                and broken == "rotation ?, canvas ? ?x?" and none == "rotation ?, canvas ? ?x?",
+                "drawing, for the log: the screen's turn and the canvas's kind; a \"?\" where the screen or the canvas can't say (" .. no_rot .. ")")
+            -- diagnostic logging off: nothing timed, counted or written
+            LogD.enabled = false
+            logged = {}
+            local d2 = setmetatable({ canvas = { x = 0, y = 0, w = 10, h = 10 }, canvas_bb = bbf, ink_bb = bbf, sketch = sk, pages = { {} },
+                paintLocked = function() end, paintText = function() end, ink = function() end,
+                sketchOf = function() return sk end, syncTool = function() end, fitPane = function() end },
+                { __index = function(_t, k) return rawget(DS, k) end })
+            d2:showPage(1)
+            if s_at then debug.setupvalue(DS.showPage, s_at, s_was) end
+            local off_ok = #logged == 0 and d2._diag == nil and d2:diagSummary() == nil
+            LogD.info, LogD.enabled, DS.clock = saved_info, saved_on, saved_clock
+            if type(BBv) == "table" and type(had32) ~= "number" then rawset(BBv, "TYPE_BBRGB32", had32) end
+            check(off_ok, "drawing, for the log: nothing measured or written while diagnostic logging is off")
+            local dsrcm = io.open(PLUGIN .. "/gzreader_drawscreen.lua"):read("*a")
+            check(not dsrcm:find('collectgarbage("collect")', 1, true)
+                and dsrcm:find("if t0 then self:noteRedraw(DrawScreen.clock() - t0, #list) end", 1, true) ~= nil
+                and dsrcm:find("if Log.enabled then self:noteMemory(i, first) end", 1, true) ~= nil
+                and dsrcm:find("if st and Log.enabled then Log.info(PenMode.waitSummary(st)) end", 1, true) ~= nil
+                and dsrcm:find("if self._diag and Log.enabled then Log.info(self:diagSummary()) end", 1, true) ~= nil
+                and dsrcm:find('if self._settle then require("gzreader_penmode").settled() end', 1, true) ~= nil,
+                "drawing, for the log: memory only read (nothing collected); when it closes, pen mode's waits and the redraws and memory; a pause's clean-up noted for pen mode's waits")
+        end)()
         local dsrcp = io.open(PLUGIN .. "/gzreader_drawscreen.lua"):read("*a")
         -- the drawing screen as the Kindle Scribe's notebook (walked through by emulator/notebook_ui.lua)
         check(dsrcp:find('self.canvas = { x = 0, y = 0, w = sw, h = sh }', 1, true) ~= nil

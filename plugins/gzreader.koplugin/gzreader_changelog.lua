@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Drawing: more detail in the diagnostic log about Fast ink, full redraws and memory, to tune drawing on each Kindle", text = "While diagnostic logging is on, the drawing screen now writes a few more numbers to the log, so drawing can be tuned on each Kindle: when it opens, how the screen is turned and what the page is drawn on; how long the first few full redraws of a page take, with the number of strokes and the zoom; how much memory GZreader's Lua code holds each time a page is shown (only read, nothing is freed for it); with Fast ink (the Kindle Scribe's pen mode), every wait of 200 ms or more for the screen as it happens (at most 20 each time), and when the drawing closes how many waits there were, the longest and how long they were. Only numbers are written, never what you draw or write. Nothing else changes." },
+        },
+    },
+    {
         version = "1.35.0",
         changes = {
             { short = "GZreader has a folder of its own, beside KOReader: GZreader/app, books, music, audiobooks, notes", text = "GZreader used to take KOReader's place on the drive (the koreader folder, or .adds/koreader on a Kobo), so you couldn't have both. Everything GZreader keeps is now in one GZreader folder: app (GZreader itself, its settings and logs), books (your books and their reading positions), music and audiobooks (what you downloaded, no longer in hidden folders) and notes (the notes kept on the device, drawings waiting to be sent, attachments). The koreader folder is left free, so KOReader can be installed beside GZreader. When you update, GZreader moves everything there itself at its first start: your books with their reading positions, highlights and history, your music, audiobooks and notes, and the program, then starts again (a few seconds longer than usual, once) and says what it did. The Kindle's KUAL menu and the Kobo's NickelMenu and KFMon entries are changed to start it from its new place. Sign-ins stay on the Kindle's own disk, as before. On the Nook, GZreader's programs and settings stay on its own disk (the card can't run programs), and everything else goes into GZreader on the card the same way: the hidden .gzreader-app becomes GZreader/app (still checked against its fingerprints at every start), and your books, music, audiobooks and notes are moved into their folders (the notes off the Nook's small internal disk), without a restart." },
