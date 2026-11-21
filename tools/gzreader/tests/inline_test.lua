@@ -13,6 +13,10 @@ local function kind(l) local c = Inline.classify(l); return c.kind .. ":" .. c.t
 check(kind("") == "blank:::" and kind("   ") == "blank:::" and kind("&nbsp;") == "blank:::", "a blank line, and Memos' empty paragraph (&nbsp;)")
 check(kind("---") == "rule:::" and kind("***") == "rule:::" and kind(" ____ ") == "rule:::", "a rule: ---, ***, ___")
 check(kind("> said") == "quote:said::" and kind(">said") == "quote:said::", "a quote, its mark off")
+check(Inline.classify("> [!WARNING]").kind == "callout" and Inline.classify("> [!WARNING]").callout == "warning"
+    and Inline.classify(">[!tip]").callout == "tip" and kind("> [!SOMETHING]") == "quote:[!SOMETHING]::"
+    and kind("> [!NOTE] words") == "quote:[!NOTE] words::",
+    "a callout's first line (> [!WARNING], Memos' five kinds); anything else stays a quote")
 check(kind("- milk") == "bullet:milk:0:" and kind("  * eggs") == "bullet:eggs:1:" and kind("    + tea") == "bullet:tea:2:", "bullets, and how deep")
 check(kind("1. one") == "ordered:one:0:1" and kind("  12) twelve") == "ordered:twelve:1:12", "numbered items, their number")
 check(kind("Plain words") == "para:Plain words::" and kind("-not a list") == "para:-not a list::" and kind("1.5 km") == "para:1.5 km::",
