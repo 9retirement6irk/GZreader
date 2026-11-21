@@ -785,10 +785,27 @@ local function distToSegment(px, py, ax, ay, bx, by)
 end
 Sketch.distToSegment = distToSegment
 
+--- The stroke's hit index (Sketch.hitIndex) when it's still right for its points, or nil (not made again here).
+local function freshHit(st)
+    local h, pts = st._hit, st.points
+    if not h or h.pts ~= pts then return nil end
+    local n = #pts
+    if n == 0 or h.n ~= n then return nil end
+    local first, last = pts[1], pts[n]
+    if h.fx == first[1] and h.fy == first[2] and h.lx == last[1] and h.ly == last[2] then return h end
+    return nil
+end
+
 --- The live stroke under canvas point (x, y) within `reach` pixels, or nil.
 --- The canvas rectangle stroke `st` is drawn in ({ x0, y0, x1, y1 }, a little over: as wide as its tool can make it).
 function Sketch:strokeBox(st)
     local r = Sketch.toolRadius(st.kind, self:radius(st.width), 1, 1) + 2 -- (at its widest: pressed, laid over)
+    -- (the eraser's index has its points' box already: a rubbed-out stroke's place, and the strokes
+    -- around it, without going through every point of each again)
+    local h = freshHit(st)
+    if h then
+        return { x0 = math.floor(h.x0 - r), y0 = math.floor(h.y0 - r), x1 = math.ceil(h.x1 + r), y1 = math.ceil(h.y1 + r) }
+    end
     local x0, y0, x1, y1
     for _i, p in ipairs(st.points) do
         x0, y0 = math.min(x0 or p[1], p[1]), math.min(y0 or p[2], p[2])
@@ -826,10 +843,8 @@ function Sketch.hitIndex(st)
     local n = pts and #pts or 0
     if n == 0 then return nil end
     local first, last = pts[1], pts[n]
-    local h = st._hit
-    if h and h.pts == pts and h.n == n and h.fx == first[1] and h.fy == first[2] and h.lx == last[1] and h.ly == last[2] then
-        return h
-    end
+    local h = freshHit(st)
+    if h then return h end
     local K = Sketch.HIT_CHUNK
     h = { pts = pts, n = n, fx = first[1], fy = first[2], lx = last[1], ly = last[2], chunks = {} }
     local X0, Y0, X1, Y1 = math.huge, math.huge, -math.huge, -math.huge
@@ -895,6 +910,7 @@ local function erase(self, contact, x, y, out)
             contact.erased[#contact.erased + 1] = st
             if self.selection then self.selection = nil; out.sel_changed = true end
             out.redraw = true
+            out.erased = (out.erased or 0) + 1 -- (strokes rubbed out in this frame)
             -- (what changed: only this much of the page needs drawing again)
             out.area = self:strokesArea({ st }, out.area)
             st = self:strokeAt(px, py, reach)

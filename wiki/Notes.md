@@ -405,7 +405,7 @@ API to `/api` are found too.
     The pencil's specks go on as you draw and stay as they are; the
     highlighter shows as a light pattern while you draw and turns grey when
     you lift (with Fast ink: when you pause). Rubbing out a stroke, Undo
-    and Redo redraw and refresh only that stroke's part of the page. In Memos the note shows the page as the Kindle drew it, the
+    and Redo redraw and refresh only that stroke's part of the page (rubbing out with Fast ink: shown at once in pen mode, like ink, its paper's greys when you pause). In Memos the note shows the page as the Kindle drew it, the
     pencil's texture included. In Memos' own drawing editor the pencil's
     strokes are plain see-through lines you can move and erase; a drawing
     saved from there shows them that way until it's opened and saved on the

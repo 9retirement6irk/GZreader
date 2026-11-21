@@ -1326,7 +1326,9 @@ end
 --- screen refreshed (the owner, 2026-11-17: "it can be very slow"). Returns
 --- false when it can't be done just for a part (zoomed in: the paper is
 --- scaled for the view; a shape or text box there): the caller draws it all.
-function DrawScreen:repaintArea(area)
+--- `quiet`: drawn on the page only, nothing asked of the screen; then also
+--- returns the part drawn (x, y, w, h: canvas pixels; none when it's off the page).
+function DrawScreen:repaintArea(area, quiet)
     local sk, c = self.sketch, self.canvas
     if not area or sk.zoomed then return false end
     local x0, y0 = math.max(0, area.x0), math.max(0, area.y0)
@@ -1399,10 +1401,69 @@ function DrawScreen:repaintArea(area)
             end
         end
     end
+    if quiet then return true, x0, y0, w, h end
     local shown = Geom:new{ x = x0 + c.x + self.ox, y = y0 + c.y + self.oy, w = w, h = h }
     UIManager:setDirty(self, function() return "ui", shown end)
     return true
 end
+
+--- A rubbed-out stroke on the Scribe with Fast ink (pen mode) on: its place
+--- drawn again on the page (repaintArea) and put on the screen the way ink
+--- is, with small DU updates in pen mode. Each one rubbed out was an
+--- ordinary update: pen mode went off for it (waiting up to 0.3 s for the
+--- last ink to finish) and the eraser's next one waited for that update, so
+--- the eraser fell behind the pen. DU shows black and white only: the
+--- place's greys (a paper, a picture, a highlighter, colours) come back at
+--- the pause in the writing, as a stroke's do. False when it can't be done
+--- this way (no pen mode, the place unknown, too big for a few small
+--- updates, under the controls, zoomed in…): the caller does it as before.
+--- `screen`: the device's (stood in for by tests).
+function DrawScreen:eraseShown(area, screen)
+    if not self.pen_fast or not area then return false end
+    screen = screen or Screen
+    local c = self.canvas
+    local x0, y0 = math.max(0, area.x0), math.max(0, area.y0)
+    local x1, y1 = math.min(c.w, area.x1), math.min(c.h, area.y1)
+    if x1 <= x0 or y1 <= y0 or (x1 - x0) * (y1 - y0) > DrawScreen.ERASE_FAST_AREA then return false end
+    -- (under the toolbar or another control, or a sticky note's frame: the ordinary way, which paints them over it)
+    for _i, hole in ipairs(self.holes or {}) do
+        if x1 + c.x > hole.x and x0 + c.x < hole.x + hole.w and y1 + c.y > hole.y and y0 + c.y < hole.y + hole.h then return false end
+    end
+    if self.sticky then return false end
+    local PenMode = require("gzreader_penmode")
+    if PenMode.queued then return false end -- (an ordinary update on its way: pen mode has to wait for it)
+    local ok, px, py, pw, ph = self:repaintArea(area, true)
+    if not ok then return false end
+    if not px then return true end -- (none of it on the page)
+    local wx, wy = px + c.x, py + c.y -- (on the drawing screen; on the screen: + ox, oy)
+    screen.bb:blitFrom(self.canvas_bb, wx + self.ox, wy + self.oy, px, py, pw, ph)
+    if not PenMode.ink(screen, { { x = wx + self.ox, y = wy + self.oy, w = pw, h = ph } }) then
+        if PenMode.failed then
+            self.pen_fast = false
+            Log.info("drawing: the Kindle's pen mode can't be used here, ink shown as before:", tostring(PenMode.failed))
+        end
+        -- (the page is drawn already: only shown, the ordinary way)
+        local shown = Geom:new{ x = wx + self.ox, y = wy + self.oy, w = pw, h = ph }
+        UIManager:setDirty(self, function() return "ui", shown end)
+        return true
+    end
+    -- its proper refresh (greys and all) with what the strokes left for the pause
+    local wait = self._settle or {}
+    self._settle = wait
+    if wait.x0 then
+        wait.x0, wait.y0 = math.min(wait.x0, wx), math.min(wait.y0, wy)
+        wait.x1, wait.y1 = math.max(wait.x1, wx + pw), math.max(wait.y1, wy + ph)
+    else
+        wait.x0, wait.y0, wait.x1, wait.y1 = wx, wy, wx + pw, wy + ph
+    end
+    wait.grey = wait.grey or false
+    wait.erased = true
+    return true
+end
+--- Pixels of page a rubbed-out stroke's place may have to be shown in pen
+--- mode: at most 20 of its small updates (gzreader_penmode's MAX_AREA, 6000
+--- pixels each), about a line across half the Scribe's page. More: the ordinary way.
+DrawScreen.ERASE_FAST_AREA = 120000
 
 -- --------------------------------------------------------------- the input
 
@@ -1644,6 +1705,29 @@ function DrawScreen:apply(out)
         out.area = nil -- (the panel's place too: the whole screen)
     end
     if out.panned then UIManager:setDirty(self, "ui") end
+    if out.erased then
+        -- (strokes rubbed out: on the Scribe in pen mode, their place shown as ink is; eraseShown)
+        local es = self._erase_stats or { strokes = 0, fast = 0, ordinary = 0 }
+        self._erase_stats = es
+        es.strokes = es.strokes + out.erased
+        if out.redraw and not out.view and self:eraseShown(out.area) then
+            es.fast = es.fast + 1
+            self:touched()
+            out.redraw = false
+        else
+            es.ordinary = es.ordinary + 1
+        end
+    end
+    if out.stroke_done and self._erase_stats then
+        -- (numbers only, for a report: how the eraser's places were shown)
+        local es = self._erase_stats
+        self._erase_stats = nil
+        Log.info(string.format("drawing: eraser: %d strokes rubbed out, their places shown %d times in pen mode, %d the ordinary way",
+            es.strokes, es.fast, es.ordinary))
+        -- (pen mode went off before the eraser lifted: their greys now, not at a pause that may not come)
+        local wait = self._settle
+        if wait and wait.erased and not (self.pen_fast and require("gzreader_penmode").on) then self:settle() end
+    end
     if out.redraw then
         -- (the view moved, by a pinch or a finger: the page itself is as it was)
         if not out.view then self:touched() end
