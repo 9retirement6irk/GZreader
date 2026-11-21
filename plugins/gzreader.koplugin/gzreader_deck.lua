@@ -177,6 +177,19 @@ Cassette.RATIO = 0.63   -- a cassette: 100 × 63 mm
 
 function Cassette:getSize() return Geom:new{ w = self.w, h = math.floor(self.w * Cassette.RATIO) } end
 
+--- The tape wound on the two reels (their radii in pixels) of a cassette
+--- `w` wide at `progress` (0-1): the audiobook player draws the whole
+--- screen again only when they change (paintTo draws them from this).
+function Cassette.reels(w, progress)
+    local k = w / 400
+    local function R(v) return math.max(1, math.floor(v * k + 0.5)) end
+    local H = math.floor(w * Cassette.RATIO) - R(5)
+    local wh = math.floor(math.floor(H * 0.70) * 0.34)
+    local hub, maxr = math.floor(wh * 0.22), math.floor(wh * 0.62)
+    local p = math.max(0, math.min(1, tonumber(progress) or 0))
+    return hub + math.floor((maxr - hub) * (1 - p)), hub + math.floor((maxr - hub) * p)
+end
+
 function Cassette:paintTo(bb, x, y)
     local w = self.w
     local h = math.floor(w * Cassette.RATIO)
@@ -234,14 +247,12 @@ function Cassette:paintTo(bb, x, y)
     local wx, wy = lx + math.floor((lw - ww) / 2), ly + lh - wh - R(8)
     bb:paintRoundedRect(wx, wy, ww, wh, G(0.22), math.floor(wh / 2))
     bb:paintBorder(wx, wy, ww, wh, math.max(1, R(2)), G(0.9), math.floor(wh / 2))
-    local p = math.max(0, math.min(1, tonumber(st.progress) or 0))
     local rcy = wy + math.floor(wh / 2)
     local hub = math.floor(wh * 0.22)
-    local maxr = math.floor(wh * 0.62)
+    local reels = { Cassette.reels(w, st.progress) }
     for i, rx in ipairs({ wx + math.floor(wh * 0.62), wx + ww - math.floor(wh * 0.62) }) do
         -- the tape wound on it (brown on a cassette: a mid grey here)
-        local frac = i == 1 and (1 - p) or p
-        local r = hub + math.floor((maxr - hub) * frac)
+        local r = reels[i]
         if r > hub then bb:paintCircle(rx, rcy, r, G(0.8)) end
         bb:paintCircle(rx, rcy, hub, Blitbuffer.COLOR_WHITE)
         bb:paintBorder(rx - hub, rcy - hub, 2 * hub, 2 * hub, 1, G(0.6), hub)
@@ -276,6 +287,14 @@ Deck.CD = CD
 CD.DISC = { disc = 80, label = 77, hub = 15, hole = 9, spindle = 5 }
 
 function CD:getSize() return Geom:new{ w = self.w, h = math.floor(self.w * 300 / 360) } end
+
+--- The display (▶ / ❚❚, the track, the time) of a CD player drawn `w`
+--- wide at x, y: x, y, w, h. (The music player redraws only it as the time goes.)
+function CD.display(x, y, w)
+    local k = w / 360
+    local function R(v) return math.floor(v * k + 0.5) end
+    return x + R(146), y + R(226), R(68), R(22)
+end
 
 function CD:paintTo(bb, x, y)
     local w = self.w
@@ -319,7 +338,7 @@ function CD:paintTo(bb, x, y)
     bb:paintCircle(dx, dy, R(D.hole), Blitbuffer.gray(0.5), 1)
     bb:paintCircle(dx, dy, R(D.spindle), Blitbuffer.gray(0.85))
     -- the display: ▶ / ❚❚, the track, the time
-    local lx, ly, lw, lh = x + R(146), y + R(226), R(68), R(22)
+    local lx, ly, lw, lh = CD.display(x, y, w)
     local mark = R(9)
     if st.playing then triangle(bb, lx + R(4), ly + math.floor((lh - mark) / 2), mark, Blitbuffer.gray(0.9))
     else

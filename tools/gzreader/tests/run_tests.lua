@@ -12778,6 +12778,73 @@ print("Audiobook player: the 5-way goes from key to key (Kindle 3)")
         "up and down keep to the same part of the screen (play → Stop → volume +)")
 end)()
 
+print("Audiobook player: every 30 s only the times are drawn again; the 5-way moves only its ring")
+;(function()
+    local S = require("gzreader_audiobook").Screen
+    local LUI = require("ui/uimanager")
+    local Geom = require("ui/geometry")
+    local scr = require("device").screen
+    local saved = { dirty = LUI.setDirty, scale = rawget(scr, "scaleBySize"), geom = rawget(Geom, "new") }
+    local dirty = {}
+    LUI.setDirty = function(_um, w, how, region) dirty[#dirty + 1] = { w = w, how = how, region = region } end
+    scr.scaleBySize = function(_s, px) return px end
+    Geom.new = function(_g, o) return o end
+    local ok, err = pcall(function()
+        local pos = 3600000
+        local builds, strips = 0, 0
+        local fake = setmetatable({ dimen = { w = 600, h = 800 },
+            player = { playing = true, globalPos = function() return pos end,
+                book = { tracks = { { start = 0, durationMs = 36000000 } },
+                    chapters = { { startTimeMs = 0, title = "One" }, { startTimeMs = 3700000, title = "Two" } } } },
+            build = function() builds = builds + 1 end,
+            liveStrip = function(_s, v) strips = strips + 1; return { v = v, getSize = function() return { w = 528, h = 40 } end } end,
+        }, { __index = S })
+        local v = fake:liveView()
+        local spot = { dimen = { x = 36, y = 420, w = 528, h = 40 }, { getSize = function() return { w = 528, h = 40 } end } }
+        fake.live = { key = v.key, left = v.left, right = v.right, spot = spot }
+        fake:refreshTime()
+        check(#dirty == 0 and builds == 0 and strips == 0, "a tick with the same time shown: nothing is built or drawn again")
+        pos = 3630000
+        fake.last_time_redraw = 0
+        fake:refreshTime()
+        check(builds == 0 and strips == 1 and #dirty == 1 and dirty[1].w == fake and dirty[1].how == "fast" and dirty[1].region == spot.dimen
+            and spot[1].v.left == "1:00:30 of 1:01:40" and spot[1].v.right == "1:00:30 / 10:00:00 · 10%" and fake.live.left == "1:00:30 of 1:01:40",
+            "30 s on: only the times and the book's strip, drawn again where they are (it rebuilt the whole screen)")
+        pos = 3660000
+        fake:refreshTime()
+        check(#dirty == 1 and strips == 1, "still at most every 30 s")
+        pos = 3720000
+        fake.last_time_redraw = 0
+        fake:refreshTime()
+        check(builds == 1 and #dirty == 2 and dirty[2].region == nil and dirty[2].how == "fast",
+            "a new chapter (its title, the reels…): the whole screen, as before")
+
+        -- the 5-way (Kindle 3): the ring off one key and onto the next, nothing else
+        dirty, builds = {}, 0
+        local function key(x) return { dimen = { x = x, y = 600, w = 100, h = 50 }, focused = false } end
+        local row1 = { key(10), key(120), key(230), key(340), key(450) }
+        row1[3].focused = true
+        local dial = { dimen = { x = 36, y = 760, w = 528, h = 56 } }
+        fake.key_widgets = { row1, { key(10), key(140), key(270), key(400) }, { dial, dial } }
+        fake.focus = { 1, 3 }
+        fake:onFocusMove(nil, { key = "Right" })
+        local r1, r2 = dirty[1] and dirty[1].region or {}, dirty[2] and dirty[2].region or {}
+        check(builds == 0 and #dirty == 2 and row1[3].focused == false and row1[4].focused == true and dirty[1].how == "fast"
+            and r1.x == 226 and r1.w == 108 and r1.y == 596 and r2.x == 336 and r2.h == 58,
+            "the 5-way: only the two keys are drawn again, with their rings (it rebuilt the whole screen)")
+        fake:onFocusMove(nil, { key = "Down" }); fake:onFocusMove(nil, { key = "Down" })
+        check(builds == 0 and #dirty == 6 and dial.focused == "plus" and dirty[6].region == dial.dimen
+            and fake.focus[1] == 3 and fake.focus[2] == 2, "…down to the volume's +: its dial alone")
+        fake.key_widgets = nil
+        fake:onFocusMove(nil, { key = "Left" })
+        check(builds == 1 and fake.focus[2] == 1, "keys not drawn yet: the whole screen, as before")
+    end)
+    LUI.setDirty = saved.dirty
+    scr.scaleBySize = saved.scale
+    Geom.new = saved.geom
+    if not ok then check(false, "the audiobook player's redraws: " .. tostring(err)) end
+end)()
+
 print("Music's player: three tabs, big keys, a strip to seek on (layout A)")
 ;(function()
     -- (every widget class here is one stand-in: keep what's on it, put it back after)
@@ -12939,6 +13006,83 @@ print("Music's player: three tabs, big keys, a strip to seek on (layout A)")
     for k in pairs(IC) do IC[k] = nil end
     for k, v in pairs(kept) do IC[k] = v end
     package.loaded["gzreader_cdscreen"] = nil
+end)()
+
+print("Music's player: every 30 s only the time is drawn again; ▲ ▼ redraw only the two lines")
+;(function()
+    local IC = require("ui/widget/container/inputcontainer")
+    local kept = {}
+    for k, v in pairs(IC) do kept[k] = v end
+    package.loaded["gzreader_cdscreen"] = nil
+    local CD = require("gzreader_cdscreen")
+    local Music = require("gzreader_music")
+    local LUI = require("ui/uimanager")
+    local Geom = require("ui/geometry")
+    local Dev = require("device")
+    local saved = { current = Music.current, dirty = LUI.setDirty, geom = rawget(Geom, "new"), dpad = rawget(Dev, "hasDPad") }
+    local dirty = {}
+    LUI.setDirty = function(_um, w, how, region) dirty[#dirty + 1] = { w = w, how = how, region = region } end
+    Geom.new = function(_g, o) return o end
+    Dev.hasDPad = function() return true end
+    local ok, err = pcall(function()
+        local pos = 60000
+        local pl = { order = { 1, 2, 3 }, at = 1, playing = true, c = { title = "Album", artist = "Band" },
+            position = function() return pos end, track = function() return { title = "Tone", duration = 214000 } end }
+        Music.current = pl
+        local builds, made = 0, 0
+        local scr = setmetatable({ mode = "now", build = function() builds = builds + 1 end },
+            { __index = function(_t, k) return rawget(CD, k) end })
+        local v = scr:liveView(pl)
+        local spot = { dimen = { x = 24, y = 400, w = 552, h = 48 }, { getSize = function() return { w = 552, h = 48 } end } }
+        local deck = { w = 360, dimen = { x = 120, y = 60, w = 360, h = 300 }, state = { time = v.text } }
+        scr.live = { key = v.key, text = v.text, spot = spot, deck = deck,
+            make = function(nv) made = made + 1; return { text = nv.text, getSize = function() return { w = 552, h = 48 } end } end }
+        for fn in pairs(UI.scheduled) do UI.scheduled[fn] = nil end
+        scr:schedule()
+        scr.tick()
+        check(v.text == "1:00" and #dirty == 0 and builds == 0 and made == 0 and scr.tick ~= nil and UI.scheduled[scr.tick] == 30,
+            "a tick with the same time shown: nothing is drawn again (the next one is still on its way)")
+        pos = 90000
+        scr.tick()
+        local r2 = dirty[2] and dirty[2].region or {}
+        check(builds == 0 and made == 1 and #dirty == 2 and dirty[1].how == "fast" and dirty[1].region == spot.dimen
+            and spot[1].text == "1:30" and deck.state.time == "1:30" and r2.x == 266 and r2.y == 286 and r2.w == 68 and r2.h == 22,
+            "30 s on: only the time with its strip, and the CD player's display, drawn again (it rebuilt the whole screen)")
+        pl.at = 2
+        scr.tick()
+        check(builds == 1 and #dirty == 3 and dirty[3].region == nil, "another track: the whole screen, as before")
+
+        -- ▲ ▼ in the library (Kindle 3): the outline off one line and onto the next
+        dirty, builds = {}, 0
+        local refreshes, lines = 0, 0
+        scr.refresh = function() refreshes = refreshes + 1 end
+        scr.caseLine = function(_s, l) lines = lines + 1; return { selected = l.selected } end
+        local items = {}
+        for i = 1, 10 do items[i] = { text = "Item " .. i } end
+        scr.mode, scr.nav, scr.sel, scr.rows = "library", { item_table = items, item_table_stack = {} }, 2, 6
+        scr.case_mode, scr.case_first, scr.case_taps = "library", 1, {}
+        for i = 1, 6 do
+            scr.case_taps[i] = { tap = { dimen = { x = 60, y = 100 + 66 * i, w = 400, h = 62 } }, l = { selected = i == 2 }, w = 400 }
+        end
+        scr:onDown()
+        local ys = (dirty[1] and dirty[1].region.y or 0) + (dirty[2] and dirty[2].region.y or 0)
+        check(scr.sel == 3 and refreshes == 0 and builds == 0 and lines == 2 and #dirty == 2 and dirty[1].how == "ui" and ys == 232 + 298
+            and scr.case_taps[2].l.selected == false and scr.case_taps[3].l.selected == true and scr.case_taps[3].tap[1].selected == true,
+            "▼: only the two lines are drawn again (it rebuilt the whole screen)")
+        scr:onDown(); scr:onDown(); scr:onDown()
+        check(scr.sel == 6 and refreshes == 0 and lines == 8 and #dirty == 8, "…down the page")
+        scr:onDown()
+        check(scr.sel == 7 and refreshes == 1 and lines == 8, "onto the next page: the whole screen, as before")
+    end)
+    Music.current = saved.current
+    LUI.setDirty = saved.dirty
+    Geom.new = saved.geom
+    Dev.hasDPad = saved.dpad
+    for fn in pairs(UI.scheduled) do UI.scheduled[fn] = nil end -- (its ticks: not run by the tests after this one)
+    for k in pairs(IC) do IC[k] = nil end
+    for k, v in pairs(kept) do IC[k] = v end
+    package.loaded["gzreader_cdscreen"] = nil
+    if not ok then check(false, "the music player's redraws: " .. tostring(err)) end
 end)()
 
 print("Kindles without REAGL: flash when the screen changes")

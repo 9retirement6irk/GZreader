@@ -49,6 +49,7 @@ local TextBoxWidget = require("ui/widget/textboxwidget")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
+local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local ffiutil = require("ffi/util")
 local lfs = require("libs/libkoreader-lfs")
 local Engine = require("gzreader_audioengine")
@@ -1083,6 +1084,66 @@ end
 
 local function face(size, bold) return Font:getFace(bold and "smalltfont" or "cfont", size) end
 
+--- What it holds, and where it was last drawn (its dimen): the times are
+--- drawn again there alone as the book plays.
+local Spot = WidgetContainer:extend{}
+function Spot:getSize() return self[1]:getSize() end
+function Spot:paintTo(bb, x, y)
+    local s = self[1]:getSize()
+    self.dimen = Geom:new{ x = x, y = y, w = s.w, h = s.h }
+    self[1]:paintTo(bb, x, y)
+end
+
+--- What the screen shows that moves as the book plays: the two times and
+--- where the book's strip is; `key` is the rest that moves with it (the
+--- chapter, the sleep timer's minutes, play / pause, the cassette's reels),
+--- for which the whole screen is drawn again.
+function Screen:liveView()
+    local p, book = self.player, self.player.book
+    local sw, sh = self.dimen.w, self.dimen.h
+    local inner = math.floor(sw * 0.88)
+    local g = self.skip_target or p:globalPos()   -- (skips still being gathered: where they'll land)
+    local total = Audiobook.total(book)
+    local ch_idx, ch = Audiobook.chapterAt(book, g)
+    local chapters = book.chapters or {}
+    local ch_start = ch and (ch.startTimeMs or 0) or 0
+    local nxt = chapters[ch_idx + 1]
+    local ch_end = nxt and nxt.startTimeMs or total
+    local ch_len = math.max(1, ch_end - ch_start)
+    local Deck = require("gzreader_deck")
+    local tape_w = math.min(inner, math.floor(sh * 0.36 / Deck.Cassette.RATIO))
+    local r1, r2 = Deck.Cassette.reels(tape_w, total > 0 and g / total or 0)
+    local sleep_label = p.sleep_end_of_chapter and _("Sleep: chapter")
+        or (p.sleep_at and T(_("Sleep: %1 min"), math.max(1, math.ceil((p.sleep_at - os.time()) / 60))))
+        or _("Sleep: off")
+    return {
+        g = g, total = total, ch_idx = ch_idx, ch = ch, chapters = chapters, inner = inner, tape_w = tape_w,
+        sleep_label = sleep_label,
+        left = T(_("%1 of %2"), Audiobook.fmt(g - ch_start), Audiobook.fmt(ch_len)),
+        right = T("%1 / %2 · %3%", Audiobook.fmt(g), Audiobook.fmt(total), total > 0 and math.floor(g / total * 100) or 0),
+        key = table.concat({ ch_idx, #chapters, sleep_label, tostring(p.playing), r1, r2 }, "|"),
+    }
+end
+
+--- The book's strip and the two times under it (`v`: liveView's).
+function Screen:liveStrip(v)
+    local g, total, inner = v.g, v.total, v.inner
+    local strip = VerticalGroup:new{ align = "center" }
+    -- the whole book: its page edges, a ribbon where you are (as on Home)
+    local okp, BookProgress = pcall(require, "common/ui/book_progress")
+    if okp and BookProgress.edges then
+        strip[#strip + 1] = BookProgress.edges(total > 0 and g / total or 0, inner, Device.screen:scaleBySize(14))
+    else
+        strip[#strip + 1] = require("ui/widget/progresswidget"):new{ width = inner, height = Device.screen:scaleBySize(10),
+            percentage = total > 0 and math.min(1, g / total) or 0, ticks = nil }
+    end
+    strip[#strip + 1] = VerticalSpan:new{ width = Device.screen:scaleBySize(4) }
+    local left = TextWidget:new{ text = v.left, face = face(14) }
+    local right = TextWidget:new{ text = v.right, face = face(14) }
+    strip[#strip + 1] = HorizontalGroup:new{ left, HorizontalSpan:new{ width = math.max(0, inner - left:getSize().w - right:getSize().w) }, right }
+    return strip
+end
+
 --- A control: its letter key in a square, and the label in a box (tap works too).
 function Screen:control(key, label, callback, width)
     local Button = require("ui/widget/button")
@@ -1101,11 +1162,11 @@ end
 function Screen:build()
     local p, book = self.player, self.player.book
     local sw, sh = self.dimen.w, self.dimen.h
-    local inner = math.floor(sw * 0.88)
-    local g = self.skip_target or p:globalPos()   -- (skips still being gathered: where they'll land)
-    local total = Audiobook.total(book)
-    local ch_idx, ch = Audiobook.chapterAt(book, g)
-    local chapters = book.chapters or {}
+    local v = self:liveView()
+    local inner = v.inner
+    local g, total = v.g, v.total
+    local ch_idx, ch = v.ch_idx, v.ch
+    local chapters = v.chapters
     local group = VerticalGroup:new{ align = "center" }
     local function add(w) group[#group + 1] = w end
     local function gap(px) add(VerticalSpan:new{ width = Device.screen:scaleBySize(px) }) end
@@ -1114,8 +1175,7 @@ function Screen:build()
     -- on the label, the tape going from reel to reel through the book
     -- (gzreader_deck.lua; 1.23.6: was the walkman, which stays on the shelf)
     local Deck = require("gzreader_deck")
-    local tape_w = math.min(inner, math.floor(sh * 0.36 / Deck.Cassette.RATIO))
-    add(Deck.Cassette:new{ w = tape_w, state = {
+    add(Deck.Cassette:new{ w = v.tape_w, state = {
         title = book.title,
         author = book.author,
         runtime = total > 0 and Audiobook.runtime(total) or nil,
@@ -1131,23 +1191,10 @@ function Screen:build()
             face = face(17, true), max_width = inner })
     end
     gap(8)
-    local ch_start = ch and (ch.startTimeMs or 0) or 0
-    local nxt = chapters[ch_idx + 1]
-    local ch_end = nxt and nxt.startTimeMs or total
-    local ch_len = math.max(1, ch_end - ch_start)
-    -- the whole book: its page edges, a ribbon where you are (as on Home)
-    local okp, BookProgress = pcall(require, "common/ui/book_progress")
-    if okp and BookProgress.edges then
-        add(BookProgress.edges(total > 0 and g / total or 0, inner, Device.screen:scaleBySize(14)))
-    else
-        add(require("ui/widget/progresswidget"):new{ width = inner, height = Device.screen:scaleBySize(10),
-            percentage = total > 0 and math.min(1, g / total) or 0, ticks = nil })
-    end
-    gap(4)
-    local left = TextWidget:new{ text = T(_("%1 of %2"), Audiobook.fmt(g - ch_start), Audiobook.fmt(ch_len)), face = face(14) }
-    local right = TextWidget:new{ text = T("%1 / %2 · %3%", Audiobook.fmt(g), Audiobook.fmt(total),
-        total > 0 and math.floor(g / total * 100) or 0), face = face(14) }
-    add(HorizontalGroup:new{ left, HorizontalSpan:new{ width = math.max(0, inner - left:getSize().w - right:getSize().w) }, right })
+    -- the book's strip and the times (every 30 s only they are drawn again, refreshTime)
+    local spot = Spot:new{ self:liveStrip(v) }
+    add(spot)
+    self.live = { key = v.key, left = v.left, right = v.right, spot = spot }
     -- (playing or paused: the walkman's ▶ / ❚❚ and its play key, down while playing)
     gap(14)
     -- the walkman's keys (gzreader_skeuo.lua): transport, then the rest
@@ -1159,15 +1206,20 @@ function Screen:build()
         local rowg = HorizontalGroup:new{ align = "center" }
         for k, d in ipairs(defs) do
             if k > 1 then rowg[#rowg + 1] = HorizontalSpan:new{ width = gapw } end
-            rowg[#rowg + 1] = Skeuo.Key:new{ w = kw, h = h, label = d[1], letter = d[2] and Touch.keys() and d[2] or nil,
+            local key = Skeuo.Key:new{ w = kw, h = h, label = d[1], letter = d[2] and Touch.keys() and d[2] or nil,
                 down = d[4] and true or false, callback = d[3], font_size = d[5] or 15, icon = d.icon, icon_after = d.after,
                 focused = self.focus ~= nil and self.focus[1] == d.row and self.focus[2] == k }
-            if d.row then self.actions[d.row] = self.actions[d.row] or {}; self.actions[d.row][k] = d[3] end
+            rowg[#rowg + 1] = key
+            if d.row then
+                self.actions[d.row] = self.actions[d.row] or {}; self.actions[d.row][k] = d[3]
+                self.key_widgets[d.row] = self.key_widgets[d.row] or {}; self.key_widgets[d.row][k] = key
+            end
         end
         return rowg
     end
     local kh = Device.screen:scaleBySize(50)
     self.actions = {}
+    self.key_widgets = {} -- (the 5-way's ring moves from one to another: onFocusMove)
     -- (letters: the keyboard's bottom row, Z to B, as the keys are laid out)
     add(keys({
         { "", "Z", function() self:onPrevChapter() end, icon = "prev", row = 1 },
@@ -1177,9 +1229,7 @@ function Screen:build()
         { "", "B", function() self:onNextChapter() end, icon = "next", row = 1 },
     }, kh))
     gap(10)
-    local sleep_label = p.sleep_end_of_chapter and _("Sleep: chapter")
-        or (p.sleep_at and T(_("Sleep: %1 min"), math.max(1, math.ceil((p.sleep_at - os.time()) / 60))))
-        or _("Sleep: off")
+    local sleep_label = v.sleep_label
     add(keys({
         { _("Chapters"), "Q", function() self:onChapters() end, row = 2 },
         { sleep_label, "W", function() self:onSleep() end, p.sleep_at ~= nil or p.sleep_end_of_chapter, row = 2 },
@@ -1188,11 +1238,13 @@ function Screen:build()
     }, kh))
     self.actions[3] = { function() self:onVolDown() end, function() self:onVolUp() end }
     gap(10)
-    add(Skeuo.Dial:new{ w = inner, h = Device.screen:scaleBySize(56), value = Engine.volume(), max = Engine.volumeMax(),
+    local dial = Skeuo.Dial:new{ w = inner, h = Device.screen:scaleBySize(56), value = Engine.volume(), max = Engine.volumeMax(),
         value_text = T("%1 / %2", Engine.volume(), Engine.volumeMax()), label = _("volume"),
         letters = Touch.keys() and { "A", "S" } or nil,
         focused = self.focus and self.focus[1] == 3 and (self.focus[2] == 1 and "minus" or "plus") or nil,
-        minus = function() self:onVolDown() end, plus = function() self:onVolUp() end })
+        minus = function() self:onVolDown() end, plus = function() self:onVolUp() end }
+    add(dial)
+    self.key_widgets[3] = { dial, dial }
     gap(12)
     if Touch.on() then
         add(Touch.chips(inner, {
@@ -1219,9 +1271,31 @@ end
 function Screen:refreshTime()
     -- e-ink: redraw the time every 30 s only (each redraw costs battery)
     local now = os.time()
-    if now - (self.last_time_redraw or 0) >= 30 then
-        self.last_time_redraw = now
+    if now - (self.last_time_redraw or 0) < 30 then return end
+    self.last_time_redraw = now
+    local live, v = self.live, self:liveView()
+    local spot = live and live.spot
+    local region = spot and spot.dimen
+    if not (region and region.x and live.key == v.key) then
+        -- (the chapter, the sleep timer's minutes, the reels…: the whole screen, as before)
         self:build(); UIManager:setDirty(self, "fast")
+        return
+    end
+    if v.left == live.left and v.right == live.right then return end -- (nothing shown moved)
+    -- only the times and the book's strip, drawn again where they are (the
+    -- whole screen was built and refreshed every 30 s)
+    local strip = self:liveStrip(v)
+    local was, now_size = spot[1]:getSize(), strip:getSize()
+    if was.w ~= now_size.w or was.h ~= now_size.h then
+        self:build(); UIManager:setDirty(self, "fast")
+        return
+    end
+    spot[1] = strip
+    live.left, live.right = v.left, v.right
+    UIManager:setDirty(self, "fast", region)
+    if not live.logged then
+        live.logged = true
+        Log.info("audiobook: the time redrawn on its own,", region.w, "x", region.h, "px (not the whole screen)")
     end
 end
 
@@ -1233,9 +1307,34 @@ function Screen:onFocusMove(_arg, key)
     if not (dir and self.focus) then return true end
     local nf = Screen.move(self.focus, dir)
     if nf[1] ~= self.focus[1] or nf[2] ~= self.focus[2] then
+        local was = self.focus
         self.focus = nf
-        self:build()
-        UIManager:setDirty(self, "fast")
+        -- only the two keys: the ring off one, onto the other (it built and
+        -- redrew the whole screen at each press)
+        if not (self:ringOn(was, false) and self:ringOn(nf, true)) then
+            self:build()
+            UIManager:setDirty(self, "fast")
+        end
+    end
+    return true
+end
+
+--- The 5-way's ring on (or off) the key at `f` ({ row, column }), drawn
+--- again there alone. False when that key hasn't been drawn.
+function Screen:ringOn(f, on)
+    local row = self.key_widgets and self.key_widgets[f[1]]
+    local w = row and row[f[2]]
+    local d = w and w.dimen
+    if not (d and d.x) then return false end
+    if f[1] == 3 then
+        -- the volume dial: the ring round its − or + (inside it)
+        w.focused = on and (f[2] == 1 and "minus" or "plus") or nil
+        UIManager:setDirty(self, "fast", d)
+    else
+        w.focused = on
+        -- (a key's ring is drawn just outside it)
+        local o = Device.screen:scaleBySize(4)
+        UIManager:setDirty(self, "fast", Geom:new{ x = d.x - o, y = d.y - o, w = d.w + 2 * o, h = d.h + 2 * o })
     end
     return true
 end
