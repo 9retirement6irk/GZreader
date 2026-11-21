@@ -95,15 +95,9 @@ end
 
 R.SETTING = "gzreader_debug_reports"
 
---- Send debug reports automatically? (the user's choice; off unless chosen.
---- Until 1.28.1 they came with Full usage statistics, "gzreader_usage" =
---- "full": that choice carries over.)
+--- Send debug reports automatically? (the user's choice; off unless chosen)
 function R.setting()
-    local gs = G_reader_settings
-    if not gs then return false end
-    local v = gs:readSetting(R.SETTING)
-    if v == nil then return gs:readSetting("gzreader_usage") == "full" end
-    return v == true
+    return G_reader_settings ~= nil and G_reader_settings:readSetting(R.SETTING) == true
 end
 
 --- Kindles without Wi-Fi (Kindle 2, DX) can't: the watchdog could never send.
@@ -120,7 +114,6 @@ end
 --- The user's choice (Settings, the setup guide): starts or stops at once.
 function R.setSetting(on)
     G_reader_settings:saveSetting(R.SETTING, on == true)
-    G_reader_settings:delSetting("gzreader_usage") -- (the old levels: usage statistics are gone)
     Log.info("debug reports:", on == true and "on" or "off")
     R.apply()
 end
@@ -141,23 +134,6 @@ function R.menuItem()
         callback = function() R.setSetting(not R.setting()) end,
         separator = true,
     }
-end
-
---- GZreader's usage statistics (until 1.28.1): their queue and the old level
---- are deleted once. The random ID stays: it names this Kindle in reports.
-function R.forgetUsage()
-    local gs = G_reader_settings
-    if gs and gs:readSetting(R.SETTING) == nil and gs:readSetting("gzreader_usage") ~= nil then
-        gs:saveSetting(R.SETTING, gs:readSetting("gzreader_usage") == "full")
-    end
-    if gs then gs:delSetting("gzreader_usage") end
-    local d = DataStorage:getDataDir() .. "/gzreader-usage"
-    if lfs.attributes(d, "mode") == "directory" then
-        for name in lfs.dir(d) do
-            if name ~= "." and name ~= ".." then os.remove(d .. "/" .. name) end
-        end
-        os.remove(d)
-    end
 end
 
 --- A random ID for this Kindle (not its serial number), made once.

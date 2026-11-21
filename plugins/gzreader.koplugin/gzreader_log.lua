@@ -188,7 +188,7 @@ function Log.exportTo(dir, crash_log_path)
     for _, p in ipairs({ Log.path .. ".1", Log.path }) do
         local f = io.open(p, "rb")
         if f then
-            -- (a log written before 1.32 can name the Wi-Fi network)
+            -- (a safety net: no Wi-Fi network's name leaves the Kindle in a log)
             out:write(hideNetworks(f:read("*a")))
             f:close()
         end

@@ -239,10 +239,6 @@ Engine.alive = alive -- injectable for tests
 --- Kindle 3's sound device takes one player at a time, so a leftover one
 --- makes every later play fail. Only GZreader runs gst-launch (Amazon's own
 --- player is audioServer).
--- The chunk feeders of before 1.23.6 (no "|| break"), still going through
--- their chunks: found by their command line ("c$i.aac" in it; this command's
--- own line has a backslash there, so it doesn't match itself).
-Engine.KILL_FEEDERS = "for p in $(ps 2>/dev/null | awk '/c\\$i\\.aac; i=/ {print $1}'); do kill $p; done >/dev/null 2>&1"
 
 function Engine.stopStray()
     if current then return end
@@ -252,7 +248,7 @@ function Engine.stopStray()
         run(string.format("kill -CONT %d >/dev/null 2>&1; kill -TERM %d >/dev/null 2>&1", pid, pid))
     end
     os.remove(PID_FILE)
-    run("for p in $(pidof gst-launch-0.10 gst-launch-1.0 gzdecode-armhf 2>/dev/null); do kill -CONT $p; kill -TERM $p; done >/dev/null 2>&1; " .. Engine.KILL_FEEDERS)
+    run("for p in $(pidof gst-launch-0.10 gst-launch-1.0 gzdecode-armhf 2>/dev/null); do kill -CONT $p; kill -TERM $p; done >/dev/null 2>&1")
 end
 
 --- At GZreader's start: only the player it started itself (cheap, no shell
@@ -265,11 +261,6 @@ function Engine.stopStrayAtStart()
         run(string.format("kill -CONT %d >/dev/null 2>&1; kill -TERM %d >/dev/null 2>&1", pid, pid))
     end
     if pid then os.remove(PID_FILE) end
-    -- once: feeders 1.23.5 and before left going (they slowed everything)
-    if not G_reader_settings:isTrue("gzreader_feeders_cleared") then
-        G_reader_settings:saveSetting("gzreader_feeders_cleared", true)
-        run(Engine.KILL_FEEDERS)
-    end
 end
 
 --- Start playing `src` with `p`. Returns true, position started at (ms).
