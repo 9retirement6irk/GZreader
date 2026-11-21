@@ -1520,6 +1520,34 @@ print("== the eraser on a full page: only strokes near it tested point by point"
     local dot = { points = { { 50, 1290 } }, width = 2, kind = "pen" }
     sk.strokes[#sk.strokes + 1] = dot
     check(sk:strokeAt(52, 1290, 2) == dot, "…a dot (one point) is found too")
+    -- a stroke's box (the place a rubbed-out stroke leaves, drawn again) from the eraser's index while
+    -- that's right for its points: no walk through every point; moved, from its points again
+    local function walked(s)
+        local r = Sketch.toolRadius(s.kind, sk:radius(s.width), 1, 1) + 2
+        local x0, y0, x1, y1 = math.huge, math.huge, -math.huge, -math.huge
+        for _j, p in ipairs(s.points) do
+            x0, y0, x1, y1 = math.min(x0, p[1]), math.min(y0, p[2]), math.max(x1, p[1]), math.max(y1, p[2])
+        end
+        return math.floor(x0 - r), math.floor(y0 - r), math.ceil(x1 + r), math.ceil(y1 + r)
+    end
+    local function sameBox(s)
+        local bx = sk:strokeBox(s)
+        local x0, y0, x1, y1 = walked(s)
+        return bx ~= nil and bx.x0 == x0 and bx.y0 == y0 and bx.x1 == x1 and bx.y1 == y1
+    end
+    local s2 = sk.strokes[2]
+    local indexed = Sketch.hitIndex(s2) ~= nil and s2._hit ~= nil
+    local same_indexed = sameBox(s2)
+    s2._hit.x0 = s2._hit.x0 - 50 -- (the index's box changed by hand: the box given follows it, so it's the index's)
+    local from_index = sk:strokeBox(s2).x0 == walked(s2) - 50
+    s2._hit.x0 = s2._hit.x0 + 50
+    local moved2 = {}
+    for j, p in ipairs(s2.points) do moved2[j] = { p[1] + 100, p[2] + 40 } end
+    s2.points = moved2
+    local follows = sameBox(s2) and s2._hit.pts ~= moved2
+    local plain = { points = { { 10, 10 }, { 30, 20 } }, width = 2, kind = "pen" }
+    check(indexed and same_indexed and from_index and follows and sameBox(plain) and plain._hit == nil,
+        "a stroke's box (what a rubbed-out stroke's place repaints) comes from the eraser's index while it's right, the same as through every point; moved: from its points again")
 end)()
 
 print(string.format("sketch: %d passed, %d failed", pass, fail))
