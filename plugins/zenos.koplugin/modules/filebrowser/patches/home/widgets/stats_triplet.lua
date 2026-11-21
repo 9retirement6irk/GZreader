@@ -190,18 +190,36 @@ local function hand_face(size)
     return Font:getFace("cfont", size)
 end
 
-local function paint_tally(bb, x, y, n, h)
+-- GZreader: on a colour screen the notebook is a school exercise book's
+-- page: blue lines, a red margin, the numbers in blue ballpoint, yellow tape.
+local NOTEBOOK_COLORS = { line = "#a9c7e8", margin = "#e07070", pen = "#1d3a8a", tape = "#f1e2a4" }
+local function notebook_colors()
+    local ok, Colour = pcall(require, "gzreader_colour")
+    if not (ok and Colour and Colour.enabled() and Blitbuffer.ColorRGB32) then return nil end
+    local out = {}
+    for k, hex in pairs(NOTEBOOK_COLORS) do
+        out[k] = Blitbuffer.ColorRGB32(tonumber(hex:sub(2, 3), 16), tonumber(hex:sub(4, 5), 16), tonumber(hex:sub(6, 7), 16), 0xFF)
+    end
+    return out
+end
+
+-- a rectangle in `col` (a colour, on an RGB canvas) or else `grey`
+local function rect(bb, x, y, w, h, grey, col)
+    if col then bb:paintRectRGB32(x, y, w, h, col) else bb:paintRect(x, y, w, h, grey) end
+end
+
+local function paint_tally(bb, x, y, n, h, col)
     local S = function(px) return Device.screen:scaleBySize(px) end
     local w, gap = math.max(2, S(3)), S(6)
     local px = x
     for i = 1, n do
-        bb:paintRect(px, y + ((i % 2 == 0) and 1 or 0), w, h - ((i % 3 == 0) and 2 or 0), Blitbuffer.COLOR_BLACK)
+        rect(bb, px, y + ((i % 2 == 0) and 1 or 0), w, h - ((i % 3 == 0) and 2 or 0), Blitbuffer.COLOR_BLACK, col)
         if i % 5 == 0 then
             -- the fifth stroke across the four before it
             local x0 = px - 4 * gap - S(2)
             local span = px + w - x0
             for k = 0, span - 1 do
-                bb:paintRect(x0 + k, y + h - 4 - math.floor(k * (h - 8) / span), 1, math.max(2, S(3)), Blitbuffer.COLOR_BLACK)
+                rect(bb, x0 + k, y + h - 4 - math.floor(k * (h - 8) / span), 1, math.max(2, S(3)), Blitbuffer.COLOR_BLACK, col)
             end
             px = px + gap + S(4)
         else
@@ -217,6 +235,7 @@ local function tally_width(n)
 end
 
 local function notebook(ctx, fields, stats)
+    -- (GZreader: in colour on a colour screen: notebook_colors)
     local S = function(px) return Device.screen:scaleBySize(px) end
     local outer_w, height = ctx.width, ctx.height
     local m = S(12)
@@ -226,17 +245,18 @@ local function notebook(ctx, fields, stats)
     local value_face = hand_face(math.max(14, math.min(36, math.floor(h * 0.40))))
     local label_face = hand_face(math.max(10, math.min(18, math.floor(h * 0.20))))
     local function draw()
-        local canvas = Blitbuffer.new(w + 2 * m, h + 2 * m, Blitbuffer.TYPE_BB8)
+        local col = notebook_colors()
+        local canvas = Blitbuffer.new(w + 2 * m, h + 2 * m, col and Blitbuffer.TYPE_BBRGB32 or Blitbuffer.TYPE_BB8)
         canvas:fill(Blitbuffer.COLOR_WHITE)
         canvas:paintRect(m + S(4), m + S(4), w, h, Blitbuffer.gray(0.30)) -- shadow
         canvas:paintRect(m, m, w, h, Blitbuffer.COLOR_WHITE)
         local pitch = S(24)
         local ly = S(18)
         while ly < h - 2 do
-            canvas:paintRect(m + 1, m + ly, w - 2, 1, Blitbuffer.gray(0.18))
+            rect(canvas, m + 1, m + ly, w - 2, 1, Blitbuffer.gray(0.18), col and col.line)
             ly = ly + pitch
         end
-        canvas:paintRect(m + S(44), m + 1, 1, h - 2, Blitbuffer.gray(0.40)) -- the margin
+        rect(canvas, m + S(44), m + 1, 1, h - 2, Blitbuffer.gray(0.40), col and col.margin) -- the margin
         canvas:paintBorder(m, m, w, h, 1, Blitbuffer.gray(0.50))
         local cell_w = math.floor(w / 3)
         for i, field in ipairs(fields) do
@@ -249,10 +269,11 @@ local function notebook(ctx, fields, stats)
                 local th = math.floor(h * 0.36)
                 local tw = tally_width(streak)
                 local top = m + math.floor((h - th - ls.h - S(4)) / 2)
-                paint_tally(canvas, cx + math.floor((cell_w - tw) / 2), top, streak, th)
+                paint_tally(canvas, cx + math.floor((cell_w - tw) / 2), top, streak, th, col and col.pen)
                 label:paintTo(canvas, cx + math.floor((cell_w - ls.w) / 2), top + th + S(4))
             else
-                local value = TextWidget:new{ text = field.get(stats), face = value_face, max_width = cell_w - S(8) }
+                local value = TextWidget:new{ text = field.get(stats), face = value_face, max_width = cell_w - S(8),
+                    fgcolor = col and col.pen or nil }
                 local vs = value:getSize()
                 local top = m + math.floor((h - vs.h - ls.h + S(6)) / 2)
                 value:paintTo(canvas, cx + math.floor((cell_w - vs.w) / 2), top)
@@ -263,8 +284,8 @@ local function notebook(ctx, fields, stats)
         end
         -- two strips of tape over the top edge
         local tw, th = S(62), S(18)
-        canvas:paintRect(m + S(22), m - math.floor(th / 2), tw, th, Blitbuffer.gray(0.24))
-        canvas:paintRect(m + w - S(22) - tw, m - math.floor(th / 2) + S(1), tw, th, Blitbuffer.gray(0.24))
+        rect(canvas, m + S(22), m - math.floor(th / 2), tw, th, Blitbuffer.gray(0.24), col and col.tape)
+        rect(canvas, m + w - S(22) - tw, m - math.floor(th / 2) + S(1), tw, th, Blitbuffer.gray(0.24), col and col.tape)
         if not tilt then return canvas end
         local ok, Sticky = pcall(require, "gzreader_sticky")
         if not (ok and Sticky and Sticky.rotate) then return canvas end

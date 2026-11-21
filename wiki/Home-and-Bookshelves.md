@@ -138,6 +138,11 @@ Grimmory user needs permission to see statistics (Grimmory → user settings →
 permissions); without it the widget shows dashes and the diagnostic log says
 why.
 
+On a colour Kindle (Colorsoft, Scribe Colorsoft) the notebook page is an
+exercise book's: blue lines, a red margin, the numbers and tally marks in
+blue ballpoint and yellow tape at the top. The Reading goals widget's bars
+are green there (a deeper green once a goal is reached).
+
 The earlier **Local reading stats** widget (pages and time today, this
 Kindle only) is gone from Home and from Settings → Home and tabs → Home → Widgets; a Home that
 still showed it keeps its other widgets.
