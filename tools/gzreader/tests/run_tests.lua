@@ -10502,7 +10502,8 @@ print("Notes (Memos v0.31)")
             check(dsrcs:find('self.pen_fast = self.has_pen and require("gzreader_penmode").supported(Device)', 1, true) ~= nil
                 and dsrcs:find('fast = PenMode.ink(Screen, rects)', 1, true) ~= nil
                 and dsrcs:find('if self.pen_fast and require("gzreader_penmode").on then', 1, true) ~= nil
-                and dsrcs:find('UIManager:scheduleIn(DrawScreen.SETTLE, self._settle_timer)', 1, true) ~= nil
+                and dsrcs:find('self:settleSoon(DrawScreen.SETTLE)', 1, true) ~= nil
+                and dsrcs:find('local again = self:settleWait()', 1, true) ~= nil
                 and dsrcs:find('local st = PenMode.unhook()', 1, true) ~= nil,
                 "drawing: on the Scribe a stroke's ink goes out in the display's pen mode; what a stroke leaves to do waits for a pause; pen mode off when the screen closes")
             check(dsrcs:find('if out.view or not self:repaintArea(out.area) then self:redrawAll() end', 1, true) ~= nil
@@ -10674,6 +10675,52 @@ print("Notes (Memos v0.31)")
                 and w_long_on == Draft.RETRY,
                 "…not while the pen is on the page (" .. tostring(w_on) .. " s) or moved a moment ago (" .. tostring(w_just)
                     .. " s); after drawing on and on, between strokes")
+            -- pen mode: what strokes leave for a pause (a paper's greys, a highlighter's grey, Undo waking
+            -- up) is an ordinary update; the next stroke's first ink waits for it. Done 0.5 s after a stroke,
+            -- it ran into the next word's first stroke on ruled paper. Now: once the pen is away or still.
+            do
+                local DSs = require("gzreader_drawscreen")
+                local function near(moved_ago, since_stroke, contacts)
+                    return { sketch = { contacts = contacts or {}, pen = { near = true } },
+                        _input_at = now - tm.s(moved_ago), _settle_from = now - tm.s(since_stroke) }
+                end
+                local s_down = DSs.settleWait(near(0, 0.5, { [4] = {} }), now)
+                local s_hover = DSs.settleWait(near(0.2, 0.5), now)
+                local s_still = DSs.settleWait(near(DSs.SETTLE_IDLE + 0.1, 2), now)
+                local s_away = DSs.settleWait({ sketch = { contacts = {}, pen = { near = false } }, _input_at = now - tm.s(0.1),
+                    _settle_from = now - tm.s(0.5) }, now)
+                local s_long = DSs.settleWait(near(0, DSs.SETTLE_LONGEST + 1, { [3] = {} }), now)
+                local s_none = DSs.settleWait({ _settle_from = now }, now)
+                check(s_down == DSs.SETTLE_RETRY and s_hover and s_hover >= 1.2 and s_hover <= DSs.SETTLE_IDLE
+                    and s_still == nil and s_away == nil and s_long == nil and s_none == nil,
+                    "drawing, pen mode: a pause's update waits while the pen is on the page (" .. tostring(s_down) .. " s) or hovering and moving ("
+                        .. tostring(s_hover) .. " s); done once it's away or still, and " .. DSs.SETTLE_LONGEST .. " s after the stroke anyway")
+                -- the timer: put off while the pen hovers, done once it's lifted away
+                local UIMs = require("ui/uimanager")
+                local real_in, real_un = UIMs.scheduleIn, UIMs.unschedule
+                local planned = {}
+                UIMs.scheduleIn = function(_u, sec, fn) planned[#planned + 1] = { sec = sec, fn = fn } end
+                UIMs.unschedule = function() end
+                local done = 0
+                -- (the clock fixed: 0.5 s after the stroke, the pen moved 0.2 s ago)
+                local t0 = tm.now()
+                local scr = setmetatable({ sketch = { contacts = {}, pen = { near = true } }, _input_at = t0 - tm.s(0.2),
+                    _settle_from = t0 - tm.s(0.5), _closed = false, _settle_timer = false, _settle_put_off = 0, -- (the test widget class answers any field)
+                    settle = function() done = done + 1 end,
+                    settleWait = function(s) return DSs.settleWait(s, t0) end }, { __index = DSs })
+                scr:settleSoon(DSs.SETTLE)
+                local first = planned[1]
+                if first then first.fn() end -- (the pen hovering, just moved)
+                local n_after_first, done_after_first = #planned, done
+                local put_off = n_after_first == 2 and done == 0 and scr._settle_put_off == 1
+                scr.sketch.pen.near = false -- (lifted away)
+                if planned[2] then planned[2].fn() end
+                UIMs.scheduleIn, UIMs.unschedule = real_in, real_un
+                check(first and first.sec == DSs.SETTLE and put_off and planned[2].sec >= 1.2 and done == 1 and #planned == 2,
+                    "…the pause's timer looks again while the pen hovers, and does it once the pen is lifted away ("
+                        .. n_after_first .. " planned, " .. done_after_first .. " done after the first look; "
+                        .. #planned .. " planned, " .. done .. " done at the end)")
+            end
             local Async = require("gzreader_async")
             local lfs = require("libs/libkoreader-lfs")
             local was_sync = Async.sync

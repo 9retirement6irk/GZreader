@@ -1572,6 +1572,9 @@ function DrawScreen:unhook()
             Log.info(string.format("drawing: pen mode: on %d times, %d runs of ink in %d updates, %d the ordinary way; waited %.0f ms before and %.0f ms after%s",
                 st.entered or 0, st.runs or 0, st.updates or 0, self._ink_ordinary or 0, (st.waited_before or 0) * 1000, (st.waited_after or 0) * 1000,
                 PenMode.failed and ("; refused: " .. tostring(PenMode.failed)) or ""))
+            -- (numbers only: how often a pause's update waited for the pen to go away)
+            Log.info(string.format("drawing: pen mode: %d pauses' updates, put off %d times while the pen was near",
+                self._settled or 0, self._settle_put_off or 0))
         end
     end
     if self.penraw then
@@ -1765,12 +1768,8 @@ function DrawScreen:apply(out)
             end
             w.bar = w.bar or bar
             if w.x0 or w.bar then
-                if self._settle_timer then UIManager:unschedule(self._settle_timer) end
-                self._settle_timer = function()
-                    self._settle_timer = nil
-                    if not self._closed then self:settle() end
-                end
-                UIManager:scheduleIn(DrawScreen.SETTLE, self._settle_timer)
+                self._settle_from = require("ui/time").now()
+                self:settleSoon(DrawScreen.SETTLE)
             end
         else
             if clean then self:cleanStroke(d, self._stroke_grey) end
@@ -1801,11 +1800,58 @@ function DrawScreen:settle()
     local w = self._settle
     self._settle = nil
     if not w then return end
+    self._settled = (self._settled or 0) + 1
     if w.x0 then self:cleanStroke(w, w.grey) end
     if w.bar then self:refreshBar() end
 end
---- Seconds without ink before a stroke's leftovers are done in pen mode.
+
+--- Pen mode: settle() in `wait` seconds, once the pen is away (settleWait).
+function DrawScreen:settleSoon(wait)
+    if self._settle_timer then UIManager:unschedule(self._settle_timer) end
+    self._settle_timer = function()
+        self._settle_timer = nil
+        if self._closed then return end
+        local again = self:settleWait()
+        if again then
+            self._settle_put_off = (self._settle_put_off or 0) + 1
+            return self:settleSoon(again)
+        end
+        self:settle()
+    end
+    UIManager:scheduleIn(wait, self._settle_timer)
+end
+
+--- Not yet (seconds to wait), or nil: what the strokes left is done now.
+--- It's an ordinary update, so pen mode goes off for it, and the next stroke's
+--- first ink waits for it to be on the panel (gzreader_penmode's enter: a few
+--- hundred ms) before pen mode comes back on. Done half a second after a
+--- stroke, it ran into the next word's first stroke, which then began late.
+--- So not while the pen is near the screen (on it, or hovering: about to write)
+--- and moved in the last SETTLE_IDLE seconds; once it's lifted away, or held
+--- still, it's done. SETTLE_LONGEST seconds after the last stroke it's done
+--- whatever the pen does (a hand resting on the screen, a pen that never says
+--- it left).
+function DrawScreen:settleWait(now)
+    local time = require("ui/time")
+    now = now or time.now()
+    if self._settle_from and time.to_s(now - self._settle_from) >= DrawScreen.SETTLE_LONGEST then return nil end
+    local sk = self.sketch
+    if sk and next(sk.contacts or {}) ~= nil then return DrawScreen.SETTLE_RETRY end
+    local near = sk and sk.pen and sk.pen.near
+    if near and self._input_at then
+        local idle = time.to_s(now - self._input_at)
+        if idle < DrawScreen.SETTLE_IDLE then return math.max(DrawScreen.SETTLE_RETRY, DrawScreen.SETTLE_IDLE - idle) end
+    end
+    return nil
+end
+--- Seconds without ink before a stroke's leftovers are done in pen mode (with the pen away).
 DrawScreen.SETTLE = 0.5
+--- Seconds the pen, still near the screen, hasn't moved before they're done anyway.
+DrawScreen.SETTLE_IDLE = 1.5
+--- Seconds after the last stroke when they're done whatever the pen does.
+DrawScreen.SETTLE_LONGEST = 5
+--- Seconds before looking again while the pen is on the page.
+DrawScreen.SETTLE_RETRY = 0.25
 
 --- The quick panel over the drawing (a pull down from the top), as at Home
 --- and in a book. The drawing stays as it is under it; while the panel is
