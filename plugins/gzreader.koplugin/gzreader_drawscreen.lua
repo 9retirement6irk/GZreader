@@ -2863,15 +2863,15 @@ function DrawScreen:onCloseWidget()
     end
     for _k, icon in pairs(self.icons or {}) do if icon.free then icon:free() end end
     self.icons = {}
-    local sk = self.sketch
-    if sk then
-        Log.info("drawing: closed;", #self.pages, "pages;", #sk:live(), "strokes on the last;", sk.stats.palm,
-            "palm contacts and", sk.stats.ignored, "other contacts ignored;", sk.stats.panned or 0, "moves of the page by a finger or the hand tool")
-    end
     local v = self._view_paints
     if v and v.n > 0 then
         Log.info(string.format("drawing: zoomed page drawn %d times, %.1f ms each on average; %d of %d strokes inked (the rest off the screen)",
             v.n, v.cpu * 1000 / v.n, v.inked, v.strokes))
+    end
+    local sk = self.sketch
+    if sk then
+        Log.info("drawing: closed;", #self.pages, "pages;", #sk:live(), "strokes on the last;", sk.stats.palm,
+            "palm contacts and", sk.stats.ignored, "other contacts ignored;", sk.stats.panned or 0, "moves of the page by a finger or the hand tool")
     end
 end
 
