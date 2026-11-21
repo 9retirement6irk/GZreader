@@ -10541,37 +10541,6 @@ print("Notes (Memos v0.31)")
                 and dsrcs:find('if not (self.pane and page and page.w > 0) or self.journal or self.sticky then return end', 1, true) ~= nil,
                 "journal's drawing: ← back to the entry (kept), Aa to typing, Save saves the entry; the whole page shows (not fitted to the width)")
         end)()
-        -- a long stroke keeps up with the pen: the ink shown at most 60 times a second, 8 while behind
-        ;(function()
-            local DS = require("gzreader_drawscreen")
-            local UIMi = require("ui/uimanager")
-            local real_dirty, real_sched = UIMi.setDirty, UIMi.scheduleIn
-            local shown, timers = {}, 0
-            UIMi.setDirty = function(_s, _w, _mode, region) shown[#shown + 1] = region end
-            UIMi.scheduleIn = function() timers = timers + 1 end
-            local d = setmetatable({ inkRefresh = function() return "a2" end, ox = 0, oy = 0 }, { __index = function(_t, k) return rawget(DS, k) end })
-            -- 240 points a second for a second, the handling keeping up
-            for i = 0, 239 do
-                d._now, d._lag = 10 + i / 240, 0.002
-                d:showInk(i, 100, i + 4, 104)
-            end
-            local keeping_up = #shown
-            d:flushInk(true)
-            local last = #shown > keeping_up -- (the rest of it, shown at the end)
-            -- the same, the handling 200 ms behind the pen
-            shown = {}
-            for i = 0, 239 do
-                d._now, d._lag = 20 + i / 240, 0.2
-                d:showInk(i, 100, i + 4, 104)
-            end
-            local behind = #shown
-            d:flushInk(true)
-            UIMi.setDirty, UIMi.scheduleIn = real_dirty, real_sched
-            check(keeping_up >= 50 and keeping_up <= 62 and behind >= 7 and behind <= 9 and timers >= 1
-                and last and d._ink_due == nil and DS.inkInterval(0.2) > DS.inkInterval(0),
-                "drawing: 240 pen points a second are shown " .. keeping_up .. " times (not 240), " .. behind
-                    .. " while 200 ms behind (so it catches up); what's due is shown when the stroke ends")
-        end)()
         -- zoomed in, the page drawn again at each step of a pinch or a pan: only the strokes on the
         -- screen inked, at the same places as before; the strokes' points untouched by it
         ;(function()
@@ -10667,6 +10636,37 @@ print("Notes (Memos v0.31)")
                 "…a coloured stroke off the screen still inked when it's the first (it makes the colour layer); the next one not")
             check(d._view_paints and d._view_paints.n == 2 and d._view_paints.strokes == 200 and d._view_paints.inked == 200 - sk1 - sk2,
                 "…counted for the log when the drawing closes")
+        end)()
+        -- a long stroke keeps up with the pen: the ink shown at most 60 times a second, 8 while behind
+        ;(function()
+            local DS = require("gzreader_drawscreen")
+            local UIMi = require("ui/uimanager")
+            local real_dirty, real_sched = UIMi.setDirty, UIMi.scheduleIn
+            local shown, timers = {}, 0
+            UIMi.setDirty = function(_s, _w, _mode, region) shown[#shown + 1] = region end
+            UIMi.scheduleIn = function() timers = timers + 1 end
+            local d = setmetatable({ inkRefresh = function() return "a2" end, ox = 0, oy = 0 }, { __index = function(_t, k) return rawget(DS, k) end })
+            -- 240 points a second for a second, the handling keeping up
+            for i = 0, 239 do
+                d._now, d._lag = 10 + i / 240, 0.002
+                d:showInk(i, 100, i + 4, 104)
+            end
+            local keeping_up = #shown
+            d:flushInk(true)
+            local last = #shown > keeping_up -- (the rest of it, shown at the end)
+            -- the same, the handling 200 ms behind the pen
+            shown = {}
+            for i = 0, 239 do
+                d._now, d._lag = 20 + i / 240, 0.2
+                d:showInk(i, 100, i + 4, 104)
+            end
+            local behind = #shown
+            d:flushInk(true)
+            UIMi.setDirty, UIMi.scheduleIn = real_dirty, real_sched
+            check(keeping_up >= 50 and keeping_up <= 62 and behind >= 7 and behind <= 9 and timers >= 1
+                and last and d._ink_due == nil and DS.inkInterval(0.2) > DS.inkInterval(0),
+                "drawing: 240 pen points a second are shown " .. keeping_up .. " times (not 240), " .. behind
+                    .. " while 200 ms behind (so it catches up); what's due is shown when the stroke ends")
         end)()
         local dsrcp = io.open(PLUGIN .. "/gzreader_drawscreen.lua"):read("*a")
         -- the drawing screen as the Kindle Scribe's notebook (walked through by emulator/notebook_ui.lua)
