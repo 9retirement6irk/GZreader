@@ -14086,6 +14086,16 @@ print("Sync through a computer (Kindles without Wi-Fi)")
             "…and what it writes is what those modules say (calendar range, automatic shelf, music quality)")
         check(o1.gzreader == Upd.currentVersion() and o1.kindle.name == Copy.deviceName(fake) and o1.kindle.id == Copy.deviceId(fake),
             "…the version and this Kindle's name too (worked out once)")
+        do
+            local Colour = require("gzreader_colour")
+            local was = Colour.enabled
+            Colour.enabled = function() return true end
+            local oc = Usb.outbox(fake)
+            Colour.enabled = function() return false end
+            local og = Usb.outbox(fake)
+            Colour.enabled = was
+            check(oc.kindle.colour == true and og.kindle.colour == nil, "…a colour screen says so (the page makes its covers in colour)")
+        end
         fake.store.calendar_prefs, fake.store.auto_shelf, fake.store.plex = {}, nil, nil
         local o2 = Usb.outbox(fake)
         check(o2.calendar.days_back == 14 and o2.calendar.days_ahead == 90 and o2.auto_shelf == nil
