@@ -501,6 +501,79 @@ print("== pinch to zoom")
     local s2 = zk:scene().elements[1]
     check(math.abs(s1.x - s2.x) < 0.01 and math.abs(s1.y - s2.y) < 0.01 and #s1.points == #s2.points,
         "the drawing saved is the same zoomed or not")
+    -- a zoom or a pan moves each point in place (no new table for every point at every step), to
+    -- exactly the numbers setView gave before (a twin page moved the old way), and saves the same
+    local function oldSetView(sk, per_unit, ox, oy) -- (setView as it was: two new tables for every point)
+        local scene_pts = {}
+        for i, st in ipairs(sk.strokes) do
+            local pts = {}
+            for j, p in ipairs(st.points) do local x, y = sk:toScene(p[1], p[2]); pts[j] = { x, y, p[3], p[4] } end
+            scene_pts[i] = pts
+        end
+        sk.per_unit, sk.ox, sk.oy = per_unit, ox, oy
+        for i, st in ipairs(sk.strokes) do
+            for j, p in ipairs(scene_pts[i]) do local x, y = sk:toCanvas(p[1], p[2]); st.points[j] = { x, y, p[3], p[4] } end
+        end
+    end
+    local function twin()
+        local tk = Sketch.new{ canvas = CANVAS, per_unit = 2 }
+        run(tk, { { finger(0, 203, 301) }, { finger(0, 261, 347) }, { finger(0, 333, 309) }, { lift(0) } })
+        run(tk, { { finger(0, 611, 907) }, { finger(0, 707, 1013) }, { lift(0) } }, 5)
+        tk.strokes[1].points[2][3], tk.strokes[2].points[1][4] = 0.6, 0.3
+        return tk
+    end
+    local ik, ref = twin(), twin()
+    ref.setView = oldSetView
+    local own = {}
+    for _i, st in ipairs(ik.strokes) do for _j, p in ipairs(st.points) do own[#own + 1] = p end end
+    local exact, inplace, npts = true, true, 0
+    local function compare()
+        local k = 0
+        for i, st in ipairs(ik.strokes) do
+            for j, p in ipairs(st.points) do
+                k = k + 1
+                local q = ref.strokes[i].points[j]
+                if p[1] ~= q[1] or p[2] ~= q[2] or p[3] ~= q[3] or p[4] ~= q[4] then exact = false end
+                if p ~= own[k] then inplace = false end
+            end
+        end
+        npts = k
+    end
+    for _i, v in ipairs({ ik, ref }) do v:zoomBy(2.3, 317, 411, 317, 411) end
+    compare()
+    for _i, v in ipairs({ ik, ref }) do v:zoomBy(1, 500, 600, 437, 523) end -- (a pan: the same size, moved)
+    compare()
+    for _i, v in ipairs({ ik, ref }) do v:zoomBy(1.37, 251, 777, 260, 700) end
+    compare()
+    local zoomed_saved, zoomed_ref = ik:scene().elements, ref:scene().elements
+    for _i, v in ipairs({ ik, ref }) do v:unzoom() end
+    compare()
+    local saved, saved_ref = ik:scene().elements, ref:scene().elements
+    local function samePoints(a, b)
+        if #a ~= #b then return false end
+        for i = 1, #a do
+            if a[i].x ~= b[i].x or a[i].y ~= b[i].y or #a[i].points ~= #b[i].points then return false end
+            for j, p in ipairs(a[i].points) do
+                local q = b[i].points[j]
+                if p[1] ~= q[1] or p[2] ~= q[2] or p[3] ~= q[3] then return false end
+            end
+        end
+        return true
+    end
+    check(exact and npts >= 4 and npts == #own and ik.per_unit == ref.per_unit and ik.ox == ref.ox and ik.oy == ref.oy,
+        "a zoom, a pan, a zoom and back: every point exactly where setView put it before (in new tables then)")
+    check(inplace and ik.strokes[1].points[2][3] == 0.6 and ik.strokes[2].points[1][4] == 0.3,
+        "…each point moved in its own table (none made at each step), its pressure and tilt kept")
+    check(#saved > 0 and samePoints(saved, saved_ref) and samePoints(zoomed_saved, zoomed_ref),
+        "…and the drawing saved is the same as before, zoomed or not")
+    -- the eraser's boxes (Sketch.hitIndex) made again where the stroke is now
+    local hst = ik.strokes[1]
+    Sketch.hitIndex(hst)
+    ik:zoomBy(2, 0, 0, 0, 0)
+    local hb = Sketch.hitIndex(hst)
+    local minx = math.huge
+    for _j, p in ipairs(hst.points) do minx = math.min(minx, p[1]) end
+    check(ik.zoomed and hst._hit == hb and hb.x0 == minx, "…the eraser's boxes for a stroke follow it")
 end)()
 
 print("== the eraser, undo, clear")

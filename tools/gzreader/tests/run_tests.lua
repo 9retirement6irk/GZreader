@@ -10572,6 +10572,102 @@ print("Notes (Memos v0.31)")
                 "drawing: 240 pen points a second are shown " .. keeping_up .. " times (not 240), " .. behind
                     .. " while 200 ms behind (so it catches up); what's due is shown when the stroke ends")
         end)()
+        -- zoomed in, the page drawn again at each step of a pinch or a pan: only the strokes on the
+        -- screen inked, at the same places as before; the strokes' points untouched by it
+        ;(function()
+            local DS = require("gzreader_drawscreen")
+            local Sk = require("gzreader_sketch")
+            local sk = Sk.new{ canvas = { x = 0, y = 100, w = 1000, h = 1300 }, per_unit = 2 }
+            for i = 0, 9 do
+                for j = 0, 9 do
+                    local x, y = 50 + i * 100, 60 + j * 125
+                    local hl = (i + j) % 7 == 3
+                    sk.strokes[#sk.strokes + 1] = { points = { { x, y }, { x + 30, y + 30, 0.5 }, { x + 45, y + 10, 0.9, 0.4 } }, width = 2,
+                        kind = hl and "highlighter" or nil, color = (not hl and (i + j == 0 or i + j == 18)) and "#cc0000" or nil }
+                end
+            end
+            local c = sk.canvas
+            local calls = {}
+            local fakebb = { fill = function() end, free = function() end }
+            local d = setmetatable({ sketch = sk, canvas_bb = fakebb, ink_bb = fakebb,
+                paintLocked = function() end, paintText = function() end,
+                ink = function(self, seg)
+                    if seg[6] and not self.tint_bb then self.tint_bb = fakebb end -- (as DrawScreen:ink: the first colour makes the layer)
+                    calls[#calls + 1] = { seg[1], seg[2], seg[3], seg[4], seg[5], seg[6], seg[7], seg[8] }
+                end }, { __index = function(_t, k) return rawget(DS, k) end })
+            -- the order the page is drawn in: highlighters first
+            local order = {}
+            for _i, st in ipairs(sk.strokes) do if st.kind == "highlighter" then order[#order + 1] = st end end
+            for _i, st in ipairs(sk.strokes) do if st.kind ~= "highlighter" then order[#order + 1] = st end end
+            local function copyPoints()
+                local t = {}
+                for _i, st in ipairs(sk.strokes) do for _j, p in ipairs(st.points) do t[#t + 1] = { p, p[1], p[2], p[3], p[4] } end end
+                return t
+            end
+            local function samePoints(t)
+                local k = 0
+                for _i, st in ipairs(sk.strokes) do
+                    for _j, p in ipairs(st.points) do
+                        k = k + 1
+                        local q = t[k]
+                        if not q or q[1] ~= p or q[2] ~= p[1] or q[3] ~= p[2] or q[4] ~= p[3] or q[5] ~= p[4] then return false end
+                    end
+                end
+                return k == #t
+            end
+            -- a stroke's ink reaches the canvas: one of its segments (as drawn before, a list: strokeSegments' old way), as wide as it's drawn
+            local function reaches(segs)
+                for _i, sg in ipairs(segs) do
+                    local r = sg[5] + 1
+                    if math.max(sg[1], sg[3]) - c.x + r >= 0 and math.min(sg[1], sg[3]) - c.x - r < c.w
+                        and math.max(sg[2], sg[4]) - c.y + r >= 0 and math.min(sg[2], sg[4]) - c.y - r < c.h then return true end
+                end
+                return false
+            end
+            -- the page drawn again: which strokes were inked (each stroke's segments, the same numbers as the old list's, in order)
+            local function paint()
+                calls = {}
+                local before = copyPoints()
+                d:repaintCanvas()
+                local k, inked, skipped, ok, missed = 1, {}, 0, true, false
+                for _i, st in ipairs(order) do
+                    local segs = DS.strokeSegments(sk, st)
+                    local match = #segs > 0
+                    for j, sg in ipairs(segs) do
+                        local got = calls[k + j - 1]
+                        if not got then match = false; break end
+                        for m = 1, 8 do if got[m] ~= sg[m] then match = false end end
+                    end
+                    if match then
+                        k = k + #segs
+                        inked[st] = true
+                    else
+                        skipped = skipped + 1
+                        if reaches(segs) then missed = true end
+                    end
+                end
+                if k ~= #calls + 1 then ok = false end
+                return ok and not missed and samePoints(before), inked, skipped
+            end
+            local ok0, _in0, sk0 = paint()
+            local first = sk.strokes[1].points[1]
+            local ref_x = first[1] + c.x
+            sk:zoomBy(3, 500, 650, 500, 650)
+            local ok1, in1, sk1 = paint()
+            local scene_x = sk:toScene(first[1], first[2])
+            sk:zoomBy(1, 500, 650, 300, 520) -- (a pan)
+            local ok2, in2, sk2 = paint()
+            check(ok0 and sk0 == 0 and ref_x == 50 and #calls > 0, "drawing: the whole page, not zoomed: every stroke inked, as before")
+            check(ok1 and ok2 and sk1 > 50 and sk2 > 50 and in2[sk.strokes[45]] and DS.strokeOnCanvas(sk, sk.strokes[45])
+                and not in2[sk.strokes[2]] and not DS.strokeOnCanvas(sk, sk.strokes[2]),
+                "drawing, zoomed 3x and moved: only the strokes on the screen inked (" .. (100 - sk1) .. " and " .. (100 - sk2)
+                    .. " of 100), at the same places as before; none on the screen left out; the points untouched")
+            check(in1[sk.strokes[1]] and in2[sk.strokes[1]] and not in1[sk.strokes[100]] and not in2[sk.strokes[100]]
+                and math.abs(scene_x - 25) < 1e-9,
+                "…a coloured stroke off the screen still inked when it's the first (it makes the colour layer); the next one not")
+            check(d._view_paints and d._view_paints.n == 2 and d._view_paints.strokes == 200 and d._view_paints.inked == 200 - sk1 - sk2,
+                "…counted for the log when the drawing closes")
+        end)()
         local dsrcp = io.open(PLUGIN .. "/gzreader_drawscreen.lua"):read("*a")
         -- the drawing screen as the Kindle Scribe's notebook (walked through by emulator/notebook_ui.lua)
         check(dsrcp:find('self.canvas = { x = 0, y = 0, w = sw, h = sh }', 1, true) ~= nil

@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Drawing: moving and zooming a full page is quicker", text = "Each step of a pinch or of moving a zoomed page made two new tables in memory for every point of every stroke on the page (hundreds of thousands on a full page), and drew every stroke again, even those off the screen. On a Kindle with little memory, clearing all that away made the page stop for a moment. The points now move where they are, and zoomed in, only the strokes on the screen are drawn again. The page looks the same and is saved exactly as before." },
+        },
+    },
+    {
         version = "1.35.0",
         changes = {
             { short = "GZreader has a folder of its own, beside KOReader: GZreader/app, books, music, audiobooks, notes", text = "GZreader used to take KOReader's place on the drive (the koreader folder, or .adds/koreader on a Kobo), so you couldn't have both. Everything GZreader keeps is now in one GZreader folder: app (GZreader itself, its settings and logs), books (your books and their reading positions), music and audiobooks (what you downloaded, no longer in hidden folders) and notes (the notes kept on the device, drawings waiting to be sent, attachments). The koreader folder is left free, so KOReader can be installed beside GZreader. When you update, GZreader moves everything there itself at its first start: your books with their reading positions, highlights and history, your music, audiobooks and notes, and the program, then starts again (a few seconds longer than usual, once) and says what it did. The Kindle's KUAL menu and the Kobo's NickelMenu and KFMon entries are changed to start it from its new place. Sign-ins stay on the Kindle's own disk, as before. On the Nook, GZreader's programs and settings stay on its own disk (the card can't run programs), and everything else goes into GZreader on the card the same way: the hidden .gzreader-app becomes GZreader/app (still checked against its fingerprints at every start), and your books, music, audiobooks and notes are moved into their folders (the notes off the Nook's small internal disk), without a restart." },

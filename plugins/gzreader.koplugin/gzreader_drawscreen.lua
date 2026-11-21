@@ -1129,19 +1129,41 @@ function DrawScreen:underControls(x, y, r)
     return false
 end
 
-local function strokeSegments(sk, st)
+--- Stroke `st`'s segments to ink (screen coordinates), a list; or, with
+--- `each`, each given to it in turn in one table used again (the whole page
+--- drawn again, at every step of a pinch or a pan, made one for every point).
+local function strokeSegments(sk, st, each)
     local c, r, out = sk.canvas, sk:radius(st.width), {}
     local pts = st.points
     local gray = Sketch.toolStyle(st.kind).gray
+    local seg = each and {}
     for i = 1, #pts do
         local a, b = pts[math.max(1, i - 1)], pts[i]
         -- (a stroke with a pen's pressure: as wide as it was pressed, as its tool draws it)
         local w = b[3] and (a[3] and (a[3] + b[3]) / 2 or b[3]) or nil
         local t = b[4] and (a[4] and (a[4] + b[4]) / 2 or b[4]) or nil -- (…and as far as it was laid over)
         local pr = Sketch.toolRadius(st.kind, r, w, t)
-        out[#out + 1] = { a[1] + c.x, a[2] + c.y, b[1] + c.x, b[2] + c.y, pr, st.color, gray, Sketch.grainDensity(st.kind, w, t) }
+        if seg then
+            seg[1], seg[2], seg[3], seg[4] = a[1] + c.x, a[2] + c.y, b[1] + c.x, b[2] + c.y
+            seg[5], seg[6], seg[7], seg[8] = pr, st.color, gray, Sketch.grainDensity(st.kind, w, t)
+            each(seg)
+        else
+            out[#out + 1] = { a[1] + c.x, a[2] + c.y, b[1] + c.x, b[2] + c.y, pr, st.color, gray, Sketch.grainDensity(st.kind, w, t) }
+        end
     end
     return out
+end
+DrawScreen.strokeSegments = strokeSegments
+
+--- Zoomed in, most of the page is off the canvas: true when some of stroke
+--- `st`'s ink can be on it (its points' box, Sketch.hitIndex, and as wide as
+--- its tool draws at its widest, as Sketch:strokeBox).
+function DrawScreen.strokeOnCanvas(sk, st)
+    local h = Sketch.hitIndex(st)
+    if not h then return false end
+    local r = Sketch.toolRadius(st.kind, sk:radius(st.width), 1, 1) + 2
+    local c = sk.canvas
+    return h.x1 + r >= 0 and h.x0 - r < c.w and h.y1 + r >= 0 and h.y0 - r < c.h
 end
 
 --- Picture `el` of the page's scene, at w x h (cached for the page): a
@@ -1310,8 +1332,22 @@ function DrawScreen:repaintCanvas()
     end
     for _i, st in ipairs(over) do under[#under + 1] = st end
     list = under
+    -- (zoomed in: a stroke wholly off the canvas isn't inked, a pinch or a pan draws the page
+    -- again at every step; a coloured one still is if it's the first, as that makes the colour layer)
+    local sk = self.sketch
+    local cpu, inked = sk.zoomed and os.clock(), 0
+    local function ink(seg) self:ink(seg) end
     for _i, st in ipairs(list) do
-        for _j, seg in ipairs(strokeSegments(self.sketch, st)) do self:ink(seg) end
+        if not sk.zoomed or (st.color and not self.tint_bb) or DrawScreen.strokeOnCanvas(sk, st) then
+            strokeSegments(sk, st, ink)
+            inked = inked + 1
+        end
+    end
+    if cpu then
+        -- (for the log when the drawing closes: how quick a zoomed page is to draw again)
+        local v = self._view_paints or { n = 0, cpu = 0, inked = 0, strokes = 0 }
+        v.n, v.cpu, v.inked, v.strokes = v.n + 1, v.cpu + os.clock() - cpu, v.inked + inked, v.strokes + #list
+        self._view_paints = v
     end
 end
 
@@ -2757,6 +2793,11 @@ function DrawScreen:onCloseWidget()
     if sk then
         Log.info("drawing: closed;", #self.pages, "pages;", #sk:live(), "strokes on the last;", sk.stats.palm,
             "palm contacts and", sk.stats.ignored, "other contacts ignored;", sk.stats.panned or 0, "moves of the page by a finger or the hand tool")
+    end
+    local v = self._view_paints
+    if v and v.n > 0 then
+        Log.info(string.format("drawing: zoomed page drawn %d times, %.1f ms each on average; %d of %d strokes inked (the rest off the screen)",
+            v.n, v.cpu * 1000 / v.n, v.inked, v.strokes))
     end
 end
 

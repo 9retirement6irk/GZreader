@@ -484,17 +484,20 @@ function Sketch:fitView()
 end
 
 --- Moves the view to `per_unit`, `ox`, `oy`; the strokes (kept in canvas
---- pixels) move with it.
+--- pixels) move with it, each point in place (toScene with the old view,
+--- then toCanvas with the new: the same numbers as before). A pinch or a
+--- pan does this at every step, and made two new tables for every point of
+--- the page each time: on a full page hundreds of thousands, and pauses
+--- to collect them on a Kindle with little memory.
 function Sketch:setView(per_unit, ox, oy)
-    local scene_pts = {}
-    for i, st in ipairs(self.strokes) do
-        local pts = {}
-        for j, p in ipairs(st.points) do local x, y = self:toScene(p[1], p[2]); pts[j] = { x, y, p[3], p[4] } end
-        scene_pts[i] = pts
-    end
+    local opu, oox, ooy = self.per_unit, self.ox, self.oy
     self.per_unit, self.ox, self.oy = per_unit, ox, oy
-    for i, st in ipairs(self.strokes) do
-        for j, p in ipairs(scene_pts[i]) do local x, y = self:toCanvas(p[1], p[2]); st.points[j] = { x, y, p[3], p[4] } end
+    for _i, st in ipairs(self.strokes) do
+        for _j, p in ipairs(st.points) do
+            local sx, sy = p[1] / opu + oox, p[2] / opu + ooy
+            p[1], p[2] = (sx - ox) * per_unit, (sy - oy) * per_unit
+        end
+        st._hit = nil -- (its boxes for the eraser, Sketch.hitIndex: made again where it is now)
     end
 end
 
