@@ -10705,7 +10705,7 @@ print("Notes (Memos v0.31)")
                 -- (the clock fixed: 0.5 s after the stroke, the pen moved 0.2 s ago)
                 local t0 = tm.now()
                 local scr = setmetatable({ sketch = { contacts = {}, pen = { near = true } }, _input_at = t0 - tm.s(0.2),
-                    _settle_from = t0 - tm.s(0.5), _closed = false, _settle_timer = false,
+                    _settle_from = t0 - tm.s(0.5), _closed = false, _settle_timer = false, _settle_put_off = 0, -- (the test widget class answers any field)
                     settle = function() done = done + 1 end,
                     settleWait = function(s) return DSs.settleWait(s, t0) end }, { __index = DSs })
                 scr:settleSoon(DSs.SETTLE)
