@@ -89,6 +89,9 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
 - **5-way focus on Home** refreshes only the old and the new focus boxes
   (quick mode), and the Home key from Settings or the audiobook player makes
   one refresh.
+- **5-way focus in the quick panel** refreshes only the tile it leaves and
+  the one it reaches (each with its focus ring), not the whole screen; the
+  whole panel only when it opens or a tile hasn't been drawn yet.
 - **The Notes tab's next page is drawn ahead** (`gzreader_notes.lua`): a
   page turn on the Notes tab had to paint and tilt every note of the new
   page. Once the board has been still for half a second, the notes of the
