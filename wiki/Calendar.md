@@ -32,6 +32,10 @@ iCal address, Outlook's published ICS…) and/or a **CalDAV account**, read-only
   Thanksgiving, Christmas Eve, Christmas Day and New Year's Eve. Canada and the
   United Kingdom have their own (Victoria Day, Canada Day, Thanksgiving in
   October, Boxing Day; the bank holidays, Mothering Sunday, Bonfire Night…).
+- **Colours** (Colorsoft, Scribe Colorsoft): each event's bar is in its
+  calendar's colour, the one your calendar app gave it (CalDAV's calendar
+  colour, or an Apple-style link's), else one of six colours in turn; holidays
+  in red. Other Kindles tell the calendars apart by shades of grey.
 
 The CalDAV account: Nextcloud
 (`https://your.server/remote.php/dav`), iCloud (`https://caldav.icloud.com`),
