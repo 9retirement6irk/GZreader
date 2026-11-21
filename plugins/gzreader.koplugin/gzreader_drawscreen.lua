@@ -269,6 +269,11 @@ function DrawScreen:init()
     self.discs = {}
     self.icons = {}
     self:layoutBar()
+    -- (numbers only, for a report: how the screen is turned and what the page is drawn on)
+    if Log.enabled then
+        Log.info("drawing: opened,", #self.pages, "pages,", DrawScreen.screenInfo(Screen, self.canvas_bb, c.w, c.h) .. ",",
+            self.pen_fast and "pen mode" or "no pen mode")
+    end
     self:showPage(self.index, true)
 end
 
@@ -332,6 +337,90 @@ function DrawScreen:showPage(i, first)
     self:fitPane()
     self:repaintCanvas()
     if not first then UIManager:setDirty(self, "ui") end
+    if Log.enabled then self:noteMemory(i, first) end
+end
+
+-- ---------------------------------------------------------------- numbers for the log
+-- (while diagnostic logging is on: how long full redraws take and how much
+-- memory Lua holds, so drawing can be tuned on each Kindle; numbers only)
+
+--- At most this many full redraws written one by one while the screen is open (the rest only counted)…
+DrawScreen.DIAG_REDRAWS = 5
+--- …and this many pages shown.
+DrawScreen.DIAG_PAGES = 50
+DrawScreen.ROTATIONS = { [0] = "upright", [1] = "clockwise", [2] = "upside down", [3] = "counter-clockwise" }
+DrawScreen.BB_TYPES = { "BB4", "BB8", "BB8A", "BBRGB16", "BBRGB24", "BBRGB32" }
+
+--- Seconds, from the monotonic clock (stood in for by the tests).
+function DrawScreen.clock()
+    local time = require("ui/time")
+    return time.to_s(time.now())
+end
+
+--- "rotation 0 (upright), canvas BB8 1860x2480": how the screen is turned and
+--- what the page is drawn on (a "?" for what `screen` or `bb` can't say).
+function DrawScreen.screenInfo(screen, bb, w, h)
+    local rot = "?"
+    local ok, r = pcall(function() return screen.getRotationMode and screen:getRotationMode() end)
+    if ok and type(r) == "number" then rot = r .. (DrawScreen.ROTATIONS[r] and (" (" .. DrawScreen.ROTATIONS[r] .. ")") or "") end
+    local kind = "?"
+    local okt, t = pcall(function() return bb and bb.getType and bb:getType() end)
+    if okt and t ~= nil and t ~= false then
+        local n = tonumber(t)
+        kind = tostring(n or t)
+        for _i, name in ipairs(DrawScreen.BB_TYPES) do
+            local okv, v = pcall(function() return Blitbuffer["TYPE_" .. name] end)
+            if okv and n and type(v) == "number" and v == n then kind = name; break end
+        end
+    end
+    return string.format("rotation %s, canvas %s %sx%s", rot, kind, tostring(w or "?"), tostring(h or "?"))
+end
+
+--- This screen's numbers for the log, made when first needed.
+function DrawScreen:diag()
+    local d = self._diag
+    if not d then
+        d = { redraws = 0, redraw_s = 0, redraw_max = 0, pages = 0, mem_max = 0 }
+        self._diag = d
+    end
+    return d
+end
+
+--- A full redraw took `seconds` for `strokes` strokes: counted, and the first few written.
+function DrawScreen:noteRedraw(seconds, strokes)
+    local d = self:diag()
+    d.redraws = d.redraws + 1
+    d.redraw_s = d.redraw_s + seconds
+    if seconds > d.redraw_max then d.redraw_max = seconds end
+    if d.redraws > DrawScreen.DIAG_REDRAWS then return end
+    local c, sk = self.canvas or {}, self.sketch
+    local zoom = ""
+    if sk and sk.zoomed and sk.zoom then
+        local ok, z = pcall(sk.zoom, sk)
+        if ok and type(z) == "number" then zoom = string.format(", zoom %.2fx", z) end
+    end
+    Log.info(string.format("drawing: full redraw %d: %.0f ms, %d strokes, %s%s%s", d.redraws, seconds * 1000, strokes or 0,
+        DrawScreen.screenInfo(Screen, self.canvas_bb, c.w, c.h), zoom,
+        d.redraws == DrawScreen.DIAG_REDRAWS and " (the rest only counted)" or ""))
+end
+
+--- Page `i` shown: Lua's memory (KB; nothing collected), the session's highest kept, the first few written.
+function DrawScreen:noteMemory(i, first)
+    local d = self:diag()
+    local kb = math.floor(collectgarbage("count") + 0.5)
+    if kb > d.mem_max then d.mem_max = kb end
+    d.pages = d.pages + 1
+    if d.pages > DrawScreen.DIAG_PAGES then return end
+    Log.info(string.format("drawing: page %d of %d shown%s, Lua memory %d KB%s", i, #(self.pages or {}), first and " (opening)" or "", kb,
+        d.pages == DrawScreen.DIAG_PAGES and " (no more of these lines this time)" or ""))
+end
+
+--- The numbers while the screen was open, in one line (nil when there are none).
+function DrawScreen:diagSummary()
+    local d = self._diag
+    if not d then return nil end
+    return string.format("drawing: full redraws: %d, %.0f ms in all, longest %.0f ms; pages shown %d; Lua memory at most %d KB",
+        d.redraws, d.redraw_s * 1000, d.redraw_max * 1000, d.pages, d.mem_max)
 end
 
 --- This page changed (drawn on, rubbed out, its paper).
@@ -1288,6 +1377,7 @@ end
 
 --- The page drawn again from the strokes (after an undo, a rub-out, Clear).
 function DrawScreen:repaintCanvas()
+    local t0 = Log.enabled and DrawScreen.clock() or nil -- (for the log)
     self.canvas_bb:fill(Blitbuffer.COLOR_WHITE)
     self.ink_bb:fill(Blitbuffer.COLOR_WHITE)
     if self.color_bb then self.color_bb:free(); self.color_bb = nil end
@@ -1313,6 +1403,7 @@ function DrawScreen:repaintCanvas()
     for _i, st in ipairs(list) do
         for _j, seg in ipairs(strokeSegments(self.sketch, st)) do self:ink(seg) end
     end
+    if t0 then self:noteRedraw(DrawScreen.clock() - t0, #list) end
 end
 
 function DrawScreen:redrawAll()
@@ -1567,6 +1658,8 @@ function DrawScreen:unhook()
     do
         local PenMode = require("gzreader_penmode")
         local st = PenMode.unhook()
+        -- (numbers only: how long pen mode's waits were, the long ones already written as they happened)
+        if st and Log.enabled then Log.info(PenMode.waitSummary(st)) end
         if st then
             -- (numbers only, for a report: how the pen mode went)
             Log.info(string.format("drawing: pen mode: on %d times, %d runs of ink in %d updates, %d the ordinary way; waited %.0f ms before and %.0f ms after%s",
@@ -1574,6 +1667,8 @@ function DrawScreen:unhook()
                 PenMode.failed and ("; refused: " .. tostring(PenMode.failed)) or ""))
         end
     end
+    -- (numbers only: full redraws and Lua's memory while the screen was open)
+    if self._diag and Log.enabled then Log.info(self:diagSummary()) end
     if self.penraw then
         -- (numbers only: where the pen's pressure came from, for a report)
         Log.info("drawing: pen pressure from KOReader's events:", self._pressure_events or 0, "frames; from the digitizer:",
@@ -1798,6 +1893,7 @@ end
 --- Pen mode: what the strokes left for a pause in the writing, done now
 --- (these are ordinary updates: gzreader_penmode turns pen mode off for them).
 function DrawScreen:settle()
+    if self._settle then require("gzreader_penmode").settled() end -- (when, for the log)
     local w = self._settle
     self._settle = nil
     if not w then return end
