@@ -40,6 +40,8 @@ KOReader's own fonts have no emoji, so 😀 👍 📚 showed as empty boxes. GZr
 - **Every device:** the black font is KOReader's last fallback font, so emoji show in black line drawings wherever text is: notes, the note editor, tags, calendar events, book titles. Older symbols that KOReader's own fonts already had (❤ ✔ ☺ ☀) look as before.
 - **Colour Kindles** (Colorsoft, Scribe Colorsoft) **and colour Kobos**, with colour rendering on: the same emoji in OpenMoji's colours. KOReader can't draw colour fonts, so GZreader paints each emoji's coloured layers from OpenMoji's colour font itself.
 
+The colour font (2.8 MB of the 4.3 MB) is only kept where it can show: the Kindle 2, 3, DX, Kindle 4 and Touch (and Nook) packages don't have it, and an update leaves it out on any device without a colour screen (it goes from one that had it). Those devices keep the black font (1.5 MB).
+
 All emojis designed by [OpenMoji](https://openmoji.org/) – the open-source emoji and icon project. License: [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). The fonts are unchanged; their licence is in `fonts/OpenMoji-LICENSE.txt` and the credits in the plugin's `THIRD_PARTY_NOTICES.md`.
 
 There's no emoji keyboard on the Kindle yet: emoji come from notes and events written elsewhere (Memos on a phone or computer, for instance).
