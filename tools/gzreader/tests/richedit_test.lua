@@ -23,6 +23,7 @@ local function class()
     return c
 end
 local function stub(name, v) package.preload[name] = function() return v end end
+stub("gettext", function(t) return t end)
 stub("ffi/blitbuffer", { COLOR_BLACK = 0, COLOR_WHITE = 1, COLOR_LIGHT_GRAY = 2, COLOR_DARK_GRAY = 3 })
 stub("device", { screen = { scaleBySize = function(_s, n) return n end, getHeight = function() return 1000 end,
     getWidth = function() return 600 end } })
@@ -673,6 +674,35 @@ do
     check(text(r2) == "one\n\ntwo", "Delete the section: with what's in it (" .. show(text(r2)) .. ")")
     UIM.show = real_show
     package.loaded["ui/widget/buttondialog"] = nil
+end
+
+-- ------------------------------------------------------------ colours (a colour screen)
+do
+    local ids = {}
+    for _i, t in ipairs(RE.BAR) do ids[#ids + 1] = t.id end
+    local was = RE.colour
+    RE.colour = function() return false end
+    local grey = {}
+    for _i, t in ipairs(RE.BAR) do grey[#grey + 1] = t.id end
+    local plain = {}
+    for _i, t in ipairs(RE.barTools({})) do plain[#plain + 1] = t.id end
+    RE.colour = function() return true end
+    RE._colour_bar = nil
+    local col = {}
+    for _i, t in ipairs(RE.barTools({})) do col[#col + 1] = t.id end
+    local italic
+    for i, id in ipairs(col) do if id == "italic" then italic = i end end
+    check(table.concat(plain, ",") == table.concat(ids, ",") and italic and col[italic + 1] == "color" and #col == #ids + 1,
+        "the bar: a colour button (A) after italic on a colour screen only")
+    RE.colour = was
+    -- a word coloured where the cursor is; a selection highlighted
+    local r = editor("Red word here")
+    r.cur = at(r, 1, 2)
+    r:setColor("fg", "red")
+    check(text(r):find('<span data-color="red">Red</span> word here', 1, true) ~= nil, "text colour: the word at the cursor … " .. text(r))
+    select(r, at(r, 1, 5), at(r, 1, 9))
+    r:setColor("hl", "yellow")
+    check(text(r):find('<span data-highlight="yellow">word</span>', 1, true) ~= nil, "highlight: the selection … " .. text(r))
 end
 
 print(("richedit: %d passed, %d failed"):format(pass, fail))

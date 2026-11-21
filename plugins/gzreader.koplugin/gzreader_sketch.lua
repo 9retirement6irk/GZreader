@@ -264,9 +264,9 @@ end
 --- pencil shades with the side of its lead (wide and soft); the marker's
 --- chisel tip gives a broader line; the pen, the fountain pen and the
 --- highlighter write the same at any angle, as theirs do.
-Sketch.TOOL_IDS = { "pen", "fountain", "marker", "pencil", "highlighter" }
+Sketch.TOOL_IDS = { "pen", "fountain", "marker", "pencil", "shader", "highlighter" }
 --- The pen button's own (the Kindle Scribe's order); the highlighter has a button to itself.
-Sketch.PEN_IDS = { "pen", "fountain", "marker", "pencil" }
+Sketch.PEN_IDS = { "pen", "fountain", "marker", "pencil", "shader" }
 Sketch.TOOL_STYLE = {
     pen = { icon = "pen", scale = 1, lo = 0.4, hi = 1.6 },
     -- (grain: drawn as graphite on the paper's tooth, see Sketch.grain; `gray` is the tone it reads as)
@@ -277,13 +277,19 @@ Sketch.TOOL_STYLE = {
         tilt = { width = 4, light = 0.45 } },
     fountain = { icon = "fountain", scale = 1, lo = 0.15, hi = 2.8, curve = 1.6 },
     marker = { icon = "marker", scale = 1.9, flat = true, tilt = { width = 2 } }, -- (a felt tip: black, as wide all along; broader laid over)
-    highlighter = { icon = "highlighter", scale = 3.5, flat = true, gray = 0xC8, opacity = 35 },
+    highlighter = { icon = "highlighter", scale = 3.5, flat = true, gray = 0xC8, opacity = 35, tint = 0.55 },
+    -- (the shader, as the Scribe Colorsoft's: a broad, soft wash in the pen's colour for shading and
+    -- backgrounds; each stroke over it makes it a shade deeper, down to `floor`, `step` at a time)
+    shader = { icon = "shader", scale = 5, flat = true, gray = 0xE6, opacity = 20, shade = true, step = 0x1A, floor = 0x80, tint = 0.3 },
 }
+-- (`tint`: how strongly a grey tool's colour shows on a colour screen, laid over what's under it;
+-- the pencil's specks are the colour itself)
+Sketch.TOOL_STYLE.pencil.tint = 1
 
 --- What the pen's shortcut (side) button switches to while it's held:
 --- "eraser" (as on the Scribe out of the box) or a writing tool (Settings →
 --- Notes → Pen's shortcut button; `sketch.shortcut`).
-Sketch.SHORTCUTS = { "eraser", "pen", "pencil", "fountain", "marker", "highlighter" }
+Sketch.SHORTCUTS = { "eraser", "pen", "pencil", "fountain", "marker", "shader", "highlighter" }
 function Sketch.shortcutTool(sk)
     local v = sk and sk.shortcut
     if v == "eraser" or Sketch.TOOL_STYLE[v] then return v end
@@ -740,7 +746,7 @@ local function appendPoint(self, contact, cx, cy, out)
     local r = Sketch.toolRadius(kind, self:radius(contact.stroke.width), w and (last and last[3] and (last[3] + w) / 2 or w) or nil, tm)
     local from = last or { cx, cy }
     out.segments[#out.segments + 1] = { from[1] + self.canvas.x, from[2] + self.canvas.y, cx + self.canvas.x, cy + self.canvas.y, r,
-        contact.stroke.color, Sketch.toolStyle(kind).gray, Sketch.grainDensity(kind, w, tm) }
+        contact.stroke.color, Sketch.toolStyle(kind).gray, Sketch.grainDensity(kind, w, tm), contact.stroke }
 end
 
 --- A drawing contact at screen (x, y). On paper, the stroke stays on it: it
@@ -1004,14 +1010,15 @@ local function startContact(self, s, now, out)
         c.width = self.width
         c.color = self.color
         c.pieces = {} -- (on paper: the parts of the stroke on it)
-        -- (the writing tool: the pen's own stroke has no kind; the pencil and the
-        -- highlighter are grey, so they take no colour)
+        -- (the writing tool: the pen's own stroke has no kind. On a colour screen the pencil
+        -- and the shader take the pen's colour and the highlighter its own; elsewhere both
+        -- are nil, and they're grey)
         -- (the pen's shortcut button held: its tool instead of the one in hand)
         local writing = (pen and self.side_button) and Sketch.shortcutTool(self) or self.writing
         local kind = writing ~= "pen" and Sketch.TOOL_STYLE[writing] and writing or nil
         local style = Sketch.toolStyle(kind)
         c.writing = kind
-        c.color = not style.gray and self.color or nil
+        c.color = (kind == "highlighter" and self.hl_color) or (kind ~= "highlighter" and self.color) or nil
         c.stroke = { points = {}, width = self.width, color = c.color, kind = kind }
         -- (the text tool's Write: writing to be turned into text, gzreader_handwriting.lua)
         if self.hw then c.stroke.hw = true end
@@ -1427,13 +1434,21 @@ end
 
 function Sketch:setWidth(w) self.width = w; self.tool = "pen" end
 
---- The pen's colours: memos' ink, then its drawing editor's seven hues
---- (web/src/components/DrawingSheet/useCanvasTheme.ts), so a stroke drawn
---- here is one of the colours Memos offers.
+--- The pen's ten colours, as the Kindle Scribe Colorsoft's (black, grey,
+--- red, orange, yellow; green, aqua, blue, purple, pink): memos' ink, its
+--- drawing editor's hues where it has one
+--- (web/src/components/DrawingSheet/useCanvasTheme.ts), and a yellow and a
+--- pink dark enough to read on white. The ids before 1.36 stay (teal is the aqua).
 Sketch.COLORS = {
     { id = "ink", value = Drawing.INK }, { id = "gray", value = "#868e96" }, { id = "red", value = "#e03131" },
-    { id = "orange", value = "#f08c00" }, { id = "green", value = "#2f9e44" }, { id = "teal", value = "#0c8599" },
-    { id = "blue", value = "#1971c2" }, { id = "violet", value = "#7048e8" },
+    { id = "orange", value = "#f08c00" }, { id = "yellow", value = "#e0b400" },
+    { id = "green", value = "#2f9e44" }, { id = "teal", value = "#0c8599" },
+    { id = "blue", value = "#1971c2" }, { id = "violet", value = "#7048e8" }, { id = "pink", value = "#d6336c" },
+}
+--- The highlighter's five colours (a colour screen; the others: grey).
+Sketch.HIGHLIGHTS = {
+    { id = "yellow", value = "#ffd43b" }, { id = "green", value = "#8ce99a" }, { id = "blue", value = "#74c0fc" },
+    { id = "pink", value = "#f783ac" }, { id = "orange", value = "#ffa94d" },
 }
 
 --- A stroke's colour as kept here: "#rrggbb" in lower case, or nil for memos' ink (and for anything that isn't a colour).

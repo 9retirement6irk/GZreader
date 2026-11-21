@@ -10512,7 +10512,7 @@ print("Notes (Memos v0.31)")
             -- tilt per tool (sketch_test.lua has the numbers): the redraw uses each point's tilt as the live ink does
             check(dsrcs:find("local t = b[4] and (a[4] and (a[4] + b[4]) / 2 or b[4]) or nil", 1, true) ~= nil
                 and dsrcs:find("local pr = Sketch.toolRadius(st.kind, r, w, t)", 1, true) ~= nil
-                and dsrcs:find("Sketch.grainDensity(st.kind, w, t) }", 1, true) ~= nil,
+                and dsrcs:find("Sketch.grainDensity(st.kind, w, t), st }", 1, true) ~= nil,
                 "drawing: a page drawn again gives each stroke the width and shade of its tilt, as when it was drawn")
             -- a shape's outline follows the pen (sketch_test.lua has the model's part; emulator/shape_preview.lua the screen's)
             check(dsrcs:find("self:paintShapePreview(bb, x + c.x, y + c.y)", 1, true) ~= nil
@@ -10855,12 +10855,12 @@ print("Notes (Memos v0.31)")
             and dsrc:find('self:showInk(x0, y0, x1, y1)', 1, true) ~= nil
             and not dsrc:find('grey and "ui"', 1, true)
             and dsrc:find('(grain or gray < 0x80 or (sx + 2 * sy) % 4 == 0)', 1, true) ~= nil
-            and dsrc:find('if ink[i] > gray then', 1, true) ~= nil and dsrc:find('if page[i] > gray then page[i] = gray end', 1, true) ~= nil
+            and dsrc:find('elseif cur > gray then', 1, true) ~= nil and dsrc:find('if page[i] > v then page[i] = v end', 1, true) ~= nil
             and dsrc:find('if scr[i] > gray then scr[i] = 0 end', 1, true) ~= nil
             and dsrc:find('if not bb or bb:getType() ~= Blitbuffer.TYPE_BB8 or bb:getRotation() ~= 0 or bb:getInverse() ~= 0 then return nil end', 1, true) ~= nil
             and dsrc:find('UIManager:setDirty(self, function() return "ui", area end)', 1, true) ~= nil,
             "drawing: a grey tool's ink (pencil, highlighter) shows as black points with the pen's fast refresh while drawing, its real grey when the stroke ends")
-        check(dsrc:find('if seg[7] and not seg[8] then grey = true end', 1, true) ~= nil
+        check(dsrc:find('if seg[7] and (not seg[8] or (seg[6] and self.has_color)) then grey = true end', 1, true) ~= nil
             and not dsrc:find('addPencilLayer', 1, true) and not dsrc:find('gzLayer', 1, true),
             "drawing: no refresh after a pencil stroke (it flashed the page); a saved drawing's pencil strokes stay strokes (editable in Memos), no picture of them")
 

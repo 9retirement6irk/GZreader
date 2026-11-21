@@ -20,34 +20,38 @@ WORK=$(mktemp -d)
 # (every test server the suites started: their pid files)
 trap 'for f in "$WORK"/mock.pid "$WORK"/*.pid "$WORK"/work/*.pid; do [ -f "$f" ] && kill $(cat "$f") 2>/dev/null; done; rm -rf "$WORK"' EXIT
 failed=0
+# (each section's name, and the ones that failed: named on the last line, for CI's summary)
+SECTION=""; failed_names=""
+sec() { SECTION="$*"; echo "== $*"; }
+fail() { failed=$((failed + 1)); failed_names="${failed_names:+$failed_names; }$SECTION"; }
 # (the calendar tests' expected times are New York's, around its clock change)
 export TZ=America/New_York
 
-echo "== luacheck"
-(cd "$REPO" && luacheck -q plugins/gzreader.koplugin plugins/zenos.koplugin tools/gzreader/emulator frontend/device/nook frontend/device.lua) || failed=$((failed + 1))
+sec "luacheck"
+(cd "$REPO" && luacheck -q plugins/gzreader.koplugin plugins/zenos.koplugin tools/gzreader/emulator frontend/device/nook frontend/device.lua) || fail
 
-echo "== every request says GZreader/<version> (its user agent)"
+sec "every request says GZreader/<version> (its user agent)"
 (cd "$T" && luajit useragent_test.lua "$REPO" "$WORK/useragent") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== GZreader's changes to upstream files kept"
-python3 "$T/keeps.py" || failed=$((failed + 1))
+sec "GZreader's changes to upstream files kept"
+python3 "$T/keeps.py" || fail
 
-echo "== the sync page (a browser, mock servers)"
+sec "the sync page (a browser, mock servers)"
 mkdir -p "$WORK/work" "$WORK/syncdump"
 if python3 -c "import playwright" 2>/dev/null; then
   (cd "$T" && timeout 300 python3 sync_page_test.py $((PORT + 40)) "$WORK/syncdump") > "$WORK/page.txt" 2>&1
   rc=$?
   grep "FAIL" "$WORK/page.txt"
   tail -1 "$WORK/page.txt"
-  [ $rc -eq 0 ] || { failed=$((failed + 1)); tail -30 "$WORK/page.txt"; }
+  [ $rc -eq 0 ] || { fail; tail -30 "$WORK/page.txt"; }
   # (the Kindle side takes in what the page left: run_tests.lua)
   export GZ_SYNC_DUMP="$WORK/syncdump"
 else
   echo "skipped: no Playwright (pip install playwright; playwright install chromium)"
 fi
 
-echo "== plugin (mock servers)"
+sec "plugin (mock servers)"
 export GZ_TEST_M4A="$REPO/plugins/gzreader.koplugin/audio/test.m4a"
 python3 -I "$T/mock_grimmory.py" "$PORT" > "$WORK/mock.log" 2>&1 & echo $! > "$WORK/mock.pid"
 sleep 1
@@ -55,226 +59,226 @@ sleep 1
 rc=$?
 grep "FAIL" "$WORK/out.txt"
 tail -1 "$WORK/out.txt"
-[ $rc -eq 0 ] || { failed=$((failed + 1)); tail -30 "$WORK/out.txt"; }
+[ $rc -eq 0 ] || { fail; tail -30 "$WORK/out.txt"; }
 
-echo "== JSON (rapidjson, or LuaJSON)"
+sec "JSON (rapidjson, or LuaJSON)"
 (cd "$T" && luajit json_test.lua "$REPO/plugins/gzreader.koplugin" "$KOBASE") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== memos drawings (the scene in the PNG, read as memos reads it)"
+sec "memos drawings (the scene in the PNG, read as memos reads it)"
 (cd "$T" && luajit drawing_test.lua "$REPO/plugins/gzreader.koplugin" "$T/lib" "$KOBASE" "$WORK/drawings") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 timeout 60 python3 -I "$T/drawing_format_test.py" "$WORK/drawings" 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== the drawing screen's input (finger; pen only, palm rejection)"
+sec "the drawing screen's input (finger; pen only, palm rejection)"
 (cd "$T" && luajit sketch_test.lua "$REPO/plugins/gzreader.koplugin" "$T/lib" "$KOBASE") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
-echo "== handwriting read on the Kindle (Ink Away's own tests, on GZreader's copies: tests/hwr/README.md)"
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
+sec "handwriting read on the Kindle (Ink Away's own tests, on GZreader's copies: tests/hwr/README.md)"
 HWD="$WORK/hwr"; mkdir -p "$HWD/ink/data" "$HWD/tests"
 for m in hwr hwrnet hwrwords; do cp "$REPO/plugins/gzreader.koplugin/gzreader_$m.lua" "$HWD/ink/$m.lua"; done
 cp "$REPO/plugins/gzreader.koplugin/data/handwriting/"hwr_* "$HWD/ink/data/"
 cp "$T/hwr/"*.lua "$HWD/tests/"
 (cd "$HWD" && for t in hwrnet hwrwords hwr; do luajit "tests/$t.lua" || echo "FAIL: tests/$t.lua stopped"; done) > "$WORK/hwr.txt" 2>&1
 grep -E "FAIL|checks" "$WORK/hwr.txt"
-grep -q "FAIL" "$WORK/hwr.txt" && failed=$((failed + 1))
-echo "== handwriting to text (on the Kindle, Claude, an OpenAI-style service)"
+grep -q "FAIL" "$WORK/hwr.txt" && fail
+sec "handwriting to text (on the Kindle, Claude, an OpenAI-style service)"
 (cd "$T" && luajit handwriting_test.lua "$REPO/plugins/gzreader.koplugin" "$T/lib" "$KOBASE") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
-echo "== a safety net under every timer (a round's budget, runaway tasks, GZreader's tasks failing alone)"
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
+sec "a safety net under every timer (a round's budget, runaway tasks, GZreader's tasks failing alone)"
 (cd "$T" && luajit tasksafe_test.lua "$REPO/plugins/gzreader.koplugin" "$T/lib" "$KOBASE") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
-echo "== pen Kindles: the pen and the touch screen kept apart (KOReader's input.lua)"
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
+sec "pen Kindles: the pen and the touch screen kept apart (KOReader's input.lua)"
 (cd "$T" && luajit peninput_test.lua "$REPO" "$KOBASE") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
-echo "== a two-finger tap without a first event (KOReader's gesture detector)"
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
+sec "a two-finger tap without a first event (KOReader's gesture detector)"
 (cd "$T" && luajit twofinger_test.lua "$REPO" "$KOBASE") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== the Kindle Scribe's pen mode (ink that keeps up with the pen)"
+sec "the Kindle Scribe's pen mode (ink that keeps up with the pen)"
 (cd "$T" && luajit penmode_test.lua "$REPO/plugins/gzreader.koplugin") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== saving a note: Saving…, and drafts kept while writing"
+sec "saving a note: Saving…, and drafts kept while writing"
 (cd "$T" && luajit saving_test.lua "$REPO/plugins/gzreader.koplugin" "$KOBASE" "$WORK/saving") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== mark up a PDF (its pages as drawing pages)"
+sec "mark up a PDF (its pages as drawing pages)"
 (cd "$T" && luajit pdfmarkup_test.lua "$REPO/plugins/gzreader.koplugin" "$T/lib" "$KOBASE" "$WORK/pdfmarkup") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== Settings' easter egg (the version tapped seven times: the 15 puzzle)"
+sec "Settings' easter egg (the version tapped seven times: the 15 puzzle)"
 (cd "$T" && luajit easteregg_test.lua "$REPO/plugins/gzreader.koplugin") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== notes formatted (Memos' rich editor: reading and writing its Markdown; the formatted page)"
+sec "notes formatted (Memos' rich editor: reading and writing its Markdown; the formatted page)"
 (cd "$T" && luajit blocks_test.lua "$REPO/plugins/gzreader.koplugin") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 (cd "$T" && luajit richedit_test.lua "$REPO/plugins/gzreader.koplugin") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 (cd "$T" && luajit inline_test.lua "$REPO/plugins/gzreader.koplugin") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== shapes cleaned up: draw and hold (the Newton's way)"
+sec "shapes cleaned up: draw and hold (the Newton's way)"
 (cd "$T" && luajit shapesnap_test.lua "$REPO/plugins/gzreader.koplugin") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== journal entries (written as the Memos fork's journaling mode writes them)"
+sec "journal entries (written as the Memos fork's journaling mode writes them)"
 (cd "$T" && luajit journal_test.lua "$REPO/plugins/gzreader.koplugin" "$T/lib") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== the daily paper (feeds read, an edition a day, Home's widget and Settings)"
+sec "the daily paper (feeds read, an edition a day, Home's widget and Settings)"
 (cd "$T" && luajit daily_test.lua "$REPO" "$T/lib" "$WORK/daily" "$KOBASE") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== screen rotation (Auto-rotate tile, Home keeps the rotation, notes turn with the screen)"
+sec "screen rotation (Auto-rotate tile, Home keeps the rotation, notes turn with the screen)"
 (cd "$T" && luajit rotation_test.lua "$REPO/plugins/gzreader.koplugin") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== Settings → Downloads → Books: Double-tap only on touch Kindles"
+sec "Settings → Downloads → Books: Double-tap only on touch Kindles"
 (cd "$T" && luajit settings_doubletap_test.lua "$REPO/plugins/zenos.koplugin") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== the bottom status bar hides on a tap after the setup guide"
+sec "the bottom status bar hides on a tap after the setup guide"
 (cd "$T" && luajit footer_tap_test.lua "$REPO/plugins/zenos.koplugin") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== ZenOS setup guide"
+sec "ZenOS setup guide"
 (cd "$T" && luajit qs_test.lua "$REPO/plugins/zenos.koplugin" "$REPO/plugins/gzreader.koplugin") 2>&1 | tail -3
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== Settings → General → Audio"
+sec "Settings → General → Audio"
 (cd "$T" && luajit settings_audio_test.lua "$REPO/plugins/zenos.koplugin") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== Settings → General → Bluetooth (Kindles with Bluetooth)"
+sec "Settings → General → Bluetooth (Kindles with Bluetooth)"
 (cd "$T" && luajit settings_bluetooth_test.lua "$REPO/plugins/zenos.koplugin") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== ZenOS settings (sections)"
+sec "ZenOS settings (sections)"
 (cd "$T" && luajit zen_settings_test.lua "$REPO/plugins/zenos.koplugin") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== Settings → Reader in groups"
+sec "Settings → Reader in groups"
 (cd "$T" && luajit settings_reader_test.lua "$REPO/plugins/zenos.koplugin") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== Kindles with Bluetooth: Wi-Fi off keeps Bluetooth on"
+sec "Kindles with Bluetooth: Wi-Fi off keeps Bluetooth on"
 (cd "$T" && luajit kindle_bt_test.lua "$REPO") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== Settings as GZreader trims it (Advanced, About, KOReader, tabs)"
+sec "Settings as GZreader trims it (Advanced, About, KOReader, tabs)"
 (cd "$T" && luajit gz_settings_test.lua "$REPO/plugins/zenos.koplugin" "$REPO/plugins/gzreader.koplugin") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== Reset GZreader (settings, downloads, accounts; the setup guide)"
+sec "Reset GZreader (settings, downloads, accounts; the setup guide)"
 (cd "$T" && luajit reset_test.lua "$REPO/plugins/gzreader.koplugin" "$WORK") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== Nook screens"
+sec "Nook screens"
 (cd "$T" && luajit nook_test.lua "$REPO" "$KOBASE") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== the watchdog (its own process: freezes, waking up)"
+sec "the watchdog (its own process: freezes, waking up)"
 (cd "$T" && luajit watchdog_test.lua "$REPO/plugins/gzreader.koplugin" "$WORK") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== the shelves' look"
+sec "the shelves' look"
 (cd "$T" && luajit shelf_look_test.lua "$REPO" "$KOBASE") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== single sign-on hand-off page (a browser)"
+sec "single sign-on hand-off page (a browser)"
 if python3 -c "import playwright" 2>/dev/null; then
   timeout 180 python3 "$T/sso_handoff_test.py" $((PORT + 95)) 2>&1 | grep -E "FAIL|passed|Error"
-  [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+  [ "${PIPESTATUS[0]}" -eq 0 ] || fail
 else
   echo "skipped: no Playwright"
 fi
 
-echo "== Nook launcher helper"
+sec "Nook launcher helper"
 timeout 120 python3 "$T/nook_launcher_test.py" 2>&1 | grep -E "FAIL|passed|BusyBox"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== settings and book sidecars read as data, not run"
+sec "settings and book sidecars read as data, not run"
 (cd "$T" && luajit dataload_test.lua "$REPO" "$WORK/dataload") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== statistics: book-open lookups after the first page"
+sec "statistics: book-open lookups after the first page"
 (cd "$T" && luajit statistics_test.lua "$REPO") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== a book's default font size on big screens (the Scribe)"
+sec "a book's default font size on big screens (the Scribe)"
 (cd "$T" && luajit book_font_test.lua "$REPO") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== the symbols popup (Sym on the Kindles with a keyboard)"
+sec "the symbols popup (Sym on the Kindles with a keyboard)"
 (cd "$T" && luajit symbols_test.lua "$REPO") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== menus and text on big screens (the Scribe)"
+sec "menus and text on big screens (the Scribe)"
 (cd "$T" && luajit uiscale_test.lua "$REPO") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== Downloads: audiobooks and music face out, named under them"
+sec "Downloads: audiobooks and music face out, named under them"
 (cd "$T" && luajit shelf_cases_test.lua "$REPO") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== Download speed log"
+sec "Download speed log"
 (cd "$T" && luajit xferlog_test.lua "$REPO") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== the updater checks GitHub's certificate (real TLS servers, test certificates)"
+sec "the updater checks GitHub's certificate (real TLS servers, test certificates)"
 (cd "$T" && timeout 120 luajit tls_test.lua "$REPO/plugins/gzreader.koplugin" $((PORT + 90))) 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== release notes from the changelog"
+sec "release notes from the changelog"
 timeout 60 python3 "$T/release_notes_test.py" 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
-echo "== Nook: GZreader's files on the card"
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
+sec "Nook: GZreader's files on the card"
 timeout 120 python3 "$T/nook_app_test.py" 2>&1 | grep -E "FAIL|passed|shell"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== auto brightness (the light follows the room: Kindles with a light sensor)"
+sec "auto brightness (the light follows the room: Kindles with a light sensor)"
 (cd "$T" && luajit autolight_test.lua "$REPO/plugins/gzreader.koplugin") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== Wi-Fi power saving off while downloading"
+sec "Wi-Fi power saving off while downloading"
 (cd "$T" && luajit wifips_test.lua "$REPO") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== GZreader in a folder of its own: the move from KOReader's folder"
+sec "GZreader in a folder of its own: the move from KOReader's folder"
 MIGRATE_WORK=$(mktemp -d)
 (cd "$T" && luajit migrate_test.lua "$REPO" "$KOBASE" "$MIGRATE_WORK") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 rm -rf "$MIGRATE_WORK"
 
-echo "== beta branch (labelled pull requests combined)"
+sec "beta branch (labelled pull requests combined)"
 (timeout 120 python3 "$T/beta_resolve_test.py" && timeout 120 python3 "$T/beta_combine_test.py" && timeout 120 python3 "$T/publish_updates_test.py") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== CI: which changes skip the emulator"
+sec "CI: which changes skip the emulator"
 timeout 60 python3 "$T/ci_paths_test.py" 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== CI: Ubuntu packages from a mirror when Ubuntu's servers can't be reached"
+sec "CI: Ubuntu packages from a mirror when Ubuntu's servers can't be reached"
 timeout 120 python3 "$T/ci_apt_test.py" 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== CI's CPU budgets (the emulator perf run)"
+sec "CI's CPU budgets (the emulator perf run)"
 timeout 60 python3 "$T/perf_check_test.py" 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== the shelf ornaments stand level"
+sec "the shelf ornaments stand level"
 timeout 60 python3 -I "$T/ornament_level_test.py" 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== the Nook package, from the Kindle 2/3/DX package (GZreader/app or koreader/)"
+sec "the Nook package, from the Kindle 2/3/DX package (GZreader/app or koreader/)"
 timeout 120 bash "$T/package_nook_test.sh" "$REPO" 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== the wiki's links"
+sec "the wiki's links"
 timeout 60 python3 "$T/wiki_test.py" 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-echo "== $failed suite(s) failed"
+echo "== $failed suite(s) failed${failed_names:+: $failed_names}"
 exit $failed

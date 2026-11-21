@@ -39,6 +39,7 @@ local GestureRange = require("ui/gesturerange")
 local InputContainer = require("ui/widget/container/inputcontainer")
 local RenderText = require("ui/rendertext")
 local UIManager = require("ui/uimanager")
+local _ = require("gettext")
 local Blocks = require("gzreader_blocks")
 local Sticky = require("gzreader_sticky")
 
@@ -1107,10 +1108,74 @@ function RichEdit:insertTag(tag)
     self:update(true)
 end
 
---- A toolbar button (`id`: heading, bullet, task, ordered, bold, italic, tag).
+--- A colour screen (and its colour rendering on): text and highlight colours.
+function RichEdit.colour() return require("gzreader_colour").enabled() end
+
+--- "#rrggbb" as a colour to paint with.
+function RichEdit.rgb32(hex)
+    local r, g, b = hex:match("^#(%x%x)(%x%x)(%x%x)$")
+    return Blitbuffer.ColorRGB32(tonumber(r, 16), tonumber(g, 16), tonumber(b, 16), 0xFF)
+end
+
+--- Colours the selection, else the word at the cursor, else what's typed next
+--- (`kind`: "fg" text colour, "hl" highlight; nil `id`: none).
+function RichEdit:setColor(kind, id)
+    local p, q = self:selection()
+    if p then
+        Blocks.setColorRange(self.doc, p, q, kind, id)
+        return self:update(true)
+    end
+    local b, i = self.cur.b, self.cur.i
+    if b.kind == "raw" or b.kind == "image" then return end
+    local function word(ch) return ch and not ch:match("^[%s%p]$") end
+    if word(b.chars[i]) or word(b.chars[i - 1]) then
+        local a, z = Blocks.wordAt(b, i)
+        Blocks.setColor(b, kind, id, a, z)
+        return self:update(true)
+    end
+    local m = self.pending
+    if m == nil then m = Blocks.typedMarks(b, i) end
+    m = m or {}
+    local fg, hl = m.fg, m.hl
+    if kind == "fg" then fg = id else hl = id end
+    self.pending = Blocks.markset(m.b, m.i, m.s, nil, nil, fg, hl)
+    self:update()
+end
+
+--- The colours to choose from (the bar's A): the text's, then a highlight's.
+function RichEdit:pickColor()
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local dialog
+    local NAMES = { gray = _("Grey"), red = _("Red"), orange = _("Orange"), yellow = _("Yellow"), green = _("Green"),
+        aqua = _("Aqua"), blue = _("Blue"), purple = _("Purple"), pink = _("Pink") }
+    local function row(list, kind, from, to)
+        local r = {}
+        for k = from, math.min(to, #list) do
+            local c = list[k]
+            r[#r + 1] = { text = NAMES[c.id] or c.id, callback = function()
+                UIManager:close(dialog)
+                self:setColor(kind, c.id)
+            end }
+        end
+        return r
+    end
+    local buttons = {
+        { { text = _("Text colour"), enabled = false } },
+        row(Blocks.TEXT_COLORS, "fg", 1, 5), row(Blocks.TEXT_COLORS, "fg", 6, 9),
+        { { text = _("Black (no colour)"), callback = function() UIManager:close(dialog); self:setColor("fg", nil) end } },
+        { { text = _("Highlight"), enabled = false } },
+        row(Blocks.MARK_COLORS, "hl", 1, 5),
+        { { text = _("No highlight"), callback = function() UIManager:close(dialog); self:setColor("hl", nil) end } },
+    }
+    dialog = ButtonDialog:new{ title = _("Colour"), title_align = "center", buttons = buttons }
+    UIManager:show(dialog)
+end
+
+--- A toolbar button (`id`: heading, bullet, task, ordered, bold, italic, colour, tag).
 function RichEdit:useTool(id)
     if id == "bold" then return self:toggleMark("b")
     elseif id == "italic" then return self:toggleMark("i")
+    elseif id == "color" then return self:pickColor()
     elseif id == "tag" then
         if self.editor and self.editor.pickTag then return self.editor:pickTag() end
         return
@@ -1132,6 +1197,19 @@ RichEdit.BAR = {
     { id = "ordered", label = "1." },
     { id = "tag", label = "#" },
 }
+--- The bar's buttons here: a colour screen's has A (colours) after Italic.
+function RichEdit:barTools()
+    if not RichEdit.colour() then return RichEdit.BAR end
+    if not RichEdit._colour_bar then
+        local t = {}
+        for _i, b in ipairs(RichEdit.BAR) do
+            t[#t + 1] = b
+            if b.id == "italic" then t[#t + 1] = { id = "color", label = "A" } end
+        end
+        RichEdit._colour_bar = t
+    end
+    return RichEdit._colour_bar
+end
 
 --- Where the bar goes (relative to the widget): above the selection's first
 --- line, under its last one when there's no room above. nil when it's closed.
@@ -1144,7 +1222,7 @@ function RichEdit:barRect()
     local first, last = li and self.lines[li], lj and self.lines[lj]
     if not first then return nil end
     last = last or first
-    local n = #RichEdit.BAR
+    local n = #self:barTools()
     local cell = math.min(S(54), math.floor(self.width / n))
     local w, h, gap = cell * n, S(44), S(6)
     local y = first.y - self.top - h - gap
@@ -1158,7 +1236,8 @@ end
 function RichEdit:barToolAt(x, y)
     local r = self:barRect()
     if not r or x < r.x or x >= r.x + r.w or y < r.y or y >= r.y + r.h then return nil end
-    return RichEdit.BAR[math.min(#RichEdit.BAR, math.floor((x - r.x) / r.cell) + 1)]
+    local tools = self:barTools()
+    return tools[math.min(#tools, math.floor((x - r.x) / r.cell) + 1)]
 end
 
 --- Is this tool on for the selection (or the cursor's line / word)? (drawn inverted)
@@ -1180,7 +1259,7 @@ function RichEdit:paintBar(bb, x, y)
     local border = math.max(2, S(2))
     bb:paintRoundedRect(bx, by, r.w, r.h, Blitbuffer.COLOR_WHITE, S(8))
     bb:paintBorder(bx, by, r.w, r.h, border, Blitbuffer.COLOR_BLACK, S(8))
-    for i, t in ipairs(RichEdit.BAR) do
+    for i, t in ipairs(self:barTools()) do
         local cx = bx + (i - 1) * r.cell
         local on = self:toolOn(t.id)
         if on then bb:paintRect(cx + border + 1, by + border + 1, r.cell - 2 * border - 2, r.h - 2 * border - 2, Blitbuffer.COLOR_BLACK) end
@@ -1190,6 +1269,15 @@ function RichEdit:paintBar(bb, x, y)
         local _h, base = lineMetrics(face)
         RenderText:renderUtf8Text(bb, cx + math.floor((r.cell - tw) / 2), by + math.floor((r.h - _h) / 2) + base, face, t.label,
             true, false, on and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK)
+        if t.id == "color" then
+            -- (A over a bar in the colour of the words there: red A for red words)
+            local p0 = self:selection() or self.cur
+            local m = p0.b.marks and p0.b.marks[math.min(p0.i, #p0.b.chars)]
+            local hex = m and m.fg and Blocks.colorHex("fg", m.fg)
+            local bw, bh = math.floor(r.cell * 0.5), math.max(3, S(4))
+            local barx, bary = cx + math.floor((r.cell - bw) / 2), by + r.h - bh - S(6)
+            if hex then bb:paintRectRGB32(barx, bary, bw, bh, RichEdit.rgb32(hex)) else bb:paintRect(barx, bary, bw, bh, Blitbuffer.COLOR_BLACK) end
+        end
     end
 end
 
@@ -1473,6 +1561,20 @@ function RichEdit:paintTo(bb, x, y)
                         local x1 = l.xs[c - l.a + 1]
                         local x2 = l.xs[j - l.a + 1]
                         local color = st.color or Blitbuffer.COLOR_BLACK
+                        -- colours (Blocks: data-color / data-highlight): a highlight is a marker's band
+                        -- over the lower part of the line, under the words; a text colour, on a colour screen
+                        if m and m.hl then
+                            local band = math.floor(l.h * 0.55)
+                            local hex = Blocks.colorHex("hl", m.hl)
+                            if RichEdit.colour() and hex then
+                                bb:paintRectRGB32(x + x1, y + ly + l.h - band - S(2), x2 - x1, band, RichEdit.rgb32(hex))
+                            else
+                                bb:paintRect(x + x1, y + ly + l.h - band - S(2), x2 - x1, band, Blitbuffer.COLOR_GRAY_D)
+                            end
+                        end
+                        if m and m.fg and RichEdit.colour() and Blocks.colorHex("fg", m.fg) then
+                            color = RichEdit.rgb32(Blocks.colorHex("fg", m.fg))
+                        end
                         RenderText:renderUtf8Text(bb, x + x1, y + ly + l.base, face, table.concat(parts), false, false, color)
                         if m and m.s then bb:paintRect(x + x1, y + ly + l.base - math.floor(face.size * 0.3), x2 - x1, 1, color) end
                         if m and m.link then bb:paintRect(x + x1, y + ly + l.base + 2, x2 - x1, 1, color) end
