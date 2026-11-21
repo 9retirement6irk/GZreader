@@ -899,6 +899,7 @@ function Notes.refresh(plugin, on_done, opts)
                 plugin:save()
             end
             if type(res.spaces) == "table" then store.spaces = res.spaces; plugin:save() end
+            if type(res.tag_colors) == "table" then store.tag_colors = res.tag_colors; Notes.tag_colors = res.tag_colors; plugin:save() end
             -- (false: this Memos has no journaling mode, the defaults again; nil: no answer, as it was)
             if res.journal ~= nil and (res.journal or nil) ~= store.journal then store.journal = res.journal or nil; plugin:save() end
             if stale then
@@ -1059,16 +1060,54 @@ function Notes.codeBox(item, width)
         bordersize = Size.border.thin, radius = S(6), padding = pad, margin = 0, width = width, col }
 end
 
+--- A tag's colour (Memos' Settings → Tags: the first name or pattern that
+--- matches it, anchored as Memos does), "#rrggbb", or nil. Patterns are
+--- regular expressions; the simple ones Memos' settings use (a name, "work/.*")
+--- are read here, anything fancier only as a name.
+function Notes.tagColor(tag, colors)
+    colors = colors or Notes.tag_colors
+    if type(colors) ~= "table" or type(tag) ~= "string" then return nil end
+    for _i, c in ipairs(colors) do
+        local p = c.pattern
+        if p == tag then return c.color end
+        if type(p) == "string" and p:match("^[%w_/%-%.%*]+$") then
+            local lua = "^" .. p:gsub("%-", "%%-") .. "$"
+            local ok, hit = pcall(string.match, tag, lua)
+            if ok and hit then return c.color end
+        end
+    end
+    return nil
+end
+
+--- A colour screen: a tag chip's background, its tag's colour made light
+--- (black words stay easy to read on it), or nil.
+function Notes.tagTint(tag)
+    local hex = require("gzreader_colour").enabled() and Notes.tagColor(tag)
+    if not hex then return nil end
+    local function light(v) return math.floor(255 - 0.45 * (255 - v) + 0.5) end
+    return Blitbuffer.ColorRGB32(light(tonumber(hex:sub(2, 3), 16)), light(tonumber(hex:sub(4, 5), 16)), light(tonumber(hex:sub(6, 7), 16)), 0xFF)
+end
+
 --- A note's tags as the web shows them in a note: light grey chips with
---- rounded corners, as many on a line as fit `width`.
+--- rounded corners, as many on a line as fit `width` (on a colour screen, in
+--- each tag's own colour from Memos, as the web shows them).
 function Notes.tagChips(tags, width, face)
     local group = VerticalGroup:new{ align = "left" }
     local gap = S(6)
     local row, used
+    local colour = require("gzreader_colour").enabled()
     for _i, t in ipairs(tags or {}) do
-        local chip = FrameContainer:new{ background = Blitbuffer.Color8(0xE6), bordersize = 0, radius = S(5),
+        local bg, fg = Blitbuffer.Color8(0xE6), nil
+        local hex = colour and Notes.tagColor(t)
+        if hex then
+            local r, g, b = tonumber(hex:sub(2, 3), 16), tonumber(hex:sub(4, 5), 16), tonumber(hex:sub(6, 7), 16)
+            bg = Blitbuffer.ColorRGB32(r, g, b, 0xFF)
+            -- (light words on a dark colour)
+            if 0.299 * r + 0.587 * g + 0.114 * b < 140 then fg = Blitbuffer.COLOR_WHITE end
+        end
+        local chip = FrameContainer:new{ background = bg, bordersize = 0, radius = S(5),
             padding = 0, padding_left = S(6), padding_right = S(6), padding_top = S(1), padding_bottom = S(2), margin = 0,
-            TextWidget:new{ text = "#" .. t, face = face, max_width = width - S(12) } }
+            TextWidget:new{ text = "#" .. t, face = face, max_width = width - S(12), fgcolor = fg } }
         local w = chip:getSize().w
         if not row or used + gap + w > width then
             if row then group[#group + 1] = VerticalSpan:new{ width = gap } end
@@ -2159,7 +2198,7 @@ function Notes.homeRows(plugin)
     for _i, tag in ipairs(Notes.homeTags(plugin)) do
         local short = #tag > 12 and (tag:sub(1, 11):gsub("[\128-\191]*$", "") .. "\u{2026}") or tag
         tags[#tags + 1] = { "#" .. short, function() Notes.setFilter(plugin, { kind = "tag", value = tag }) end,
-            chosen = f.kind == "tag" and f.value == tag }
+            chosen = f.kind == "tag" and f.value == tag, background = Notes.tagTint(tag) }
     end
     tags[#tags + 1] = { _("Drawings"), function() Notes.toggleDrawings(plugin) end, chosen = f.kind == "drawings" }
     return { tags }
@@ -2190,6 +2229,7 @@ Notes.KEY_HINT = _("N note  \u{00B7}  J journal  \u{00B7}  K search  \u{00B7}  G
 function Notes.show(plugin)
     Notes.closeOtherTabs(Notes.TAB_ID)
     Notes._mood_prefix = Notes.journalSettings(plugin).moodTagPrefix -- (the faces beside entries' times)
+    Notes.tag_colors = plugin.store and plugin.store.memos and plugin.store.memos.tag_colors -- (the tags' colours, from Memos)
     if Notes.board and not Notes.board._gz_closed then
         Notes.reloadBoard(true)
         return Notes.board

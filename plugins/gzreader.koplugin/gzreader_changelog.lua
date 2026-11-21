@@ -11,6 +11,7 @@ return {
         changes = {
             { short = "Colour Kindles: Immich photos in colour", text = "On a Kindle Colorsoft or Scribe Colorsoft, the pictures from your Immich album (the sleep screen and the Home wallpaper) are kept in colour instead of being made grey. Pictures already on the Kindle stay grey until they are swapped for others from the album (about half each time GZreader gets new pictures)." },
             { short = "Colour Kindles: calendars in their own colours", text = "On a Kindle Colorsoft or Scribe Colorsoft, the bar beside each event is in its calendar's colour: the one your calendar app gave it (CalDAV's calendar colour, or the X-APPLE-CALENDAR-COLOR of a calendar link, as iCloud's have), else one of six colours in turn. Holidays are red. Other Kindles keep telling calendars apart by shades of grey." },
+            { short = "Colour Kindles: tags in their Memos colours", text = "On a Kindle Colorsoft or Scribe Colorsoft, a tag you gave a colour in Memos (Settings → Tags; a tag's name, or a pattern such as project/.* for the tags under it) shows in that colour: as a chip in a note, as on the web, and on the tag chips at the top of the Notes tab. GZreader reads the colours from Memos with your notes." },
         },
     },
     {
