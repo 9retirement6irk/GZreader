@@ -191,12 +191,7 @@ function Grimmory:init()
     self.api = Api:new(self.store, function() self:save() end)
     -- no Wi-Fi (Kindle 2, DX): Grimmory through a computer, the library
     -- from the copy the sync page left (gzreader_usbsync.lua)
-    local Usb = require("gzreader_usbsync")
-    if Usb.active() then
-        local okd, dir = pcall(Usb.dir, self)
-        if okd and dir then self.api = require("gzreader_offlineapi"):new(self.store, function() self:save() end, dir) end
-    end
-    pcall(Usb.start, self)
+    self:startUsbSync()
     -- a login a background process got but GZreader never saved (it was
     -- closed or restarted meanwhile): take it (gzreader_api.lua)
     if Api.recoverPending(self.store) then
@@ -246,7 +241,7 @@ function Grimmory:init()
         end
         -- Home's "Daily paper" widget (ZenOS registers Home's widgets when it
         -- starts, after GZreader: a tick later)
-        UIManager:nextTick(function() pcall(function() require("gzreader_dailyscreen").install(self) end) end)
+        UIManager:nextTick(function() pcall(self.installDailyPaper, self) end)
         -- Home's "Grimmory reading stats" (every device's reading, from Grimmory)
         local plugin_ref = self
         rawset(_G, "__GZ_GRIMMORY_STATS", function() return require("gzreader_grimstats").values(plugin_ref) end)
@@ -389,6 +384,46 @@ function Grimmory.applyRecent(store)
     store.save_seq = seq
     Log.info("state: the recent part laid over gzreader.lua (save", seq, ")")
     return true
+end
+
+--- Sync through a computer (Kindles without Wi-Fi, or chosen in Settings):
+--- note the mode for everyone (Net.usb), the library from the copy the sync
+--- page left, take in the inbox. gzreader_usbsync.lua loads only when it's
+--- on: the Kindles that sync over Wi-Fi don't load it at start.
+function Grimmory:startUsbSync()
+    Net.usb = Net.usbSyncChosen()
+    if not Net.usb then return end
+    local Usb = require("gzreader_usbsync")
+    local okd, dir = pcall(Usb.dir, self)
+    if okd and dir then self.api = require("gzreader_offlineapi"):new(self.store, function() self:save() end, dir) end
+    pcall(Usb.start, self)
+end
+
+--- Home's "Daily paper" widget and the newspaper on Home's shelf (ZenOS
+--- registers Home's widgets when it starts, after GZreader: called a tick
+--- later). gzreader_dailyscreen.lua loads only when Home draws one of them:
+--- the paper is off unless chosen. Returns whether Home took the widget.
+function Grimmory:installDailyPaper()
+    local plugin = self
+    local function paperOn()
+        local st = plugin.store and plugin.store.daily
+        return type(st) == "table" and st.enabled == true -- (gzreader_daily.lua Daily.enabled)
+    end
+    rawset(_G, "__GZ_SHELF_PAPER", function(ctx, area_h, cover_w)
+        if not paperOn() then return nil end
+        return require("gzreader_dailyscreen").shelfItem(plugin, ctx, area_h, cover_w)
+    end)
+    if not Grimmory.lazy_logged then
+        Grimmory.lazy_logged = true
+        Log.info("start: loaded only when used: daily paper", package.loaded["gzreader_dailyscreen"] and "loaded" or "not loaded",
+            "| sync through a computer", package.loaded["gzreader_usbsync"] and "loaded" or "not loaded",
+            "| audiobooks", package.loaded["gzreader_audiobook"] and "loaded" or "not loaded")
+    end
+    local register = rawget(_G, "__ZENOS_REGISTER_HOME_ITEM")
+    if type(register) ~= "function" then return false end
+    -- ("daily_paper": gzreader_daily.lua Daily.ROW_ID)
+    return register("daily_paper", function(ctx) return require("gzreader_dailyscreen").homeWidget(plugin, ctx) end,
+        { label = _("Daily paper"), size = "m" }) == true
 end
 
 function Grimmory:save()
@@ -1912,8 +1947,9 @@ function Grimmory:onSuspend()
     if Grimmory.save_soon or Grimmory.recent_written then pcall(self.saveFull, self) end
     local Music = package.loaded["gzreader_music"]
     if Music then pcall(Music.pauseAll) end
-    local ok_ab, Audiobook = pcall(require, "gzreader_audiobook")
-    if ok_ab and Audiobook.current then
+    -- (not loaded: no audiobook was opened this run, nothing to pause)
+    local Audiobook = package.loaded["gzreader_audiobook"]
+    if type(Audiobook) == "table" and Audiobook.current then
         -- (also one about to start, still asking Grimmory where it was)
         Audiobook.current.pull_gen = (Audiobook.current.pull_gen or 0) + 1
         if Audiobook.current.playing then Audiobook.current:pause() end

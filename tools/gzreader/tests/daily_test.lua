@@ -595,13 +595,8 @@ package.loaded["modules/filebrowser/patches/home/components/registry"] = {
     totalUnits = function(enabled) local t = 0; for id, on in pairs(enabled) do if on then t = t + (units[id] or 0) end end return t end,
 }
 package.loaded["common/gz_view"] = { redrawHome = function() redrawn = redrawn + 1 end }
-check(Paper.install(plugin) == false, "ZenOS not started yet: nothing registered")
-rawset(_G, "__ZENOS_REGISTER_HOME_ITEM", function(id, build, opts)
-    registered[id] = { id = id, build = build, label = opts.label, size = opts.size }
-    return true
-end)
-check(Paper.install(plugin) == true and registered.daily_paper and registered.daily_paper.label == "Daily paper" and registered.daily_paper.size == "m",
-    "Home gets a Daily paper widget (size M)")
+-- (main.lua registers Home's widget at start, without loading this module: Grimmory:installDailyPaper, run_tests.lua)
+registered[Daily.ROW_ID] = { id = Daily.ROW_ID, label = "Daily paper", size = "m" }
 plugin.store.daily.enabled = nil
 local rows = Paper.settingsItems(plugin)
 local function row(text) for _i, r in ipairs(rows) do if (r.text or (r.text_func and r.text_func())):find(text, 1, true) then return r end end end
@@ -617,7 +612,6 @@ row("Daily paper").callback()
 check(Daily.enabled(plugin) and saves == 1 and home.rows.enabled.daily_paper ~= true and redrawn == 1,
     "turned on: kept, no row of its own on Home, Home drawn again")
 check(Paper.onShelf(plugin) and row("On Home's bookshelf").checked_func() == true, "… the newspaper goes on Home's bookshelf")
-check(type(rawget(_G, "__GZ_SHELF_PAPER")) == "function", "the shelf can ask for it")
 row("On Home's bookshelf").callback()
 check(not Paper.onShelf(plugin) and Daily.enabled(plugin) and plugin.store.daily.shelf == false and redrawn == 2, "unticked: off the shelf, the paper stays on")
 row("On Home's bookshelf").callback()
@@ -1184,7 +1178,8 @@ check(opened and opened.section == "paper", "Settings → Accounts and services 
 print("== wired in")
 local main = read(PLUGIN .. "/main.lua")
 check(main:find("function Grimmory:dailySettingsItems()", 1, true) and main:find('return require("gzreader_dailyscreen").settingsItems(self)', 1, true), "the plugin gives Settings → Accounts and services its Daily paper page")
-check(main:find('require("gzreader_dailyscreen").install(self)', 1, true), "the plugin registers Home's widget at start")
+check(main:find("pcall(self.installDailyPaper, self)", 1, true) and main:find('require("gzreader_dailyscreen").shelfItem(plugin, ctx, area_h, cover_w)', 1, true)
+    and main:find('require("gzreader_dailyscreen").homeWidget(plugin, ctx)', 1, true), "the plugin registers Home's widget and the shelf's newspaper at start")
 local zs = read(REPO .. "/plugins/zenos.koplugin/modules/settings/zen_settings.lua")
 local tree = read(REPO .. "/plugins/zenos.koplugin/common/gz_settings_tree.lua")
 check(tree:find('row(_("Daily paper"), _("Feeds"), "dailySettingsItems", "history")', 1, true) ~= nil,
