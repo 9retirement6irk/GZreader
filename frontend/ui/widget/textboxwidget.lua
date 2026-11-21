@@ -12,6 +12,7 @@ Example:
 
 ]]
 
+local GzColourEmoji = require("gzcoloremoji") -- GZreader: colour emoji
 local Blitbuffer = require("ffi/blitbuffer")
 local Device = require("device")
 local Font = require("ui/font")
@@ -854,7 +855,8 @@ function TextBoxWidget:_renderText(start_row_idx, end_row_idx)
     local color_fg = not Blitbuffer.isColor8(self.fgcolor)
     local color_bg = not Blitbuffer.isColor8(self.bgcolor)
     -- Color, whether from images or fg or bg, means we'll need an RGB32 buffer (if it makes sense, e.g., on a color screen).
-    if (self.line_num_to_image and self.line_num_to_image[start_row_idx]) or color_fg or color_bg then
+    if (self.line_num_to_image and self.line_num_to_image[start_row_idx]) or color_fg or color_bg
+            or GzColourEmoji.wanted(self.text) then -- GZreader: colour emoji need a colour canvas too
         bbtype = Screen:isColorEnabled() and Blitbuffer.TYPE_BBRGB32 or Blitbuffer.TYPE_BB8
     end
     self._bb = Blitbuffer.new(self.width, h, bbtype)
@@ -897,7 +899,10 @@ function TextBoxWidget:_renderText(start_row_idx, end_row_idx)
                         if self._alt_color_for_rtl then
                             color = xglyph.is_rtl and Blitbuffer.COLOR_DARK_GRAY or Blitbuffer.COLOR_BLACK
                         end
-                        if not color_fg then
+                        -- GZreader: an emoji in colour on a colour screen (frontend/gzcoloremoji.lua)
+                        if GzColourEmoji.drawGlyph(self._bb, face, xglyph.glyph, xglyph.x0 + xglyph.x_offset,
+                                y - xglyph.y_offset, color) then -- luacheck: ignore 542
+                        elseif not color_fg then
                             self._bb:colorblitFrom(glyph.bb,
                                         xglyph.x0 + glyph.l + xglyph.x_offset,
                                         y - glyph.t - xglyph.y_offset,

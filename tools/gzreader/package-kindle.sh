@@ -92,6 +92,13 @@ rm -f "$OUT"
 # (GZreader/app: the program, in the GZreader folder with the books: gzreader_places.lua)
 mkdir -p "$STAGE/full/GZreader"
 cp -a "$KO" "$STAGE/full/GZreader/app"
+# (the colour emoji font, 2.8 MB, only draws on a colour screen: none of the
+# Kindle 2/3/DX, Kindle 4 or Touch has one, nor the Nooks built from the
+# legacy package. Only the full install goes without it: the update package
+# below is every device's, Colorsofts' and colour Kobos' too.)
+if [ "$PLATFORM" = "kindle-legacy" ] || [ "$PLATFORM" = "kindle" ]; then
+    rm -f "$STAGE/full/GZreader/app/plugins/gzreader.koplugin/fonts/OpenMoji-color-glyf_colr_0.ttf"
+fi
 for d in extensions launchpad documents; do [ -d "$STAGE/$d" ] && cp -a "$STAGE/$d" "$STAGE/full/"; done
 (cd "$STAGE/full" && zip -qr -9 "$OUT" GZreader extensions $( [ -d launchpad ] && echo launchpad ) $( [ -d documents ] && echo documents ))
 echo "$OUT"

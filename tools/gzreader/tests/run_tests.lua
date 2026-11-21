@@ -6624,6 +6624,41 @@ check(rf(KO .. "/plugins/gzreader.koplugin/main.lua") == "new main" and Update.c
 check(rf(KO .. "/settings/settings.reader.lua") == "mine" and rf(KO .. "/plugins/notaplugin/x.lua") == nil, "settings never touched; unexpected paths ignored")
 local leftovers = io.popen("ls -a '" .. KO .. "' '" .. KO .. "/plugins' | grep -c 'gz-old\\|gzreader-update'"):read("*a")
 check(tonumber(leftovers) == 0, "no backup or staging folders left behind")
+-- the colour emoji font (2.8 MB) only where there's a colour screen
+do
+    local real_colour = Update.colourScreen
+    local fonts = "plugins/gzreader.koplugin/fonts/"
+    local colour_font, black_font = fonts .. "OpenMoji-color-glyf_colr_0.ttf", fonts .. "OpenMoji-black-glyf.ttf"
+    local function emojiPkg()
+        return { ["koreader/frontend/new.lua"] = "new", ["koreader/plugins/gzreader.koplugin/main.lua"] = "new main",
+            ["koreader/gzreader-version"] = "1.1.0\n", ["koreader/" .. colour_font] = "COLR", ["koreader/" .. black_font] = "black" }
+    end
+    Update.colourScreen = function() return false end
+    PKG = emojiPkg()
+    local g_ok, g_err = Update.apply("pkg.zip")
+    check(g_ok and rf(KO .. "/" .. black_font) == "black" and rf(KO .. "/" .. colour_font) == nil
+        and rf(KO .. "/plugins/gzreader.koplugin/main.lua") == "new main",
+        "a grey screen: an update leaves the colour emoji font out, the black one in " .. tostring(g_err))
+    Update.colourScreen = function() return true end
+    PKG = emojiPkg()
+    check(Update.apply("pkg.zip") and rf(KO .. "/" .. colour_font) == "COLR" and rf(KO .. "/" .. black_font) == "black",
+        "a colour screen: both emoji fonts")
+    Update.colourScreen = function() return false end
+    PKG = emojiPkg()
+    check(Update.apply("pkg.zip") and rf(KO .. "/" .. colour_font) == nil and rf(KO .. "/" .. black_font) == "black",
+        "…and on a grey screen one already there goes, with the plugin folder it was in")
+    Update.colourScreen = real_colour
+    local real_device = package.loaded["device"]
+    package.loaded["device"] = { hasColorScreen = function() return false end }
+    local said_grey = Update.colourScreen()
+    package.loaded["device"] = { hasColorScreen = function() return true end }
+    local said_colour = Update.colourScreen()
+    package.loaded["device"] = {}
+    local said_unsure = Update.colourScreen()
+    package.loaded["device"] = real_device
+    check(said_grey == false and said_colour == true and said_unsure == true,
+        "Update.colourScreen: the device's hasColorScreen; unsure is colour (the update whole)")
+end
 PKG = { ["koreader/frontend/x.lua"] = "bad" }
 local bad_ok = Update.apply("pkg.zip")
 check(not bad_ok and rf(KO .. "/frontend/new.lua") == "new", "package without GZreader layout rejected, nothing changed")
@@ -10512,7 +10547,7 @@ print("Notes (Memos v0.31)")
             -- tilt per tool (sketch_test.lua has the numbers): the redraw uses each point's tilt as the live ink does
             check(dsrcs:find("local t = b[4] and (a[4] and (a[4] + b[4]) / 2 or b[4]) or nil", 1, true) ~= nil
                 and dsrcs:find("local pr = Sketch.toolRadius(st.kind, r, w, t)", 1, true) ~= nil
-                and dsrcs:find("Sketch.grainDensity(st.kind, w, t) }", 1, true) ~= nil,
+                and dsrcs:find("Sketch.grainDensity(st.kind, w, t), st }", 1, true) ~= nil,
                 "drawing: a page drawn again gives each stroke the width and shade of its tilt, as when it was drawn")
             -- a shape's outline follows the pen (sketch_test.lua has the model's part; emulator/shape_preview.lua the screen's)
             check(dsrcs:find("self:paintShapePreview(bb, x + c.x, y + c.y)", 1, true) ~= nil
@@ -10759,12 +10794,12 @@ print("Notes (Memos v0.31)")
             and dsrc:find('self:showInk(x0, y0, x1, y1)', 1, true) ~= nil
             and not dsrc:find('grey and "ui"', 1, true)
             and dsrc:find('(grain or gray < 0x80 or (sx + 2 * sy) % 4 == 0)', 1, true) ~= nil
-            and dsrc:find('if ink[i] > gray then', 1, true) ~= nil and dsrc:find('if page[i] > gray then page[i] = gray end', 1, true) ~= nil
+            and dsrc:find('elseif cur > gray then', 1, true) ~= nil and dsrc:find('if page[i] > v then page[i] = v end', 1, true) ~= nil
             and dsrc:find('if scr[i] > gray then scr[i] = 0 end', 1, true) ~= nil
             and dsrc:find('if not bb or bb:getType() ~= Blitbuffer.TYPE_BB8 or bb:getRotation() ~= 0 or bb:getInverse() ~= 0 then return nil end', 1, true) ~= nil
             and dsrc:find('UIManager:setDirty(self, function() return "ui", area end)', 1, true) ~= nil,
             "drawing: a grey tool's ink (pencil, highlighter) shows as black points with the pen's fast refresh while drawing, its real grey when the stroke ends")
-        check(dsrc:find('if seg[7] and not seg[8] then grey = true end', 1, true) ~= nil
+        check(dsrc:find('if seg[7] and (not seg[8] or (seg[6] and self.has_color)) then grey = true end', 1, true) ~= nil
             and not dsrc:find('addPencilLayer', 1, true) and not dsrc:find('gzLayer', 1, true),
             "drawing: no refresh after a pencil stroke (it flashed the page); a saved drawing's pencil strokes stay strokes (editable in Memos), no picture of them")
 
