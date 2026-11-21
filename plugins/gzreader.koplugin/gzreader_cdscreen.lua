@@ -38,6 +38,8 @@ local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
+local WidgetContainer = require("ui/widget/container/widgetcontainer")
+local Log = require("gzreader_log")
 local Touch = require("gzreader_touch")
 local _ = require("gettext")
 local T = require("ffi/util").template
@@ -247,6 +249,33 @@ function SeekBar:onTapSeek(_arg, ges)
     return true
 end
 
+--- What it holds, and where it was last drawn (its dimen): the time is
+--- drawn again there alone as the music plays.
+local Spot = WidgetContainer:extend{}
+function Spot:getSize() return self[1]:getSize() end
+function Spot:paintTo(bb, x, y)
+    local s = self[1]:getSize()
+    self.dimen = Geom:new{ x = x, y = y, w = s.w, h = s.h }
+    self[1]:paintTo(bb, x, y)
+end
+
+--- What moves on the screen as `p` plays: the time's text (Now playing's,
+--- or the strip's on the other tabs), where it is, and `key`: the rest, for
+--- which the whole screen is drawn again when it changes.
+function CDScreen:liveView(p)
+    local t = p:track() or {}
+    local pos = self.seek_target or p:position()
+    local str
+    if self.mode == "now" then
+        str = p.waiting and "--:--" or fmtTime(pos)
+    else
+        str = (p.waiting and _("downloading…") or (fmtTime(pos) .. " / " .. fmtTime(t.duration)))
+            .. "  ·  " .. (p.c.artist or p.c.title or "")
+    end
+    return { text = str, pos = pos, key = table.concat({ self.mode, tostring(p), tostring(p.at), tostring(p.playing),
+        tostring(p.waiting), tostring(t.title), tostring(t.duration) }, "|") }
+end
+
 --- A key (gzreader_skeuo.lua): its letter on it on Kindles with a keyboard.
 function CDScreen:key(o)
     local Skeuo = require("gzreader_skeuo")
@@ -308,11 +337,9 @@ function CDScreen:miniBar(inner, p)
             CenterContainer:new{ dimen = Geom:new{ w = side - 2 * S(2), h = side - 2 * S(2) }, VerticalSpan:new{ width = 0 } } }
     end
     local text_w = inner - 2 * S(2) - pad - side - pad - key_w - S(8) - pad
-    local pos = self.seek_target or p:position()
     local info = VerticalGroup:new{ align = "left",
         text(t.title or "?", 17, true, text_w),
-        text((p.waiting and _("downloading…") or (fmtTime(pos) .. " / " .. fmtTime(t.duration)))
-            .. "  ·  " .. (p.c.artist or p.c.title or ""), 14, false, text_w),
+        text(self:liveView(p).text, 14, false, text_w),
     }
     local area = Tap:new{ w = side + pad + text_w, h = h - 2 * S(2), callback = function() self:setMode("now") end }
     area[1] = HorizontalGroup:new{ align = "center", thumb, HorizontalSpan:new{ width = pad }, info }
@@ -326,9 +353,29 @@ function CDScreen:miniBar(inner, p)
         } }
 end
 
+--- What one line of the case shows (`l` as in case()), `list_w` wide.
+function CDScreen:caseLine(l, list_w)
+    local rh = S(CDScreen.SIZE.row)
+    local ink = l.current and Blitbuffer.COLOR_WHITE or (l.dim and Blitbuffer.COLOR_DARK_GRAY or nil)
+    local right = l.right and text(tostring(l.right), 15, false, math.floor(list_w * 0.4), ink) or nil
+    local press = l.selected and l.press and FrameContainer:new{ padding = 0, padding_left = S(4), padding_right = S(4),
+        bordersize = S(2), radius = S(3), background = Blitbuffer.COLOR_WHITE, text(l.press, 12, true) } or nil
+    local rw = (right and right:getSize().w or 0) + (press and (press:getSize().w + S(8)) or 0)
+    local left = text(l.text or "", 18, l.bold or l.current, list_w - S(28) - rw - S(10), ink)
+    local content = HorizontalGroup:new{ align = "center", left }
+    content[#content + 1] = HorizontalSpan:new{ width = math.max(S(6), list_w - S(28) - left:getSize().w - rw) }
+    if press then content[#content + 1] = press; content[#content + 1] = HorizontalSpan:new{ width = S(8) } end
+    if right then content[#content + 1] = right end
+    local b = l.selected and S(3) or 0
+    return FrameContainer:new{ width = list_w, height = rh, padding = 0, padding_left = S(12) - b,
+        bordersize = b, color = Blitbuffer.COLOR_BLACK, radius = (l.current or l.selected) and S(8) or 0,
+        background = l.current and Blitbuffer.COLOR_BLACK or (l.selected and Blitbuffer.COLOR_WHITE or Blitbuffer.gray(0.05)),
+        LeftContainer:new{ dimen = Geom:new{ w = list_w - S(12), h = rh - 2 * b }, content } }
+end
+
 --- Lines on the back of a CD case, its spines either side. `lines`:
 --- { text, right, bold, current (black), selected (ringed), dim,
---- callback }; `rows` of them fit; `title` on the spines.
+--- callback, index (its place in the list) }; `rows` of them fit; `title` on the spines.
 function CDScreen:case(inner, lines, rows, title)
     local Skeuo = require("gzreader_skeuo")
     local spine_w = S(26)
@@ -337,23 +384,11 @@ function CDScreen:case(inner, lines, rows, title)
     local list = VerticalGroup:new{ align = "left" }
     for i, l in ipairs(lines) do
         if i > 1 then list[#list + 1] = VerticalSpan:new{ width = gap } end
-        local ink = l.current and Blitbuffer.COLOR_WHITE or (l.dim and Blitbuffer.COLOR_DARK_GRAY or nil)
-        local right = l.right and text(tostring(l.right), 15, false, math.floor(list_w * 0.4), ink) or nil
-        local press = l.selected and l.press and FrameContainer:new{ padding = 0, padding_left = S(4), padding_right = S(4),
-            bordersize = S(2), radius = S(3), background = Blitbuffer.COLOR_WHITE, text(l.press, 12, true) } or nil
-        local rw = (right and right:getSize().w or 0) + (press and (press:getSize().w + S(8)) or 0)
-        local left = text(l.text or "", 18, l.bold or l.current, list_w - S(28) - rw - S(10), ink)
-        local content = HorizontalGroup:new{ align = "center", left }
-        content[#content + 1] = HorizontalSpan:new{ width = math.max(S(6), list_w - S(28) - left:getSize().w - rw) }
-        if press then content[#content + 1] = press; content[#content + 1] = HorizontalSpan:new{ width = S(8) } end
-        if right then content[#content + 1] = right end
         local line = Tap:new{ w = list_w, h = rh, callback = l.callback }
-        local b = l.selected and S(3) or 0
-        line[1] = FrameContainer:new{ width = list_w, height = rh, padding = 0, padding_left = S(12) - b,
-            bordersize = b, color = Blitbuffer.COLOR_BLACK, radius = (l.current or l.selected) and S(8) or 0,
-            background = l.current and Blitbuffer.COLOR_BLACK or (l.selected and Blitbuffer.COLOR_WHITE or Blitbuffer.gray(0.05)),
-            LeftContainer:new{ dimen = Geom:new{ w = list_w - S(12), h = rh - 2 * b }, content } }
+        line[1] = self:caseLine(l, list_w)
         list[#list + 1] = line
+        -- (▲ ▼ on the same page: only the lines whose outline comes or goes are drawn again)
+        if l.index and self.case_taps then self.case_taps[l.index] = { tap = line, l = l, w = list_w } end
     end
     local list_h = rows * rh + (rows - 1) * gap + S(12)
     return FrameContainer:new{ padding = 0, bordersize = S(3), radius = S(4), background = Blitbuffer.gray(0.05),
@@ -385,7 +420,7 @@ function CDScreen:nowBody(inner, avail, p)
     local function gap(px) add(VerticalSpan:new{ width = S(px) }) end
     local t = p and p:track() or {}
     local dur = tonumber(t.duration) or 0
-    local pos = p and (self.seek_target or p:position()) or 0
+    local live = p and self:liveView(p)
     if not p then
         add(text(_("Nothing playing."), 22, true, inner))
         gap(6)
@@ -395,14 +430,20 @@ function CDScreen:nowBody(inner, avail, p)
         add(text(((t.artist or p.c.artist) and ((t.artist or p.c.artist) .. " — ") or "") .. (p.c.title or ""), 16, false, inner))
         gap(10)
         local tw = S(52)
-        add(HorizontalGroup:new{ align = "center",
-            CenterContainer:new{ dimen = Geom:new{ w = tw, h = S(SZ.seek) },
-                text(p.waiting and "--:--" or fmtTime(pos), 15) },
-            HorizontalSpan:new{ width = S(8) },
-            SeekBar:new{ w = inner - 2 * tw - 2 * S(8), h = S(SZ.seek), frac = dur > 0 and pos / dur or 0, screen = self },
-            HorizontalSpan:new{ width = S(8) },
-            CenterContainer:new{ dimen = Geom:new{ w = tw, h = S(SZ.seek) }, text(fmtTime(dur), 15) },
-        })
+        -- the time, the strip, the length (every 30 s only they are drawn again, refreshTime)
+        local function seekRow(v)
+            return HorizontalGroup:new{ align = "center",
+                CenterContainer:new{ dimen = Geom:new{ w = tw, h = S(SZ.seek) },
+                    text(v.text, 15) },
+                HorizontalSpan:new{ width = S(8) },
+                SeekBar:new{ w = inner - 2 * tw - 2 * S(8), h = S(SZ.seek), frac = dur > 0 and v.pos / dur or 0, screen = self },
+                HorizontalSpan:new{ width = S(8) },
+                CenterContainer:new{ dimen = Geom:new{ w = tw, h = S(SZ.seek) }, text(fmtTime(dur), 15) },
+            }
+        end
+        local spot = Spot:new{ seekRow(live) }
+        add(spot)
+        self.live = { key = live.key, text = live.text, spot = spot, make = seekRow }
     end
     gap(16)
     -- previous · play / pause · next: play the biggest
@@ -458,10 +499,12 @@ function CDScreen:nowBody(inner, avail, p)
     local extra = math.max(0, room - math.floor(deck_w * 300 / 360))
     body[#body + 1] = VerticalSpan:new{ width = math.floor(extra / 3) }
     if deck_w >= S(120) then
-        body[#body + 1] = require("gzreader_deck").CD:new{ w = deck_w, state = {
+        local deck = require("gzreader_deck").CD:new{ w = deck_w, state = {
             cover_bb = self:cover(p), track = p and p.order[p.at] or nil,
-            time = p and (p.waiting and "--:--" or fmtTime(pos)) or "", playing = p and p.playing,
+            time = live and live.text or "", playing = p and p.playing,
         } }
+        body[#body + 1] = deck
+        if self.live then self.live.deck = deck end
     end
     body[#body + 1] = VerticalSpan:new{ width = S(12) + math.floor(extra / 3) }
     body[#body + 1] = below
@@ -488,14 +531,14 @@ function CDScreen:queueBody(inner, avail, p)
     local rows = CDScreen.rowsFor(avail - fixed - S(6), S(SZ.row), S(4))
     self.rows = rows
     local first = CDScreen.pageOf(self.picked or p.at, rows, #p.order)
+    self.case_first = first
     local pages = math.max(1, math.ceil(#p.order / rows))
-    local dpad = Device:hasDPad()
     local lines = {}
     for n = first, math.min(#p.order, first + rows - 1) do
         local tr = p.c.tracks[p.order[n]] or {}
         local cur = n == p.at
         lines[#lines + 1] = { text = string.format("%02d  ", n) .. (cur and "\u{25B6} " or "") .. (tr.title or "?"),
-            right = fmtTime(tr.duration), current = cur, selected = dpad and self.picked == n and not cur, press = _("Press plays"),
+            right = fmtTime(tr.duration), current = cur, selected = self:isPicked(n), press = _("Press plays"), index = n,
             callback = function()
                 local pl = self:player()
                 if pl then pl:jump(n) end
@@ -503,7 +546,9 @@ function CDScreen:queueBody(inner, avail, p)
                 self:refresh()
             end }
     end
-    add(self:miniBar(inner, p))
+    local mini = Spot:new{ self:miniBar(inner, p) }
+    add(mini)
+    self:liveMini(mini, inner, p)
     gap(14)
     add(self:case(inner, lines, rows, (p.c.title or "") .. ((p.c.artist and p.c.artist ~= "") and ("  ·  " .. p.c.artist) or "")))
     gap(14)
@@ -532,7 +577,11 @@ function CDScreen:libraryBody(inner, avail, p)
     local body = VerticalGroup:new{ align = "center" }
     local parts = {}
     local function part(w) parts[#parts + 1] = w end
-    if p then part(self:miniBar(inner, p)) end
+    if p then
+        local mini = Spot:new{ self:miniBar(inner, p) }
+        part(mini)
+        self:liveMini(mini, inner, p)
+    end
     if depth > 0 then
         local prev = nav.item_table_stack[#nav.item_table_stack]
         local where = depth == 1 and T(_("Library › %1"), nav.title or "")
@@ -583,12 +632,12 @@ function CDScreen:libraryBody(inner, avail, p)
     local drawn = needs_pager and rows or math.max(3, #items)
     local sel = math.max(1, math.min(self.sel or 1, #items))
     local first, page, pages = CDScreen.pageOf(sel, rows, #items)
-    local dpad = Device:hasDPad()
+    self.case_first = first
     local lines = {}
     for i = first, math.min(#items, first + rows - 1) do
         local it = items[i]
         lines[#lines + 1] = { text = it.text or (it.text_func and it.text_func()) or "", right = it.mandatory, bold = it.bold,
-            dim = it.select_enabled == false, selected = dpad and i == sel, press = it.callback and _("Press opens") or nil,
+            dim = it.select_enabled == false, selected = self:isPicked(i), press = it.callback and _("Press opens") or nil, index = i,
             callback = function() self:selectLine(i) end }
     end
     for _i, w in ipairs(parts) do body[#body + 1] = w; body[#body + 1] = VerticalSpan:new{ width = S(14) } end
@@ -609,6 +658,8 @@ function CDScreen:build()
     local inner = sw - 2 * margin
     local p = self:player()
     if self.mode == "library" then self:ensureLibrary() end
+    -- (what can be drawn again on its own: the time, the lines of the case)
+    self.live, self.case_taps, self.case_first, self.case_mode = nil, {}, nil, self.mode
     local top = S(16)
     local group = VerticalGroup:new{ align = "center", self:topRow(inner), VerticalSpan:new{ width = S(14) } }
     local avail = sh - top - group:getSize().h - S(16)
@@ -631,9 +682,108 @@ function CDScreen:schedule()
     self.tick = function()
         self.tick = nil
         local p = self:player()
-        if p and p.playing and not self.closed then self:build(); UIManager:setDirty(self, "fast") end
+        if p and p.playing and not self.closed then self:refreshTime() end
     end
     UIManager:scheduleIn(30, self.tick)
+end
+
+--- The strip on the Queue and Library tabs (in `spot`): its time drawn
+--- again on its own.
+function CDScreen:liveMini(spot, inner, p)
+    local v = self:liveView(p)
+    self.live = { key = v.key, text = v.text, spot = spot, make = function() return self:miniBar(inner, p) end }
+end
+
+--- Every 30 s while it plays: only the time (Now playing's with its strip
+--- and the CD player's display, or the strip on the other tabs) is drawn
+--- again, where it is; it built and refreshed the whole screen. The whole
+--- screen still when more than the time changed.
+function CDScreen:refreshTime()
+    local p = self:player()
+    local live = p and self.live
+    local v = live and self:liveView(p)
+    local region = live and live.spot.dimen
+    if not (v and region and region.x and v.key == live.key) then
+        self:build(); UIManager:setDirty(self, "fast") -- (build schedules the next one)
+        return
+    end
+    if v.text ~= live.text then
+        local row = live.make(v)
+        local was, now_size = live.spot[1]:getSize(), row:getSize()
+        if was.w ~= now_size.w or was.h ~= now_size.h then
+            self:build(); UIManager:setDirty(self, "fast")
+            return
+        end
+        live.spot[1] = row
+        live.text = v.text
+        UIManager:setDirty(self, "fast", region)
+        local deck = live.deck
+        if deck then
+            deck.state.time = v.text
+            local d = deck.dimen
+            if d and d.x then
+                local lx, ly, lw, lh = require("gzreader_deck").CD.display(d.x, d.y, deck.w)
+                UIManager:setDirty(self, "fast", Geom:new{ x = lx, y = ly, w = lw, h = lh })
+            end
+        end
+        if not live.logged then
+            live.logged = true
+            Log.info("music player: the time redrawn on its own,", region.w, "x", region.h, "px (not the whole screen)")
+        end
+    end
+    self:schedule()
+end
+
+--- Whether line `i` of the list shown has the 5-way's outline (a Kindle
+--- with keys): the library's line chosen, the queue's track picked (not
+--- the one playing, which is black).
+function CDScreen:isPicked(i)
+    if not Device:hasDPad() then return false end
+    if self.mode == "library" then
+        return i == math.max(1, math.min(self.sel or 1, #self.nav.item_table))
+    end
+    local p = self:player()
+    return p ~= nil and self.picked == i and i ~= p.at
+end
+
+--- The first line of the page holding the line chosen (the queue or the library).
+function CDScreen:pageFirst()
+    local rows = self.rows
+    if not rows then return nil end
+    if self.mode == "library" and self.nav then
+        local n = #self.nav.item_table
+        return (CDScreen.pageOf(math.max(1, math.min(self.sel or 1, n)), rows, n))
+    elseif self.mode == "queue" then
+        local p = self:player()
+        return p and (CDScreen.pageOf(self.picked or p.at, rows, #p.order)) or nil
+    end
+    return nil
+end
+
+--- ▲ ▼ moved the outline: on the same page only the lines whose outline
+--- came or went are drawn again (it rebuilt and redrew the whole screen at
+--- each press); onto another page, the whole screen.
+function CDScreen:moveSelection()
+    local taps = self.case_taps
+    if not (taps and next(taps) and self.case_mode == self.mode and self.case_first and self:pageFirst() == self.case_first) then
+        return self:refresh()
+    end
+    local redrawn = 0
+    for i, c in pairs(taps) do
+        local sel = self:isPicked(i)
+        if sel ~= (c.l.selected and true or false) then
+            local d = c.tap.dimen
+            if not (d and d.x) then return self:refresh() end
+            c.l.selected = sel
+            c.tap[1] = self:caseLine(c.l, c.w)
+            UIManager:setDirty(self, "ui", d)
+            redrawn = redrawn + 1
+        end
+    end
+    if not self.logged_move then
+        self.logged_move = true
+        Log.info("music player: the 5-way's outline moved,", redrawn, "lines redrawn (not the whole screen)")
+    end
 end
 
 function CDScreen:refresh()
@@ -750,7 +900,7 @@ function CDScreen:onUp()
     else
         return true
     end
-    self:refresh()
+    self:moveSelection()
     return true
 end
 function CDScreen:onDown()
@@ -762,7 +912,7 @@ function CDScreen:onDown()
     else
         return true
     end
-    self:refresh()
+    self:moveSelection()
     return true
 end
 function CDScreen:onPlay()
