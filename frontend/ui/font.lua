@@ -163,6 +163,18 @@ do
         Font.fallbacks = kept
         Font.additional_fallback_insert_indice = math.max(insert_at, 2)
     end
+    -- GZreader: emoji, from OpenMoji's black font (CC BY-SA 4.0, see
+    -- plugins/gzreader.koplugin/THIRD_PARTY_NOTICES.md). It lives in GZreader's
+    -- plugin folder, which updates replace (fonts/ isn't), and is named relative
+    -- to the fonts folder ("../plugins/…" from ./fonts), as KOReader opens a
+    -- fallback as <fontdir>/<name>. Last, so it only draws what no other font has.
+    local emoji = "plugins/gzreader.koplugin/fonts/OpenMoji-black-glyf.ttf"
+    if not FontList.fontdir:match("^/") then
+        local depth = select(2, FontList.fontdir:gsub("^%./", ""):gsub("[^/]+", ""))
+        emoji = string.rep("../", depth) .. emoji
+        if exists(emoji) then Font.fallbacks[#Font.fallbacks + 1] = emoji end
+    end
+    Font.EMOJI_FALLBACK = emoji
 end
 
 if G_reader_settings and G_reader_settings:has("font_ui_fallbacks") then

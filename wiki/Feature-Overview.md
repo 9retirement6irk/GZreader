@@ -13,6 +13,7 @@ What GZreader does, in short, with where to read more. It runs on e-readers from
 - **Sleep screen** — the book's cover while reading, your pictures from Home: from the USB drive's `screensavers` folder (send them from your phone's browser) or from an Immich album. → [Home and bookshelves](Home-and-Bookshelves#sleep-screen)
 - **Immich** — an album's photos as the sleep screen and the Home wallpaper, kept on the Kindle and changed now and then on Wi‑Fi. → [Home and bookshelves](Home-and-Bookshelves#pictures-from-immich)
 - **English dictionary** built in (Open English WordNet).
+- **Emoji** in notes, events and titles: black on every device, in colour on colour Kindles (OpenMoji). → [What's in GZreader](Whats-in-GZreader#emoji)
 
 ## Setting up
 

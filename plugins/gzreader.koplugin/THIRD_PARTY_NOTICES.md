@@ -48,3 +48,15 @@ by Patrick Wagesreiter, used for the Notes tab's sticky notes. It's a subset
 (Latin, Latin-1, Latin Extended-A, punctuation, arrows) made with fonttools'
 `pyftsubset`; the glyphs are unchanged. Licensed under the SIL Open Font
 License 1.1: see `fonts/PatrickHand-OFL.txt`.
+
+## OpenMoji (emoji fonts)
+
+All emojis designed by [OpenMoji](https://openmoji.org/) – the open-source emoji and icon project. License: [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)
+
+`fonts/OpenMoji-black-glyf.ttf` (the emoji in text, black) and
+`fonts/OpenMoji-color-glyf_colr_0.ttf` (the same emoji in colour, drawn on
+colour screens by `frontend/gzcoloremoji.lua`) are OpenMoji 18.0's fonts from
+[hfg-gmuend/openmoji](https://github.com/hfg-gmuend/openmoji) (commit
+`3e01de5`), © HfG Schwäbisch Gmünd, unchanged. Licensed under the Creative
+Commons Attribution-ShareAlike 4.0 International licence: see
+`fonts/OpenMoji-LICENSE.txt`.
