@@ -164,6 +164,11 @@ API to `/api` are found too.
     - **•**, **☐** and **1.** make the lines a list, a checklist or a numbered
       list; tap the same one again to make them text.
     - **#** adds a tag at the cursor.
+    - **A** (a colour Kindle: Colorsoft, Scribe Colorsoft) colours the
+      selection, or the word at the cursor: a **text colour** (grey, red,
+      orange, yellow, green, aqua, blue, purple, pink, or black again) or a
+      **highlight** (yellow, green, blue, pink, orange, or none). The bar
+      under the A is the words' colour.
     The button in use is black. The bar stays for another button; a tap on
     the text, or typing, puts it away. (It sits above the selection, or
     under it on the first line, where it covers the next line until it goes.)
@@ -335,11 +340,16 @@ API to `/api` are found too.
       **Marker** (black, broad, the same width however you press) and
       **Pencil** (a soft, slightly wider line with a pencil's texture: dark grey specks
       with paper between them, sparse when you press lightly and nearly
-      solid when you press hard); then five thicknesses, **Fine** to
-      **Heavy**; on a colour screen eight **colours**; on a Kindle with a
-      pen, **Pressure and tilt** on or off.
-    - **Highlighter:** a broad light grey band that stays under your
-      writing, in five widths of its own.
+      solid when you press hard) and **Shader** (a broad, soft wash for
+      shading and backgrounds; each stroke over the same place makes it a
+      shade deeper); then five thicknesses, **Fine** to **Heavy**; on a
+      colour screen ten **colours** in two rows, as on the Scribe Colorsoft
+      (black, grey, red, orange, yellow; green, aqua, blue, purple, pink),
+      which the pencil and the shader take too; on a Kindle with a pen,
+      **Pressure and tilt** on or off.
+    - **Highlighter:** a broad light band that stays under your writing,
+      in five widths of its own; on a colour screen in five colours
+      (yellow, green, blue, pink, orange; grey elsewhere).
     - **Shapes:** **Square**, **Circle**, **Triangle**, **Line** and
       **Arrow**. Put the pen down at one corner and lift it at the other;
       the shape's outline follows the pen, and it's put on the page when you lift. It's drawn in the pen's thickness
