@@ -9070,6 +9070,38 @@ print("Notes (Memos v0.31)")
         for _i, m in ipairs(Notes.notes) do if not m.space and m.name then plain = m end end
         Notes.edit(plugin, plain)
         check(eopts.space == nil and eopts.memo == plain, "editing a note: its own space (none), not the board's")
+        -- Settings → Notes → Default space: where a new note starts when the board shows no space
+        Notes.filter = { kind = "all" }
+        plugin.store.memos.default_space = "spaces/book-club"
+        Notes.edit(plugin)
+        check(eopts.space == "spaces/book-club" and Notes.defaultSpace(plugin) == "spaces/book-club",
+            "default space: a new note starts in it")
+        Notes.filter = { kind = "space", value = "spaces/family", label = "Family" }
+        Notes.edit(plugin)
+        check(eopts.space == "spaces/family", "…but the space the board shows comes first")
+        Notes.filter = { kind = "all" }
+        Notes.edit(plugin, plain)
+        check(eopts.space == nil, "…and an edit keeps the note's own space")
+        plugin.store.memos.default_space = "spaces/gone"
+        Notes.edit(plugin)
+        check(eopts.space == nil and Notes.defaultSpace(plugin) == nil, "…a default space that isn't yours any more: none")
+        local NS = require("gzreader_notesettings")
+        local srows = NS.spaceItems(plugin)
+        check(#srows == 3 and srows[1].checked_func() and srows[3].text == "Book club", "Settings → Notes → Default space: No space, then your spaces")
+        local saves = 0
+        local saved_save = plugin.save
+        plugin.save = function() saves = saves + 1 end
+        srows[3].callback()
+        check(plugin.store.memos.default_space == "spaces/book-club" and srows[3].checked_func() and not srows[1].checked_func() and saves == 1,
+            "…choosing one keeps it")
+        local found
+        for _i, it in ipairs(NS.items(plugin)) do
+            if it.text_func and tostring(it.text_func()):find("^Default space") then found = it.text_func() end
+        end
+        check(found == "Default space: Book club", "…Settings → Notes shows it (" .. tostring(found) .. ")")
+        srows[1].callback()
+        plugin.save = saved_save
+        check(plugin.store.memos.default_space == nil, "…No space clears it")
         Notes.filter = { kind = "all" }
         Notes.edit(plugin)
         eopts.on_save("Bring the tent #travel", "SPACE", true, "spaces/family", false)
@@ -9380,6 +9412,8 @@ print("Notes (Memos v0.31)")
             and Notes.journalSpace(plugin) == "spaces/family" and Notes.journalSettings(plugin).goals[2] == "Stretch",
             "journal: a sync brings them (entries go to your journal space)")
         local jshown
+        -- (a default space for notes doesn't move journal entries: they keep Memos' journal space)
+        plugin.store.memos.default_space = "spaces/book-club"
         package.loaded["gzreader_journalscreen"] = { show = function(o) jshown = o end }
         Notes.journal(plugin)
         check(jshown and #jshown.settings.activities == 4 and type(jshown.on_save) == "function", "Journal (the button, J): the journal screen, with your settings")
@@ -9390,7 +9424,8 @@ print("Notes (Memos v0.31)")
         local jq = plugin.store.memos.queue[#plugin.store.memos.queue]
         check(jq and jq.op == "create" and jq.visibility == "PRIVATE" and jq.space == "spaces/family"
             and jq.content == "> What made you smile?\n\nA good day.\n\n- [x] Read 20 pages\n- [ ] Stretch\n\n#mood/pleasant #mood/today #felt/grateful #impact/family #did/walk\n",
-            "Save: queued as a private note in your journal space, written as the web editor writes an entry")
+            "Save: queued as a private note in your journal space (not the default space for notes), written as the web editor writes an entry")
+        plugin.store.memos.default_space = nil
         check(Notes.notes[1].local_id == jq.id and Notes.notes[1].pending and table.concat(Notes.notes[1].tags, ",") == "mood/pleasant,mood/today,felt/grateful,impact/family,did/walk",
             "…on the board at once, its mood and activities as tags")
         check(sync(), "…sent")
