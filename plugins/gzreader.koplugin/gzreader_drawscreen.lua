@@ -1782,7 +1782,14 @@ function DrawScreen:apply(out)
     if out.stroke_done and self.sketch.hw then self:hwSoon() end
     if out.stroke_done then
         local d = self._stroke_area
-        local clean = d and (self._stroke_grey or DrawScreen.inkRefreshFor(self.sketch.locked) ~= "a2")
+        -- (over a picture: its greys shown properly again; only where the stroke is, not anywhere on its page)
+        local over = d and self:inkRefresh(d) ~= "a2"
+        local clean = d and (self._stroke_grey or over)
+        if d then
+            local n = self._ink_counts or { quick = 0, picture = 0 }
+            self._ink_counts = n
+            if over then n.picture = n.picture + 1 else n.quick = n.quick + 1 end
+        end
         -- Undo and Redo wake up or go to sleep
         local shown = self._shown or {}
         local bar = shown.undo ~= self.sketch:canUndo() or shown.redo ~= self.sketch:canRedo()
@@ -2206,7 +2213,8 @@ end
 --- cleanly between black and white: from a grey pixel (a notepaper's lines,
 --- a PDF page, a picture) its black came out light, so a stroke had gaps
 --- wherever it crossed a ruled line (the owner's Scribe, 2026-11-16). With
---- a picture under the page: DU ("fast"), which goes from any grey to black.
+--- a picture under the ink: DU ("fast"), which goes from any grey to black
+--- (DrawScreen.inkRefreshFor).
 --- How often the new ink is put on the screen, in seconds, for a pen `lag`
 --- seconds ahead of what's handled. A pen reports a few hundred points a
 --- second; a screen refresh for each took longer than the points came in,
@@ -2264,7 +2272,7 @@ function DrawScreen:flushInk(done)
         end
         if not fast then
             if self.pen_fast then self._ink_ordinary = (self._ink_ordinary or 0) + 1 end
-            UIManager:setDirty(nil, self:inkRefresh(), Geom:new{ x = d.x0 + self.ox, y = d.y0 + self.oy, w = d.x1 - d.x0, h = d.y1 - d.y0 })
+            UIManager:setDirty(nil, self:inkRefresh(d), Geom:new{ x = d.x0 + self.ox, y = d.y0 + self.oy, w = d.x1 - d.x0, h = d.y1 - d.y0 })
         end
     end
     if done then
@@ -2279,14 +2287,35 @@ function DrawScreen:flushInk(done)
 end
 DrawScreen.LONG_STROKE = 300
 
-function DrawScreen.inkRefreshFor(locked)
+--- The refresh for new ink in `area` ({ x0, y0, x1, y1 }, canvas pixels,
+--- x1 and y1 just past it) of sketch `sk`'s page: DU ("fast") where a
+--- picture of the page (its paper, a photo, a sticker) is under it, else A2.
+--- No area: any picture on the page. It was any picture on the page for
+--- every stroke: one sticker in a corner and all the ink was slower.
+function DrawScreen.inkRefreshFor(locked, sk, area)
     for _i, el in ipairs(locked or {}) do
-        if el.type == "image" then return "fast" end
+        if el.type == "image" and (not area or DrawScreen.pictureUnder(sk, el, area)) then return "fast" end
     end
     return "a2"
 end
 
-function DrawScreen:inkRefresh() return DrawScreen.inkRefreshFor(self.sketch.locked) end
+--- Whether picture `el` is (partly) in `area` (canvas pixels, x1 and y1 just
+--- past it): its box where paintPicture puts it; just beside it isn't in.
+function DrawScreen.pictureUnder(sk, el, area)
+    local x, y = tonumber(el.x) or 0, tonumber(el.y) or 0
+    local ax, ay = sk:toCanvas(x, y)
+    local bx, by = sk:toCanvas(x + (tonumber(el.width) or 0), y + (tonumber(el.height) or 0))
+    ax, ay, bx, by = math.floor(ax + 0.5), math.floor(ay + 0.5), math.floor(bx + 0.5), math.floor(by + 0.5)
+    return math.min(ax, bx) < area.x1 and math.max(ax, bx) > area.x0 and math.min(ay, by) < area.y1 and math.max(ay, by) > area.y0
+end
+
+--- The refresh for new ink in `d` ({ x0, y0, x1, y1 }, the drawing screen's
+--- pixels, as showInk has them); no `d`: for ink anywhere on the page.
+function DrawScreen:inkRefresh(d)
+    local c = self.canvas
+    local area = d and c and { x0 = d.x0 - c.x, y0 = d.y0 - c.y, x1 = d.x1 - c.x, y1 = d.y1 - c.y }
+    return DrawScreen.inkRefreshFor(self.sketch.locked, self.sketch, area)
+end
 
 function DrawScreen:tapAt(x, y)
     for i = #self.buttons, 1, -1 do -- (an open panel's buttons are last: first asked)
@@ -2845,6 +2874,9 @@ function DrawScreen:onCloseWidget()
         Log.info("drawing: closed;", #self.pages, "pages;", #sk:live(), "strokes on the last;", sk.stats.palm,
             "palm contacts and", sk.stats.ignored, "other contacts ignored;", sk.stats.panned or 0, "moves of the page by a finger or the hand tool")
     end
+    -- (numbers only: strokes with the quick ink, strokes over a picture: the paper, a photo, a sticker)
+    local n = self._ink_counts
+    if n then Log.info("drawing: ink refresh:", n.quick, "strokes quick (A2),", n.picture, "over a picture (DU)") end
 end
 
 function DrawScreen:close()

@@ -10749,13 +10749,47 @@ print("Notes (Memos v0.31)")
         local dsrc = io.open(PLUGIN .. "/gzreader_drawscreen.lua"):read("*a")
         check(dsrc:find("if not p.modified then", 1, true) ~= nil and esrc2:find("elseif p.changed and p.path then", 1, true) ~= nil,
             "a drawing opened and left as it was: nothing sent")
-        check(dsrc:find('self:inkRefresh(), Geom:new{ x = d.x0 + self.ox, y = d.y0 + self.oy', 1, true) ~= nil
-            and dsrc:find('if el.type == "image" then return "fast" end', 1, true) ~= nil
+        check(dsrc:find('self:inkRefresh(d), Geom:new{ x = d.x0 + self.ox, y = d.y0 + self.oy', 1, true) ~= nil
+            and dsrc:find('if el.type == "image" and (not area or DrawScreen.pictureUnder(sk, el, area)) then return "fast" end', 1, true) ~= nil
             and not dsrc:find('setDirty(nil, "a2"', 1, true)
             and dsrc:find('local area = Geom:new{ x = d.x0 + self.ox, y = d.y0 + self.oy, w = d.x1 - d.x0, h = d.y1 - d.y0 }', 1, true) ~= nil
             and dsrc:find('UIManager:setDirty(nil, "ui", area)', 1, true) ~= nil,
             "drawing: ink over a paper or picture goes on with DU (not A2: gaps at its lines), its area cleaned up after")
-        check(dsrc:find('UIManager:setDirty(nil, self:inkRefresh(), Geom:new{ x = d.x0 + self.ox, y = d.y0 + self.oy, w = d.x1 - d.x0, h = d.y1 - d.y0 })', 1, true) ~= nil
+        -- …only where a picture is under the ink: a sticker in a corner doesn't slow the rest of the page
+        ;(function()
+            local DSi, Ski = require("gzreader_drawscreen"), require("gzreader_sketch")
+            local sk = Ski.new{ canvas = { x = 0, y = 0, w = 1000, h = 1400 }, per_unit = 2 }
+            local function at(x0, y0, x1, y1) return DSi.inkRefreshFor(sk.locked, sk, { x0 = x0, y0 = y0, x1 = x1, y1 = y1 }) end
+            check(at(200, 200, 210, 210) == "a2" and DSi.inkRefreshFor(sk.locked) == "a2" and DSi.inkRefreshFor(nil, sk, { x0 = 0, y0 = 0, x1 = 9, y1 = 9 }) == "a2",
+                "drawing ink: a page without pictures: A2 everywhere, as before")
+            -- a 40 x 30 sticker centred on scene (100, 100): canvas pixels 160-240 across, 170-230 down
+            sk:addPicture("data:image/png;base64,iVBORw0KGgo=", "image/png", 40, 30, 100, 100)
+            check(at(500, 500, 520, 520) == "a2" and at(0, 0, 150, 160) == "a2",
+                "drawing ink: a page with a sticker: a stroke away from it keeps A2 (the quick refresh)")
+            check(at(200, 200, 210, 210) == "fast" and at(100, 100, 600, 600) == "fast" and DSi.inkRefreshFor(sk.locked) == "fast",
+                "drawing ink: a stroke over the sticker (or around it): DU, so the ink is solid on its greys; no area: any picture on the page, as before")
+            check(at(240, 180, 260, 200) == "a2" and at(140, 180, 160, 200) == "a2" and at(180, 230, 200, 250) == "a2" and at(180, 150, 200, 170) == "a2",
+                "drawing ink: a stroke just touching the sticker's edge (right, left, below, above): A2")
+            check(at(239, 180, 260, 200) == "fast" and at(140, 180, 161, 200) == "fast" and at(180, 229, 200, 250) == "fast" and at(180, 150, 200, 171) == "fast",
+                "drawing ink: a stroke 1 pixel over the sticker's edge (right, left, below, above): DU")
+            -- a photo elsewhere on the page: the same, for it alone
+            sk:addPicture("data:image/jpeg;base64,/9j/", "image/jpeg", 100, 100, 400, 500)
+            check(at(700, 900, 760, 960) == "fast" and at(500, 500, 520, 520) == "a2",
+                "drawing ink: a photo too: DU over it, A2 beside it")
+            -- the page moved (zoomed in or out, fitted): where the pictures are now
+            sk.ox = 50
+            check(at(200, 200, 210, 210) == "a2" and at(100, 200, 110, 210) == "fast", "drawing ink: the page moved: where the sticker is on the screen now")
+            sk.ox = 0
+            -- the drawing screen's own pixels (the canvas inset in it, beside a book): turned into the canvas's
+            local fake = setmetatable({ sketch = sk, canvas = { x = 10, y = 20, w = 1000, h = 1400 } }, { __index = function(_t, k) return rawget(DSi, k) end })
+            check(fake:inkRefresh({ x0 = 250, y0 = 200, x1 = 270, y1 = 220 }) == "a2" and fake:inkRefresh({ x0 = 249, y0 = 200, x1 = 270, y1 = 220 }) == "fast"
+                and fake:inkRefresh() == "fast",
+                "drawing ink: the stroke's area on the drawing screen measured against the canvas (A2 just beside the sticker, DU 1 pixel over)")
+            check(dsrc:find('local over = d and self:inkRefresh(d) ~= "a2"', 1, true) ~= nil and dsrc:find('local clean = d and (self._stroke_grey or over)', 1, true) ~= nil
+                and dsrc:find('Log.info("drawing: ink refresh:", n.quick, "strokes quick (A2),", n.picture, "over a picture (DU)")', 1, true) ~= nil,
+                "drawing ink: a stroke's area cleaned up after only when it crossed a picture; the counts logged when the drawing closes")
+        end)()
+        check(dsrc:find('UIManager:setDirty(nil, self:inkRefresh(d), Geom:new{ x = d.x0 + self.ox, y = d.y0 + self.oy, w = d.x1 - d.x0, h = d.y1 - d.y0 })', 1, true) ~= nil
             and dsrc:find('self:showInk(x0, y0, x1, y1)', 1, true) ~= nil
             and not dsrc:find('grey and "ui"', 1, true)
             and dsrc:find('(grain or gray < 0x80 or (sx + 2 * sy) % 4 == 0)', 1, true) ~= nil
