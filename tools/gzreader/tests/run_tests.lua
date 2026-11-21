@@ -10767,6 +10767,145 @@ print("Notes (Memos v0.31)")
         check(dsrc:find('if seg[7] and (not seg[8] or (seg[6] and self.has_color)) then grey = true end', 1, true) ~= nil
             and not dsrc:find('addPencilLayer', 1, true) and not dsrc:find('gzLayer', 1, true),
             "drawing: no refresh after a pencil stroke (it flashed the page); a saved drawing's pencil strokes stay strokes (editable in Memos), no picture of them")
+        -- a colour screen: the grey tools' pixels written directly (4 bytes a pixel on the page and
+        -- the screen, 3 in the PNG's ink colours) come out exactly as through getPixel/setPixel;
+        -- the shader's pixels done once in a stroke, in one byte mask kept for the next strokes
+        do
+            local ffi = require("ffi")
+            local DS = require("gzreader_drawscreen")
+            local SketchC = require("gzreader_sketch")
+            local BBs = package.loaded["ffi/blitbuffer"]
+            local names = { "TYPE_BB8", "TYPE_BBRGB32", "TYPE_BBRGB24", "ColorRGB32", "Color8", "COLOR_BLACK" }
+            local was = {}
+            for _i, k in ipairs(names) do was[k] = rawget(BBs, k) end
+            local was32, was24 = DS.RGB32, DS.RGB24
+            -- (Blitbuffer's colours, as small tables; a grey from the colour as getColor8 does)
+            local function rgb(r, g, b, a)
+                local col = { r = r, g = g, b = b, alpha = a }
+                col.getColorRGB32 = function() return col end
+                col.getColor8 = function() return { a = math.floor((r * 299 + g * 587 + b * 114) / 1000) } end
+                return col
+            end
+            rawset(BBs, "TYPE_BB8", "bb8"); rawset(BBs, "TYPE_BBRGB32", "rgb32"); rawset(BBs, "TYPE_BBRGB24", "rgb24")
+            rawset(BBs, "ColorRGB32", rgb)
+            rawset(BBs, "Color8", function(v) return rgb(v, v, v, 0xFF) end)
+            rawset(BBs, "COLOR_BLACK", rgb(0, 0, 0, 0xFF))
+            -- (a layout other than r, g, b, alpha in that order: the offsets are what's followed)
+            DS.RGB32, DS.RGB24 = { r = 2, g = 1, b = 0, alpha = 3 }, { r = 1, g = 2, b = 0 }
+            local W, H = 40, 30
+            local function base(bb, kind)
+                bb.getType = function() return kind end
+                bb.getRotation = function() return 0 end
+                bb.getInverse = function() return 0 end
+                bb.getWidth = function() return W end
+                bb.getHeight = function() return H end
+                return bb
+            end
+            local function colourAt(x, y) return (x * 37 + y * 11) % 256, (y * 53 + x * 7) % 256, (x * y * 5) % 256 end
+            local INKS = { 255, 255, 240, 0xD0, 0x90, 0x60 }
+            local function ink8()
+                local bb = base({ stride = W + 3, data = ffi.new("uint8_t[?]", (W + 3) * H) }, "bb8")
+                for y = 0, H - 1 do for x = 0, W - 1 do bb.data[y * bb.stride + x] = INKS[(x + 3 * y) % 6 + 1] end end
+                return bb
+            end
+            -- through getPixel and setPixel (a type the direct way doesn't take)
+            local function slow(n)
+                local bb = base({ px = {}, n = n }, "slow")
+                for y = 0, H - 1 do for x = 0, W - 1 do
+                    local r, g, b = colourAt(x, y)
+                    bb.px[y * W + x] = { r, g, b, 0xFF }
+                end end
+                bb.getPixel = function(self, x, y) local q = self.px[y * W + x]; return rgb(q[1], q[2], q[3], q[4]) end
+                bb.setPixel = function(self, x, y, col)
+                    local q = col:getColorRGB32()
+                    self.px[y * W + x] = { q.r, q.g, q.b, self.n == 4 and q.alpha or 0xFF }
+                end
+                return bb
+            end
+            -- the bytes themselves (rows padded, as a real page's may be)
+            local function direct(n)
+                local o = n == 4 and DS.RGB32 or DS.RGB24
+                local stride = n * W + 5
+                local bb = base({ stride = stride, data = ffi.new("uint8_t[?]", stride * H), n = n, o = o }, n == 4 and "rgb32" or "rgb24")
+                for y = 0, H - 1 do for x = 0, W - 1 do
+                    local r, g, b = colourAt(x, y)
+                    local i = y * stride + n * x
+                    bb.data[i + o.r], bb.data[i + o.g], bb.data[i + o.b] = r, g, b
+                    if n == 4 then bb.data[i + o.alpha] = 0xFF end
+                end end
+                return bb
+            end
+            local function pixel(bb, x, y)
+                if bb.px then return table.concat(bb.px[y * W + x], ",") end
+                local i, o = y * bb.stride + bb.n * x, bb.o
+                return table.concat({ bb.data[i + o.r], bb.data[i + o.g], bb.data[i + o.b], bb.n == 4 and bb.data[i + o.alpha] or 0xFF }, ",")
+            end
+            local function drawing(fast)
+                local make = fast and direct or slow
+                local d = setmetatable({ sketch = { canvas = { x = 0, y = 0 } }, discs = {}, has_color = true, ox = 0, oy = 0,
+                    ink_bb = ink8(), canvas_bb = make(4), tint_bb = make(3), screen = make(4) },
+                    { __index = function(_t, k) return rawget(DS, k) end })
+                return d
+            end
+            local function draw(d, seg) d:inkGray(seg, d.screen, d:disc(seg[5]), DS.rgb32(seg[6])) end
+            -- (every pixel: the ink, the page, the ink colours, the screen)
+            local function snapshot(d)
+                local out = {}
+                for y = 0, H - 1 do for x = 0, W - 1 do
+                    out[#out + 1] = d.ink_bb.data[y * d.ink_bb.stride + x] .. "/" .. pixel(d.canvas_bb, x, y) .. "/" .. pixel(d.tint_bb, x, y)
+                        .. "/" .. pixel(d.screen, x, y)
+                end end
+                return table.concat(out, " ")
+            end
+            local shared = DS.bytes(base({ stride = W, data = ffi.new("uint8_t[?]", W) }, "bb8")) ~= nil
+            check(shared and DS.bytes32(direct(4)) ~= nil and DS.bytes32(slow(4)) == nil and DS.bytes24(direct(3)) ~= nil and DS.bytes24(direct(4)) == nil
+                and DS.bytes(direct(4)) == nil,
+                "drawing, colour screen: a colour page's bytes are read directly (4 or 3 a pixel), any other page goes through getPixel")
+            if shared then
+                local HL, SH, PE = SketchC.TOOL_STYLE.highlighter, SketchC.TOOL_STYLE.shader, SketchC.TOOL_STYLE.pencil
+                local s1, s2, s3 = { kind = "shader" }, { kind = "shader" }, { kind = "shader" }
+                local segs = {
+                    { 6, 8, 30, 14, 4, "#ffd43b", HL.gray, nil, { kind = "highlighter" } },
+                    { 4, 20, 26, 24, 3, "#e03131", PE.gray, SketchC.grainDensity("pencil", 0.6, 0.3), { kind = "pencil" } },
+                    { 10, 6, 34, 22, 5, "#1971c2", SH.gray, nil, s1 },
+                    { 30, 24, 46, 34, 5, "#1971c2", SH.gray, nil, s1 }, -- (partly off the page)
+                }
+                local a, b = drawing(false), drawing(true)
+                local before = snapshot(b)
+                local all_same = true
+                for _i, seg in ipairs(segs) do
+                    draw(a, seg); draw(b, seg)
+                    if snapshot(a) ~= snapshot(b) then all_same = false end
+                end
+                local fresh = drawing(true)
+                local changed = { page = 0, tint = 0, screen = 0 }
+                for y = 0, H - 1 do for x = 0, W - 1 do
+                    if pixel(b.canvas_bb, x, y) ~= pixel(fresh.canvas_bb, x, y) then changed.page = changed.page + 1 end
+                    if pixel(b.tint_bb, x, y) ~= pixel(fresh.tint_bb, x, y) then changed.tint = changed.tint + 1 end
+                    if pixel(b.screen, x, y) ~= pixel(fresh.screen, x, y) then changed.screen = changed.screen + 1 end
+                end end
+                check(all_same and before ~= snapshot(b) and changed.page > 0 and changed.tint > 0 and changed.screen > 0,
+                    "drawing, colour screen: the highlighter, pencil and shader written directly give exactly the pixels getPixel/setPixel gave (page "
+                        .. changed.page .. ", ink colours " .. changed.tint .. ", screen " .. changed.screen .. " changed)")
+                -- the shader: a pixel a step deeper once in a stroke, however often its discs pass over it
+                local mask = b._shade_mask
+                local once = snapshot(b)
+                draw(b, segs[3])
+                local again = snapshot(b)
+                draw(b, { 10, 6, 34, 22, 5, "#1971c2", SH.gray, nil, s2 })
+                local deeper = snapshot(b)
+                check(type(mask) == "cdata" and once == again and deeper ~= again and rawequal(b._shade_mask, mask) and b._shade_gen == 2
+                    and not dsrc:find("_shade_seen", 1, true),
+                    "drawing: the shader deepens a pixel once in a stroke (the same piece drawn again: nothing), again in the next; one byte mask kept from stroke to stroke, no table of pixels")
+                -- (after 255 strokes the mask is cleared and counts from 1 again)
+                b._shade_gen = 255
+                draw(b, { 10, 6, 34, 22, 5, "#1971c2", SH.gray, nil, s3 })
+                check(b._shade_gen == 1 and rawequal(b._shade_mask, mask) and snapshot(b) ~= deeper,
+                    "drawing: the shader's mask, its strokes' numbers used up, starts again cleared")
+            end
+            for _i, k in ipairs(names) do rawset(BBs, k, was[k]) end
+            DS.RGB32, DS.RGB24 = was32, was24
+        end
 
         -- several drawings: a new note with two pages, both sent onto it
         local m1, m2 = drawingFile("drawing-20261113-090000.canvas.png"), drawingFile("drawing-20261113-090000-2.canvas.png")

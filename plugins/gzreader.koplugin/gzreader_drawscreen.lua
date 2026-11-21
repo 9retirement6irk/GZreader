@@ -277,6 +277,12 @@ function DrawScreen:init()
     self.canvas_bb = Blitbuffer.new(c.w, c.h, self.has_color and Blitbuffer.TYPE_BBRGB32 or Blitbuffer.TYPE_BB8)
     self.tint_bb = nil -- the ink's colour at each point (the PNG's ink colours), once a stroke isn't memos' ink
     self.ink_bb = Blitbuffer.new(c.w, c.h, Blitbuffer.TYPE_BB8) -- the ink alone (the PNG's ink)
+    if self.has_color then
+        -- (the grey tools on a colour screen: their pixels written directly, or through getPixel)
+        local ok, scr = pcall(DrawScreen.bytes32, Screen.bb)
+        Log.info(string.format("drawing: colour page, grey tools drawn directly: page %s, screen %s, ink colours %s",
+            tostring(DrawScreen.bytes32(self.canvas_bb) ~= nil), tostring(ok and scr ~= nil), tostring(DrawScreen.RGB24 ~= nil)))
+    end
     self.color_bb = nil -- the pictures under the ink, in colour (the PNG's paper), when there are some
     self.discs = {}
     self.icons = {}
@@ -1083,6 +1089,66 @@ function DrawScreen.bytes(bb)
     return ffi.cast("uint8_t *", bb.data), tonumber(bb.stride)
 end
 
+--- Where r, g, b (and alpha) are in a colour page's pixel: KOReader's
+--- ColorRGB32 (4 bytes, the page on a colour screen, and that screen) and
+--- ColorRGB24 (3 bytes, the PNG's ink colours). nil where they can't be read
+--- (those pages then go through getPixel and setPixel, as before).
+local function layout(ct, size, names)
+    local ok, o = pcall(function()
+        if ffi.sizeof(ct) ~= size then return nil end
+        local t = {}
+        for _i, n in ipairs(names) do
+            t[n] = ffi.offsetof(ct, n)
+            if type(t[n]) ~= "number" then return nil end
+        end
+        return t
+    end)
+    return ok and o or nil
+end
+DrawScreen.RGB32 = layout("ColorRGB32", 4, { "r", "g", "b", "alpha" })
+DrawScreen.RGB24 = layout("ColorRGB24", 3, { "r", "g", "b" })
+
+--- A colour page's bytes, as DrawScreen.bytes for a grey one (4 bytes a
+--- pixel, a row every `stride` bytes): nil for any other page, a turned one,
+--- or where the pixel's layout is unknown. On a colour screen the grey tools
+--- went through getPixel and setPixel for each pixel, a few small objects
+--- each time, and drew far slower than on a grey screen.
+function DrawScreen.bytes32(bb)
+    if not DrawScreen.RGB32 or not bb or bb:getType() ~= Blitbuffer.TYPE_BBRGB32 or bb:getRotation() ~= 0 or bb:getInverse() ~= 0 then return nil end
+    return ffi.cast("uint8_t *", bb.data), tonumber(bb.stride)
+end
+
+--- The same for the PNG's ink colours (3 bytes a pixel).
+function DrawScreen.bytes24(bb)
+    if not DrawScreen.RGB24 or not bb or bb:getType() ~= Blitbuffer.TYPE_BBRGB24 or bb:getRotation() ~= 0 or bb:getInverse() ~= 0 then return nil end
+    return ffi.cast("uint8_t *", bb.data), tonumber(bb.stride)
+end
+
+--- A colour tool laid over a colour page's pixel at byte `i` (`o`: DrawScreen.RGB32):
+--- what's there multiplied by (cr, cg, cb) / 255, as getPixel and setPixel did it.
+function DrawScreen.mul32(p, i, o, cr, cg, cb)
+    local ir, ig, ib = i + o.r, i + o.g, i + o.b
+    p[ir] = math.floor(p[ir] * cr / 255)
+    p[ig] = math.floor(p[ig] * cg / 255)
+    p[ib] = math.floor(p[ib] * cb / 255)
+    p[i + o.alpha] = 0xFF
+end
+
+--- A colour pixel's grey at byte `i`, as getPixel(…):getColor8() reads it: worked out
+--- by Blitbuffer once for each colour (a page has few) and kept.
+local grey_of, grey_n = {}, 0
+function DrawScreen.grey32(p, i, o)
+    local r, g, b, a = p[i + o.r], p[i + o.g], p[i + o.b], p[i + o.alpha]
+    local key = ((r * 256 + g) * 256 + b) * 256 + a
+    local v = grey_of[key]
+    if not v then
+        v = Blitbuffer.ColorRGB32(r, g, b, a):getColor8().a
+        if grey_n >= 4096 then grey_of, grey_n = {}, 0 end
+        grey_of[key], grey_n = v, grey_n + 1
+    end
+    return v
+end
+
 function DrawScreen:inkGray(seg, screen_bb, rows, tint)
     local c = self.sketch.canvas
     local r, gray = seg[5], seg[7]
@@ -1096,6 +1162,21 @@ function DrawScreen:inkGray(seg, screen_bb, rows, tint)
     local ink, ink_stride = DrawScreen.bytes(self.ink_bb)
     local page, page_stride = DrawScreen.bytes(self.canvas_bb)
     local scr, scr_stride = DrawScreen.bytes(screen_bb)
+    -- (a colour screen, and the PNG's ink colours: their bytes too)
+    local o32, o24 = DrawScreen.RGB32, DrawScreen.RGB24
+    local scr32, scr32_stride, black
+    if screen_bb and not scr then
+        scr32, scr32_stride = DrawScreen.bytes32(screen_bb)
+        if scr32 then black = Blitbuffer.COLOR_BLACK:getColorRGB32() end
+    end
+    local tint24, tint24_stride, tr, tg, tb
+    if tint then
+        tint24, tint24_stride = DrawScreen.bytes24(self.tint_bb)
+        if tint24 then
+            local t32 = tint:getColorRGB32()
+            tr, tg, tb = t32.r, t32.g, t32.b
+        end
+    end
     local grainHit = Sketch.grainHit
     local sw, sh = screen_bb and screen_bb:getWidth() or 0, screen_bb and screen_bb:getHeight() or 0
     local function darken(bb, x, y, bw, bh)
@@ -1105,9 +1186,21 @@ function DrawScreen:inkGray(seg, screen_bb, rows, tint)
     -- The shader: each stroke over the same place makes it a shade deeper (once per
     -- stroke wherever its discs overlap, Sketch.TOOL_STYLE.shader's step and floor).
     local st = Sketch.toolStyle(seg[9] and seg[9].kind)
+    -- (the pixels done in this stroke: one byte each for the whole page, kept from stroke to
+    -- stroke, a pixel done when it holds this stroke's number; a table of every pixel, made
+    -- again for each stroke, was slow and left much for the garbage collector)
     local shade = st.shade and seg[9] or nil
-    if shade and self._shade_stroke ~= shade then self._shade_stroke, self._shade_seen = shade, {} end
-    local seen = shade and self._shade_seen
+    local seen, gen
+    if shade then
+        local n = cw * ch
+        if self._shade_stroke ~= shade or self._shade_n ~= n then
+            self._shade_stroke = shade
+            if self._shade_n ~= n then self._shade_mask, self._shade_n, self._shade_gen = ffi.new("uint8_t[?]", n), n, 0 end
+            self._shade_gen = self._shade_gen + 1
+            if self._shade_gen > 255 then ffi.fill(self._shade_mask, n); self._shade_gen = 1 end
+        end
+        seen, gen = self._shade_mask, self._shade_gen
+    end
     -- On a colour screen the tool's colour (memos' ink when none) is laid over what's
     -- under it, as a highlighter's is on paper: multiplied, at the tool's strength.
     local mul
@@ -1115,9 +1208,16 @@ function DrawScreen:inkGray(seg, screen_bb, rows, tint)
         local cr, cg, cb = DrawScreen.hexRGB(seg[6] or Drawing.INK)
         local a = st.tint or 0.5
         cr, cg, cb = 255 - a * (255 - cr), 255 - a * (255 - cg), 255 - a * (255 - cb)
-        mul = function(bb, x, y)
-            local px = bb:getPixel(x, y):getColorRGB32()
-            bb:setPixel(x, y, Blitbuffer.ColorRGB32(math.floor(px.r * cr / 255), math.floor(px.g * cg / 255), math.floor(px.b * cb / 255), 0xFF))
+        local page32, page32_stride = DrawScreen.bytes32(self.canvas_bb)
+        local mul32 = DrawScreen.mul32
+        if page32 then
+            mul = function(x, y) mul32(page32, y * page32_stride + 4 * x, o32, cr, cg, cb) end
+        else
+            local bb = self.canvas_bb
+            mul = function(x, y)
+                local px = bb:getPixel(x, y):getColorRGB32()
+                bb:setPixel(x, y, Blitbuffer.ColorRGB32(math.floor(px.r * cr / 255), math.floor(px.g * cg / 255), math.floor(px.b * cb / 255), 0xFF))
+            end
         end
     end
     -- (the pencil's specks hide the scallops of discs set a little further apart: fewer to paint)
@@ -1138,8 +1238,8 @@ function DrawScreen:inkGray(seg, screen_bb, rows, tint)
                     local cur = ink and ink[py * ink_stride + x] or self.ink_bb:getPixel(x, py):getColor8().a
                     if seen then
                         local key = py * cw + x
-                        if not seen[key] then
-                            seen[key] = true
+                        if seen[key] ~= gen then
+                            seen[key] = gen
                             local v = cur > gray and gray or math.max(st.floor, cur - st.step)
                             if v < cur then new = v end
                         end
@@ -1149,10 +1249,15 @@ function DrawScreen:inkGray(seg, screen_bb, rows, tint)
                 end
                 if new then
                     if ink then ink[py * ink_stride + x] = new else self.ink_bb:setPixel(x, py, Blitbuffer.Color8(new)) end
-                    if tint then self.tint_bb:setPixel(x, py, tint) end
+                    if tint24 then
+                        local j = py * tint24_stride + 3 * x
+                        tint24[j + o24.r], tint24[j + o24.g], tint24[j + o24.b] = tr, tg, tb
+                    elseif tint then
+                        self.tint_bb:setPixel(x, py, tint)
+                    end
                 end
                 if mul then
-                    if new then mul(self.canvas_bb, x, py) end
+                    if new then mul(x, py) end
                 elseif on_page and page then
                     local i = py * page_stride + x
                     local v = seen and (new or 255) or gray
@@ -1175,6 +1280,11 @@ function DrawScreen:inkGray(seg, screen_bb, rows, tint)
                         if scr then
                             local i = sy * scr_stride + sx
                             if scr[i] > gray then scr[i] = 0 end
+                        elseif scr32 then
+                            local i = sy * scr32_stride + 4 * sx
+                            if DrawScreen.grey32(scr32, i, o32) > gray then
+                                scr32[i + o32.r], scr32[i + o32.g], scr32[i + o32.b], scr32[i + o32.alpha] = black.r, black.g, black.b, black.alpha
+                            end
                         elseif screen_bb:getPixel(sx, sy):getColor8().a > gray then
                             screen_bb:setPixel(sx, sy, Blitbuffer.COLOR_BLACK)
                         end
