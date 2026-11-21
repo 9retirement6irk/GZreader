@@ -436,9 +436,12 @@ API to `/api` are found too.
       **Fast ink (Kindle pen mode)**: on, the line is put on the screen
       through the display's own pen mode, as the Kindle's notebook does, so
       it keeps up with the pen. While you write nothing else on the screen
-      is touched; what a stroke leaves to do (a highlighter's grey, Undo
-      waking up) happens when you pause for half a second. Turn it off if
-      the ink ever looks wrong.
+      is touched; what a stroke leaves to do (a paper's greys, a
+      highlighter's grey, Undo waking up) happens when you pause: once you
+      lift the pen away from the screen or hold it still for a second and a
+      half (at the latest 5 seconds after your last stroke), so it never
+      holds up the first stroke of your next word. Turn it off if the ink
+      ever looks wrong.
     - The **round button** above the tools folds them into one dark button
       showing the tool in hand; tap it to bring them back.
     The pencil's specks go on as you draw and stay as they are; the
