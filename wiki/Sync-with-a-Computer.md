@@ -53,7 +53,7 @@ Immich has to be told to answer the page: see
 *Disconnect* there takes the pictures off the Kindle at the next sync.
 
 Sleep screen pictures: the Content tab's **Sleep screen pictures** adds your
-own (made to fit the Kindle's screen, in grey) to the drive's `screensavers`
+own (made to fit the Kindle's screen, in grey, or in colour for a colour Kindle) to the drive's `screensavers`
 folder with the sync, takes off ones that are there, and chooses when they
 show: the book's cover while reading and a picture from Home and menus, or a
 picture always. Any picture the browser can open works, and iPhone photos

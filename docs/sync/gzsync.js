@@ -3013,6 +3013,7 @@ gets a password or token.
   // ------------------------------------------------------------ sleep screen pictures
 
   // Pictures for the Kindle's sleep screen: made here for its screen (grey,
+  // in colour for a colour Kindle,
   // its size, filling it or whole), brought with the sync; GZreader moves
   // them into the drive's screensavers folder (gzreader_usbsync.lua).
   var Sleep = {
@@ -3042,6 +3043,7 @@ gets a password or token.
     },
     // an Immich picture made to fit inside the screen (proportions kept, never
     // bigger, no edges added: the Kindle's own fit settings still apply), in grey
+    // (in colour for a colour Kindle)
     fitInside: async function (blob) {
       var img = await createImageBitmap(blob);
       var sc = Sleep.screen();
@@ -3055,10 +3057,11 @@ gets a password or token.
       g.imageSmoothingQuality = "high";
       g.drawImage(img, 0, 0, w, h);
       if (img.close) img.close();
-      Sleep.grey(g, w, h);
+      if (!colourKindle()) Sleep.grey(g, w, h);
       return await new Promise(function (ok, bad) { c.toBlob(function (b) { b ? ok(b) : bad(new Error("couldn't make the picture")); }, "image/png"); });
     },
-    // the picture as the Kindle's screen shows it: its size, in grey
+    // the picture as the Kindle's screen shows it: its size, in grey (in colour
+    // for a colour Kindle)
     make: async function (file, fit) {
       var img;
       try { img = await createImageBitmap(file); }
@@ -3077,7 +3080,7 @@ gets a password or token.
       g.imageSmoothingQuality = "high";
       g.drawImage(img, (sc.w - w) / 2, (sc.h - h) / 2, w, h);
       if (img.close) img.close();
-      Sleep.grey(g, sc.w, sc.h);
+      if (!colourKindle()) Sleep.grey(g, sc.w, sc.h);
       return await new Promise(function (ok, bad) { c.toBlob(function (b) { b ? ok(b) : bad(new Error("couldn't make the picture")); }, "image/png"); });
     },
     add: async function (files) {

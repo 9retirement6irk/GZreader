@@ -10,8 +10,9 @@ and for sending books.
   remove).
 - Immich: address and API key, the album, what its pictures are for (the
   sleep screen, the Home wallpaper; gzreader_immich.lua), or disconnect.
-- Sleep screen: pictures made in the browser for this screen (grey, its
-  size) go into the screensavers folder; which sleep screen; take off ones.
+- Sleep screen: pictures made in the browser for this screen (its size; grey,
+  or in colour for a colour screen) go into the screensavers folder; which
+  sleep screen; take off ones.
 - Send books: files from the browser go into the GZreader folder.
 - Diagnostics (while diagnostic logging is on): download the log.
 
@@ -172,6 +173,7 @@ local function state(S, flash)
     -- the sleep screen's pictures (the screensavers folder)
     local Usb = require("gzreader_usbsync")
     st.sleep = { mode = SleepMode.current(G_reader_settings), names = Usb.screensavers(), screen = Usb.screenSize(),
+        colour = require("gzreader_colour").enabled() or nil, -- (pictures made in colour for a colour screen)
         immich = im.album ~= nil, max_mb = Phone.MAX_PICTURE_MB, received = S.pictures,
         error = sec == "sleep" and flash.error or nil }
     -- access (Cloudflare)

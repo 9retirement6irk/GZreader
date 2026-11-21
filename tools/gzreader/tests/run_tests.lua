@@ -14977,6 +14977,16 @@ print("Immich: an album's pictures for the sleep screen and the Home wallpaper")
     c, b = phone("'" .. P .. "'")
     check(b:find('name="name" value="My Cat (2).png"', 1, true) and b:find("var BASE=", 1, true) and b:find("W=600,H=800", 1, true),
         "setup page: the pictures on the Kindle; pictures made for its 600 × 800 screen")
+    do
+        local Colour = require("gzreader_colour")
+        local was = Colour.enabled
+        check(b:find("H=800,C=false;", 1, true) and b:find("600 × 800, in grey)", 1, true) and b:find("if(!C){", 1, true),
+            "setup page: a grey Kindle's sleep pictures made grey")
+        Colour.enabled = function() return true end
+        local _c2, b2 = phone("'" .. P .. "'")
+        Colour.enabled = was
+        check(b2:find("H=800,C=true;", 1, true) and b2:find("600 × 800, in colour)", 1, true), "…a colour Kindle's in colour")
+    end
     c, b = post("/sleep/remove", { "name=My Cat (2).png" })
     check(c == 200 and not lfs.attributes(Usb.SCREENSAVER_DIR .. "/My Cat (2).png") and lfs.attributes(Usb.SCREENSAVER_DIR .. "/My Cat.png"), "sleep screen: a picture taken off")
     c, b = post("/sleep/remove", { "name=../gzreader.log" })
