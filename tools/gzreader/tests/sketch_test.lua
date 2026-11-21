@@ -643,6 +643,31 @@ print("== text boxes: added, moved, resized, undone; in the memos scene")
     check(#sk.strokes == 1, "another tool: a stroke over the box draws as before")
 end)()
 
+print("== the Stickers tool: a tap puts a sticker down; a picture in the scene, undone")
+;(function()
+    local sk = Sketch.new{ canvas = { x = 0, y = 0, w = 1000, h = 1400 }, per_unit = 2 }
+    sk.tool = "sticker"
+    local function frames(list)
+        local last
+        for i, f in ipairs(list) do last = sk:frame(f, i * 0.4) end
+        return last
+    end
+    local out = frames({ { finger(0, 200, 300) }, { lift(0) } })
+    check(out.sticker_tap and out.sticker_tap.x == 200 and out.sticker_tap.y == 300 and #sk.strokes == 0,
+        "the Stickers tool: a tap on the page is for a sticker there (no ink)")
+    out = frames({ { pen(400, 500) }, { lift(PEN_SLOT, PEN) } })
+    check(out.sticker_tap and out.sticker_tap.x == 400, "…with the pen too")
+    out = frames({ { finger(0, 200, 300) }, { finger(0, 300, 400) }, { finger(0, 400, 500) }, { lift(0) } })
+    check(not out.sticker_tap and #sk.strokes == 0, "a drag: nothing (no sticker, no ink)")
+    -- what the drawing screen does with the tap (DrawScreen:stampSticker): a picture, centred there
+    local sx, sy = sk:toScene(200, 300)
+    local el = sk:addPicture("data:image/png;base64,iVBORw0KGgo=", "image/png", 64, 48, sx, sy)
+    check(el.type == "image" and el.x == sx - 32 and el.y == sy - 24 and el.width == 64
+        and sk.base.files[el.fileId].mimeType == "image/png" and #sk:movablePictures() == 1,
+        "a sticker: a picture in the scene, centred where tapped, a PNG; the lasso can take it")
+    check(sk:undo() and #sk:movablePictures() == 0, "Undo takes it off")
+end)()
+
 print("== the PNG's crop and the memos scene")
 ;(function()
     local sk = Sketch.new{ canvas = CANVAS, per_unit = 2 }

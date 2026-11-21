@@ -24,6 +24,9 @@ A new note's `attachments: [{name}]`: attachments sent before without a note bec
   GET   /api/immich/albums       [{id, name, photoCount, thumbnailPhotoId}]
   GET   /api/immich/photos       ?album=&next= -> {photos: [{id, fileName, mimeType, takenAt, width, height}], next ("p:2")}
   GET   /api/immich/photos/<id>/thumbnail | /preview  (a small JPEG)
+--stickers: the fork's Kid Pix stickers as gzipped SVG pictures (public files, no sign-in; without it: 404, as a stock Memos):
+  GET   /kidpix/sticker-svg/index.json       two small categories (STICKER_INDEX)
+  GET   /kidpix/sticker-svg/<slug>/<n>.svgz  a coloured disc on a clear ground, gzipped
 Sign-in: "Authorization: Bearer <token>" (TOKEN below).
 
   python3 -I mock_memos.py PORT [--sample] [--prefix /api] [--memos26] [--spaces] [--journal] [--drawings]
@@ -56,6 +59,7 @@ OLD_UPLOAD = "--old-upload" in sys.argv
 JOURNAL = "--journal" in sys.argv
 DAWARICH = "--dawarich" in sys.argv  # (with --journal: Dawarich connected to the fork)
 IMMICH = "--immich" in sys.argv
+STICKERS = "--stickers" in sys.argv  # (the fork's Kid Pix stickers as gzipped SVGs: /kidpix/sticker-svg/)
 # a small grey JPEG (96 x 64): what the Immich proxy sends as a thumbnail or a preview
 TEST_JPEG = base64.b64decode("/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAA0JCgsKCA0LCgsODg0PEyAVExISEyccHhcgLikxMC4pLSwzOko+MzZGNywtQFdBRkxOUlNSMj5aYVpQYEpRUk//wAALCABAAGABAREA/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/9oACAEBAAA/AL/iTxC+hyWccVi1290WVVV9pyNuABg5zurO/wCEt1j/AKFK+/N//iKP+Et1j/oUr783/wDiKP8AhLdY/wChSvvzf/4ij/hLdY/6FK+/N/8A4ij/AIS3WP8AoUr783/+Io/4S3WP+hSvvzf/AOIo/wCEt1j/AKFK+/N//iKP+Et1j/oUr783/wDiKP8AhLdY/wChSvvzf/4ij/hLdY/6FK+/N/8A4itHw34hfXJLyOWxa0e1Kqys+45O7IIwMY21neMv+Rh8M/8AX3/7PHXXUUUVRutZ020fZPdxhskELliCOoOM4/GmQa9pU7lUvYwQM/OCg/NgK0aKKK5Hwb/yMPib/r7/APZ5KPGX/Iw+Gf8Ar7/9njrrqKK4/wAR+IPP32Vg/wC66SSg/f8AYe3v3+nXmaK3PD2utpzi3uSWtGP1MZ9R7eo/H69yjK6K6MGVhkEHII9aWiuR8G/8jD4m/wCvv/2eSjxl/wAjD4Z/6+//AGeOuuoqjrly1po11MmdwTaCGwQWOM59s5rzeiiiu98J3LXGior5zC5jyWzkcEfocfhWzRXI+Df+Rh8Tf9ff/s8lHjL/AJGHwz/19/8As8dddRWd4hhafQrtEIBCb+fRSGP6CvOqKKK7rwfC0Wi72IxLKzrjsOF5/FTW5RXI+Df+Rh8Tf9ff/s8lHjL/AJGHwz/19/8As8dddRRXC+IdCbTnNxbAtaMfqYz6H29D+H1w6K1ND0aXVZ8nKWyH55PX2Hv/AC/n6BFGkMKRRjakahVGc4A4FOorkfBv/Iw+Jv8Ar7/9nko8Zf8AIw+Gf+vv/wBnjrrqKKR1V0ZHUMrDBBGQR6Vj3XhjTLh9ypJAcknymwDn2OcfhimQeFNMics/nTDGNrvgD3+UCtqKKOGMRwxpGg6KowB+FOoorkfBv/Iw+Jv+vv8A9nkrR8SeHn1ySzkivmtHtSzKypuOTtwQcjGNtZ3/AAiWsf8AQ2335P8A/F0f8IlrH/Q2335P/wDF0f8ACJax/wBDbffk/wD8XR/wiWsf9Dbffk//AMXR/wAIlrH/AENt9+T/APxdH/CJax/0Nt9+T/8AxdH/AAiWsf8AQ2335P8A/F0f8IlrH/Q2335P/wDF0f8ACJax/wBDbffk/wD8XR/wiWsf9Dbffk//AMXWj4b8PPocl5JLfNdvdFWZmTacjdkk5Oc7q//Z")
 
@@ -127,6 +131,29 @@ def png(w, h):
         return c + struct.pack(">I", zlib.crc32(t + d) & 0xFFFFFFFF)
     return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 0, 0, 0, 0))
             + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))
+
+
+def sticker_svgz(w, h, rgb):
+    """A test sticker: a coloured disc with an outline on a clear ground, as a gzipped SVG."""
+    import gzip
+    r = min(w, h) / 2 - 1
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d" viewBox="0 0 %d %d">'
+           '<circle cx="%g" cy="%g" r="%g" fill="#%02x%02x%02x" stroke="#000000" stroke-width="1"/></svg>\n') % (
+        w, h, w, h, w / 2, h / 2, r, rgb[0], rgb[1], rgb[2])
+    return gzip.compress(svg.encode(), mtime=0)
+
+
+# the fork's index.json (two small categories); each picture twice its size
+STICKER_INDEX = {"version": 1, "categories": [
+    {"slug": "animals", "name": "Animals", "items": [
+        {"name": "Armadillo", "file": "animals/0.svgz", "width": 40, "height": 30},
+        {"name": "Baby Zebra", "file": "animals/1.svgz", "width": 30, "height": 40},
+        {"name": "Blue Bunny", "file": "animals/2.svgz", "width": 20, "height": 20}]},
+    {"slug": "food", "name": "Food", "items": [
+        {"name": "Apple", "file": "food/0.svgz", "width": 25, "height": 25},
+        {"name": "Pie", "file": "food/1.svgz", "width": 35, "height": 20}]},
+]}
+STICKER_COLOURS = {"animals": (200, 40, 40), "food": (40, 160, 60)}
 
 
 def pdf():
@@ -349,7 +376,7 @@ class H(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         self.note(u)
         if u.path == "/__state":
-            return self.send(200, {"memos": STATE["memos"], "log": STATE["log"], "immich_fetched": STATE.get("immich_fetched", []), "meteo": STATE.get("meteo", []),
+            return self.send(200, {"memos": STATE["memos"], "log": STATE["log"], "immich_fetched": STATE.get("immich_fetched", []), "stickers_fetched": STATE.get("stickers_fetched", []), "meteo": STATE.get("meteo", []),
                                    "loose": sorted(STATE["loose"].keys())})
         if STATE["offline"]:
             self.close_connection = True
@@ -397,6 +424,19 @@ class H(BaseHTTPRequestHandler):
             return self.send(200, [{"lat": "42.36", "lon": "-71.06", "name": "Example Deli", "display_name": "Example Deli, Exampleton"}])
         if u.path == "/__osm/reverse":
             return self.send(200, {"name": "", "address": {"suburb": "Example Square", "city": "Exampleton"}})
+        if u.path.startswith("/kidpix/sticker-svg/"):
+            # (public files of the web app: no sign-in)
+            if not STICKERS:
+                return self.send(404, raw=b"404 page not found", ctype="text/plain")
+            rest = u.path[len("/kidpix/sticker-svg/"):]
+            STATE.setdefault("stickers_fetched", []).append(rest)
+            if rest == "index.json":
+                return self.send(200, STICKER_INDEX)
+            for cat in STICKER_INDEX["categories"]:
+                for it in cat["items"]:
+                    if it["file"] == rest:
+                        return self.send(200, raw=sticker_svgz(it["width"], it["height"], STICKER_COLOURS[cat["slug"]]), ctype="application/gzip")
+            return self.send(404, raw=b"404 page not found", ctype="text/plain")
         if u.path.startswith("/api/immich/"):
             if not (IMMICH or JOURNAL):  # (stock Memos: no such address)
                 return self.send(404, raw=b"404 page not found", ctype="text/plain")
