@@ -12829,9 +12829,13 @@ print("Audiobook player: every 30 s only the times are drawn again; the 5-way mo
         fake.focus = { 1, 3 }
         fake:onFocusMove(nil, { key = "Right" })
         local r1, r2 = dirty[1] and dirty[1].region or {}, dirty[2] and dirty[2].region or {}
+        -- (the ring's margin: 4 px scaled by the screen the player sees, which other tests may have swapped)
+        local o = r1.w and (r1.w - 100) / 2 or -1
         check(builds == 0 and #dirty == 2 and row1[3].focused == false and row1[4].focused == true and dirty[1].how == "fast"
-            and r1.x == 226 and r1.w == 108 and r1.y == 596 and r2.x == 336 and r2.h == 58,
-            "the 5-way: only the two keys are drawn again, with their rings (it rebuilt the whole screen)")
+            and o > 0 and r1.x == 230 - o and r1.y == 600 - o and r2.x == 340 - o and r2.w == 100 + 2 * o and r2.h == 50 + 2 * o,
+            "the 5-way: only the two keys are drawn again, with their rings (it rebuilt the whole screen): builds " .. builds
+                .. ", " .. #dirty .. " drawn, rings " .. tostring(r1.x) .. "," .. tostring(r1.y) .. " " .. tostring(r1.w) .. "x" .. tostring(r1.h)
+                .. " and " .. tostring(r2.x) .. "," .. tostring(r2.y) .. " " .. tostring(r2.w) .. "x" .. tostring(r2.h))
         fake:onFocusMove(nil, { key = "Down" }); fake:onFocusMove(nil, { key = "Down" })
         check(builds == 0 and #dirty == 6 and dial.focused == "plus" and dirty[6].region == dial.dimen
             and fake.focus[1] == 3 and fake.focus[2] == 2, "…down to the volume's +: its dial alone")
