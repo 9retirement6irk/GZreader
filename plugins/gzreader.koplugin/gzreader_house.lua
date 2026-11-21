@@ -113,7 +113,7 @@ function House:entityRow(e, room_name)
     local id = self.house and self.house.by_kind and "" or room_name
     local what = Ha.action(e)
     local row = {
-        text = Ha.shortName(e.name, id), mandatory = Ha.stateText(e), gz_icon = Ha.iconFile(e),
+        text = Ha.shortName(e.name, id), mandatory = Ha.stateText(e), gz_icon = Ha.iconFile(e, require("gzreader_colour").enabled()),
         gz_house_id = e.id, keep_menu_open = true,
     }
     if what == "toggle" then
@@ -307,7 +307,8 @@ function House:run(e, what, arg, after)
     end, { reason = "Home Assistant" })
 end
 
---- A dimmable light: On, Off, a step dimmer or brighter, or a level.
+--- A dimmable light: On, Off, a step dimmer or brighter, or a level; a
+--- colour, for a bulb that takes one.
 function House:lightDialog(e)
     local Ha = HA()
     local ButtonDialog = require("ui/widget/buttondialog")
@@ -318,22 +319,31 @@ function House:lightDialog(e)
     end
     local cur = (e.state == "on" and e.bri) or 0
     local function level(p) return { text = p .. "%", callback = function() act("brightness", p) end } end
+    local buttons = {
+        { { text = _("On"), callback = function() act("on") end }, { text = _("Off"), callback = function() act("off") end } },
+        { { text = _("− 10%"), enabled = e.state == "on" and cur > 1, callback = function() act("brightness", math.max(1, cur - 10), true) end },
+          { text = _("+ 10%"), enabled = cur < 100, callback = function() act("brightness", math.min(100, cur + 10), true) end } },
+        { level(10), level(40), level(80), level(100) },
+    }
+    if e.col then
+        -- a bulb that takes a colour: the colours, in two rows (the one it has now marked)
+        local row
+        for i, c in ipairs(Ha.BULB_COLORS) do
+            if i % 4 == 1 then row = {}; buttons[#buttons + 1] = row end
+            row[#row + 1] = { text = (e.state == "on" and e.rgb == c[1] and "● " or "") .. c[2], callback = function() act("color", c[1]) end }
+        end
+    end
+    buttons[#buttons + 1] = { { text = _("Close"), callback = function() UIManager:close(d) end } }
     d = ButtonDialog:new{
         title = self:label(e) .. "\n" .. (Ha.stateText(e) or ""),
         title_align = "center",
-        buttons = {
-            { { text = _("On"), callback = function() act("on") end }, { text = _("Off"), callback = function() act("off") end } },
-            { { text = _("− 10%"), enabled = e.state == "on" and cur > 1, callback = function() act("brightness", math.max(1, cur - 10), true) end },
-              { text = _("+ 10%"), enabled = cur < 100, callback = function() act("brightness", math.min(100, cur + 10), true) end } },
-            { level(10), level(40), level(80), level(100) },
-            { { text = _("Close"), callback = function() UIManager:close(d) end } },
-        },
+        buttons = buttons,
     }
     UIManager:show(d)
     return d
 end
 
---- A thermostat: its target a step down or up.
+--- A thermostat: its target a step down or up, and its modes (heat, cool…).
 function House:climateDialog(e)
     local Ha = HA()
     local ButtonDialog = require("ui/widget/buttondialog")
@@ -349,13 +359,23 @@ function House:climateDialog(e)
             self:run(e, "target", t, function(now) self:climateDialog(now) end)
         end }
     end
+    local buttons = { { step(-1), step(1) } }
+    if e.modes then
+        -- heat, cool, off… (the one it's in marked)
+        local row = {}
+        for _i, m in ipairs(e.modes) do
+            row[#row + 1] = { text = (e.state == m and "● " or "") .. Ha.modeName(m), callback = function()
+                UIManager:close(d)
+                self:run(e, "mode", m, function(now) self:climateDialog(now) end)
+            end }
+        end
+        buttons[#buttons + 1] = row
+    end
+    buttons[#buttons + 1] = { { text = _("Close"), callback = function() UIManager:close(d) end } }
     d = ButtonDialog:new{
         title = table.concat(lines, "\n"),
         title_align = "center",
-        buttons = {
-            { step(-1), step(1) },
-            { { text = _("Close"), callback = function() UIManager:close(d) end } },
-        },
+        buttons = buttons,
     }
     UIManager:show(d)
     return d

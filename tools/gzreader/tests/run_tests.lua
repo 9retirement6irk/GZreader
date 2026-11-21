@@ -902,6 +902,54 @@ print("House tab (Home Assistant): connecting, rooms, switching, Settings, the p
     button(cd, "+ 21.5°").callback()
     check(hstate("climate.thermostat").attributes.temperature == 21.5 and row("Thermostat").mandatory == "20.5° → 21.5°",
         "House tab: the target set to 21.5°")
+    -- heat, cool, off (the modes it has, in the tab's order; "dry" left out)
+    captured.buttons = nil
+    row("Thermostat").callback()
+    cd = captured.buttons
+    check(cd and button(cd, "● Heat") and button(cd, "Cool") and button(cd, "Off") and not button(cd, "dry") and not button(cd, "Dry"),
+        "House tab: the thermostat's modes, the one it's in marked")
+    captured.buttons = nil
+    button(cd, "Cool").callback()
+    check(hstate("climate.thermostat").state == "cool" and hstate("climate.thermostat").attributes.hvac_action == "cooling"
+        and captured.buttons and button(captured.buttons, "● Cool") and captured.buttons.title:match("cooling"),
+        "House tab: Cool: the thermostat cools, and its window opens again showing it")
+    -- a bulb that takes a colour
+    captured.buttons = nil
+    row("Ceiling light").callback()
+    check(captured.buttons and not button(captured.buttons, "Red"), "House tab: a bulb without colours: no colours to choose")
+    captured.buttons = nil
+    row("Under-cabinet lights").callback()
+    local ld = captured.buttons
+    check(ld and button(ld, "Warm") and button(ld, "Red") and button(ld, "Blue") and button(ld, "Pink"), "House tab: a colour bulb: eight colours to choose")
+    captured.buttons = nil
+    button(ld, "Blue").callback()
+    local uc = hstate("light.under_cabinet")
+    check(uc.state == "on" and uc.attributes.rgb_color and uc.attributes.rgb_color[1] == 10 and uc.attributes.rgb_color[3] == 255
+        and HA.find(tab.house, "light.under_cabinet").rgb == "#0a84ff", "House tab: Blue: the bulb turns on in blue, and the list knows its colour")
+    -- on a colour screen: lit bulbs in their colour, the thermostat blue when it cools
+    do
+        local Colour = require("gzreader_colour")
+        local was = Colour.enabled
+        Colour.enabled = function() return true end
+        tab:redraw()
+        local lit, warm, cool = row("Under-cabinet lights").gz_icon, row("Ceiling light").gz_icon, row("Thermostat").gz_icon
+        Colour.enabled = was
+        local function has(path, text) local f = io.open(path or "", "rb"); if not f then return false end; local t = f:read("*a"); f:close(); return t:find(text, 1, true) ~= nil end
+        check(lit:match("gzreader%-house%-icons/light%-0a84ff%.svg$") and has(lit, 'fill="#0a84ff"') and warm:match("light%-ffc94d%.svg$")
+            and cool:match("thermostat%-1971c2%.svg$") and has(cool, 'fill="#1971c2"'),
+            "House tab, colour screen: a lit bulb's icon in its colour (warm when it has none), the thermostat blue when cooling")
+        tab:redraw()
+        check(row("Under-cabinet lights").gz_icon:match("icons/house/light%.svg$"), "House tab, grey screen: the icons as before")
+    end
+    check(HA.rgbHex({ 255, 0, 127.6 }) == "#ff0080" and HA.rgbHex({ 1, 2 }) == nil and HA.rgbHex("red") == nil
+        and table.concat(HA.modeList({ "off", "dry", "cool", "heat" }), ",") == "heat,cool,off" and HA.modeList({ "dry" }) == nil
+        and HA.iconColor({ domain = "climate", action = "heating" }) == HA.HEAT and HA.iconColor({ domain = "light", state = "off" }) == nil,
+        "House: a colour as #rrggbb, a thermostat's modes in order, which icons get a colour")
+    -- (back to heating, as the tests after expect)
+    captured.buttons = nil
+    row("Thermostat").callback()
+    button(captured.buttons, "Heat").callback()
+    check(hstate("climate.thermostat").state == "heat", "House tab: Heat: heating again")
     captured.confirm = nil
     row("Front door").callback()
     check(captured.confirm and captured.confirm.text == "Unlock Front door?" and hstate("lock.front_door").state == "locked",
