@@ -15,6 +15,7 @@ local lshift = bit.lshift
 --[[
 @TODO: all these functions should probably be methods on Face objects
 ]]--
+local GzColourEmoji = require("gzcoloremoji") -- GZreader: colour emoji
 local RenderText = {}
 
 local GlyphCache = Cache:new{
@@ -228,6 +229,8 @@ function RenderText:renderUtf8Text(dest_bb, x, baseline, face, text, kerning, bo
             if kerning and (prevcharcode ~= 0) then
                 pen_x = pen_x + face.ftsize:getKerning(prevcharcode, charcode)
             end
+            -- GZreader: an emoji in colour on a colour screen (frontend/gzcoloremoji.lua)
+            if not (charcode >= 0x2000 and GzColourEmoji.drawChar(dest_bb, face, charcode, x + pen_x, baseline, fgcolor)) then
             dest_bb:colorblitFrom(
                 glyph.bb,
                 x + pen_x + glyph.l,
@@ -235,6 +238,7 @@ function RenderText:renderUtf8Text(dest_bb, x, baseline, face, text, kerning, bo
                 0, 0,
                 glyph.bb:getWidth(), glyph.bb:getHeight(),
                 fgcolor)
+            end
             pen_x = pen_x + glyph.ax
             prevcharcode = charcode
         end -- if pen_x < text_width

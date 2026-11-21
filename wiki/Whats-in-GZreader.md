@@ -10,7 +10,7 @@ GZreader is a package of KOReader with a few of its plugins, ZenOS, and GZreader
 | `autosuspend.koplugin` | Battery. |
 | `gzreader.koplugin` | GZreader itself: the setup page (QR code or address + PIN: connections, sending books), the Grimmory library browser, downloads, progress, bookmark and highlight sync, the quick panel, Notes, Calendar, Music, audiobooks, read aloud, sync with a computer, updates, debug reports and diagnostics. |
 
-Added: an English dictionary (Open English WordNet, CC BY 4.0, 11 MB), and GZreader's launchers for each Kindle (KUAL, the Kindle 2/3/DX launchpad, a home-screen item on touch Kindles, NickelMenu and KFMon entries on Kobos, an app icon on the Nook 1st Edition).
+Added: an English dictionary (Open English WordNet, CC BY 4.0, 11 MB), emoji (OpenMoji's black and colour fonts, CC BY-SA 4.0, 4.3 MB; see [Emoji](#emoji)), and GZreader's launchers for each Kindle (KUAL, the Kindle 2/3/DX launchpad, a home-screen item on touch Kindles, NickelMenu and KFMon entries on Kobos, an app icon on the Nook 1st Edition).
 
 ## What's left out
 
@@ -32,3 +32,14 @@ Each release has one package per kind of device, plus the update every device do
 | `gzreader-update.zip` | Every device: what Settings → General → Software update and the sync page install (Lua only, ~6 MB, the same for all) | [Updates](Updates-and-Test-Builds) |
 
 The Lua code is the same in every package; what differs is KOReader's native programs for that device (built by KOReader for the Kindles and Kobos, and by GZreader without floating point for the Nook 1st Edition) and the launchers.
+
+## Emoji
+
+KOReader's own fonts have no emoji, so 😀 👍 📚 showed as empty boxes. GZreader adds [OpenMoji](https://openmoji.org/)'s emoji fonts (in `GZreader/app/plugins/gzreader.koplugin/fonts/`, so updates bring them):
+
+- **Every device:** the black font is KOReader's last fallback font, so emoji show in black line drawings wherever text is: notes, the note editor, tags, calendar events, book titles. Older symbols that KOReader's own fonts already had (❤ ✔ ☺ ☀) look as before.
+- **Colour Kindles** (Colorsoft, Scribe Colorsoft) **and colour Kobos**, with colour rendering on: the same emoji in OpenMoji's colours. KOReader can't draw colour fonts, so GZreader paints each emoji's coloured layers from OpenMoji's colour font itself.
+
+All emojis designed by [OpenMoji](https://openmoji.org/) – the open-source emoji and icon project. License: [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). The fonts are unchanged; their licence is in `fonts/OpenMoji-LICENSE.txt` and the credits in the plugin's `THIRD_PARTY_NOTICES.md`.
+
+There's no emoji keyboard on the Kindle yet: emoji come from notes and events written elsewhere (Memos on a phone or computer, for instance).

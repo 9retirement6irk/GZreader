@@ -162,6 +162,8 @@ reports automatically ([what's sent](https://github.com/9retirement6irk/GZreader
 Built on **[KOReader](https://github.com/koreader/koreader)** (AGPL-3.0) and
 **[ZenOS](https://github.com/xZenLabs/zen-os)**, connecting to
 **[Grimmory](https://grimmory.org)**. Dictionary: [Open English WordNet](https://en-word.net)
-(CC BY 4.0). GZreader is free software under the
+(CC BY 4.0). All emojis designed by [OpenMoji](https://openmoji.org/) – the
+open-source emoji and icon project. License: [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
+GZreader is free software under the
 [GNU Affero General Public License v3](COPYING); KOReader's README is
 [README.koreader.md](README.koreader.md).

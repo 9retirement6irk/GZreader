@@ -12,6 +12,7 @@ Example:
 
 --]]
 
+local GzColourEmoji = require("gzcoloremoji") -- GZreader: colour emoji
 local Blitbuffer = require("ffi/blitbuffer")
 local Font = require("ui/font")
 local Geom = require("ui/geometry")
@@ -366,6 +367,9 @@ function TextWidget:paintTo(bb, x, y)
         end
         local face = self.face.getFallbackFont(xglyph.font_num) -- callback (not a method)
         local glyph = RenderText:getGlyphByIndex(face, xglyph.glyph, self.bold)
+        -- GZreader: an emoji in colour on a colour screen (frontend/gzcoloremoji.lua)
+        if not GzColourEmoji.drawGlyph(bb, face, xglyph.glyph, x + pen_x + xglyph.x_offset,
+                y + baseline - xglyph.y_offset, self.fgcolor) then
         bb:colorblitFrom(
             glyph.bb,
             x + pen_x + glyph.l + xglyph.x_offset,
@@ -373,6 +377,7 @@ function TextWidget:paintTo(bb, x, y)
             0, 0,
             glyph.bb:getWidth(), glyph.bb:getHeight(),
             self.fgcolor)
+        end
         pen_x = pen_x + xglyph.x_advance -- use Harfbuzz advance
     end
 end
