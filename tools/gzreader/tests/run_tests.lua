@@ -10702,17 +10702,24 @@ print("Notes (Memos v0.31)")
                 UIMs.scheduleIn = function(_u, sec, fn) planned[#planned + 1] = { sec = sec, fn = fn } end
                 UIMs.unschedule = function() end
                 local done = 0
-                local scr = setmetatable({ sketch = { contacts = {}, pen = { near = true } }, _input_at = tm.now(), _settle_from = tm.now(),
-                    settle = function() done = done + 1 end }, { __index = DSs })
+                -- (the clock fixed: 0.5 s after the stroke, the pen moved 0.2 s ago)
+                local t0 = tm.now()
+                local scr = setmetatable({ sketch = { contacts = {}, pen = { near = true } }, _input_at = t0 - tm.s(0.2),
+                    _settle_from = t0 - tm.s(0.5), _closed = false, _settle_timer = false,
+                    settle = function() done = done + 1 end,
+                    settleWait = function(s) return DSs.settleWait(s, t0) end }, { __index = DSs })
                 scr:settleSoon(DSs.SETTLE)
                 local first = planned[1]
-                first.fn() -- (0.5 s on: the pen hovering, just moved)
-                local put_off = #planned == 2 and done == 0 and scr._settle_put_off == 1
+                if first then first.fn() end -- (the pen hovering, just moved)
+                local n_after_first, done_after_first = #planned, done
+                local put_off = n_after_first == 2 and done == 0 and scr._settle_put_off == 1
                 scr.sketch.pen.near = false -- (lifted away)
-                planned[2].fn()
+                if planned[2] then planned[2].fn() end
                 UIMs.scheduleIn, UIMs.unschedule = real_in, real_un
-                check(first.sec == DSs.SETTLE and put_off and done == 1 and #planned == 2,
-                    "…the pause's timer looks again while the pen hovers, and does it once the pen is lifted away")
+                check(first and first.sec == DSs.SETTLE and put_off and planned[2].sec >= 1.2 and done == 1 and #planned == 2,
+                    "…the pause's timer looks again while the pen hovers, and does it once the pen is lifted away ("
+                        .. n_after_first .. " planned, " .. done_after_first .. " done after the first look; "
+                        .. #planned .. " planned, " .. done .. " done at the end)")
             end
             local Async = require("gzreader_async")
             local lfs = require("libs/libkoreader-lfs")
