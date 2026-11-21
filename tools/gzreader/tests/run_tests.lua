@@ -12782,8 +12782,16 @@ print("Audiobook player: every 30 s only the times are drawn again; the 5-way mo
 ;(function()
     local S = require("gzreader_audiobook").Screen
     local LUI = require("ui/uimanager")
-    local Geom = require("ui/geometry")
-    local scr = require("device").screen
+    -- (the player's own Geom and screen: other tests swap ui/geometry and device after it's loaded)
+    local function upvalueOf(fn, name)
+        for i = 1, 200 do
+            local n, v = debug.getupvalue(fn, i)
+            if n == nil then return nil end
+            if n == name then return v end
+        end
+    end
+    local Geom = upvalueOf(S.ringOn, "Geom") or require("ui/geometry")
+    local scr = (upvalueOf(S.ringOn, "Device") or require("device")).screen
     local saved = { dirty = LUI.setDirty, scale = rawget(scr, "scaleBySize"), geom = rawget(Geom, "new") }
     local dirty = {}
     LUI.setDirty = function(_um, w, how, region) dirty[#dirty + 1] = { w = w, how = how, region = region } end
