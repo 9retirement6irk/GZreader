@@ -73,7 +73,8 @@ What tapping (or the device's letter key) does:
 - **Sensors**: show their value only.
 
 **Refresh** (the first row) fetches everything again. The list also refreshes
-every 30 seconds while the tab is on the screen, and Wi‑Fi stays on while it's
+every 30 seconds while the tab is on the screen, and is only drawn again (a
+screen refresh) when something it shows changed. Wi‑Fi stays on while it's
 open (in Auto it goes off a minute after you leave), also right after you
 connect from inside the tab. The last list is kept on
 the Kindle, so the tab opens at once with it and then updates. If Home
