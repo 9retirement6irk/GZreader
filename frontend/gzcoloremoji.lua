@@ -28,32 +28,45 @@ local function u32(s, o) local a, b, c, d = s:byte(o + 1, o + 4); return ((a * 2
 
 --- The font's COLR, CPAL and cmap tables (as strings), read once.
 --- `data` (tests): the font file's bytes.
+--- Only those three are read from the file (about 290 KB of its 2.8 MB: the
+--- outlines are FreeType's to read), so it's never all in memory at once.
 function M.load(data)
     if tables ~= nil and not data then return tables or nil end
     tables = false
+    local f
     if not data then
-        local f = io.open(M.FILE, "rb")
+        f = io.open(M.FILE, "rb")
         if not f then return nil end
-        data = f:read("*a")
-        f:close()
     end
-    if not data or #data < 12 then return nil end
+    -- (`len` bytes from `off`; nil when the file is shorter)
+    local function at(off, len)
+        local s
+        if data then s = data:sub(off + 1, off + len)
+        elseif f:seek("set", off) then s = len > 0 and f:read(len) or "" end
+        if s and #s == len then return s end
+    end
     local t = {}
-    for i = 0, u16(data, 4) - 1 do
-        local rec = 12 + i * 16
-        local tag = data:sub(rec + 1, rec + 4)
+    local head = at(0, 12)
+    local n = head and u16(head, 4) or 0
+    local dir = n > 0 and at(12, n * 16)
+    for i = 0, dir and n - 1 or -1 do
+        local rec = i * 16
+        local tag = dir:sub(rec + 1, rec + 4)
         if tag == "COLR" or tag == "CPAL" or tag == "cmap" then
-            local off, len = u32(data, rec + 8), u32(data, rec + 12)
-            t[tag] = data:sub(off + 1, off + len)
+            t[tag] = at(u32(dir, rec + 8), u32(dir, rec + 12))
         end
     end
-    if not (t.COLR and t.CPAL and t.cmap) or u16(t.COLR, 0) ~= 0 then return nil end
+    if f then f:close() end
+    if not (t.COLR and t.CPAL and t.cmap) or #t.COLR < 14 or u16(t.COLR, 0) ~= 0 then return nil end
     tables = t
     return t
 end
 
---- Forget what was read (tests).
-function M.reset() tables, base_cache, char_cache = nil, {}, {} end
+local Screen -- the device's screen, once there is one
+local grey   -- true: a screen that can't show colour (asked once: it never changes)
+
+--- Forget what was read, and the screen (tests).
+function M.reset() tables, base_cache, char_cache, Screen, grey = nil, {}, {}, nil, nil end
 
 --- The palette's colour `i` (palette 0) as r, g, b, a; nil for the text's own colour.
 local function paletteColour(t, i)
@@ -131,17 +144,29 @@ end
 
 --- Whether emoji are drawn in colour now: a colour screen with colour
 --- rendering on, and the colour font there.
+--- Asked for every character from U+2000 up that RenderText draws, and for
+--- every glyph of the emoji font, on every device: so it costs nothing on a
+--- grey screen once that's known (no pcall, no closure, no require), and
+--- only colour screens look at the colour rendering setting each time (it
+--- can be turned on and off).
 function M.on()
-    local ok, Screen = pcall(function() return require("device").screen end)
-    if not ok or not Screen or not Screen.isColorEnabled or not Screen:isColorEnabled() then return false end
+    if grey then return false end
+    if not Screen then
+        local Device = package.loaded["device"]
+        Screen = Device and Device.screen
+        if not Screen or not Screen.isColorEnabled then Screen = nil; return false end
+        if Screen.isColorScreen and not Screen.isColorScreen() then grey = true; return false end
+    end
+    if not Screen:isColorEnabled() then return false end
     return M.load() ~= nil
 end
 
 --- Whether text `text` may hold an emoji to draw in colour (a character
 --- above U+FFFF, where the emoji are), on a colour screen: TextBoxWidget then
---- draws into a colour canvas.
+--- draws into a colour canvas. (The screen first: a grey screen never scans
+--- the text, which is every text box's whole text at each render.)
 function M.wanted(text)
-    return type(text) == "string" and text:find("[\240-\244]") ~= nil and M.on()
+    return type(text) == "string" and M.on() and text:find("[\240-\244]") ~= nil
 end
 
 --- Whether `face` is the black emoji font (the fallback emoji come from).
@@ -164,7 +189,7 @@ end
 --- its origin at `x`, `baseline` (`fgcolor` for layers in the text's colour).
 --- Returns true when drawn (false: draw the glyph as usual).
 function M.drawGlyph(bb, face, gid, x, baseline, fgcolor)
-    if not M.isEmojiFace(face) or not M.on() then return false end
+    if grey or not M.isEmojiFace(face) or not M.on() then return false end
     local list = M.layers(gid)
     if not list then return false end
     local cf = colourFace(face)
@@ -189,7 +214,7 @@ end
 --- The same for `charcode` drawn with `face` (RenderText's path: no glyph
 --- numbers there). True when drawn in colour.
 function M.drawChar(bb, face, charcode, x, baseline, fgcolor)
-    if charcode < 0x2000 or not M.on() or face.ftsize:hasGlyph(charcode) then return false end
+    if grey or charcode < 0x2000 or not M.on() or face.ftsize:hasGlyph(charcode) then return false end
     local Font = require("ui/font")
     -- (the first fallback that has it, as RenderText:getGlyph picks: an emoji
     -- FreeSans also has, ❤ or ☺, stays FreeSans's)

@@ -452,6 +452,20 @@ function Update.isKobo()
     return ok and type(Device) == "table" and Device.isKobo ~= nil and Device:isKobo() == true
 end
 
+--- Whether this device has a colour screen: false only when it says so
+--- (unsure: true, and the update is installed whole).
+function Update.colourScreen()
+    local ok, Device = pcall(require, "device")
+    if not ok or type(Device) ~= "table" or type(Device.hasColorScreen) ~= "function" then return true end
+    return Device:hasColorScreen() ~= false
+end
+
+--- What an update leaves out on a screen without colour (relative to
+--- koreader/): the colour emoji font (2.8 MB) only draws on a colour screen
+--- (frontend/gzcoloremoji.lua); the black one stays. The package is every
+--- device's, so it's in it.
+local COLOUR_ONLY = { ["plugins/gzreader.koplugin/fonts/OpenMoji-color-glyf_colr_0.ttf"] = true }
+
 --- The Nook's start script next to koreader/ (nil: not a Nook install).
 local function nookScript(base)
     local p = base .. "/../gzreader.sh"
@@ -500,6 +514,7 @@ function Update.apply(zip, opts)
     local reader = Archiver.Reader:new()
     if not reader:open(zip) then return nil, "cannot open update package" end
     local n = 0
+    local grey = not Update.colourScreen()
     for entry in reader:iterate() do
         local p = entry.path
         if p:find("%.%.") or p:sub(1, 1) == "/" then reader:close(); rmTree(stage); return nil, "unsafe path in package: " .. p end
@@ -508,6 +523,10 @@ function Update.apply(zip, opts)
             if opts.source then
                 local target = sourceTarget(p:match("^[^/]+/(.+)$") or "", base)
                 dest = target and ("koreader/" .. target)
+            end
+            if dest and grey and COLOUR_ONLY[dest:match("^koreader/(.+)$") or ""] then
+                Log.info("update: left out", dest, "(no colour screen)")
+                dest = nil
             end
             if dest then
                 local okx

@@ -6624,6 +6624,41 @@ check(rf(KO .. "/plugins/gzreader.koplugin/main.lua") == "new main" and Update.c
 check(rf(KO .. "/settings/settings.reader.lua") == "mine" and rf(KO .. "/plugins/notaplugin/x.lua") == nil, "settings never touched; unexpected paths ignored")
 local leftovers = io.popen("ls -a '" .. KO .. "' '" .. KO .. "/plugins' | grep -c 'gz-old\\|gzreader-update'"):read("*a")
 check(tonumber(leftovers) == 0, "no backup or staging folders left behind")
+-- the colour emoji font (2.8 MB) only where there's a colour screen
+do
+    local real_colour = Update.colourScreen
+    local fonts = "plugins/gzreader.koplugin/fonts/"
+    local colour_font, black_font = fonts .. "OpenMoji-color-glyf_colr_0.ttf", fonts .. "OpenMoji-black-glyf.ttf"
+    local function emojiPkg()
+        return { ["koreader/frontend/new.lua"] = "new", ["koreader/plugins/gzreader.koplugin/main.lua"] = "new main",
+            ["koreader/gzreader-version"] = "1.1.0\n", ["koreader/" .. colour_font] = "COLR", ["koreader/" .. black_font] = "black" }
+    end
+    Update.colourScreen = function() return false end
+    PKG = emojiPkg()
+    local g_ok, g_err = Update.apply("pkg.zip")
+    check(g_ok and rf(KO .. "/" .. black_font) == "black" and rf(KO .. "/" .. colour_font) == nil
+        and rf(KO .. "/plugins/gzreader.koplugin/main.lua") == "new main",
+        "a grey screen: an update leaves the colour emoji font out, the black one in " .. tostring(g_err))
+    Update.colourScreen = function() return true end
+    PKG = emojiPkg()
+    check(Update.apply("pkg.zip") and rf(KO .. "/" .. colour_font) == "COLR" and rf(KO .. "/" .. black_font) == "black",
+        "a colour screen: both emoji fonts")
+    Update.colourScreen = function() return false end
+    PKG = emojiPkg()
+    check(Update.apply("pkg.zip") and rf(KO .. "/" .. colour_font) == nil and rf(KO .. "/" .. black_font) == "black",
+        "…and on a grey screen one already there goes, with the plugin folder it was in")
+    Update.colourScreen = real_colour
+    local real_device = package.loaded["device"]
+    package.loaded["device"] = { hasColorScreen = function() return false end }
+    local said_grey = Update.colourScreen()
+    package.loaded["device"] = { hasColorScreen = function() return true end }
+    local said_colour = Update.colourScreen()
+    package.loaded["device"] = {}
+    local said_unsure = Update.colourScreen()
+    package.loaded["device"] = real_device
+    check(said_grey == false and said_colour == true and said_unsure == true,
+        "Update.colourScreen: the device's hasColorScreen; unsure is colour (the update whole)")
+end
 PKG = { ["koreader/frontend/x.lua"] = "bad" }
 local bad_ok = Update.apply("pkg.zip")
 check(not bad_ok and rf(KO .. "/frontend/new.lua") == "new", "package without GZreader layout rejected, nothing changed")
