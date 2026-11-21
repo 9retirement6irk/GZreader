@@ -942,6 +942,37 @@ print("House tab (Home Assistant): connecting, rooms, switching, Settings, the p
     tab:refresh(false)
     check(tab.err == nil and not texts():find("Couldn't reach", 1, true), "House tab: back again on the next refresh")
 
+    -- every 30 s: drawn again (an e-ink refresh) only when something it shows changed
+    do
+        local HUI = require("ui/uimanager")
+        local was_stack, was_switch = HUI._window_stack, tab.menu.switchItemTable
+        local drawn = 0
+        tab.menu.switchItemTable = function(m, ...) drawn = drawn + 1; return was_switch(m, ...) end
+        HUI._window_stack = { { widget = tab.menu } }
+        local asked = #json.decode(hctl(HP, "GET", "/__state")).log
+        tab.tick(); tab.tick()
+        local asked2 = #json.decode(hctl(HP, "GET", "/__state")).log
+        check(asked2 > asked and drawn == 0 and row("Kettle").mandatory == "Off" and UI.scheduled[tab.tick] == House.REFRESH,
+            "House tab: two refreshes with nothing changed: Home Assistant asked, the list not drawn again")
+        hctl(HP, "POST", "/__set?id=switch.kettle&state=on")
+        tab.tick()
+        check(drawn == 1 and row("Kettle").mandatory == "On" and row("Kettle").checked_func() == true,
+            "House tab: something changed (the kettle turned on elsewhere): drawn again on the next refresh")
+        tab.tick()
+        check(drawn == 1, "House tab: …and not again on the one after")
+        row("Kettle").callback()
+        check(drawn == 2 and hstate("switch.kettle").state == "off" and row("Kettle").mandatory == "Off",
+            "House tab: a switch tapped: drawn at once, as before")
+        tab:refresh(true)
+        check(drawn >= 3, "House tab: Refresh tapped: drawn again even with nothing changed")
+        check(House.signature({ { text = "A", mandatory = "On", callback = function() end } }) == House.signature({ { text = "A", mandatory = "On" } })
+            and House.signature({ { text = "A", mandatory = "On" } }) ~= House.signature({ { text = "A", mandatory = "Off" } })
+            and House.signature({ { text = "A", checked_func = function() return true end } }) ~= House.signature({ { text = "A", checked_func = function() return false end } })
+            and House.signature({ { text = "A", icon_file = "light.svg" } }) ~= House.signature({ { text = "A", icon_file = "light-ffc94d.svg" } }),
+            "House: what a list shows, as one string (words, tick, icon; not its callbacks)")
+        HUI._window_stack, tab.menu.switchItemTable = was_stack, was_switch
+    end
+
     -- Settings → Accounts and services → House
     local items = House.settingsItems(plugin)
     local labels = {}
