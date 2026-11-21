@@ -443,12 +443,23 @@ function R.stop()
     Log.info("remote debugging: off")
 end
 
+R.PREV_LOG_BYTES = 20000
+
 --- Keep the previous run's log tail for the report above (called before the
---- log is written to in a new run).
-function R.keepPreviousLog()
-    local d = DataStorage:getDataDir()
-    local s = readFile(d .. "/gzreader.log")
-    if s then writeFile(d .. "/gzreader.log.prev", s:sub(-20000)) end
+--- log is written to in a new run). Only R.start reads it, and only with debug
+--- reports on: nothing to keep when they're off. Reads just the tail (the log
+--- can be a few MB). `dir`: the data folder (tests).
+function R.keepPreviousLog(dir)
+    if not R.enabled() then return false end
+    local d = dir or DataStorage:getDataDir()
+    local f = io.open(d .. "/gzreader.log", "rb")
+    if not f then return false end
+    local size = f:seek("end") or 0
+    f:seek("set", math.max(0, size - R.PREV_LOG_BYTES))
+    local s = f:read("*a") or ""
+    f:close()
+    writeFile(d .. "/gzreader.log.prev", s)
+    return true
 end
 
 --- The 15 s beat. The screensaver is up for a while before the Kindle really

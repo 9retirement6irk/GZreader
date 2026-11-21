@@ -28,8 +28,9 @@ local T = require("ffi/util").template
 
 local function Daily() return require("gzreader_daily") end
 
+-- (Home's widget and the shelf's newspaper are registered by main.lua's
+-- Grimmory:installDailyPaper, which loads this module only when Home draws them)
 local Paper = {
-    HOME_SIZE = "m",
     MAX_HEADLINES = 6,
 }
 
@@ -519,17 +520,6 @@ function Paper.redrawHome()
     else
         pcall(function() require("common/gz_view").redrawHome() end)
     end
-end
-
---- The newspaper on Home's shelf, and the row among Home's widgets for
---- whoever wants the headlines there (ZenOS registers Home's API when it
---- starts, after GZreader: called a tick later).
-function Paper.install(plugin)
-    rawset(_G, "__GZ_SHELF_PAPER", function(ctx, area_h, cover_w) return Paper.shelfItem(plugin, ctx, area_h, cover_w) end)
-    local register = rawget(_G, "__ZENOS_REGISTER_HOME_ITEM")
-    if type(register) ~= "function" then return false end
-    return register(Daily().ROW_ID, function(ctx) return Paper.homeWidget(plugin, ctx) end,
-        { label = _("Daily paper"), size = Paper.HOME_SIZE })
 end
 
 --- Is the widget ticked in Home's widgets?

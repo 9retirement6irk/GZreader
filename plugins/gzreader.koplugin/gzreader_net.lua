@@ -46,6 +46,23 @@ local Net = {
     clock = os.time,
 }
 
+--- Kindles without Wi-Fi: they sync through a computer (gzreader_usbsync.lua).
+Net.NO_WIFI_MODELS = { Kindle2 = true, KindleDX = true, KindleDXG = true }
+
+--- This model has no Wi-Fi (gzreader_usbsync.lua Usb.noWifi).
+function Net.noWifi(model)
+    return Net.NO_WIFI_MODELS[tostring(model or require("device").model)] == true
+end
+
+--- Sync through a computer: Kindles without Wi-Fi, or chosen in Settings
+--- (gzreader_usbsync.lua Usb.active; here so that start-up doesn't load that
+--- module on the Kindles that sync over Wi-Fi).
+function Net.usbSyncChosen()
+    local s = G_reader_settings and G_reader_settings:readSetting("gzreader_usb_sync")
+    if s == true or s == false then return s end
+    return Net.noWifi()
+end
+
 Net.MODES = { "on", "off", "auto" } -- (the tile's order)
 local VALID = { on = true, off = true, auto = true }
 

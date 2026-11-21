@@ -3220,6 +3220,69 @@ do
     AB.open, AB.current = orig_open, orig_cur
 end
 
+print("Sleep: an audiobook paused only when one was opened")
+do
+    local Net = require("gzreader_net")
+    local R = require("gzreader_remote")
+    local AL = require("gzreader_autolight")
+    local saved = { net = Net.onSuspend, r = R.onSuspend, al = AL.onSuspend, music = package.loaded["gzreader_music"],
+        ab = package.loaded["gzreader_audiobook"], soon = Grimmory.save_soon, recent = Grimmory.recent_written }
+    local function nothing() end
+    Net.onSuspend, R.onSuspend, AL.onSuspend = nothing, nothing, nothing
+    package.loaded["gzreader_music"], Grimmory.save_soon, Grimmory.recent_written = nil, nil, nil
+    package.loaded["gzreader_audiobook"] = nil
+    local sleeper = {}
+    Grimmory.onSuspend(sleeper)
+    check(package.loaded["gzreader_audiobook"] == nil and sleeper.suspended_at ~= nil,
+        "sleep: no audiobook opened this run, gzreader_audiobook.lua isn't loaded for it")
+    local paused = 0
+    local player = { playing = true, pull_gen = 2, pause = function(p) paused = paused + 1; p.playing = false end }
+    package.loaded["gzreader_audiobook"] = { current = player }
+    Grimmory.onSuspend(sleeper)
+    check(paused == 1 and player.pull_gen == 3 and not player.playing, "sleep: a playing audiobook is paused (and one about to start stopped)")
+    player.pull_gen = nil
+    Grimmory.onSuspend(sleeper)
+    check(paused == 1 and player.pull_gen == 1, "…a paused one isn't paused again")
+    Net.onSuspend, R.onSuspend, AL.onSuspend = saved.net, saved.r, saved.al
+    package.loaded["gzreader_music"], package.loaded["gzreader_audiobook"] = saved.music, saved.ab
+    Grimmory.save_soon, Grimmory.recent_written = saved.soon, saved.recent
+end
+
+print("Home's daily paper: registered at start, gzreader_dailyscreen.lua loaded when Home draws it")
+do
+    local saved_mod, saved_daily = package.loaded["gzreader_dailyscreen"], plugin.store.daily
+    local saved_reg, saved_hook = rawget(_G, "__ZENOS_REGISTER_HOME_ITEM"), rawget(_G, "__GZ_SHELF_PAPER")
+    package.loaded["gzreader_dailyscreen"] = nil
+    rawset(_G, "__ZENOS_REGISTER_HOME_ITEM", nil)
+    check(plugin:installDailyPaper() == false and type(rawget(_G, "__GZ_SHELF_PAPER")) == "function",
+        "ZenOS not started yet: no widget registered, the shelf can still ask")
+    local reg = {}
+    rawset(_G, "__ZENOS_REGISTER_HOME_ITEM", function(id, build, opts)
+        reg[id] = { build = build, label = opts.label, size = opts.size }
+        return true
+    end)
+    check(plugin:installDailyPaper() == true and reg.daily_paper and reg.daily_paper.label == "Daily paper" and reg.daily_paper.size == "m"
+        and require("gzreader_daily").ROW_ID == "daily_paper", "Home gets a Daily paper widget (size M, the paper's row id)")
+    plugin.store.daily = nil
+    check(rawget(_G, "__GZ_SHELF_PAPER")({}, 300, 150) == nil and package.loaded["gzreader_dailyscreen"] == nil,
+        "paper off: no newspaper on the shelf, gzreader_dailyscreen.lua not loaded")
+    local asked = {}
+    package.loaded["gzreader_dailyscreen"] = {
+        shelfItem = function(p, ctx, h, w) asked.shelf = { p, ctx, h, w }; return "paper" end,
+        homeWidget = function(p, ctx) asked.home = { p, ctx }; return "row" end,
+    }
+    plugin.store.daily = { enabled = true }
+    local ctx = {}
+    check(rawget(_G, "__GZ_SHELF_PAPER")(ctx, 300, 150) == "paper" and asked.shelf and asked.shelf[1] == plugin and asked.shelf[2] == ctx
+        and asked.shelf[3] == 300 and asked.shelf[4] == 150, "paper on: the shelf's newspaper comes from gzreader_dailyscreen.lua")
+    check(reg.daily_paper.build(ctx) == "row" and asked.home and asked.home[1] == plugin and asked.home[2] == ctx,
+        "the widget is built by gzreader_dailyscreen.lua when Home draws it")
+    plugin.store.daily = saved_daily
+    package.loaded["gzreader_dailyscreen"] = saved_mod
+    rawset(_G, "__ZENOS_REGISTER_HOME_ITEM", saved_reg)
+    rawset(_G, "__GZ_SHELF_PAPER", saved_hook)
+end
+
 print("Audiobooks: hidden storage, tiles and Recent")
 do
     local Folder = require("gzreader_abfolder")
@@ -7523,6 +7586,30 @@ print("Remote debugging (debug reports on)")
     R.start(plugin)
     check(not R.on and started == 0 and plugin.store.remote_url == nil and plugin.store.remote_profile == nil,
         "off: nothing sent, no watchdog; the old hand-set feed is gone")
+    do -- the previous run's log tail (gzreader.log.prev): kept only with debug reports on, only its end read
+        local pdir = WORK .. "/prevlog"
+        os.execute("rm -rf '" .. pdir .. "'; mkdir -p '" .. pdir .. "'")
+        local function put(text) local f = io.open(pdir .. "/gzreader.log", "wb"); f:write(text); f:close() end
+        local function prev()
+            local f = io.open(pdir .. "/gzreader.log.prev", "rb")
+            if not f then return nil end
+            local t = f:read("*a"); f:close(); return t
+        end
+        local lines = {}
+        for i = 1, 3000 do lines[#lines + 1] = string.format("%05d [INFO] line\n", i) end
+        local big = table.concat(lines)
+        put(big)
+        check(R.keepPreviousLog(pdir) == false and prev() == nil, "debug reports off: no copy of the previous run's log kept")
+        gsettings.gzreader_debug_reports = true
+        check(R.keepPreviousLog(pdir) == true and #big > R.PREV_LOG_BYTES and R.PREV_LOG_BYTES == 20000
+            and prev() == big:sub(-R.PREV_LOG_BYTES), "debug reports on: the previous log's last 20000 bytes kept (only they are read)")
+        put("short log\n")
+        check(R.keepPreviousLog(pdir) == true and prev() == "short log\n", "…a smaller log kept whole")
+        os.remove(pdir .. "/gzreader.log")
+        check(R.keepPreviousLog(pdir) == false and prev() == "short log\n", "…no log: nothing written")
+        gsettings.gzreader_debug_reports = false
+        os.execute("rm -rf '" .. pdir .. "'")
+    end
     -- on: the previous run didn't close normally
     R.LIVE_DIR = WORK .. "/live"
     lfs.mkdir(R.LIVE_DIR)
@@ -13969,6 +14056,23 @@ print("Sync through a computer (Kindles without Wi-Fi)")
     check(Usb.active(), "…any Kindle can choose to sync through a computer")
     Usb.setActive(false)
     check(not Usb.active() and G_reader_settings:readSetting("gzreader_usb_sync") == nil, "…and back (no setting kept for the default)")
+    do -- start-up (main.lua Grimmory:startUsbSync): gzreader_usbsync.lua isn't loaded on a Kindle that syncs over Wi-Fi
+        local Dev = require("device")
+        check(Net.noWifi("Kindle2") and Net.noWifi("KindleDX") and not Net.noWifi("Kindle3") and Net.usbSyncChosen() == Usb.active(),
+            "…start-up asks gzreader_net.lua: the same answer")
+        local saved_usb, api_before = Net.usb, plugin.api
+        package.loaded["gzreader_usbsync"] = nil
+        Net.usb = nil
+        plugin:startUsbSync()
+        check(Net.usb == false and package.loaded["gzreader_usbsync"] == nil and plugin.api == api_before,
+            "start on a Kindle with Wi-Fi: sync through a computer off, gzreader_usbsync.lua not loaded")
+        local saved_model = Dev.model
+        Dev.model = "Kindle2"
+        check(Net.usbSyncChosen() == true and Usb.active() == true, "…a Kindle 2: on by itself")
+        Dev.model = saved_model
+        package.loaded["gzreader_usbsync"] = Usb
+        Net.usb = saved_usb
+    end
 
     local saved = 0
     local fake = { store = {
