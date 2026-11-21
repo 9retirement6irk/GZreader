@@ -25,6 +25,17 @@ local Blocks = require("gzreader_blocks")
 
 local Inline = {}
 
+--- A colour screen: the words' colours show (gzreader_colour.lua).
+function Inline.colour()
+    local ok, Colour = pcall(require, "gzreader_colour")
+    return ok and Colour.enabled() or false
+end
+--- "#rrggbb" as a colour to paint with.
+function Inline.rgb32(hex)
+    local r, g, b = hex:match("^#(%x%x)(%x%x)(%x%x)$")
+    return require("ffi/blitbuffer").ColorRGB32(tonumber(r, 16), tonumber(g, 16), tonumber(b, 16), 0xFF)
+end
+
 Inline.MONO_SIZE = 16
 
 -- ------------------------------------------------------------------ pure
@@ -223,7 +234,19 @@ function Inline.text(o)
                             -- (code: on light grey, as the web shows it)
                             bb:paintRect(lx - 1, ly + 1, w + 2, self.lh - 2, u.Blitbuffer.Color8(0xE6))
                         end
-                        u.RenderText:renderUtf8Text(bb, lx, ly + self.base, face, table.concat(parts), false, false, color)
+                        local ink = color
+                        -- (colours: a highlight as a marker's band under the words; a text colour on a colour screen)
+                        if m and m.hl then
+                            local band = math.floor(self.lh * 0.55)
+                            local hex = Blocks.colorHex("hl", m.hl)
+                            if Inline.colour() and hex then
+                                bb:paintRectRGB32(lx, ly + self.lh - band, w, band, Inline.rgb32(hex))
+                            else
+                                bb:paintRect(lx, ly + self.lh - band, w, band, u.Blitbuffer.COLOR_GRAY_D)
+                            end
+                        end
+                        if m and m.fg and Inline.colour() and Blocks.colorHex("fg", m.fg) then ink = Inline.rgb32(Blocks.colorHex("fg", m.fg)) end
+                        u.RenderText:renderUtf8Text(bb, lx, ly + self.base, face, table.concat(parts), false, false, ink)
                         if m and m.s then bb:paintRect(lx, ly + self.base - math.floor(face.size * 0.3), w, 1, color) end
                         if m and m.link then bb:paintRect(lx, ly + self.base + 2, w, 1, color) end
                     else

@@ -861,9 +861,12 @@ print("== pen colours (colour screens): memos' own palette")
 ;(function()
     local ids, vals = {}, {}
     for i, c in ipairs(Sketch.COLORS) do ids[i], vals[i] = c.id, c.value end
-    check(table.concat(ids, ",") == "ink,gray,red,orange,green,teal,blue,violet"
-        and table.concat(vals, ",") == "#1a1a1a,#868e96,#e03131,#f08c00,#2f9e44,#0c8599,#1971c2,#7048e8",
-        "the colours are memos' ink and its drawing editor's seven hues")
+    check(table.concat(ids, ",") == "ink,gray,red,orange,yellow,green,teal,blue,violet,pink"
+        and table.concat(vals, ",") == "#1a1a1a,#868e96,#e03131,#f08c00,#e0b400,#2f9e44,#0c8599,#1971c2,#7048e8,#d6336c",
+        "the pen's ten colours, as the Scribe Colorsoft's: memos' ink and its hues (the ids kept), a yellow and a pink")
+    local hl = {}
+    for i, c in ipairs(Sketch.HIGHLIGHTS) do hl[i] = c.id end
+    check(table.concat(hl, ",") == "yellow,green,blue,pink,orange", "the highlighter's five colours")
     check(Sketch.inkColor("#E03131") == "#e03131" and Sketch.inkColor("#1a1a1a") == nil and Sketch.inkColor("#1A1A1A") == nil
         and Sketch.inkColor("red") == nil and Sketch.inkColor(nil) == nil and Sketch.inkColor("#12345") == nil and Sketch.inkColor(5) == nil,
         "a colour is kept as #rrggbb in lower case; memos' ink (and anything that isn't a colour) is no colour")
@@ -898,6 +901,44 @@ print("== pen colours (colour screens): memos' own palette")
     check(l2[1].color == nil and l2[2].color == "#1971c2" and l2[3].color == nil, "…and read back (a stroke coloured in Memos keeps its colour here too)")
     again:undo()
     check(again:scene().elements and true, "an opened drawing still saves")
+    -- colour on the grey tools (a colour screen): the pencil and the shader in the pen's colour,
+    -- the highlighter in its own; without a colour screen (both nil) they stay grey
+    local sk3 = Sketch.new{ canvas = CANVAS, per_unit = 2 }
+    sk3.color, sk3.hl_color = "#e03131", "#ffd43b"
+    local function drawWith(writing, y)
+        sk3.writing = writing
+        local got = {}
+        for i, f in ipairs({ { finger(0, 100, y) }, { finger(0, 200, y + 40) }, { lift(0) } }) do
+            for _j, seg in ipairs(sk3:frame(f, i * 0.01).segments) do got[#got + 1] = seg end
+        end
+        return sk3:live()[#sk3:live()], got
+    end
+    local pencil, pseg = drawWith("pencil", 100)
+    local hlst, hseg = drawWith("highlighter", 200)
+    local shader, sseg = drawWith("shader", 300)
+    check(pencil.color == "#e03131" and pseg[1][6] == "#e03131" and pseg[1][7] ~= nil,
+        "a colour screen: the pencil draws in the pen's colour (a coloured pencil, still grained)")
+    check(hlst.color == "#ffd43b" and hseg[1][6] == "#ffd43b", "…the highlighter in its own colour")
+    check(shader.kind == "shader" and shader.color == "#e03131" and sseg[1][9] == shader and Sketch.TOOL_STYLE.shader.shade
+        and Sketch.toolRadius("shader", 4) > Sketch.toolRadius("highlighter", 4),
+        "…the shader: a broad wash in the pen's colour, each piece knowing its stroke (deeper with each stroke over it)")
+    local sc3 = Drawing.decode(Drawing.encode(sk3:scene()))
+    local byTool = {}
+    for _i, el in ipairs(sc3.elements) do
+        if el.type == "freedraw" then byTool[(el.customData or {}).gzTool or "pen"] = el end
+    end
+    check(byTool.shader and byTool.shader.strokeColor == "#e03131" and byTool.shader.opacity == 20
+        and byTool.highlighter and byTool.highlighter.strokeColor == "#ffd43b" and byTool.highlighter.opacity == 35
+        and byTool.pencil and byTool.pencil.strokeColor == "#e03131",
+        "…saved to Memos in their colours, see-through as Memos draws them")
+    local back3 = Sketch.fromScene(sc3, { canvas = CANVAS, per_unit = 2 })
+    local kinds = {}
+    for _i, st in ipairs(back3:live()) do kinds[#kinds + 1] = (st.kind or "pen") .. ":" .. tostring(st.color) end
+    check(table.concat(kinds, ",") == "pencil:#e03131,highlighter:#ffd43b,shader:#e03131", "…and read back: " .. table.concat(kinds, ","))
+    local sk4 = Sketch.new{ canvas = CANVAS, per_unit = 2 }
+    sk4.writing = "highlighter"
+    for i, f in ipairs({ { finger(0, 100, 100) }, { finger(0, 200, 140) }, { lift(0) } }) do sk4:frame(f, i * 0.01) end
+    check(sk4:live()[1].color == nil, "a greyscale Kindle (no colours chosen): the highlighter stays grey")
     -- a coloured stroke undone and redone keeps its colour
     sk:undo(); sk:undo()
     sk:redo()
@@ -1182,7 +1223,7 @@ end)()
     -- the marker: as wide all along, black
     check(Sketch.TOOL_STYLE.marker.flat and not Sketch.TOOL_STYLE.marker.gray and Sketch.toolRadius("marker", 4, 0.1) == Sketch.toolRadius("marker", 4, 0.9)
         and Sketch.toolRadius("marker", 4) > Sketch.toolRadius("pen", 4)
-        and table.concat(Sketch.PEN_IDS, ",") == "pen,fountain,marker,pencil",
+        and table.concat(Sketch.PEN_IDS, ",") == "pen,fountain,marker,pencil,shader",
         "the marker: black, wider than the pen, the same however hard it's pressed; the pen's tools in the Scribe's order")
     -- the eraser's sizes: how near a stroke it takes it
     local sk3 = sketch()
