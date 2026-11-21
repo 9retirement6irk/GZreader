@@ -501,6 +501,79 @@ print("== pinch to zoom")
     local s2 = zk:scene().elements[1]
     check(math.abs(s1.x - s2.x) < 0.01 and math.abs(s1.y - s2.y) < 0.01 and #s1.points == #s2.points,
         "the drawing saved is the same zoomed or not")
+    -- a zoom or a pan moves each point in place (no new table for every point at every step), to
+    -- exactly the numbers setView gave before (a twin page moved the old way), and saves the same
+    local function oldSetView(sk, per_unit, ox, oy) -- (setView as it was: two new tables for every point)
+        local scene_pts = {}
+        for i, st in ipairs(sk.strokes) do
+            local pts = {}
+            for j, p in ipairs(st.points) do local x, y = sk:toScene(p[1], p[2]); pts[j] = { x, y, p[3], p[4] } end
+            scene_pts[i] = pts
+        end
+        sk.per_unit, sk.ox, sk.oy = per_unit, ox, oy
+        for i, st in ipairs(sk.strokes) do
+            for j, p in ipairs(scene_pts[i]) do local x, y = sk:toCanvas(p[1], p[2]); st.points[j] = { x, y, p[3], p[4] } end
+        end
+    end
+    local function twin()
+        local tk = Sketch.new{ canvas = CANVAS, per_unit = 2 }
+        run(tk, { { finger(0, 203, 301) }, { finger(0, 261, 347) }, { finger(0, 333, 309) }, { lift(0) } })
+        run(tk, { { finger(0, 611, 907) }, { finger(0, 707, 1013) }, { lift(0) } }, 5)
+        tk.strokes[1].points[2][3], tk.strokes[2].points[1][4] = 0.6, 0.3
+        return tk
+    end
+    local ik, ref = twin(), twin()
+    ref.setView = oldSetView
+    local own = {}
+    for _i, st in ipairs(ik.strokes) do for _j, p in ipairs(st.points) do own[#own + 1] = p end end
+    local exact, inplace, npts = true, true, 0
+    local function compare()
+        local k = 0
+        for i, st in ipairs(ik.strokes) do
+            for j, p in ipairs(st.points) do
+                k = k + 1
+                local q = ref.strokes[i].points[j]
+                if p[1] ~= q[1] or p[2] ~= q[2] or p[3] ~= q[3] or p[4] ~= q[4] then exact = false end
+                if p ~= own[k] then inplace = false end
+            end
+        end
+        npts = k
+    end
+    for _i, v in ipairs({ ik, ref }) do v:zoomBy(2.3, 317, 411, 317, 411) end
+    compare()
+    for _i, v in ipairs({ ik, ref }) do v:zoomBy(1, 500, 600, 437, 523) end -- (a pan: the same size, moved)
+    compare()
+    for _i, v in ipairs({ ik, ref }) do v:zoomBy(1.37, 251, 777, 260, 700) end
+    compare()
+    local zoomed_saved, zoomed_ref = ik:scene().elements, ref:scene().elements
+    for _i, v in ipairs({ ik, ref }) do v:unzoom() end
+    compare()
+    local saved, saved_ref = ik:scene().elements, ref:scene().elements
+    local function samePoints(a, b)
+        if #a ~= #b then return false end
+        for i = 1, #a do
+            if a[i].x ~= b[i].x or a[i].y ~= b[i].y or #a[i].points ~= #b[i].points then return false end
+            for j, p in ipairs(a[i].points) do
+                local q = b[i].points[j]
+                if p[1] ~= q[1] or p[2] ~= q[2] or p[3] ~= q[3] then return false end
+            end
+        end
+        return true
+    end
+    check(exact and npts >= 4 and npts == #own and ik.per_unit == ref.per_unit and ik.ox == ref.ox and ik.oy == ref.oy,
+        "a zoom, a pan, a zoom and back: every point exactly where setView put it before (in new tables then)")
+    check(inplace and ik.strokes[1].points[2][3] == 0.6 and ik.strokes[2].points[1][4] == 0.3,
+        "…each point moved in its own table (none made at each step), its pressure and tilt kept")
+    check(#saved > 0 and samePoints(saved, saved_ref) and samePoints(zoomed_saved, zoomed_ref),
+        "…and the drawing saved is the same as before, zoomed or not")
+    -- the eraser's boxes (Sketch.hitIndex) made again where the stroke is now
+    local hst = ik.strokes[1]
+    Sketch.hitIndex(hst)
+    ik:zoomBy(2, 0, 0, 0, 0)
+    local hb = Sketch.hitIndex(hst)
+    local minx = math.huge
+    for _j, p in ipairs(hst.points) do minx = math.min(minx, p[1]) end
+    check(ik.zoomed and hst._hit == hb and hb.x0 == minx, "…the eraser's boxes for a stroke follow it")
 end)()
 
 print("== the eraser, undo, clear")
@@ -861,9 +934,12 @@ print("== pen colours (colour screens): memos' own palette")
 ;(function()
     local ids, vals = {}, {}
     for i, c in ipairs(Sketch.COLORS) do ids[i], vals[i] = c.id, c.value end
-    check(table.concat(ids, ",") == "ink,gray,red,orange,green,teal,blue,violet"
-        and table.concat(vals, ",") == "#1a1a1a,#868e96,#e03131,#f08c00,#2f9e44,#0c8599,#1971c2,#7048e8",
-        "the colours are memos' ink and its drawing editor's seven hues")
+    check(table.concat(ids, ",") == "ink,gray,red,orange,yellow,green,teal,blue,violet,pink"
+        and table.concat(vals, ",") == "#1a1a1a,#868e96,#e03131,#f08c00,#e0b400,#2f9e44,#0c8599,#1971c2,#7048e8,#d6336c",
+        "the pen's ten colours, as the Scribe Colorsoft's: memos' ink and its hues (the ids kept), a yellow and a pink")
+    local hl = {}
+    for i, c in ipairs(Sketch.HIGHLIGHTS) do hl[i] = c.id end
+    check(table.concat(hl, ",") == "yellow,green,blue,pink,orange", "the highlighter's five colours")
     check(Sketch.inkColor("#E03131") == "#e03131" and Sketch.inkColor("#1a1a1a") == nil and Sketch.inkColor("#1A1A1A") == nil
         and Sketch.inkColor("red") == nil and Sketch.inkColor(nil) == nil and Sketch.inkColor("#12345") == nil and Sketch.inkColor(5) == nil,
         "a colour is kept as #rrggbb in lower case; memos' ink (and anything that isn't a colour) is no colour")
@@ -898,6 +974,44 @@ print("== pen colours (colour screens): memos' own palette")
     check(l2[1].color == nil and l2[2].color == "#1971c2" and l2[3].color == nil, "…and read back (a stroke coloured in Memos keeps its colour here too)")
     again:undo()
     check(again:scene().elements and true, "an opened drawing still saves")
+    -- colour on the grey tools (a colour screen): the pencil and the shader in the pen's colour,
+    -- the highlighter in its own; without a colour screen (both nil) they stay grey
+    local sk3 = Sketch.new{ canvas = CANVAS, per_unit = 2 }
+    sk3.color, sk3.hl_color = "#e03131", "#ffd43b"
+    local function drawWith(writing, y)
+        sk3.writing = writing
+        local got = {}
+        for i, f in ipairs({ { finger(0, 100, y) }, { finger(0, 200, y + 40) }, { lift(0) } }) do
+            for _j, seg in ipairs(sk3:frame(f, i * 0.01).segments) do got[#got + 1] = seg end
+        end
+        return sk3:live()[#sk3:live()], got
+    end
+    local pencil, pseg = drawWith("pencil", 100)
+    local hlst, hseg = drawWith("highlighter", 200)
+    local shader, sseg = drawWith("shader", 300)
+    check(pencil.color == "#e03131" and pseg[1][6] == "#e03131" and pseg[1][7] ~= nil,
+        "a colour screen: the pencil draws in the pen's colour (a coloured pencil, still grained)")
+    check(hlst.color == "#ffd43b" and hseg[1][6] == "#ffd43b", "…the highlighter in its own colour")
+    check(shader.kind == "shader" and shader.color == "#e03131" and sseg[1][9] == shader and Sketch.TOOL_STYLE.shader.shade
+        and Sketch.toolRadius("shader", 4) > Sketch.toolRadius("highlighter", 4),
+        "…the shader: a broad wash in the pen's colour, each piece knowing its stroke (deeper with each stroke over it)")
+    local sc3 = Drawing.decode(Drawing.encode(sk3:scene()))
+    local byTool = {}
+    for _i, el in ipairs(sc3.elements) do
+        if el.type == "freedraw" then byTool[(el.customData or {}).gzTool or "pen"] = el end
+    end
+    check(byTool.shader and byTool.shader.strokeColor == "#e03131" and byTool.shader.opacity == 20
+        and byTool.highlighter and byTool.highlighter.strokeColor == "#ffd43b" and byTool.highlighter.opacity == 35
+        and byTool.pencil and byTool.pencil.strokeColor == "#e03131",
+        "…saved to Memos in their colours, see-through as Memos draws them")
+    local back3 = Sketch.fromScene(sc3, { canvas = CANVAS, per_unit = 2 })
+    local kinds = {}
+    for _i, st in ipairs(back3:live()) do kinds[#kinds + 1] = (st.kind or "pen") .. ":" .. tostring(st.color) end
+    check(table.concat(kinds, ",") == "pencil:#e03131,highlighter:#ffd43b,shader:#e03131", "…and read back: " .. table.concat(kinds, ","))
+    local sk4 = Sketch.new{ canvas = CANVAS, per_unit = 2 }
+    sk4.writing = "highlighter"
+    for i, f in ipairs({ { finger(0, 100, 100) }, { finger(0, 200, 140) }, { lift(0) } }) do sk4:frame(f, i * 0.01) end
+    check(sk4:live()[1].color == nil, "a greyscale Kindle (no colours chosen): the highlighter stays grey")
     -- a coloured stroke undone and redone keeps its colour
     sk:undo(); sk:undo()
     sk:redo()
@@ -1182,7 +1296,7 @@ end)()
     -- the marker: as wide all along, black
     check(Sketch.TOOL_STYLE.marker.flat and not Sketch.TOOL_STYLE.marker.gray and Sketch.toolRadius("marker", 4, 0.1) == Sketch.toolRadius("marker", 4, 0.9)
         and Sketch.toolRadius("marker", 4) > Sketch.toolRadius("pen", 4)
-        and table.concat(Sketch.PEN_IDS, ",") == "pen,fountain,marker,pencil",
+        and table.concat(Sketch.PEN_IDS, ",") == "pen,fountain,marker,pencil,shader",
         "the marker: black, wider than the pen, the same however hard it's pressed; the pen's tools in the Scribe's order")
     -- the eraser's sizes: how near a stroke it takes it
     local sk3 = sketch()

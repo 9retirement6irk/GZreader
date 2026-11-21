@@ -140,6 +140,14 @@ function DrawScreen.lastColor()
     return nil
 end
 
+--- The highlighter's colour (a colour screen: the last one chosen, else yellow; elsewhere nil: grey).
+function DrawScreen.lastHighlight()
+    if not DrawScreen.hasColor() then return nil end
+    local v = G_reader_settings and G_reader_settings:readSetting("gzreader_drawing_hl_color")
+    for _i, c in ipairs(Sketch.HIGHLIGHTS) do if c.value == v then return v end end
+    return Sketch.HIGHLIGHTS[1].value
+end
+
 --- Pen pressure and tilt (a Kindle with a pen): on unless turned off in the pen's choices.
 function DrawScreen.pressureOn()
     return not (G_reader_settings and G_reader_settings:isFalse("gzreader_drawing_pressure"))
@@ -182,7 +190,10 @@ function DrawScreen.shortcut()
 end
 
 DrawScreen.WRITING_NAMES = { pen = _("Pen"), pencil = _("Pencil"), fountain = _("Fountain pen"), marker = _("Marker"),
-    highlighter = _("Highlighter") }
+    shader = _("Shader"), highlighter = _("Highlighter") }
+--- The colours' names (said for a colour's button).
+DrawScreen.COLOR_NAMES = { ink = _("Black"), gray = _("Grey"), red = _("Red"), orange = _("Orange"), yellow = _("Yellow"),
+    green = _("Green"), teal = _("Aqua"), blue = _("Blue"), violet = _("Purple"), pink = _("Pink") }
 
 --- A number setting that must be one of `list` (else `default`).
 local function oneOf(key, list, default)
@@ -260,6 +271,7 @@ function DrawScreen:init()
     local was = DrawScreen.loadPenRange()
     self._pen_range_was = { p_seen = was.p_seen, t_seen = was.t_seen, n = was.n }
     self.color = DrawScreen.lastColor()
+    self.hl_color = DrawScreen.lastHighlight()
     local c = self.canvas
     -- what's on the screen (in colour on a colour screen)
     self.canvas_bb = Blitbuffer.new(c.w, c.h, self.has_color and Blitbuffer.TYPE_BBRGB32 or Blitbuffer.TYPE_BB8)
@@ -479,6 +491,7 @@ function DrawScreen:syncTool()
     sk.width = hl and self.hl_width or hw and 2 or self.width
     sk.hw = hw or nil
     sk.color = self.color
+    sk.hl_color = self.hl_color
     sk.shape = self.shape
     sk.eraser_width = self.eraser_width
     sk.pressure_on = self.pressure_on
@@ -503,7 +516,11 @@ function DrawScreen:flyoutRows(which)
             rows[#rows + 1] = { id = "t-" .. id, row = true, writing = id, icon = Sketch.TOOL_STYLE[id].icon, label = DrawScreen.WRITING_NAMES[id] }
         end
         rows[#rows + 1] = { id = "widths", cells = "width" }
-        if self.has_color then rows[#rows + 1] = { id = "colors", cells = "color" } end
+        -- (ten colours, in two rows of five as on the Scribe Colorsoft)
+        if self.has_color then
+            rows[#rows + 1] = { id = "colors", cells = "color", from = 1, to = 5 }
+            rows[#rows + 1] = { id = "colors2", cells = "color", from = 6, to = #Sketch.COLORS }
+        end
         if self.has_pen then
             rows[#rows + 1] = { id = "pressure", row = true, switch = self.pressure_on, label = _("Pressure and tilt") }
         end
@@ -511,6 +528,7 @@ function DrawScreen:flyoutRows(which)
         for k, w in ipairs(Sketch.WIDTHS) do
             rows[#rows + 1] = { id = "hw" .. tostring(w), row = true, hl_width = w, bar = k, label = DrawScreen.WIDTH_NAMES[k] }
         end
+        if self.has_color then rows[#rows + 1] = { id = "hlcolors", cells = "hlcolor" } end
     elseif which == "shape" then
         for _i, id in ipairs(Sketch.SHAPES) do
             rows[#rows + 1] = { id = "s-" .. id, row = true, shape = id, icon = id, label = DrawScreen.SHAPE_NAMES[id] }
@@ -696,7 +714,9 @@ function DrawScreen:layoutBar()
         local rh = S(44)
         local fw = math.min(sw - 2 * gap, S(280))
         if self.flyout == "pen" then
-            fw = math.max(fw, #Sketch.WIDTHS * (ts + S(6)) + S(18), self.has_color and (#Sketch.COLORS * (ts + S(6)) + S(18)) or 0)
+            fw = math.max(fw, #Sketch.WIDTHS * (ts + S(6)) + S(18), self.has_color and (5 * (ts + S(6)) + S(18)) or 0)
+        elseif self.flyout == "highlighter" and self.has_color then
+            fw = math.max(fw, #Sketch.HIGHLIGHTS * (ts + S(6)) + S(18))
         end
         local fh = 0
         for _i, r in ipairs(rows) do fh = fh + (r.cells and (ts + S(10)) or rh) end
@@ -717,8 +737,16 @@ function DrawScreen:layoutBar()
                 end
                 y = y + ts + S(10)
             elseif r.cells == "color" then
-                for k, col in ipairs(Sketch.COLORS) do
-                    add({ id = "c-" .. col.id, color = col.value, label = col.id }, fx + S(9) + (k - 1) * (ts + S(6)), y + S(5), ts, ts, "flyout")
+                for k = r.from or 1, r.to or #Sketch.COLORS do
+                    local col = Sketch.COLORS[k]
+                    add({ id = "c-" .. col.id, color = col.value, label = DrawScreen.COLOR_NAMES[col.id] or col.id },
+                        fx + S(9) + (k - (r.from or 1)) * (ts + S(6)), y + S(5), ts, ts, "flyout")
+                end
+                y = y + ts + S(10)
+            elseif r.cells == "hlcolor" then
+                for k, col in ipairs(Sketch.HIGHLIGHTS) do
+                    add({ id = "hc-" .. col.id, color = col.value, hl_color = col.value, label = DrawScreen.COLOR_NAMES[col.id] or col.id },
+                        fx + S(9) + (k - 1) * (ts + S(6)), y + S(5), ts, ts, "flyout")
                 end
                 y = y + ts + S(10)
             else
@@ -770,6 +798,7 @@ function DrawScreen:selected(t)
     if t.hl_width then return self.hl_width == t.hl_width end
     if t.shape then return self.tool == "shape" and self.shape == t.shape end
     if t.eraser_width then return self.eraser_width == t.eraser_width end
+    if t.hl_color then return t.hl_color == self.hl_color end
     if t.color then return Sketch.inkColor(t.color) == self.color end
     if t.tagname then
         for _i, name in ipairs(self.meta and self.meta.tags or {}) do if name == t.tagname then return true end end
@@ -1073,6 +1102,24 @@ function DrawScreen:inkGray(seg, screen_bb, rows, tint)
         if x < 0 or y < 0 or x >= bw or y >= bh then return end
         if bb:getPixel(x, y):getColor8().a > gray then bb:setPixel(x, y, g8) end
     end
+    -- The shader: each stroke over the same place makes it a shade deeper (once per
+    -- stroke wherever its discs overlap, Sketch.TOOL_STYLE.shader's step and floor).
+    local st = Sketch.toolStyle(seg[9] and seg[9].kind)
+    local shade = st.shade and seg[9] or nil
+    if shade and self._shade_stroke ~= shade then self._shade_stroke, self._shade_seen = shade, {} end
+    local seen = shade and self._shade_seen
+    -- On a colour screen the tool's colour (memos' ink when none) is laid over what's
+    -- under it, as a highlighter's is on paper: multiplied, at the tool's strength.
+    local mul
+    if self.has_color then
+        local cr, cg, cb = DrawScreen.hexRGB(seg[6] or Drawing.INK)
+        local a = st.tint or 0.5
+        cr, cg, cb = 255 - a * (255 - cr), 255 - a * (255 - cg), 255 - a * (255 - cb)
+        mul = function(bb, x, y)
+            local px = bb:getPixel(x, y):getColorRGB32()
+            bb:setPixel(x, y, Blitbuffer.ColorRGB32(math.floor(px.r * cr / 255), math.floor(px.g * cg / 255), math.floor(px.b * cb / 255), 0xFF))
+        end
+    end
     -- (the pencil's specks hide the scallops of discs set a little further apart: fewer to paint)
     for _i, p in ipairs(Sketch.stamps(seg[1], seg[2], seg[3], seg[4], grain and 1.4 * r or r)) do
         local under = screen_bb and self:underControls(p[1], p[2], r)
@@ -1084,21 +1131,38 @@ function DrawScreen:inkGray(seg, screen_bb, rows, tint)
                 local x = px + k
                 local hit = not grain or grainHit(x, py, grain, (k - dx) * (k - dx) + dy * dy, r)
                 local on_page = hit and x >= 0 and py >= 0 and x < cw and py < ch
-                if on_page and ink then
-                    local i = py * ink_stride + x
-                    if ink[i] > gray then
-                        ink[i] = gray
-                        if tint then self.tint_bb:setPixel(x, py, tint) end
+                -- what the ink becomes here (nil: as it is): this tool's grey where it's lighter;
+                -- the shader, a step deeper once in each stroke
+                local new
+                if on_page then
+                    local cur = ink and ink[py * ink_stride + x] or self.ink_bb:getPixel(x, py):getColor8().a
+                    if seen then
+                        local key = py * cw + x
+                        if not seen[key] then
+                            seen[key] = true
+                            local v = cur > gray and gray or math.max(st.floor, cur - st.step)
+                            if v < cur then new = v end
+                        end
+                    elseif cur > gray then
+                        new = gray
                     end
-                elseif on_page and self.ink_bb:getPixel(x, py):getColor8().a > gray then
-                    self.ink_bb:setPixel(x, py, g8)
+                end
+                if new then
+                    if ink then ink[py * ink_stride + x] = new else self.ink_bb:setPixel(x, py, Blitbuffer.Color8(new)) end
                     if tint then self.tint_bb:setPixel(x, py, tint) end
                 end
-                if on_page and page then
+                if mul then
+                    if new then mul(self.canvas_bb, x, py) end
+                elseif on_page and page then
                     local i = py * page_stride + x
-                    if page[i] > gray then page[i] = gray end
+                    local v = seen and (new or 255) or gray
+                    if page[i] > v then page[i] = v end
                 elseif on_page then
-                    darken(self.canvas_bb, x, py, cw, ch)
+                    if seen then
+                        if new and self.canvas_bb:getPixel(x, py):getColor8().a > new then self.canvas_bb:setPixel(x, py, Blitbuffer.Color8(new)) end
+                    else
+                        darken(self.canvas_bb, x, py, cw, ch)
+                    end
                 end
                 if hit and screen_bb and not under then
                     -- On the screen, while the pen moves: black points an e-ink screen shows at once
@@ -1129,19 +1193,41 @@ function DrawScreen:underControls(x, y, r)
     return false
 end
 
-local function strokeSegments(sk, st)
+--- Stroke `st`'s segments to ink (screen coordinates), a list; or, with
+--- `each`, each given to it in turn in one table used again (the whole page
+--- drawn again, at every step of a pinch or a pan, made one for every point).
+local function strokeSegments(sk, st, each)
     local c, r, out = sk.canvas, sk:radius(st.width), {}
     local pts = st.points
     local gray = Sketch.toolStyle(st.kind).gray
+    local seg = each and {}
     for i = 1, #pts do
         local a, b = pts[math.max(1, i - 1)], pts[i]
         -- (a stroke with a pen's pressure: as wide as it was pressed, as its tool draws it)
         local w = b[3] and (a[3] and (a[3] + b[3]) / 2 or b[3]) or nil
         local t = b[4] and (a[4] and (a[4] + b[4]) / 2 or b[4]) or nil -- (…and as far as it was laid over)
         local pr = Sketch.toolRadius(st.kind, r, w, t)
-        out[#out + 1] = { a[1] + c.x, a[2] + c.y, b[1] + c.x, b[2] + c.y, pr, st.color, gray, Sketch.grainDensity(st.kind, w, t) }
+        if seg then
+            seg[1], seg[2], seg[3], seg[4] = a[1] + c.x, a[2] + c.y, b[1] + c.x, b[2] + c.y
+            seg[5], seg[6], seg[7], seg[8], seg[9] = pr, st.color, gray, Sketch.grainDensity(st.kind, w, t), st
+            each(seg)
+        else
+            out[#out + 1] = { a[1] + c.x, a[2] + c.y, b[1] + c.x, b[2] + c.y, pr, st.color, gray, Sketch.grainDensity(st.kind, w, t), st }
+        end
     end
     return out
+end
+DrawScreen.strokeSegments = strokeSegments
+
+--- Zoomed in, most of the page is off the canvas: true when some of stroke
+--- `st`'s ink can be on it (its points' box, Sketch.hitIndex, and as wide as
+--- its tool draws at its widest, as Sketch:strokeBox).
+function DrawScreen.strokeOnCanvas(sk, st)
+    local h = Sketch.hitIndex(st)
+    if not h then return false end
+    local r = Sketch.toolRadius(st.kind, sk:radius(st.width), 1, 1) + 2
+    local c = sk.canvas
+    return h.x1 + r >= 0 and h.x0 - r < c.w and h.y1 + r >= 0 and h.y0 - r < c.h
 end
 
 --- Picture `el` of the page's scene, at w x h (cached for the page): a
@@ -1310,8 +1396,22 @@ function DrawScreen:repaintCanvas()
     end
     for _i, st in ipairs(over) do under[#under + 1] = st end
     list = under
+    -- (zoomed in: a stroke wholly off the canvas isn't inked, a pinch or a pan draws the page
+    -- again at every step; a coloured one still is if it's the first, as that makes the colour layer)
+    local sk = self.sketch
+    local cpu, inked = sk.zoomed and os.clock(), 0
+    local function ink(seg) self:ink(seg) end
     for _i, st in ipairs(list) do
-        for _j, seg in ipairs(strokeSegments(self.sketch, st)) do self:ink(seg) end
+        if not sk.zoomed or (st.color and not self.tint_bb) or DrawScreen.strokeOnCanvas(sk, st) then
+            strokeSegments(sk, st, ink)
+            inked = inked + 1
+        end
+    end
+    if cpu then
+        -- (for the log when the drawing closes: how quick a zoomed page is to draw again)
+        local v = self._view_paints or { n = 0, cpu = 0, inked = 0, strokes = 0 }
+        v.n, v.cpu, v.inked, v.strokes = v.n + 1, v.cpu + os.clock() - cpu, v.inked + inked, v.strokes + #list
+        self._view_paints = v
     end
 end
 
@@ -1675,7 +1775,8 @@ function DrawScreen:apply(out)
             -- (a grey tool without a grain, the highlighter: its real grey needs a refresh when the
             -- stroke ends. The pencil's specks are on the screen already as it draws, as dark as
             -- they'll be: no refresh after, which flashed the page at every stroke; the owner, 2026-11-17)
-            if seg[7] and not seg[8] then grey = true end
+            -- (and a colour on a colour screen: its points are drawn black while the pen moves)
+            if seg[7] and (not seg[8] or (seg[6] and self.has_color)) then grey = true end
             local r = seg[5]
             x0 = math.min(x0 or math.huge, seg[1] - r, seg[3] - r)
             y0 = math.min(y0 or math.huge, seg[2] - r, seg[4] - r)
@@ -2289,6 +2390,14 @@ function DrawScreen:setColor(hex)
     self:syncTool()
 end
 
+--- The highlighter's colour (one of Sketch.HIGHLIGHTS), kept for next time; the highlighter in hand.
+function DrawScreen:setHighlight(hex)
+    self.hl_color = hex
+    self.tool = "highlighter"
+    if G_reader_settings then G_reader_settings:saveSetting("gzreader_drawing_hl_color", hex) end
+    self:syncTool()
+end
+
 --- A pen Kindle: draw with a finger (true), as the Kindles without a pen do, or
 --- with the pen (false: fingers don't draw, a hand can rest on the screen, and
 --- a finger moves a zoomed page). Kept for next time.
@@ -2424,6 +2533,7 @@ function DrawScreen:use(t)
         self.eraser_width = t.eraser_width
         keep("gzreader_drawing_eraser_width", t.eraser_width)
         self:setTool("eraser"); self:setFlyout(nil)
+    elseif t.hl_color then self:setHighlight(t.hl_color); self:setFlyout(nil)
     elseif t.color then self:setColor(t.color); self:setFlyout(nil)
     elseif t.tagname then self:toggleTag(t.tagname); self:setFlyout("tags")
     elseif t.id == "newtag" then self:newTag()
@@ -2753,6 +2863,11 @@ function DrawScreen:onCloseWidget()
     end
     for _k, icon in pairs(self.icons or {}) do if icon.free then icon:free() end end
     self.icons = {}
+    local v = self._view_paints
+    if v and v.n > 0 then
+        Log.info(string.format("drawing: zoomed page drawn %d times, %.1f ms each on average; %d of %d strokes inked (the rest off the screen)",
+            v.n, v.cpu * 1000 / v.n, v.inked, v.strokes))
+    end
     local sk = self.sketch
     if sk then
         Log.info("drawing: closed;", #self.pages, "pages;", #sk:live(), "strokes on the last;", sk.stats.palm,
