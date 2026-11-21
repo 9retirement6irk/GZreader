@@ -119,6 +119,10 @@ sec "notes formatted (Memos' rich editor: reading and writing its Markdown; the 
 (cd "$T" && luajit inline_test.lua "$REPO/plugins/gzreader.koplugin") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
+sec "emoji (OpenMoji: black as the last fallback, in colour on colour screens)"
+(cd "$T" && luajit coloremoji_test.lua "$REPO") 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
+
 sec "shapes cleaned up: draw and hold (the Newton's way)"
 (cd "$T" && luajit shapesnap_test.lua "$REPO/plugins/gzreader.koplugin") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || fail
