@@ -138,6 +138,19 @@ add({ fn = function(E)
     for _i, c in ipairs(driver) do if c:match("^sleep") then saw_sleep = true end end
     check(screen().tool == "eraser" and t.ink >= 2 and t.ink_off == 0 and t.other >= 1 and t.other_on == 0 and saw_sleep,
         "the toolbar tapped right after a stroke: the ink's time waited out, pen mode off, then the toolbar's update [" .. table.concat(driver, ",") .. "]")
+    -- the eraser across the last line: its place shown as ink is, in pen mode, not as an ordinary update
+    E.erase_before = #screen().sketch:live()
+    reset()
+    local pts = {}
+    for i = 0, 6 do local p = pt(0.5, 0.56 + 0.01 * i); p[3] = 2000; pts[#pts + 1] = p end
+    E.pen(pts, 0.3)
+end, after = 0.3 })
+add({ fn = function(E)
+    local t = tally()
+    local d = screen()
+    check(#d.sketch:live() == E.erase_before - 1 and t.ink >= 1 and t.ink_off == 0 and t.big == 0 and t.other == 0 and PM.on == true,
+        "the eraser: the line rubbed out, its place shown in " .. t.ink .. " small updates in pen mode, no ordinary update ("
+            .. t.other .. "), pen mode still on [" .. table.concat(driver, ",") .. "]")
     -- turned off by hand (⋮ More → Fast ink): ink the ordinary way
     E.penTap(button("more"))
 end, after = 2 })

@@ -10572,6 +10572,103 @@ print("Notes (Memos v0.31)")
                 "drawing: 240 pen points a second are shown " .. keeping_up .. " times (not 240), " .. behind
                     .. " while 200 ms behind (so it catches up); what's due is shown when the stroke ends")
         end)()
+        -- the eraser: only a rubbed-out stroke's place is drawn again (with the strokes crossing it) and, on the
+        -- Scribe in pen mode, shown as ink is (small updates in pen mode), not an ordinary update each time
+        ;(function()
+            local DS = require("gzreader_drawscreen")
+            local Sk = require("gzreader_sketch")
+            local PM = require("gzreader_penmode")
+            local UIMe = require("ui/uimanager")
+            local real = { dirty = UIMe.setDirty, sched = UIMe.scheduleIn, unsched = UIMe.unschedule,
+                ink = PM.ink, queued = PM.queued, on = PM.on }
+            local dirty, inked, planned = {}, {}, 0
+            local pm_ok = true
+            UIMe.setDirty = function(_s, w, mode, region) dirty[#dirty + 1] = { w = w, mode = mode, region = region } end
+            UIMe.scheduleIn = function() planned = planned + 1 end
+            UIMe.unschedule = function() end
+            PM.ink = function(_scr, rects) for _i, r in ipairs(rects) do inked[#inked + 1] = r end; return pm_ok end
+            PM.queued, PM.on = false, false
+            local canvas = { x = 0, y = 0, w = 1000, h = 1300 }
+            local sk = Sk.new{ canvas = canvas, per_unit = 2 }
+            local function line(x0, y0, x1, y1)
+                local pts = {}
+                for j = 0, 20 do pts[#pts + 1] = { x0 + (x1 - x0) * j / 20, y0 + (y1 - y0) * j / 20 } end
+                local st = { points = pts, width = 2, kind = "pen" }
+                sk.strokes[#sk.strokes + 1] = st
+                return st
+            end
+            local a = line(100, 200, 300, 200)   -- (rubbed out)
+            local b = line(200, 150, 200, 260)   -- (crosses it)
+            local far = line(600, 900, 800, 900) -- (nowhere near it)
+            local painted, blits, inks, touched = {}, {}, {}, 0
+            local function page() return { paintRect = function(_b, x, y, w, h) painted[#painted + 1] = { x, y, w, h } end } end
+            local screen = { bb = { blitFrom = function(_b, _src, x, y, sx, sy, w, h) blits[#blits + 1] = { x, y, sx, sy, w, h } end } }
+            local d = setmetatable({ sketch = sk, canvas = canvas, canvas_bb = page(), ink_bb = page(), ox = 0, oy = 0, holes = {},
+                pen_fast = true, ink = function(_d, seg) inks[#inks + 1] = seg end, touched = function() touched = touched + 1 end },
+                { __index = function(_t, k) return rawget(DS, k) end })
+            local function drew(st)
+                local n = 0
+                for _i, seg in ipairs(inks) do
+                    if (st == a and seg[2] == 200 and seg[4] == 200) or (st == b and seg[1] == 200 and seg[3] == 200)
+                        or (st == far and seg[2] == 900) then n = n + 1 end
+                end
+                return n
+            end
+            -- (apply is the drawing screen's own: its screen stood in for here)
+            local real_shown = DS.eraseShown
+            DS.eraseShown = function(self, area) return real_shown(self, area, screen) end
+            sk.tool = "eraser"
+            local out = sk:frame({ { slot = 0, id = 10, x = 150, y = 200, tool = 0 } }, 1)
+            local area = out.area
+            local erased_one = out.erased == 1 and a.gone == true and not b.gone and not far.gone and area ~= nil
+            d:apply(out)
+            local w, h = area.x1 - area.x0, area.y1 - area.y0
+            local p1, bl, ik = painted[1] or {}, blits[1] or {}, inked[1] or {}
+            check(erased_one and w > 200 and w < 240 and h > 0 and h < 40 and a._hit ~= nil and b._hit ~= nil
+                and p1[1] == area.x0 and p1[2] == area.y0 and p1[3] == w and p1[4] == h and #painted == 2,
+                "drawing, the eraser: one stroke rubbed out, only its own rectangle (" .. w .. "x" .. h .. ", from the eraser's index) drawn again")
+            check(drew(b) > 0 and drew(b) < 20 and drew(far) == 0 and drew(a) == 0,
+                "…the stroke crossing it drawn again there (" .. drew(b) .. " bits of it), one away from it not, the rubbed-out one gone")
+            check(out.redraw == false and touched == 1 and #dirty == 0 and #blits == 1 and bl[1] == area.x0 and bl[3] == area.x0
+                and bl[5] == w and bl[6] == h and #inked == 1 and ik.x == area.x0 and ik.y == area.y0 and ik.w == w and ik.h == h
+                and d._settle and d._settle.x0 == area.x0 and d._settle.y1 == area.y1 and d._settle.erased,
+                "…on the Scribe in pen mode: shown as ink is (that rectangle, in pen mode), no ordinary update; its greys left for the pause")
+            -- the eraser lifted, pen mode still on: nothing more now, the pause's update planned
+            PM.on = true
+            local out2 = sk:frame({ { slot = 0, id = -1, x = 0, y = 0, tool = 0 } }, 2)
+            d:apply(out2)
+            PM.on = false
+            check(out2.stroke_done and #dirty == 0 and planned >= 1 and d._settle and d._settle.x0 == area.x0 and d._erase_stats == nil,
+                "…lifted: nothing sent then, what it left done at the pause in the writing")
+            -- Undo: the stroke back, only its place drawn again (the ordinary way: a tap on Undo)
+            inks = {}
+            local back, back_area = sk:undo()
+            local redrawn = back and d:repaintArea(back_area)
+            check(redrawn and not a.gone and drew(a) > 0 and drew(far) == 0 and #dirty == 1,
+                "…Undo brings it back: drawn again in its place (" .. drew(a) .. " bits), only that refreshed")
+            -- when it can't be done that way: as before (the place, or the whole page)
+            local n_painted = #painted
+            d.holes = { { x = 0, y = 0, w = 1000, h = 210 } }
+            local under = d:eraseShown(area, screen)
+            d.holes = {}
+            PM.queued = true
+            local queued = d:eraseShown(area, screen)
+            PM.queued = false
+            d.pen_fast = false
+            local no_pen = d:eraseShown(area, screen)
+            d.pen_fast = true
+            check(d:eraseShown(nil, screen) == false and d:eraseShown({ x0 = 0, y0 = 0, x1 = 1000, y1 = 1300 }, screen) == false
+                and under == false and queued == false and no_pen == false and #painted == n_painted and d:repaintArea(nil) == false,
+                "…not when its place is unknown (then the whole page), too big, under the tools, an update is on its way, or without pen mode")
+            -- pen mode refused just then: the place drawn again all the same, shown the ordinary way
+            pm_ok, d._settle = false, nil
+            local n_dirty = #dirty
+            local refused = d:eraseShown(area, screen)
+            check(refused == true and #dirty == n_dirty + 1 and d._settle == nil, "…pen mode refused just then: shown the ordinary way")
+            DS.eraseShown = real_shown
+            UIMe.setDirty, UIMe.scheduleIn, UIMe.unschedule = real.dirty, real.sched, real.unsched
+            PM.ink, PM.queued, PM.on = real.ink, real.queued, real.on
+        end)()
         local dsrcp = io.open(PLUGIN .. "/gzreader_drawscreen.lua"):read("*a")
         -- the drawing screen as the Kindle Scribe's notebook (walked through by emulator/notebook_ui.lua)
         check(dsrcp:find('self.canvas = { x = 0, y = 0, w = sw, h = sh }', 1, true) ~= nil
