@@ -219,6 +219,13 @@ try:
           and seen["playback"] == {}, "the probe only reads")
     env["BOOKORBIT_KO_PASSWORD"] = "nope-nope"
     r = subprocess.run(probe, env=env, capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=60)
+    env2 = dict(env, BOOKORBIT_URL="http://127.0.0.1:1")
+    r2 = subprocess.run(probe, env=env2, capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=60)
+    check(r2.returncode == 1 and "connection refused" in r2.stdout and "The sign-in wasn't tried" in r2.stdout and "127.0.0.1" not in r2.stdout,
+          "the probe says why there was no answer, without the address")
+    env2["BOOKORBIT_URL"] = "https://no-such-host.invalid"
+    r2 = subprocess.run(probe, env=env2, capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=60)
+    check(r2.returncode == 1 and "no-such-host" not in r2.stdout and "no answer" in r2.stdout, "a name that doesn't exist: said, not echoed")
     check(r.returncode == 1 and "401" in r.stdout and "nope-nope" not in r.stdout and "version" not in r.stdout, "the probe stops at a failed sign-in")
 
     # --- the server away
