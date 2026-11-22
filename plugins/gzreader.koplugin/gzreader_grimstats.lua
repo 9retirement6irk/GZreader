@@ -251,7 +251,7 @@ function GS.refresh(plugin, force)
             local UIManager = require("ui/uimanager")
             UIManager:nextTick(function() pcall(function() require("common/gz_view").redrawHome() end) end)
         end
-    end, "grimmory stats")
+    end, "reading stats")
 end
 
 --- The numbers kept, when they're from the server this Kindle is signed in to now
