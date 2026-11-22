@@ -715,6 +715,41 @@ with sync_playwright() as pw:
         const V = GZSync.Vault; await V.create('1234'); V.lock();
         try { await V.unlock('1234'); return V.mode === 'kindle'; } catch (e) { return String(e); } }""")
     check(old_pin is True, "a Kindle locked with a short PIN before: it still unlocks with it %r" % (old_pin,))
+
+    # The landing page's model picker (docs/index.html #devices): each model's screenshots and what it can do
+    lp = browser.new_page(viewport={"width": 1100, "height": 900})
+    lp_missing = []
+    lp.on("response", lambda r: lp_missing.append(r.url) if r.status >= 400 else None)
+    lp.goto("http://127.0.0.1:%d/GZreader/" % WP)
+    models = lp.evaluate("() => GZModels.models.map(m => ({ id: m.id, shots: m.shots }))")
+    check(len(lp.locator("#model-picker button").all()) == len(models) >= 10
+          and lp.locator('#model-picker button[aria-pressed="true"]').get_attribute("data-model") == "k3"
+          and lp.locator("#model-shots img").count() == 6,
+          "landing page: a button per model, the Kindle Keyboard shown first with its 6 screens")
+    on_disk = all(os.path.exists(os.path.join(REPO, "docs", "screenshots", "models", m["id"], s + ".png"))
+                  for m in models for s in m["shots"])
+    check(on_disk, "landing page: every model's screenshots are in docs/screenshots/models/")
+    lp.click('#model-picker button[data-model="scribe"]')
+    lp.wait_for_function("document.querySelectorAll('#model-shots img')[0].complete")
+    facts = lp.locator("#model-facts").inner_text()
+    check(lp.locator('#model-picker button[aria-pressed="true"]').get_attribute("data-model") == "scribe"
+          and "With the pen" in facts and "Bluetooth" in facts and "kindlehf" in facts
+          and lp.locator("#model-shots img").first.get_attribute("src") == "screenshots/models/scribe/home.png"
+          and lp.evaluate("location.hash") == "#device=scribe",
+          "landing page: picking the Scribe shows its screens and facts (pen, Bluetooth, kindlehf), and the address says so")
+    lp.click('#model-picker button[data-model="k4"]')
+    facts = lp.locator("#model-facts").inner_text()
+    check("No: no touch screen" in facts and "No: no speaker" in facts and lp.locator("#model-shots img").count() == 6,
+          "landing page: the Kindle 4 says no drawing and no listening, and has no drawing screen")
+    lp.goto("http://127.0.0.1:%d/GZreader/#device=libra" % WP)
+    check(lp.locator('#model-picker button[aria-pressed="true"]').get_attribute("data-model") == "libra"
+          and "test build" in lp.locator("#model-facts h3").inner_text(),
+          "landing page: #device=libra opens on the Kobo Libra 2, marked a test build")
+    lp.set_viewport_size({"width": 390, "height": 800})
+    narrow = lp.evaluate("() => document.documentElement.scrollWidth <= 390")
+    check(narrow and not [u for u in lp_missing if "/screenshots/" in u],
+          "landing page: fits a phone's width; no screenshot it asked for is missing %r" % (lp_missing,))
+    lp.close()
     browser.close()
 
 files = {k: base64.b64decode(v) for k, v in res.items()}

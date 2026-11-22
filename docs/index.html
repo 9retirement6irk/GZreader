@@ -101,6 +101,37 @@
     .usb h2 { font-size: 26px; }
     .ways, .steps { grid-template-columns: 1fr; }
   }
+  /* the model picker: each device's own screens and what it can do */
+  .models { margin: 40px 0 8px; padding: 24px 24px 26px; background: var(--card); border: 1px solid var(--line);
+    border-radius: 16px; box-shadow: var(--shadow); scroll-margin-top: 16px; }
+  .models h2 { margin: 2px 0 6px; }
+  .models .lede { margin-bottom: 14px; }
+  .picker { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 18px; padding: 0; list-style: none; }
+  .picker button { font: inherit; font-size: 15px; padding: 7px 13px; border-radius: 999px; cursor: pointer;
+    background: transparent; color: var(--ink); border: 1.5px solid var(--line); }
+  .picker button:hover { border-color: var(--ink); }
+  .picker button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .picker button:focus-visible { outline: 3px solid var(--muted); outline-offset: 2px; }
+  .picker .test { font-size: 12px; opacity: .75; }
+  .model-body { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(0, 1fr); gap: 22px; align-items: start; }
+  .model-shots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 0; }
+  .model-shots figure { margin: 0; text-align: center; }
+  .model-shots img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 6px;
+    background: #fff; box-shadow: var(--shadow); }
+  .model-shots figcaption { font-size: 14px; color: var(--muted); margin-top: 6px; }
+  .model-facts h3 { margin: 0 0 2px; font-size: 20px; }
+  .model-facts .sub { margin: 0 0 12px; color: var(--muted); font-size: 15px; }
+  .model-facts dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: 15px; }
+  .model-facts dt { font-weight: 600; }
+  .model-facts dd { margin: 0; color: var(--muted); }
+  .model-facts .no { opacity: .7; }
+  .model-facts .more { margin: 14px 0 0; font-size: 15px; }
+  @media (max-width: 720px) {
+    .models { padding: 18px 14px 20px; }
+    .model-body { grid-template-columns: 1fr; }
+    .model-facts { order: -1; }
+    .model-shots { grid-template-columns: repeat(2, 1fr); }
+  }
   footer { margin: 56px 0 40px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: 15px; }
   @media (max-width: 720px) {
     h1 { font-size: 34px; }
@@ -134,6 +165,24 @@
     <figure><img src="screenshots/downloads-shelf.png" alt="Downloaded books standing on shelves, with the audiobook walkman and the CD player" width="600" height="800" loading="lazy"><figcaption>Downloads on shelves</figcaption></figure>
     <figure><img src="screenshots/cd-player.png" alt="An album from Plex playing in the CD player" width="600" height="800" loading="lazy"><figcaption>Music from Plex</figcaption></figure>
     <figure><img src="screenshots/notes-board.png" alt="Memos notes as sticky notes" width="600" height="800" loading="lazy"><figcaption>Notes from Memos</figcaption></figure>
+  </section>
+
+  <section class="models" id="devices" aria-labelledby="devices-title">
+    <p class="eyebrow">Kindle · Kobo · Nook</p>
+    <h2 id="devices-title">See it on your device</h2>
+    <p class="lede">Pick a model to see GZreader on its own screen, at its own size, and what it can do there.
+      Taken in GZreader's emulator, which runs each device's real KOReader programs, with a demo library.</p>
+    <ul class="picker" id="model-picker" aria-label="Device"></ul>
+    <div class="model-body">
+      <div class="model-shots" id="model-shots" aria-live="polite">
+        <noscript>
+          <figure><img src="screenshots/models/k3/home.png" alt="Home on a Kindle Keyboard" loading="lazy"><figcaption>Home (Kindle Keyboard)</figcaption></figure>
+          <figure><img src="screenshots/models/k3/catalog.png" alt="The Catalog on a Kindle Keyboard" loading="lazy"><figcaption>The Catalog</figcaption></figure>
+          <figure><img src="screenshots/models/k3/notes.png" alt="Notes on a Kindle Keyboard" loading="lazy"><figcaption>Notes</figcaption></figure>
+        </noscript>
+      </div>
+      <div class="model-facts" id="model-facts"></div>
+    </div>
   </section>
 
   <h2>What it is</h2>
@@ -284,5 +333,123 @@
     · <a href="https://github.com/9retirement6irk/GZreader">github.com/9retirement6irk/GZreader</a>
   </footer>
 </div>
+<script>
+// The model picker (#devices): each model's screenshots (screenshots/models/<id>/,
+// made by tools/gzreader/emulator/model_shots.sh) and what it can do (from the
+// wiki's Device-Compatibility page). #device=<id> in the address picks one.
+(function () {
+  var WIKI = "https://github.com/9retirement6irk/GZreader/wiki/";
+  var CAPTIONS = { home: "Home", reading: "Reading", panel: "The quick panel in a book", catalog: "The Catalog: Books",
+    notes: "Notes from Memos", settings: "Settings", drawing: "Drawing" };
+  var MODELS = [
+    { id: "k3", name: "Kindle Keyboard", year: "2010", also: "the Kindle 2 is the same, without Wi‑Fi", w: 600, h: 800,
+      shots: ["home", "reading", "panel", "catalog", "notes", "settings"],
+      use: "Keyboard and 5-way: every item has a letter key", screen: "600 × 800, 16 greys", wifi: "Yes",
+      audio: "Audiobooks and music, on the speaker or headphones", aloud: "Yes, in the Kindle's voice (Shift + Sym)",
+      draw: null, pkg: "kindle-legacy", page: "Install-Kindle-Legacy", tested: "On a real Kindle and in the emulator" },
+    { id: "dx", name: "Kindle DX", year: "2009", also: "and the DX Graphite", w: 824, h: 1200,
+      shots: ["home", "reading", "panel", "catalog", "settings"],
+      captions: { catalog: "No Wi‑Fi: the Catalog, notes and calendars come with a sync" },
+      use: "Keyboard and 5-way: every item has a letter key", screen: "824 × 1200, 16 greys",
+      wifi: "None: it syncs through your computer over USB", wifiLink: "#sync",
+      audio: "Audiobooks and music, on the speaker or headphones", aloud: "Yes, in the Kindle's voice (Shift + Sym)",
+      draw: null, pkg: "kindle-legacy", page: "Install-Kindle-Legacy", tested: "On a real DX and in the emulator" },
+    { id: "k4", name: "Kindle 4", year: "2011", w: 600, h: 800,
+      shots: ["home", "reading", "panel", "catalog", "notes", "settings"],
+      use: "The 5-way and Menu", screen: "600 × 800, 16 greys", wifi: "Yes",
+      audio: null, aloud: null, draw: null, pkg: "kindle", page: "Install-Kindle", tested: "On a real Kindle and in the emulator" },
+    { id: "kt", name: "Kindle Touch", year: "2011", w: 600, h: 800,
+      shots: ["home", "reading", "panel", "catalog", "notes", "settings", "drawing"],
+      use: "Touch: tap, swipe, swipe down for the quick panel", screen: "600 × 800", wifi: "Yes",
+      audio: "Audiobooks and music, on the speaker or headphones", aloud: "Yes, in the Kindle's voice (Listen in the quick panel)",
+      draw: "With a finger", pkg: "kindle", page: "Install-Kindle", tested: "On a real Kindle and in the emulator" },
+    { id: "pw3", name: "Paperwhite 3", year: "2015", also: "and other touch Kindles", w: 1072, h: 1448,
+      shots: ["home", "reading", "panel", "catalog", "notes", "settings", "drawing"],
+      use: "Touch", screen: "1072 × 1448, 300 dpi", wifi: "Yes", audio: null, aloud: null,
+      draw: "With a finger", pkg: "kindlepw2 or kindlehf (by firmware)", page: "Install-Kindle-HF", tested: "On a real Kindle and in the emulator" },
+    { id: "scribe", name: "Kindle Scribe", year: "2022", also: "the Colorsoft Kindles add colour where it means something", w: 1860, h: 2480,
+      shots: ["home", "reading", "panel", "catalog", "notes", "settings", "drawing"],
+      use: "Touch and the pen: pressure, the side button erases, your hand can rest on the screen", screen: "1860 × 2480, 300 dpi", wifi: "Yes",
+      audio: "Audiobooks and music, through Bluetooth headphones or a speaker", aloud: "Yes, Amazon's voice through Bluetooth",
+      draw: "With the pen", pkg: "kindlehf", page: "Install-Kindle-HF", tested: "On a real Scribe and in the emulator" },
+    { id: "libra", name: "Kobo Libra 2", year: "2021", test: true, also: "and other Kobos", w: 1264, h: 1680,
+      shots: ["home", "reading", "panel", "catalog", "notes", "settings", "drawing"],
+      use: "Touch and page keys", screen: "1264 × 1680, 300 dpi, light and warmth", wifi: "Yes",
+      audio: null, audioWhy: "No: Kobos have no speaker", aloud: null,
+      draw: "With a finger", pkg: "kobo", page: "Install-Kobo", tested: "In the emulator only" },
+    { id: "condor", name: "Kobo Elipsa 2E", year: "2023", test: true, also: "and the Sage, Elipsa and Libra Colour with a pen", w: 1404, h: 1872,
+      shots: ["home", "reading", "panel", "catalog", "notes", "settings", "drawing"],
+      use: "Touch and the Kobo Stylus: pressure, your hand can rest on the screen", screen: "1404 × 1872, 300 dpi", wifi: "Yes",
+      audio: null, audioWhy: "No: Kobos have no speaker", aloud: null,
+      draw: "With the pen", pkg: "kobo", page: "Install-Kobo", tested: "In the emulator only" },
+    { id: "nook", name: "Nook 1st Edition", year: "2009", test: true, w: 600, h: 800,
+      shots: ["home", "reading", "panel", "catalog", "notes", "settings"],
+      use: "The colour touchscreen's buttons and keyboard", screen: "600 × 800 e-ink, and a 480 × 144 colour touchscreen", wifi: "Yes",
+      audio: null, audioWhy: "Not yet", aloud: null, draw: null,
+      pkg: "nook-1st-edition", page: "Install-Nook-1st-Edition", tested: "On a real Nook and in the emulator" },
+    { id: "nst", name: "Nook Simple Touch", year: "2011", test: true, also: "with or without GlowLight", w: 600, h: 800,
+      shots: ["home", "reading", "panel", "catalog", "notes", "settings", "drawing"],
+      use: "Touch", screen: "600 × 800", wifi: "Yes", audio: null, aloud: null,
+      draw: "With a finger", pkg: "nook", page: "Install-Nook-Simple-Touch", tested: "In the emulator only" }
+  ];
+  var picker = document.getElementById("model-picker"), shots = document.getElementById("model-shots"),
+    facts = document.getElementById("model-facts");
+  if (!picker || !shots || !facts) return;
+  function el(tag, attrs, kids) {
+    var e = document.createElement(tag);
+    for (var k in attrs || {}) { if (k === "text") e.textContent = attrs[k]; else e.setAttribute(k, attrs[k]); }
+    (kids || []).forEach(function (c) { if (c) e.appendChild(typeof c === "string" ? document.createTextNode(c) : c); });
+    return e;
+  }
+  function byId(id) { for (var i = 0; i < MODELS.length; i++) if (MODELS[i].id === id) return MODELS[i]; return null; }
+  function row(dl, term, value, link) {
+    var dd = el("dd", value ? {} : { "class": "no" });
+    if (value && link) dd.appendChild(el("a", { href: link, text: value })); else dd.textContent = value || "—";
+    dl.appendChild(el("dt", { text: term })); dl.appendChild(dd);
+  }
+  function show(id, push) {
+    var m = byId(id) || MODELS[0];
+    Array.prototype.forEach.call(picker.querySelectorAll("button"), function (b) {
+      b.setAttribute("aria-pressed", b.getAttribute("data-model") === m.id ? "true" : "false");
+    });
+    shots.textContent = "";
+    m.shots.forEach(function (s) {
+      var cap = (m.captions && m.captions[s]) || CAPTIONS[s] + (s === "drawing" && m.draw ? " (" + m.draw.toLowerCase() + ")" : "");
+      shots.appendChild(el("figure", {}, [
+        el("img", { src: "screenshots/models/" + m.id + "/" + s + ".png", alt: CAPTIONS[s] + " on a " + m.name,
+          width: String(m.w), height: String(m.h), loading: "lazy" }),
+        el("figcaption", { text: cap })]));
+    });
+    facts.textContent = "";
+    facts.appendChild(el("h3", { text: m.name + (m.test ? " (test build)" : "") }));
+    facts.appendChild(el("p", { "class": "sub", text: m.year + (m.also ? " · " + m.also : "") }));
+    var dl = el("dl");
+    row(dl, "Use", m.use);
+    row(dl, "Screen", m.screen);
+    row(dl, "Wi‑Fi", m.wifi, m.wifiLink);
+    row(dl, "Listening", m.audio || m.audioWhy || "No: no speaker or headphone jack");
+    row(dl, "Read aloud", m.aloud);
+    row(dl, "Drawing", m.draw || "No: no touch screen");
+    row(dl, "Package", m.pkg, WIKI + m.page);
+    row(dl, "Tested", m.tested);
+    facts.appendChild(dl);
+    facts.appendChild(el("p", { "class": "more" }, [el("a", { href: WIKI + "Device-Compatibility", text: "Every device compared →" })]));
+    if (push && window.history && history.replaceState) history.replaceState(null, "", "#device=" + m.id);
+  }
+  MODELS.forEach(function (m) {
+    var b = el("button", { type: "button", "data-model": m.id, "aria-pressed": "false" }, [m.name]);
+    if (m.test) { b.appendChild(document.createTextNode(" ")); b.appendChild(el("span", { "class": "test", text: "test" })); }
+    b.addEventListener("click", function () { show(m.id, true); });
+    picker.appendChild(el("li", {}, [b]));
+  });
+  function wanted() { return (location.hash.match(/^#device=([\w-]+)$/) || [])[1]; }
+  var want = wanted();
+  show(want || "k3", false);
+  if (want) document.getElementById("devices").scrollIntoView();
+  // (a link to another model on this page: only the address's #device= changes)
+  window.addEventListener("hashchange", function () { var w = wanted(); if (w) show(w, false); });
+  window.GZModels = { show: show, models: MODELS };
+})();
+</script>
 </body>
 </html>
