@@ -1273,6 +1273,22 @@ function Grimmory:onGrimmoryPair(touchmenu)
     return true
 end
 
+--- The setup page with BookOrbit picked as the book server (the setup guide).
+function Grimmory:onBookOrbitPair()
+    if self.pairing then return true end
+    if Net.usb then require("gzreader_usbsync").show(self); return true end
+    Net.run(function()
+        require("gzreader_phone").open(self, { section = "grimmory", grimmory_form = { backend = "bookorbit" } })
+    end, { reason = "connecting to BookOrbit" })
+    return true
+end
+
+--- The setup page at Send books (the setup guide: GZreader on its own, no book server).
+function Grimmory:onGzSendBooksPage()
+    self:openPhonePage("books")
+    return true
+end
+
 function Grimmory:onBookOrbitKeyboardLogin()
     self:keyboardLogin(nil, "bookorbit")
     return true

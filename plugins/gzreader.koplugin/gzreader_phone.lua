@@ -114,6 +114,13 @@ local function state(S, flash)
         -- (copied from another GZreader: its address and account, to sign in with)
         or (not g.connected and type(S.opts.grimmory_form) == "table" and S.opts.grimmory_form)
         or { server = store.server, username = store.username }
+    -- (opened for the other book server, from the setup guide: that one picked, its
+    -- form empty: the saved address and name are this server's)
+    local hint = type(S.opts.grimmory_form) == "table" and S.opts.grimmory_form.backend
+    if hint and hint ~= g.backend and not (sec == "grimmory" and flash.form) then
+        g.form = { backend = hint }
+        g.other = true
+    end
     if sec == "grimmory" then g.error = flash.error end
     -- single sign-on: asked from Grimmory when the form is in view (not
     -- connected, or a sign-in just tried); otherwise what was learnt before

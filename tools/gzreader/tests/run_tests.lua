@@ -15289,6 +15289,32 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
     check(after == before, "BookOrbit's backup list isn't merged into Grimmory's downloads")
     check(plugin.api:listBooks{ page = 0, size = 5 } ~= nil, "Grimmory's lists work again")
 
+    -- the setup guide's answers: the setup page opened for BookOrbit, or at Send books
+    local Phone = require("gzreader_phone")
+    local real_open, opened = Phone.open, nil
+    Phone.open = function(_p, o) opened = o end
+    plugin:onBookOrbitPair()
+    check(opened and opened.section == "grimmory" and opened.grimmory_form.backend == "bookorbit", "With BookOrbit: the setup page is opened for BookOrbit")
+    local for_orbit = opened
+    opened = nil
+    plugin:onGzSendBooksPage()
+    check(opened and opened.section == "books", "On its own: the setup page is opened at Send books")
+    Phone.open = real_open
+    PS.new = function(self, o) screen = o; return o end
+    Phone.open(plugin, for_orbit)
+    local gurl = screen.url:gsub("#.*$", "")
+    local gcode, gbody = phone("'" .. gurl .. "'")
+    local gsec = gbody and gbody:match('<section id="grimmory".-</section>') or ""
+    check(gcode == 200 and gsec:find("Connected as <b>will</b>", 1, true) and gsec:find("<details open>", 1, true)
+        and gsec:find('<option value="bookorbit" selected>', 1, true) and not gsec:find("127.0.0.1:" .. PORT .. '"', 1, true),
+        "…signed in to Grimmory: the sign-in form is open with BookOrbit picked and Grimmory's address not filled in")
+    screen.on_cancel()
+    plugin:startQrPairing()
+    gcode, gbody = phone("'" .. screen.url:gsub("#.*$", "") .. "'")
+    gsec = gbody and gbody:match('<section id="grimmory".-</section>') or ""
+    check(gsec:find("<details>", 1, true) and not gsec:find('<option value="bookorbit" selected>', 1, true), "the setup page opened the usual way: as before")
+    screen.on_cancel()
+
     -- disconnecting from BookOrbit
     plugin:connect(BO, "will-kindle", "hunter22", "bookorbit")
     plugin.api:logout()

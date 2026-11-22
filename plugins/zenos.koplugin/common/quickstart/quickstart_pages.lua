@@ -720,37 +720,97 @@ local function buildGrimmoryPage(ctx)
                 .. _("Later: Menu → Sync with computer."),
         }
     end
-    local choices = {}
-    if state.paired then
-        choices[#choices + 1] = { id = "keep", text = T(_("Keep connection (%1)"), state.username or "?"), checked = true }
+    -- GZreader: first, how it will be used (Grimmory, BookOrbit, or on its own with
+    -- books sent from a browser); the page after it offers what fits that answer.
+    local g = grimmoryPlugin(ctx)
+    local current = (state.paired and type(g.backend) == "function" and g:backend()) or nil
+    local saved = type(g.store) == "table" and g.store.book_source or nil
+    local mode = current or saved or "grimmory"
+    local connect = { choice_type = "radio" }
+
+    local function fillConnect()
+        local touch = require("device"):isTouchDevice()
+        local later = touch and _("Later: swipe down → Connect.") or _("Later: Menu → Send books.")
+        local choices = {}
+        if mode == "local" then
+            connect.title = _("Send books from your browser")
+            connect.description = _("Scan the QR code with your phone, or open this Kindle's address in any browser on the same Wi‑Fi, and drop your books on the page. Notes and Calendar are connected there too.") .. "\n" .. later
+            choices[#choices + 1] = { id = "books", text = _("Show the QR code now"), checked = true }
+            choices[#choices + 1] = { id = "gz_copy", text = _("Copy from another GZreader"), checked = false }
+        else
+            local name = mode == "bookorbit" and "BookOrbit" or "Grimmory"
+            local keep = state.paired and current == mode
+            connect.title = _("Set up from your browser")
+            connect.description = T(_("Scan the QR code with your phone, or open this Kindle's address in any browser on the same Wi‑Fi, to connect %1, Notes and Calendar, or to send books."), name) .. "\n"
+                .. (mode == "bookorbit" and (T(_("BookOrbit asks for the %1 sync user name and password you made in its Settings → %1."), "KOReader") .. "\n") or "")
+                .. later
+            if keep then
+                choices[#choices + 1] = { id = "keep", text = T(_("Keep connection (%1)"), state.username or "?"), checked = true }
+            end
+            choices[#choices + 1] = { id = mode == "bookorbit" and "bo_qr" or "qr", text = _("Set up from a browser"), checked = not keep }
+            choices[#choices + 1] = { id = mode == "bookorbit" and "bo_type" or "type", text = T(_("Type my %1 login here"), name), checked = false }
+            -- GZreader: copy the connections of another GZreader on the Wi-Fi (PIN)
+            if mode ~= "bookorbit" then
+                choices[#choices + 1] = { id = "gz_copy", text = _("Copy from another GZreader"), checked = false }
+            end
+        end
+        if state.connected_any then
+            choices[#choices + 1] = { id = "gz_send", text = _("Send to another GZreader"), checked = false }
+        end
+        choices[#choices + 1] = { id = "skip", text = _("Skip for now"), checked = false }
+        connect.choices = choices
+        connect.reset_selection = true -- (the screen takes the new defaults when it shows the page)
     end
-    choices[#choices + 1] = { id = "qr",   text = _("Set up from a browser"), checked = not state.paired }
-    choices[#choices + 1] = { id = "type", text = _("Type my Grimmory login here"), checked = false }
-    -- GZreader: copy the connections of another GZreader on the Wi-Fi (PIN)
-    choices[#choices + 1] = { id = "gz_copy", text = _("Copy from another GZreader"), checked = false }
-    if state.connected_any then
-        choices[#choices + 1] = { id = "gz_send", text = _("Send to another GZreader"), checked = false }
+    fillConnect()
+    connect.on_apply = function(sel)
+        local events = { qr = "GrimmoryPair", type = "GrimmoryKeyboardLogin", bo_qr = "BookOrbitPair", bo_type = "BookOrbitKeyboardLogin",
+            books = "GzSendBooksPage", gz_copy = "GzCopyReceive", gz_send = "GzCopySend" }
+        for id, name in pairs(events) do
+            if sel[id] then sendGrimmoryEvent(name) end
+        end
     end
-    choices[#choices + 1] = { id = "skip", text = _("Skip for now"),                   checked = false }
-    return {
-        title       = _("Set up from your browser"),
-        description = _("Scan the QR code with your phone, or open this Kindle's address in any browser on the same Wi‑Fi, to connect Grimmory, Notes and Calendar, or to send books.") .. "\n"
-            .. (not require("device"):isTouchDevice() and _("Later: Menu → Send books.")
-                or _("Later: swipe down → Connect.")),
+
+    -- (the guide's later page about sync says what's true for the answer: build_install_pages gives it)
+    local how
+    local function fillSync()
+        local page = how and how.sync_page
+        if type(page) ~= "table" then return end
+        if mode == "bookorbit" then
+            page.title = _("Books from BookOrbit")
+            page.description = _("Browse and download your BookOrbit books in the Catalog tab.") .. "\n\n"
+                .. _("Reading progress, highlights and bookmarks aren't synced with BookOrbit yet.")
+        elseif mode == "local" then
+            page.title = _("Your books")
+            page.description = _("Books you send from your browser are kept on this Kindle, and keep their place and bookmarks here.") .. "\n\n"
+                .. _("Got a book server later? Connect it in Settings → Accounts and services → Books.")
+        else
+            page.title, page.description = page.grimmory_title or page.title, page.grimmory_description or page.description
+        end
+    end
+    how = {
+        fill_sync   = fillSync,
+        title       = _("How will you use GZreader?"),
+        description = _("GZreader can get its books from your own book server, or you can send them from a browser. You can change this later in Settings → Accounts and services → Books."),
         choice_type = "radio",
-        choices     = choices,
+        choices     = {
+            { id = "grimmory", text = _("With Grimmory, my book server"), checked = mode == "grimmory" },
+            { id = "bookorbit", text = _("With BookOrbit, my book server"), checked = mode == "bookorbit" },
+            { id = "local", text = _("On its own: I send books from my browser"), checked = mode == "local" },
+        },
         on_apply    = function(sel)
-            if sel["qr"] then
-                sendGrimmoryEvent("GrimmoryPair")
-            elseif sel["type"] then
-                sendGrimmoryEvent("GrimmoryKeyboardLogin")
-            elseif sel["gz_copy"] then
-                sendGrimmoryEvent("GzCopyReceive")
-            elseif sel["gz_send"] then
-                sendGrimmoryEvent("GzCopySend")
+            local picked = (sel["bookorbit"] and "bookorbit") or (sel["local"] and "local") or "grimmory"
+            if type(g.store) == "table" and g.store.book_source ~= picked then
+                g.store.book_source = picked
+                if type(g.save) == "function" then pcall(g.save, g) end
+            end
+            if picked ~= mode then
+                mode = picked
+                fillConnect()
+                fillSync()
             end
         end,
     }
+    return how, connect
 end
 
 function M.build_install_pages(ctx)
@@ -956,6 +1016,7 @@ function M.build_install_pages(ctx)
         -- 4b. GZreader: sync (static)
         {
             title       = _("Synced with Grimmory"),
+            gz_sync_page = true, -- (retitled for BookOrbit or no server: buildGrimmoryPage's fillSync)
             icon_file   = _plugin_root .. "/icons/library.svg",
             icon_size   = 120,
             description = _("Books from the Catalog tab keep their place and bookmarks in sync with Grimmory and your other devices.") .. "\n\n"
@@ -1090,9 +1151,21 @@ function M.build_install_pages(ctx)
         if g and type(g.useLibraryAsHome) == "function" then g:useLibraryAsHome() end
     end)
 
-    local ok_gp, grimmory_page = pcall(buildGrimmoryPage, ctx)
-    if not ok_gp then grimmory_page = nil end
-    if grimmory_page then table.insert(pages, 1, grimmory_page) end
+    local ok_gp, grimmory_page, connect_page = pcall(buildGrimmoryPage, ctx)
+    if not ok_gp then grimmory_page, connect_page = nil, nil end
+    if connect_page then table.insert(pages, 1, connect_page) end
+    if grimmory_page then
+        if type(grimmory_page.fill_sync) == "function" then
+            for _i, page in ipairs(pages) do
+                if page.gz_sync_page then
+                    page.grimmory_title, page.grimmory_description = page.title, page.description
+                    grimmory_page.sync_page = page
+                end
+            end
+            pcall(grimmory_page.fill_sync)
+        end
+        table.insert(pages, 1, grimmory_page)
+    end
 
     -- Inject real cover art and rendered icons into preview pages.
     local ok_inject, err_inject = pcall(function()
