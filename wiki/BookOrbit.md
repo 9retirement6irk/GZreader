@@ -20,6 +20,7 @@ What works with BookOrbit today:
 | Putting books on your collections and taking them off, from a book's menu (needs an API key, below) | yes |
 | Audiobooks: list, covers, download with resume, chapters, listening position both ways (needs an API key, below) | yes |
 | Requesting a book or audiobook BookOrbit doesn't have, and seeing what became of it (needs an API key, below) | yes |
+| Home's reading stats widget and the reading stats page, from BookOrbit's numbers ([Home and bookshelves](Home-and-Bookshelves#reading-stats-on-home)) | yes |
 | Kindles without Wi-Fi (the sync page) | not yet |
 
 Only the "yes" rows send anything to BookOrbit. The Kindle shows up in BookOrbit's Settings → KOReader → Devices as "GZreader" and its model.
@@ -123,6 +124,10 @@ If your BookOrbit has requests set up, the Kindle can ask for a book it doesn't 
 - A read-only key lists and downloads, but your place isn't saved.
 - To remove the key from the Kindle, save the box empty. Signing out removes it too.
 - Audiobooks from Plex are separate and still work alongside.
+
+## BookOrbit and GZreader
+
+BookOrbit is its own project, under the GNU AGPL version 3 with additional terms. GZreader isn't part of BookOrbit and isn't endorsed by it. GZreader talks to your BookOrbit server over its API and contains none of BookOrbit's code, pictures or plugin; the reading stats page's charts are GZreader's own drawings of the numbers your server sends.
 
 ## If it doesn't connect
 

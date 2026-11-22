@@ -4897,6 +4897,30 @@ do
     GS.stale(rplugin)
     GS.values(rplugin)
     check(rplugin.store.grimmory_stats.error == nil, "asked again after this Kindle's sessions reached Grimmory")
+    -- what the page draws: the week's books, the month's days, finished books by month
+    local all = GS.all(rplugin)
+    local Page = require("gzreader_statspage")
+    check(all.server == "grimmory" and all.name == "Grimmory" and rplugin.store.grimmory_stats.server == "grimmory"
+        and type(all.detail.week_books) == "table" and #all.detail.week_books == 1 and all.detail.week_books[1].seconds == all.values.week_time
+        and type(all.detail.month_days) == "table" and #all.detail.month_days >= 1 and all.detail.month_days[1].count >= 1
+        and #all.detail.finished_months == 2 and all.detail.finished_months[2].month == 11 and all.detail.finished_months[2].finished == 1,
+        "the page's detail kept: the week's books, the month's days read, finished by month")
+    local kinds = {}
+    for _i, sec in ipairs(Page.sections(all)) do kinds[#kinds + 1] = sec.kind .. (sec.sideways and "-side" or "") end
+    check(table.concat(kinds, " ") == "numbers bars-side month bars text", "the Grimmory page: numbers, the week's books, the month, finished by month, the rest " .. table.concat(kinds, " "))
+    local grid = Page.monthGrid(2026, 11, { { day = 1, count = 2 }, { day = 30, count = 5 } })
+    check(#grid.rows == 6 and grid.rows[1][7] and grid.rows[1][7].day == 1 and grid.rows[1][7].count == 2 and grid.rows[1][6] == false
+        and grid.rows[6][1].day == 30 and grid.rows[6][2] == false and grid.max == 5,
+        "the month as a calendar: November 2026 starts on a Sunday and ends on a Monday")
+    check(Page.time(59) == "1 min" and Page.time(3600) == "1 h" and Page.time(7500) == "2 h 5 min" and Page.time(nil) == "0 min",
+        "times in words")
+    check(Page.footer({ name = "Grimmory", at = 1000 }, 1000 + 600):find("from Grimmory, as of 10 minutes ago", 1, true) ~= nil
+        and Page.footer({ name = "BookOrbit" }, 5):find("Nothing from BookOrbit yet", 1, true) ~= nil, "the page says whose numbers and how old")
+    -- numbers kept from the other server aren't shown as this one's
+    rplugin.store.grimmory_stats.server = "bookorbit"
+    check(GS.kept(rplugin) == nil and next(GS.all(rplugin).values) == nil or GS.all(rplugin).values.week_books ~= nil,
+        "numbers kept from another server aren't this one's (asked again)")
+    check(rplugin.store.grimmory_stats.server == "grimmory", "…and Grimmory's are back after asking")
 end
 
 print("Ratings (Grimmory's personal rating)")
@@ -15694,6 +15718,114 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
         local ltext = lf and lf:read("*a") or ""
         if lf then lf:close() end
         check(not ltext:find(KEY, 1, true) and not ltext:find(md5("hunter22"), 1, true), "the log has neither the API key nor the sync key")
+    end
+    -- reading stats from BookOrbit: Home's widget and the page a tap opens
+    do
+        local GS = require("gzreader_grimstats")
+        local Page = require("gzreader_statspage")
+        -- the dashboard turned into the widget's values (Sunday 22 November 2026 is "today")
+        local mins = {}
+        for i = 1, 371 do mins[i] = 0 end
+        mins[371], mins[370], mins[369], mins[365], mins[364] = 25, 0, 40, 70, 10 -- Sun 22, Sat 21, Fri 20, Mon 16, Sun 15
+        mins[350] = 30 -- 1 November
+        mins[349] = 15 -- 31 October
+        mins[46] = 60  -- 1 January 2026
+        mins[45] = 500 -- 31 December 2025
+        local res = GS.fromDashboard{
+            totalBooks = 240, browseCounts = { inProgress = 3 },
+            readingGoal = { goalBooks = 30, completedBooks = 12, year = 2026 },
+            readingStreak = { currentStreak = 4, longestStreak = 21, lastSevenDays = { true } },
+            readingYear = { startDate = "2025-11-17", minutes = mins },
+            achievements = { earned = 5, total = 40, next = { name = "Fifty hours", description = "Read for fifty hours.", threshold = 50, currentProgress = 41 },
+                latest = { name = "Ten down" } },
+            yearAgo = { book = { title = "Low Tide", authors = { "Mara Quill" } }, minutes = 312, days = 9 },
+            finishedThisYear = { { title = "A", authors = { "X" } }, { title = "B", authors = {} } },
+            highlightOfTheDay = { text = "The tide does not ask.", bookTitle = "Low Tide", chapterTitle = "Chapter 3" },
+        }
+        local v, d = res.values, res.detail
+        check(v.streak == 4 and v.longest_streak == 21 and v.year_finished == 12 and v.goal == "12/30" and v.badges == "5/40"
+            and v.library_books == 240 and v.reading_now == 3, "BookOrbit stats: streak, goal, badges, library from the dashboard")
+        check(v.today_time == 25 * 60 and v.week_time == (25 + 40 + 70) * 60 and v.month_time == (25 + 40 + 70 + 10 + 30) * 60
+            and v.year_time == (25 + 40 + 70 + 10 + 30 + 15 + 60) * 60 and v.year_days == 7,
+            "BookOrbit stats: today, this week (from Monday), this month and this year added up from the days "
+            .. tostring(v.week_time) .. " " .. tostring(v.month_time) .. " " .. tostring(v.year_time) .. " " .. tostring(v.year_days))
+        check(d.goal.books == 30 and d.badges.next.threshold == 50 and d.year_ago.title == "Low Tide" and d.year_ago.author == "Mara Quill"
+            and #d.finished == 2 and d.finished[2].author == nil and d.highlight.chapter == "Chapter 3" and #d.days.minutes == 371,
+            "BookOrbit stats: what the page draws is kept")
+        local bare = GS.fromDashboard{ readingGoal = { goalBooks = nil, completedBooks = 2 }, readingStreak = { currentStreak = 0, longestStreak = 0 } }
+        check(bare.values.goal == nil and bare.values.badges == nil and bare.values.week_time == nil and bare.values.year_finished == 2
+            and bare.detail.days == nil and GS.fromDashboard("x").error == "bad_reply",
+            "BookOrbit stats: no goal, badges off, an older server: those are left out, the rest shown")
+        -- the page's parts
+        local week = Page.lastWeek(d.days)
+        check(#week == 7 and week[1].label == "Mon" and week[1].minutes == 70 and week[7].label == "Sun" and week[7].minutes == 25 and week[7].today == true,
+            "the page: the last seven days, oldest first, today marked")
+        local grid = Page.yearGrid(d.days)
+        check(#grid.cols == 53 and grid.cols[53][7] == 2 and grid.cols[53][1] == 4 and grid.cols[53][5] == 3 and grid.cols[53][6] == 0
+            and grid.cols[1][1] == 0 and grid.months[3] == "Dec", "the page: the year as weeks of days, darker for more reading " .. #grid.cols)
+        check(#Page.yearGrid(d.days, 20).cols == 20 and Page.yearGrid(d.days, 20).cols[20][7] == 2, "…a narrow screen gets the newest weeks")
+        check(Page.level(0) == 0 and Page.level(1) == 1 and Page.level(15) == 2 and Page.level(30) == 3 and Page.level(60) == 4, "the page: five shades of a day")
+        local kinds, titles = {}, {}
+        for _i, sec in ipairs(Page.sections{ server = "bookorbit", values = v, detail = d }) do
+            kinds[#kinds + 1] = sec.kind
+            titles[#titles + 1] = (sec.title or "") .. (sec.text and (" / " .. sec.text) or "")
+        end
+        local all_titles = table.concat(titles, " | ")
+        check(table.concat(kinds, " ") == "numbers bars year progress progress text text text text", "the BookOrbit page's parts in order: " .. table.concat(kinds, " "))
+        check(all_titles:find("Reading goal for 2026 / 12 of 30 books", 1, true) and all_titles:find("Badges: 5 of 40. Next: Fifty hours / 41 of 50", 1, true)
+            and all_titles:find("A year ago you were reading / Low Tide, by Mara Quill (5 h 12 min over 9 days)", 1, true)
+            and all_titles:find("Finished this year / • A, by X\n• B", 1, true) and all_titles:find("“The tide does not ask.”\n— Low Tide, Chapter 3", 1, true)
+            and all_titles:find("Longest streak: 21 days  ·  Books in the library: 240  ·  Reading now: 3", 1, true),
+            "the BookOrbit page: goal, badges, a year ago, finished, the highlight, the rest " .. all_titles)
+        -- from the server, into the widget
+        plugin.store.grimmory_stats = nil
+        bctl("/_mock/reset")
+        local got = GS.values(plugin)
+        check(GS.server(plugin) == "bookorbit" and plugin.store.grimmory_stats and plugin.store.grimmory_stats.server == "bookorbit"
+            and got.today_time == 25 * 60 and got.streak == 1 and got.longest_streak == 21 and got.goal == "12/30" and got.badges == "5/40"
+            and got.year_finished == 12 and got.reading_now == 2 and got.week_time and got.week_time >= 25 * 60,
+            "BookOrbit stats: fetched with the e-reader sign-in for Home's widget")
+        local at = plugin.store.grimmory_stats.at
+        GS.values(plugin)
+        check(plugin.store.grimmory_stats.at == at, "…not asked again within 15 minutes")
+        GS.stale(plugin)
+        bctl("/_mock/set", '{"goal_books": null, "achievements": false, "reading_year": false}')
+        got = GS.values(plugin)
+        check(got.goal == nil and got.badges == nil and got.today_time == nil and got.streak == 1 and GS.all(plugin).detail.days == nil,
+            "BookOrbit stats: asked again after reading time was sent; what the server lacks is left out")
+        bctl("/_mock/set", '{"goal_books": 30, "achievements": true, "reading_year": true, "offline": true}')
+        GS.refresh(plugin, true)
+        check(plugin.store.grimmory_stats.error ~= nil and plugin.store.grimmory_stats.values.streak == 1, "BookOrbit stats: the server away: the last numbers stay")
+        bctl("/_mock/set", '{"offline": false}')
+        GS.refresh(plugin, true)
+        -- the widget offers each server's own numbers
+        local saved_triplet = package.loaded["modules/filebrowser/patches/home/widgets/stats_triplet"]
+        package.loaded["modules/filebrowser/patches/home/widgets/stats_triplet"] = {
+            make = function(spec) return { id = spec.id, label = spec.label, spec = spec, build = function() return { "body" } end } end,
+            fmt_time = function(sec) return math.floor(sec / 60) .. "m" end,
+        }
+        local Wg = dofile(PLUGIN .. "/../zenos.koplugin/modules/filebrowser/patches/home/widgets/grimmory_stats.lua")
+        package.loaded["modules/filebrowser/patches/home/widgets/stats_triplet"] = saved_triplet
+        local was_server, was_stats, was_page = rawget(_G, "__GZ_BOOK_SERVER"), rawget(_G, "__GZ_GRIMMORY_STATS"), rawget(_G, "__GZ_SERVER_STATS_PAGE")
+        rawset(_G, "__GZ_BOOK_SERVER", function() return plugin:backend() end)
+        check(table.concat(Wg.OPTIONS, ",") == table.concat(GS.FIELDS.bookorbit, ",") and Wg.FIELDS.goal and Wg.FIELDS.today_time and Wg.FIELDS.reading_days == nil
+            and Wg.FIELDS.month_sessions == nil and Wg.FIELDS.week_time.get{ week_time = 600 } == "10m" and Wg.FIELDS.goal.get{} == "—"
+            and Wg.FIELDS.goal.get{ goal = "12/30" } == "12/30" and Wg.label == "Reading stats (every device)",
+            "the widget with BookOrbit: its numbers offered, Grimmory-only ones not")
+        rawset(_G, "__GZ_BOOK_SERVER", function() return "grimmory" end)
+        check(table.concat(Wg.OPTIONS, ",") == table.concat(GS.FIELDS.grimmory, ",") and Wg.FIELDS.reading_days and Wg.FIELDS.goal == nil and Wg.FIELDS.badges == nil,
+            "the widget with Grimmory: its numbers offered, BookOrbit-only ones not")
+        for _i, id in ipairs(GS.FIELDS.bookorbit) do if not Wg.ALL[id] then check(false, "the widget has no field for " .. id) end end
+        for _i, id in ipairs(Wg.spec.defaults) do
+            check(Wg.BY_SERVER.grimmory[_i] == id and Wg.BY_SERVER.bookorbit[_i] == id, "the widget's default " .. id .. " is one both servers have")
+        end
+        rawset(_G, "__GZ_BOOK_SERVER", was_server); rawset(_G, "__GZ_GRIMMORY_STATS", was_stats); rawset(_G, "__GZ_SERVER_STATS_PAGE", was_page)
+        -- the Catalog's card has the page too
+        local Browser = require("gzreader_browser")
+        local rows = {}
+        for _i, it in ipairs(Browser.grimmoryItems({ plugin = plugin, api = plugin.api, push = function() end })) do rows[#rows + 1] = it.text end
+        check(table.concat(rows, "|"):find("|Reading stats|Request a book|", 1, true) ~= nil, "the BookOrbit card has Reading stats " .. table.concat(rows, "|"))
+        plugin.store.grimmory_stats = nil
     end
     -- signing in again as the same user keeps the key; another user doesn't get it
     plugin:connect(BO, "will-kindle", "hunter22", "bookorbit")

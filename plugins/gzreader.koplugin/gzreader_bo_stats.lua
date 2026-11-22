@@ -128,6 +128,8 @@ function Stats.send(plugin, force, on_done)
         if n_books > 0 then
             plugin:save()
             Log.info("BookOrbit reading time: sent", res.sent or 0, "page rows of", n_books, "books")
+            -- (Home's reading stats are older than what BookOrbit now has)
+            if (tonumber(res.sent) or 0) > 0 then require("gzreader_grimstats").stale(plugin) end
         end
         if on_done then on_done(true) end
     end, "reading time", { nice = true })
