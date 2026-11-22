@@ -13,7 +13,7 @@ What works with BookOrbit today:
 | Reading progress, both ways (the exact page; BookOrbit converts it for its web reader) | yes |
 | Books already on the Kindle matched to BookOrbit's (by the file's fingerprint) | yes |
 | Highlights and the notes on them, both ways (EPUB and other reflowable books) | yes |
-| Bookmarks | not yet |
+| Page bookmarks (dog-ears), both ways (EPUB and other reflowable books) | yes |
 | Reading statistics, read status, ratings | not yet |
 | Putting books on collections from the Kindle | not yet |
 | Audiobooks | not yet |
@@ -65,6 +65,13 @@ Signing in to BookOrbit signs this Kindle out of Grimmory (and the other way rou
 - Reflowable books only (EPUB, and the others the Kindle lays out itself). Highlights in PDFs stay on the Kindle.
 - If BookOrbit can't place a highlight in your copy of the book, it is skipped; the log line `BookOrbit highlights … couldn't be placed` counts them.
 - To switch it off: Settings → Accounts and services → Books → Sync highlights and notes.
+
+## Bookmarks
+
+- A page you dog-ear on the Kindle appears among the book's bookmarks in BookOrbit; one made on another device dog-ears its page here; removing one on either side removes it on the other.
+- When: as a book opens, a few seconds after you add or remove a bookmark, and on Sync now.
+- Reflowable books only, and only if your BookOrbit offers bookmark sync (GZreader asks at sign-in; sign in again after updating BookOrbit).
+- The same switch as for Grimmory's bookmarks, in Settings → Accounts and services → Books.
 
 ## If it doesn't connect
 
