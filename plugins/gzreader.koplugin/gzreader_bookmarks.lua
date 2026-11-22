@@ -188,7 +188,7 @@ function BM:bookHad(key, id)
 end
 
 function BM:enabled()
-    return self.plugin:syncEnabled() and self.plugin.store.bookmark_sync_disabled ~= true
+    return self.plugin:syncEnabled() and self.plugin:serverCan("bookmarks") and self.plugin.store.bookmark_sync_disabled ~= true
 end
 
 --- Can talk to Grimmory now: Wi-Fi, or (no Wi-Fi) the journal the sync

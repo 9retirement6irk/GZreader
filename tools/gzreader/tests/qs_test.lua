@@ -105,7 +105,7 @@ check(SAVES == 3, "each new answer is saved")
 local function syncPage(pgs) for _, pg in ipairs(pgs) do if pg.gz_sync_page then return pg end end end
 check(syncPage(pages).title == "Your books" and syncPage(pages).description:match("kept on this Kindle"), "on its own: the guide's sync page says the books stay on the Kindle")
 how.on_apply({ bookorbit = true })
-check(syncPage(pages).title == "Books from BookOrbit" and syncPage(pages).description:match("aren't synced with BookOrbit yet"), "BookOrbit: it says nothing is synced yet")
+check(syncPage(pages).title == "Books from BookOrbit" and syncPage(pages).description:match("browse and download your books"), "BookOrbit: it says what works (gzreader_bookorbit's note, when it loads)")
 how.on_apply({ grimmory = true })
 check(syncPage(pages).title == "Synced with Grimmory" and syncPage(pages).description:match("in sync with Grimmory"), "Grimmory again: as before")
 -- what was answered before, and what this Kindle is signed in to

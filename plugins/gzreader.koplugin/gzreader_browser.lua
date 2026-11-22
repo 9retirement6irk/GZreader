@@ -328,7 +328,7 @@ function Browser.grimmoryItems(self)
         end
     end
     if orbit then
-        items[#items + 1] = Rows.about(_("About BookOrbit"), T(_("BookOrbit is your book server: the Catalog's books come from it. For now you can browse and download them; reading progress, highlights, bookmarks and audiobooks aren't synced with BookOrbit yet.\n\nSign in with the %1 sync user name and password you made in BookOrbit (Settings → %1), not your website sign-in.\n\nRebuild library: BookOrbit's list of books fetched again, when the Catalog is missing books or shows old ones."), "KOReader"))
+        items[#items + 1] = Rows.about(_("About BookOrbit"), T(_("BookOrbit is your book server: the Catalog's books come from it.") .. " " .. require("gzreader_bookorbit").note() .. _("\n\nSign in with the %1 sync user name and password you made in BookOrbit (Settings → %1), not your website sign-in.\n\nRebuild library: BookOrbit's list of books fetched again, when the Catalog is missing books or shows old ones."), "KOReader"))
         return Rows.mark(items)
     end
     items[#items + 1] = Rows.about(_("About Grimmory"), usb
