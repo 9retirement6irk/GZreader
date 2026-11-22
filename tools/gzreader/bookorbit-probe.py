@@ -14,7 +14,9 @@ BOOKORBIT_API_KEY. It only reads books and positions; the one trace it leaves is
 a device named "GZreader probe" in BookOrbit's KOReader device list (from the
 match check), which can be removed there.
 """
-import getpass, hashlib, json, os, ssl, sys, urllib.error, urllib.request
+import getpass, hashlib, json, os, socket, ssl, sys, urllib.error, urllib.request
+
+TLS = None
 
 MOCK_SHAPES = {  # what the tests' mock server (tests/mock_bookorbit.py) sends, to compare with
     "list item": {"id", "title", "authors", "seriesId", "seriesName", "seriesIndex", "progressPercentage", "lastReadAt",
@@ -38,19 +40,62 @@ def ask(env, prompt, secret=False, optional=False):
     return v
 
 
+def tls_context():
+    """The system's certificates; where Python has none of its own (python.org's
+    Python on a Mac before its "Install Certificates" step), macOS's bundle or certifi's."""
+    ctx = ssl.create_default_context()
+    if ctx.cert_store_stats().get("x509_ca", 0) == 0:
+        for bundle in ("/etc/ssl/cert.pem", "/etc/ssl/certs/ca-certificates.crt"):
+            if os.path.exists(bundle):
+                try:
+                    ctx.load_verify_locations(bundle)
+                    break
+                except (OSError, ssl.SSLError):
+                    pass
+        else:
+            try:
+                import certifi
+                ctx.load_verify_locations(certifi.where())
+            except Exception:
+                pass
+    return ctx
+
+
+def why(e):
+    """Why a request got no answer, in words that name no address."""
+    r = getattr(e, "reason", e)
+    text = str(r)
+    if isinstance(r, ssl.SSLCertVerificationError) or "CERTIFICATE_VERIFY_FAILED" in text:
+        return "the server's certificate wasn't accepted (%s)" % (getattr(r, "verify_message", "") or "verification failed")
+    if isinstance(r, ssl.SSLError):
+        return "a TLS error (%s)" % (getattr(r, "reason", None) or type(r).__name__)
+    if isinstance(r, socket.gaierror):
+        return "the address's name wasn't found (DNS)"
+    if isinstance(r, (socket.timeout, TimeoutError)) or "timed out" in text:
+        return "timed out"
+    if isinstance(r, ConnectionRefusedError):
+        return "connection refused"
+    if isinstance(r, ConnectionResetError):
+        return "connection reset"
+    code = getattr(r, "errno", None)
+    return type(r).__name__ + (code and " (errno %s)" % code or "")
+
+
 def call(base, path, headers, method="GET", body=None, want_bytes=0):
     data = json.dumps(body).encode() if body is not None else None
     h = dict(headers)
+    h.setdefault("User-Agent", "GZreader-probe/1")
+    h.setdefault("Accept", "*/*")
     if data is not None:
         h["Content-Type"] = "application/json"
     req = urllib.request.Request(base + path, data=data, method=method, headers=h)
     try:
-        with urllib.request.urlopen(req, timeout=30, context=ssl.create_default_context()) as r:
+        with urllib.request.urlopen(req, timeout=30, context=TLS) as r:
             code, raw, hdr = r.status, r.read(want_bytes or 4 << 20), r.headers
     except urllib.error.HTTPError as e:
         code, raw, hdr = e.code, e.read(1 << 16), e.headers
     except (urllib.error.URLError, OSError) as e:
-        return None, None, {}, type(e).__name__
+        return None, None, {}, why(e)
     if want_bytes:
         return code, raw, hdr, None
     try:
@@ -86,13 +131,21 @@ def main():
     key = ask("BOOKORBIT_API_KEY", "API key for audiobooks (not shown; Enter to skip): ", secret=True, optional=True)
     ko = {"x-auth-user": user, "x-auth-key": hashlib.md5(password.encode()).hexdigest()}
     A = base + "/api/v1"
+    global TLS
+    TLS = tls_context()
     print("\nBookOrbit probe (status codes and field names only)\n")
+    print("Python %s on %s; %d certificate authorities loaded\n" % (sys.version.split()[0], sys.platform, TLS.cert_store_stats().get("x509_ca", 0)))
 
     code, j, _, err = call(A, "/koreader/users/auth", ko)
     line("sign-in (koreader/users/auth)", code, err or keys(j))
+    if code is None:
+        print("\nNo answer from the server (%s), so the rest is skipped. The sign-in wasn't tried." % err)
+        return 1
     if code != 200:
-        print("\nThe sign-in didn't work, so the rest is skipped. 401: wrong user name or password; 403: sync is switched off"
-              " for these credentials in BookOrbit.")
+        ctype = "a web page" if j is None else "JSON"
+        print("\nThe sign-in didn't work (the answer was %s), so the rest is skipped. 401: wrong user name or password; 403 with JSON:"
+              " sync is switched off for these credentials in BookOrbit; 403 or 302 with a web page: something in front of"
+              " BookOrbit (an access proxy or a bot check) answered instead of it." % ctype)
         return 1
     code, j, _, err = call(A, "/koreader/plugin/version", ko)
     line("version", code, err or (isinstance(j, dict) and "server %s; capabilities: %s" % (
