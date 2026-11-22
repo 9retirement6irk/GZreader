@@ -214,6 +214,20 @@ try:
     check(call("POST", B, KO, dict(DEV, books=[dict(mb, changes=[dict(bm, extra=1)])]))[0] == 400
           and call("POST", B, KO, dict(DEV, books=[dict(mb, changes=[{"datetime": bm["datetime"]}])]))[0] == 400, "the bookmark exchange refuses an unknown field and no place")
 
+    # --- reading time and ratings
+    P = "/api/v1/koreader/plugin/page-stats"
+    ev = [{"page": 3, "startTime": 1790000100, "durationSeconds": 40, "totalPages": 240}, {"page": 4, "startTime": 1790000140, "durationSeconds": 35, "totalPages": 240}]
+    code, j = call("POST", P, KO, dict(DEV, books=[{"hash": h, "bookFileId": f["id"], "events": ev}, {"hash": "e" * 32, "events": ev}]))
+    check(code == 201 and j["results"] == [{"hash": h, "accepted": 2, "duplicates": 0}] and j["unmatched"] == ["e" * 32], "page rows taken; a book BookOrbit doesn't have is unmatched")
+    check(call("POST", P, KO, dict(DEV, books=[{"hash": h, "events": ev}]))[1]["results"][0] == {"hash": h, "accepted": 0, "duplicates": 2}, "the same rows again are duplicates")
+    for bad, what in (([dict(ev[0], durationSeconds=90000)], "a duration over a day"), ([dict(ev[0], startTime=0)], "no start time"),
+                      ([dict(ev[0], page=1.5)], "a fractional page"), ([], "no events")):
+        check(call("POST", P, KO, dict(DEV, books=[{"hash": h, "events": bad}]))[0] == 400, "page-stats refuses " + what)
+    R = "/api/v1/koreader/plugin/catalog/books/101/rating"
+    check(call("PUT", R, KO, {"rating": 4}) == (200, {"rating": 4}) and call("GET", "/api/v1/koreader/plugin/catalog/books/101", KO)[1]["rating"] == 4, "a rating set, and in the book's record")
+    check(call("PUT", R, KO, {"rating": 0})[0] == 200 and call("PUT", R, KO, {"rating": 6})[0] == 400 and call("PUT", R, KO, {"stars": 3})[0] == 400
+          and call("PUT", "/api/v1/koreader/plugin/catalog/books/999/rating", KO, {"rating": 3})[0] == 404, "ratings: 0 to 5, known books only")
+
     # --- the main API: key, audiobooks
     code, j = call("GET", "/api/v1/auth/me", API)
     check(code == 200 and j["authenticationMethod"] == "api_key", "API key as Bearer")

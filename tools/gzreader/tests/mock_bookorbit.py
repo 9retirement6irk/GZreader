@@ -105,6 +105,8 @@ def fresh():
         "anno_devices": {},       # "<deviceId>:<bookId>" -> {serverId (as text): the version that device has}
         "bookmarks": {},          # book id -> [server bookmarks: serverId, pos, pageno, title, deleted]
         "mark_devices": {},       # "<deviceId>:<bookId>" -> {serverId (as text): that device's key for it}
+        "page_stats": {},         # hash -> [[page, startTime, durationSeconds, totalPages]] (one per page and start)
+        "ratings": {},            # book id -> stars (0-5)
         "next_id": 1,
     }
 
@@ -140,7 +142,7 @@ def detail(b):
     p = STATE["progress"].get(b["hash"])
     d.update({"subtitle": None, "description": "About %s." % b["title"], "publisher": "Example House",
               "publishedDate": "2020-05-01", "publishedYear": 2020, "language": "en", "isbn10": None, "isbn13": None,
-              "libraryId": b["libraryId"], "libraryName": LIBRARIES[b["libraryId"]], "rating": None, "pageCount": 240,
+              "libraryId": b["libraryId"], "libraryName": LIBRARIES[b["libraryId"]], "rating": STATE["ratings"].get(str(b["id"])), "pageCount": 240,
               "collections": [{"id": c, "name": COLLECTIONS[c]} for c in b["collections"]], "genres": [], "tags": [],
               "progress": p and {"fileId": b["fileId"], "percentage": pct100(p["percentage"]),
                                  "koreaderProgress": p.get("progress"), "updatedAt": p["updatedAt"]} or None,
@@ -676,6 +678,50 @@ class Handler(BaseHTTPRequestHandler):
                     continue
                 results.append((ack_book if ack else exchange_book)(d["deviceId"], b, book))
             return self.send(201, {"results": results, "unmatched": unmatched, "positionIncompatible": []})
+        if p == "plugin/page-stats" and method == "POST":
+            d = self.body()
+            if not self.device(d):
+                return
+            books = d.get("books")
+            if not isinstance(books, list) or not 1 <= len(books) <= 50:
+                return self.error(400, "books must hold 1 to 50 books")
+            results, unmatched = [], []
+            whole = lambda v: isinstance(v, int) and not isinstance(v, bool)
+            for book in books:
+                if not isinstance(book, dict) or not isinstance(book.get("hash"), str) or not MD5.match(book["hash"]):
+                    return self.error(400, "hash must be an MD5 hex string")
+                events = book.get("events")
+                if not isinstance(events, list) or not events:
+                    return self.error(400, "events must not be empty")
+                for e in events:
+                    if not isinstance(e, dict) or not (whole(e.get("page")) and e["page"] >= 0 and whole(e.get("startTime")) and e["startTime"] >= 1
+                                                       and whole(e.get("durationSeconds")) and 0 <= e["durationSeconds"] <= 86400
+                                                       and whole(e.get("totalPages")) and e["totalPages"] >= 1) or set(e) - {"page", "startTime", "durationSeconds", "totalPages"}:
+                        return self.error(400, "each event needs page, startTime, durationSeconds (0 to 86400) and totalPages, as whole numbers")
+                h = book["hash"].lower()
+                if not any(b["hash"] == h for b in BOOKS):
+                    unmatched.append(h)
+                    continue
+                rows = STATE["page_stats"].setdefault(h, [])
+                accepted = 0
+                for e in events:
+                    if not any(r[0] == e["page"] and r[1] == e["startTime"] for r in rows):
+                        rows.append([e["page"], e["startTime"], e["durationSeconds"], e["totalPages"]])
+                        accepted += 1
+                results.append({"hash": h, "accepted": accepted, "duplicates": len(events) - accepted})
+            return self.send(201, {"results": results, "unmatched": unmatched})
+        m = re.match(r"^plugin/catalog/books/(\d+)/rating$", p)
+        if m and method == "PUT":
+            d = self.body()
+            if not any(b["id"] == int(m.group(1)) for b in BOOKS):
+                return self.error(404, "Book not found")
+            r = isinstance(d, dict) and d.get("rating")
+            if r is not None and not (isinstance(r, (int, float)) and not isinstance(r, bool) and 0 <= r <= 5):
+                return self.error(400, "rating must be a number from 0 to 5")
+            if isinstance(d, dict) and set(d) - {"rating"}:
+                return self.error(400, "property %s should not exist" % sorted(set(d) - {"rating"})[0])
+            STATE["ratings"][m.group(1)] = r
+            return self.send(200, {"rating": r})
         if p in ("plugin/bookmarks/exchange", "plugin/bookmarks/exchange-ack") and method == "POST":
             d = self.body()
             if not self.device(d):

@@ -1268,6 +1268,7 @@ function Grimmory:afterLogin(previous, backend)
         -- the saved lists and the library index (book ids mean other books there).
         self.store.pending = { progress = {}, sessions = {}, ratings = {} }
         self.store.bookorbit_unmatched = nil
+        self.store.bookorbit_stats = nil
         local was = type(previous) == "table" and previous[3] or "grimmory"
         if was ~= self:backend() then
             -- The other server's books: its ids mean other books here, so the list of
@@ -2151,6 +2152,8 @@ function Grimmory:onCloseDocument()
         pcall(self.annotations.onClose, self.annotations)
         self.annotations = nil
     end
+    -- (BookOrbit: the pages just read, from KOReader's statistics, a moment after they're saved)
+    if self.api.koreader_positions then pcall(function() require("gzreader_bo_stats").later(self) end) end
     if self.sync then
         self.sync:onLeave(true)
         pcall(self.sync.releaseCfi, self.sync)
