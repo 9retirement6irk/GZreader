@@ -20,11 +20,12 @@ Two sign-ins, as the real server:
 Control routes for tests (no sign-in): GET /_mock/state, POST /_mock/set
 (a JSON object merged into STATE's switches), POST /_mock/reset.
 """
-import hashlib, json, re, sys, time
+import hashlib, io, json, re, sys, time, zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, quote
 
 KO_USER, KO_PASSWORD = "will-kindle", "hunter22"
+KO_KEY = hashlib.md5(KO_PASSWORD.encode()).hexdigest()
 API_KEY = "bok_" + "a1B2c3D4e5" * 4 + "f6G7h8I9j"  # 53 characters
 MD5 = re.compile(r"^[0-9a-f]{32}$", re.I)
 DEVICE_ID = re.compile(r"^[A-Za-z0-9_-]{1,100}$")
@@ -98,6 +99,11 @@ def fresh():
         "api_keys_enabled": True,
         "api_key_write": True,    # False: a read key (PUT answers 403 API_KEY_READ_ONLY)
         "offline": False,         # every route answers 503
+        "ko_credentials": True,   # the account has a KOReader sync sign-in (False: none yet; the API key can make one)
+        "ko_made": None,          # {username, md5}: the sign-in made through POST koreader/credentials
+        "ko_md5_known": True,     # False: an old sign-in whose key the server can't hand over (plugin-package answers 400)
+        "key_ko_permission": True,  # the API key's "KOReader sync" permission
+        "ko_names_taken": [],     # sync user names other accounts have
         "requests": [],           # book requests: {id, userId, title, authors, mediaKind, status, ...}
         "request_permission": True,  # the "Request books" permission (False: 403)
         "request_status": "pending",  # what a new request starts as ("approved" with auto-approve)
@@ -463,11 +469,14 @@ class Handler(BaseHTTPRequestHandler):
         user, key = self.headers.get("x-auth-user"), self.headers.get("x-auth-key")
         if not user or not key:
             return self.error(401, "Missing KOReader credentials")
-        if user != KO_USER:
+        made = STATE["ko_made"]  # (a sign-in made with the API key stands in for the usual one)
+        if not made and not STATE["ko_credentials"]:
+            return self.error(401, "Invalid credentials")
+        if user != (made["username"] if made else KO_USER):
             return self.error(401, "Invalid credentials")
         if not STATE["sync_enabled"]:
             return self.error(403, "Sync is disabled")
-        want = hashlib.md5(KO_PASSWORD.encode()).hexdigest()
+        want = made["md5"] if made else KO_KEY
         got = key.lower() if MD5.match(key) else hashlib.md5(key.encode()).hexdigest()
         if got != want:
             return self.error(401, "Invalid credentials")
@@ -571,7 +580,7 @@ class Handler(BaseHTTPRequestHandler):
         if not path.startswith("/api/v1/"):
             return self.error(404, "Not Found")
         p = path[len("/api/v1/"):]
-        if p.startswith("koreader/"):
+        if p.startswith("koreader/") and p not in ("koreader/credentials", "koreader/plugin-package"):
             if not self.ko_user():
                 return
             STATE["seen"].append([method, p])
@@ -649,6 +658,51 @@ class Handler(BaseHTTPRequestHandler):
                     if method == "DELETE" and cid in b["collections"]:
                         b["collections"].remove(cid); changed += 1
             return self.send(200 if method == "DELETE" else 201, {"changed": changed})
+        # the KOReader sync sign-in, managed with the API key (its "KOReader sync" permission)
+        if p in ("koreader/credentials", "koreader/plugin-package"):
+            if not self.api_key(write=method != "GET"):
+                return
+            STATE["seen"].append([method, p])
+            if not STATE["key_ko_permission"]:
+                return self.error(403, "Forbidden resource")
+            made = STATE["ko_made"]
+            has = STATE["ko_credentials"] or made
+            name = made["username"] if made else KO_USER
+            if p == "koreader/credentials" and method == "GET":
+                if not has:
+                    return self.send(200, b"", "application/json")
+                return self.send(200, {"username": name, "syncEnabled": STATE["sync_enabled"], "hideAudioOnlyBooks": True,
+                                       "createdAt": "2026-10-01T08:00:00.000Z", "readAloudDelivery": None})
+            if p == "koreader/credentials" and method == "POST":
+                d = self.body()
+                if (not isinstance(d, dict) or set(d) - {"username", "password", "readAloudDelivery"} or not isinstance(d.get("username"), str)
+                        or not 3 <= len(d["username"]) <= 100 or not isinstance(d.get("password"), str) or not 6 <= len(d["password"]) <= 128):
+                    return self.error(400, "Bad Request")
+                if has:
+                    return self.error(409, "KOReader credentials already exist")
+                if d["username"] in STATE["ko_names_taken"]:
+                    return self.error(409, "Username already taken")
+                STATE["ko_made"] = {"username": d["username"], "md5": hashlib.md5(d["password"].encode()).hexdigest()}
+                return self.send(201, {"success": True})
+            if p == "koreader/plugin-package" and method == "GET":
+                origin = q.get("origin", "")
+                if not re.match(r"^https?://[^/]+", origin):
+                    return self.error(400, "origin must be a valid http(s) URL")
+                if not has:
+                    return self.error(404, "Create KOReader sync credentials first")
+                if not STATE["ko_md5_known"]:
+                    return self.error(400, "Update your KOReader password once to enable the preconfigured download")
+                key = made["md5"] if made else KO_KEY
+                buf = io.BytesIO()
+                with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+                    z.writestr("bookorbit.koplugin/bookorbit_provision.lua",
+                               "-- Generated by BookOrbit. Applied automatically when KOReader starts, then removed.\nreturn {\n"
+                               '    server_url = "%s",\n    username = "%s",\n    userkey = "%s",\n    generated_at = "2026-11-22T10:00:00.000Z",\n}\n'
+                               % (origin, name, key))
+                    z.writestr("bookorbit.koplugin/_meta.lua", 'return { name = "bookorbit" }\n')
+                    z.writestr("bookorbit.koplugin/main.lua", "-- (the plugin itself: not GZreader's to read)\n" * 400)
+                return self.send(200, buf.getvalue(), "application/zip", {"Cache-Control": "no-store"})
+            return self.error(404, "Not Found")
         # book requests: ask for a book the server doesn't have; your own listed, newest first
         if p == "book-requests" or p.startswith("book-requests/"):
             if not self.api_key(write=method != "GET"):

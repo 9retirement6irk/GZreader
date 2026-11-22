@@ -46,14 +46,14 @@ end
 
 function Gzip.available() return lib() ~= nil end
 
---- Decompress gzip data; nil, err on failure.
-function Gzip.inflate(data)
+--- Decompress gzip data (`raw`: a bare deflate stream, as in a zip); nil, err on failure.
+function Gzip.inflate(data, raw)
     local z = lib()
     if not z then return nil, "no zlib" end
     local strm = ffi.new("gz_z_stream")
     strm.next_in = ffi.cast("const unsigned char *", data)
     strm.avail_in = #data
-    if z.inflateInit2_(strm, 15 + 32, z.zlibVersion(), ffi.sizeof("gz_z_stream")) ~= 0 then
+    if z.inflateInit2_(strm, raw and -15 or (15 + 32), z.zlibVersion(), ffi.sizeof("gz_z_stream")) ~= 0 then
         return nil, "inflateInit failed"
     end
     local chunk = math.max(65536, #data * 4)

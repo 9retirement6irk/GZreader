@@ -166,7 +166,7 @@ local function grimmorySection(st, base)
             parts[#parts + 1] = form(base .. "/grimmory/apikey",
                 '<label for="g_apikey">API key (audiobooks, collections, book requests)' .. (g.bookorbit_api_key and " (one is saved)" or "") .. "</label>"
                 .. '<input id="g_apikey" name="api_key" type="password" autocomplete="off" placeholder="bok_…">'
-                .. '<p class="note">From BookOrbit: Settings → API keys, with read and write access. Needed for audiobooks only. Leave empty and save to remove it.</p>'
+                .. '<p class="note">From BookOrbit: Settings → API keys, with read and write access. Needed for audiobooks, changing collections and book requests. Leave empty and save to remove it.</p>'
                 .. '<button type="submit">Save API key</button>', "Checking…")
         end
         parts[#parts + 1] = form(base .. "/grimmory/disconnect",
@@ -204,11 +204,19 @@ local function grimmorySection(st, base)
     local which = '<label for="g_backend">Book server</label><select id="g_backend" name="backend">'
         .. '<option value="grimmory">Grimmory</option>'
         .. '<option value="bookorbit"' .. (picked == "bookorbit" and " selected" or "") .. ">BookOrbit</option></select>"
-        .. '<p class="note">BookOrbit: use the KOReader sync user name and password from BookOrbit\'s Settings → KOReader (not your website sign-in). '
-        .. esc(g.bookorbit_note or "") .. "</p>"
+        .. '<p class="note">BookOrbit: use the KOReader sync user name and password from BookOrbit\'s Settings → KOReader (not your website sign-in), '
+        .. "or leave both empty and give an API key below. " .. esc(g.bookorbit_note or "") .. "</p>"
+    -- BookOrbit with only an API key: the key fetches (or makes) the e-reader sign-in
+    local key_only = '<details' .. (picked == "bookorbit" and " open" or "") .. '><summary>BookOrbit: sign in with an API key instead</summary>'
+        .. '<label for="g_signin_key">BookOrbit API key</label>'
+        .. '<input id="g_signin_key" name="api_key" type="password" autocomplete="off" placeholder="bok_…">'
+        .. '<p class="note">From BookOrbit: Settings → API keys, with read and write access and “KOReader sync” ticked (and “Request books”, to request books). '
+        .. "The Kindle uses the key to get your KOReader sync sign-in from BookOrbit, or to make one if you have none, and keeps the key for audiobooks, collections and book requests. "
+        .. "Leave the user name and password empty.</p>"
+        .. '<button type="submit" name="action" value="apikey" formnovalidate>Connect with the API key</button></details>'
     parts[#parts + 1] = form(base .. "/grimmory",
         which .. input("g_server", "server", "Server address", (g.form or {}).server, 'required placeholder="https://books.example.com or 192.168.1.20:6060" ' .. URL_ATTRS)
-        .. body, "Connecting…")
+        .. body .. key_only, "Connecting…")
     if g.connected then parts[#parts + 1] = "</div></details>" end
     parts[#parts + 1] = "</section>"
     return table.concat(parts)

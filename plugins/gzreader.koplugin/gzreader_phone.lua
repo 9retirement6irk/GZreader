@@ -486,7 +486,14 @@ function Phone.open(plugin, opts)
         if form.action == "sso" and form.backend == "bookorbit" then
             return grimmoryFailed(form, T(_("BookOrbit is signed in to with its %1 sync user name and password, not single sign-on."), "KOReader"))
         end
-        local ok, err = plugin:connect(form.server or "", form.username or "", form.password or "", form.backend)
+        local ok, err
+        if form.action == "apikey" then form.backend = "bookorbit" end
+        if form.action == "apikey" or form.backend == "bookorbit" and (form.api_key or ""):gsub("%s+", "") ~= "" and (form.password or "") == "" then
+            -- (BookOrbit with only an API key: the key gets the e-reader sign-in itself)
+            ok, err = plugin:connectWithApiKey(form.server or "", form.api_key or "")
+        else
+            ok, err = plugin:connect(form.server or "", form.username or "", form.password or "", form.backend)
+        end
         if ok then return grimmoryOk() end
         return grimmoryFailed(form, err)
     end

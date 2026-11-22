@@ -15614,6 +15614,87 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
         NetQ.run, NetQ.usb = was_run, was_usb
         package.loaded["ui/widget/infomessage"], package.loaded["ui/widget/confirmbox"] = IM_was, CB_was
     end
+    -- signing in with only the API key: the key gets (or makes) the e-reader sign-in
+    do
+        local md5 = require("ffi/sha2").md5
+        local Zip = require("gzreader_zipread")
+        check(Zip.read("not a zip at all, just some text", "x.lua") == nil and Zip.read("", "x.lua") == nil and Zip.read(nil, "x.lua") == nil,
+            "zip reader: junk is refused")
+        local function seen(method, path)
+            for _i, r in ipairs(bctl("/_mock/state").seen) do if r[1] == method and r[2] == path then return true end end
+            return false
+        end
+        plugin.api:clearTokens()
+        plugin.store.bookorbit, plugin.store.username = nil, nil
+        bctl("/_mock/reset")
+        local ok, err = plugin:connectWithApiKey(BO, " " .. KEY .. " ")
+        check(ok == true and plugin.store.username == "will-kindle" and plugin.store.bookorbit.key == md5("hunter22") and plugin.api:hasApiKey()
+            and plugin.store.bookorbit.api_key == KEY and seen("GET", "koreader/credentials") and seen("GET", "koreader/plugin-package")
+            and #plugin.api:listBooks{ page = 0, size = 20 }.content > 0,
+            "API-key sign-in: the sync name and key fetched with the key, signed in, the key kept (" .. tostring(err) .. ")")
+        check(not seen("POST", "koreader/credentials"), "…and no sign-in made when there is one")
+        -- none yet: one is made, named after the account, with a password only this Kindle had
+        plugin.api:clearTokens()
+        plugin.store.bookorbit, plugin.store.username = nil, nil
+        bctl("/_mock/reset")
+        bctl("/_mock/set", '{"ko_credentials": false}')
+        ok, err = plugin:connectWithApiKey(BO, KEY)
+        local made = bctl("/_mock/state").ko_made
+        check(ok == true and type(made) == "table" and made.username == "will" and plugin.store.username == "will" and made.md5 == plugin.store.bookorbit.key
+            and #made.md5 == 32 and made.md5 ~= md5("hunter22") and plugin.api:hasApiKey() and #plugin.api:listBooks{ page = 0, size = 20 }.content > 0,
+            "API-key sign-in: no sync sign-in yet, so one is made under the account's name and used (" .. tostring(err) .. ")")
+        plugin.api:clearTokens()
+        plugin.store.bookorbit, plugin.store.username = nil, nil
+        bctl("/_mock/reset")
+        bctl("/_mock/set", '{"ko_credentials": false, "ko_names_taken": ["will"]}')
+        ok = plugin:connectWithApiKey(BO, KEY)
+        made = bctl("/_mock/state").ko_made
+        check(ok == true and type(made) == "table" and made.username:match("^will%-%x%x%x%x$") and plugin.store.username == made.username,
+            "…a taken name gets four digits added (" .. tostring(made and made.username) .. ")")
+        -- what can go wrong, each said plainly; the Kindle stays signed in as it was
+        local was_user, was_key = plugin.store.username, plugin.store.bookorbit.key
+        bctl("/_mock/set", '{"ko_credentials": false, "ko_made": null, "api_key_write": false}')
+        ok, err = plugin:connectWithApiKey(BO, KEY)
+        check(ok == false and err:find("this API key is read-only, so one can't be made", 1, true) ~= nil and err:find("GZreader sync", 1, true) == nil,
+            "API-key sign-in: no sync sign-in and a read-only key: said so " .. tostring(err))
+        bctl("/_mock/set", '{"ko_credentials": true, "api_key_write": true, "key_ko_permission": false}')
+        ok, err = plugin:connectWithApiKey(BO, KEY)
+        check(ok == false and err:find("sync” ticked", 1, true) ~= nil, "API-key sign-in: a key without the sync permission: said so " .. tostring(err))
+        bctl("/_mock/set", '{"key_ko_permission": true, "ko_md5_known": false}')
+        ok, err = plugin:connectWithApiKey(BO, KEY)
+        check(ok == false and err:find("saved once more", 1, true) ~= nil, "API-key sign-in: an old sync sign-in BookOrbit can't hand over: said so " .. tostring(err))
+        bctl("/_mock/set", '{"ko_md5_known": true, "sync_enabled": false}')
+        ok, err = plugin:connectWithApiKey(BO, KEY)
+        check(ok == false and err:find("sync switched off", 1, true) ~= nil, "API-key sign-in: sync switched off: said so " .. tostring(err))
+        bctl("/_mock/set", '{"sync_enabled": true}')
+        ok, err = plugin:connectWithApiKey(BO, "bok_wrongwrongwrong")
+        check(ok == false and err:find("didn't accept the API key", 1, true) ~= nil, "API-key sign-in: a wrong key: said so")
+        ok, err = plugin:connectWithApiKey(BO, "   ")
+        check(ok == false and err == "Enter the API key.", "API-key sign-in: no key, nothing asked")
+        check(plugin.store.username == was_user and plugin.store.bookorbit.key == was_key and plugin.api:isPaired(), "…and after each the Kindle is signed in as before")
+        -- the setup page: the key alone, never shown back
+        bctl("/_mock/reset")
+        plugin.api:clearTokens()
+        plugin.store.bookorbit, plugin.store.username = nil, nil
+        PS.new = function(self, o) screen = o; return o end
+        plugin:startQrPairing()
+        local purl = screen.url:gsub("#.*$", "")
+        local pcode, pbody = phone("'" .. purl .. "'")
+        check(pcode == 200 and pbody:find('name="api_key" type="password"', 1, true) and pbody:find("sign in with an API key instead", 1, true),
+            "the setup page: BookOrbit can be signed in to with an API key")
+        pcode, pbody = phone("-L --data-urlencode 'server=" .. BO .. "' --data-urlencode 'backend=grimmory' --data-urlencode 'action=apikey' --data-urlencode 'api_key=bok_wrongwrongwrong' '" .. purl .. "/grimmory'")
+        check(pbody:find("accept the API key", 1, true) and not pbody:find("bok_wrongwrongwrong", 1, true) and not plugin.api:isPaired(),
+            "the setup page: a wrong key is refused and not echoed")
+        pcode, pbody = phone("-L --data-urlencode 'server=" .. BO .. "' --data-urlencode 'backend=bookorbit' --data-urlencode 'action=apikey' --data-urlencode 'api_key=" .. KEY .. "' '" .. purl .. "/grimmory'")
+        check(plugin.api:isPaired() and plugin:backend() == "bookorbit" and plugin.store.username == "will-kindle" and plugin.api:hasApiKey()
+            and pbody:find("Connected to BookOrbit as <b>will-kindle</b>", 1, true) and not pbody:find(KEY, 1, true) and not pbody:find(md5("hunter22"), 1, true),
+            "the setup page: the key alone signs the Kindle in; neither key is shown")
+        screen.on_cancel()
+        local lf = io.open(WORK .. "/gzreader.log", "rb")
+        local ltext = lf and lf:read("*a") or ""
+        if lf then lf:close() end
+        check(not ltext:find(KEY, 1, true) and not ltext:find(md5("hunter22"), 1, true), "the log has neither the API key nor the sync key")
+    end
     -- signing in again as the same user keeps the key; another user doesn't get it
     plugin:connect(BO, "will-kindle", "hunter22", "bookorbit")
     check(plugin.api:hasApiKey(), "signing in again to the same server and user keeps the API key")

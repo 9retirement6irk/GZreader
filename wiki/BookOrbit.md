@@ -82,6 +82,22 @@ Signing in to BookOrbit signs this Kindle out of Grimmory (and the other way rou
 - **Ratings:** the stars you give a book on the Kindle are set in BookOrbit; a rating made in BookOrbit is taken on the Kindle when you haven't rated the book here.
 - The Home screen's Grimmory statistics widget stays empty with BookOrbit: it reads Grimmory's own numbers.
 
+## Signing in with just an API key
+
+Instead of the KOReader sync user name and password, the Kindle can be given only BookOrbit's address and an **API key**:
+
+1. In BookOrbit: **Settings → API keys**, make a key with **read and write** access and **KOReader sync** ticked (tick **Request books** too if you want to request books from the Kindle). BookOrbit shows it once.
+2. On the Kindle, open the setup page (Settings → Accounts and services → Books → Connect with QR code) and scan the code with your phone.
+3. Choose **BookOrbit** as the book server, enter its address, open **BookOrbit: sign in with an API key instead**, paste the key and press **Connect with the API key**.
+
+What the Kindle does with the key:
+
+- It asks BookOrbit for your KOReader sync sign-in (the same one BookOrbit puts in its own "preconfigured plugin" download) and signs in with that. Your other e-readers aren't affected.
+- If your account has no KOReader sync sign-in yet, the Kindle makes one, named after your account, with a long random password. You never need that password; if you want to use the sign-in on another device, set a password of your own in BookOrbit (Settings → KOReader), then sign the Kindle in again.
+- The key is kept for audiobooks, collections and book requests, so there's nothing more to enter.
+
+If BookOrbit says the key can't see the sync sign-in, the key was made without **KOReader sync**. If it says the sync password must be saved once more, your sync sign-in is older than BookOrbit's preconfigured download: set the sync password again in BookOrbit (the same one is fine), or sign in with the user name and password.
+
 ## Audiobooks
 
 BookOrbit keeps its audiobook routes apart from the e-reader sign-in, so audiobooks need a second credential: an **API key**.
