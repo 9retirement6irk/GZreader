@@ -104,7 +104,7 @@ try:
     check(call("GET", "/api/v1/koreader/plugin/catalog/books?size=500", KO)[0] == 400, "books: oversize page is refused")
     code, d = call("GET", "/api/v1/koreader/plugin/catalog/books/101", KO)
     f = d["files"][0]
-    check(code == 200 and d["libraryName"] == "Fiction" and d["seriesName"] == "Waymarks" and f["format"] == "epub" and f["role"] == "content" and f["downloadUrl"], "book detail")
+    check(code == 200 and d["libraryName"] == "Fiction" and d["seriesName"] == "Waymarks" and f["format"] == "epub" and f["role"] == "primary" and f["downloadUrl"], "book detail (its main file is \"primary\")")
     check(call("GET", "/api/v1/koreader/plugin/catalog/books/999", KO)[0] == 404, "missing book: 404")
     code, png, hdr = call("GET", "/api/v1/koreader/plugin/catalog/books/101/thumbnail", KO, raw=True)
     check(code == 200 and png[:4] == b"\x89PNG" and hdr["Content-Type"] == "image/png", "thumbnail is a PNG")
@@ -219,6 +219,13 @@ try:
           and seen["playback"] == {}, "the probe only reads")
     env["BOOKORBIT_KO_PASSWORD"] = "nope-nope"
     r = subprocess.run(probe, env=env, capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=60)
+    env2 = dict(env, BOOKORBIT_URL="http://127.0.0.1:1")
+    r2 = subprocess.run(probe, env=env2, capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=60)
+    check(r2.returncode == 1 and "connection refused" in r2.stdout and "The sign-in wasn't tried" in r2.stdout and "127.0.0.1" not in r2.stdout,
+          "the probe says why there was no answer, without the address")
+    env2["BOOKORBIT_URL"] = "https://no-such-host.invalid"
+    r2 = subprocess.run(probe, env=env2, capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=60)
+    check(r2.returncode == 1 and "no-such-host" not in r2.stdout and "no answer" in r2.stdout, "a name that doesn't exist: said, not echoed")
     check(r.returncode == 1 and "401" in r.stdout and "nope-nope" not in r.stdout and "version" not in r.stdout, "the probe stops at a failed sign-in")
 
     # --- the server away
