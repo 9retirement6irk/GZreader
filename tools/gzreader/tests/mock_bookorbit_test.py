@@ -318,6 +318,22 @@ try:
     check(r2.returncode == 1 and "no-such-host" not in r2.stdout and "no answer" in r2.stdout, "a name that doesn't exist: said, not echoed")
     check(r.returncode == 1 and "401" in r.stdout and "nope-nope" not in r.stdout and "version" not in r.stdout, "the probe stops at a failed sign-in")
 
+    # --- collections on the main API
+    code, cols = call("GET", "/api/v1/collections", API)
+    check(code == 200 and [c["id"] for c in cols] == [11, 12] and cols[0]["bookCount"] == 2 and cols[0]["userId"] == 1, "collections listed with the API key")
+    check(call("GET", "/api/v1/collections", KO)[0] == 401, "…not with the e-reader sign-in")
+    CB = "/api/v1/collections/11/books"
+    check(call("POST", CB, API, {"bookIds": [103]})[0] == 201 and call("GET", "/api/v1/koreader/plugin/catalog/books?collectionId=11", KO)[1]["total"] == 3,
+          "a book added to a collection shows in the e-reader catalog")
+    check(call("DELETE", CB, API, {"bookIds": [103]})[0] == 200 and call("GET", "/api/v1/koreader/plugin/catalog/books?collectionId=11", KO)[1]["total"] == 2, "…and taken off again")
+    check(call("POST", CB, API, {"bookIds": []})[0] == 400 and call("POST", "/api/v1/collections/99/books", API, {"bookIds": [103]})[0] == 404, "collections: bad or unknown")
+    call("POST", "/_mock/set", body={"collection_owners": {"13": 2}})
+    check(call("POST", "/api/v1/collections/13/books", API, {"bookIds": [103]})[0] == 403 and len(call("GET", "/api/v1/collections", API)[1]) == 3,
+          "someone else's shared collection is listed but can't be changed")
+    call("POST", "/_mock/set", body={"api_key_write": False})
+    check(call("POST", CB, API, {"bookIds": [103]})[1].get("errorCode") == "API_KEY_READ_ONLY", "a read-only key can't change a collection")
+    call("POST", "/_mock/set", body={"api_key_write": True})
+
     # --- the server away
     call("POST", "/_mock/set", body={"offline": True})
     check(call("GET", "/api/v1/koreader/users/auth", KO)[0] == 503, "offline: 503")
