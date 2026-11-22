@@ -8,9 +8,11 @@ User documentation is the wiki, kept in `wiki/` (features, the install pages per
 
 ## Publishing a release
 
-1. Bump [`GZREADER_VERSION`](GZREADER_VERSION) and add an entry to
+1. Set [`GZREADER_VERSION`](GZREADER_VERSION) to the day's version and add an entry to
    [`gzreader_changelog.lua`](plugins/gzreader.koplugin/gzreader_changelog.lua).
-2. Create a GitHub release tagged `v<version>` and publish it.
+   Releases are named **year.month.day** (`2026.11.21`; a second release that day
+   `2026.11.21.2`): `tools/gzreader/next-version.py` prints it, `--write` sets the file.
+2. Create a GitHub release tagged `v<version>` (`v2026.11.21`) and publish it.
 
 The [release workflow](.github/workflows/gzreader-release.yml) builds and attaches the
 install zip and the update package. Kindles check for new releases once a day.

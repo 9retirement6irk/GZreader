@@ -5,7 +5,8 @@
 #   tools/gzreader/publish-github-release.sh out/
 #
 # Needs the GitHub CLI (gh) logged in with write access to the repository.
-# The tag is "v" + GZREADER_VERSION; bump that file for every release.
+# The tag is "v" + GZREADER_VERSION, a date (v2026.11.21): set that file for
+# every release with tools/gzreader/next-version.py --write.
 # Kindles look at the *latest* release (not drafts or pre-releases) and
 # download its "gzreader-update.zip" asset.
 set -euo pipefail
