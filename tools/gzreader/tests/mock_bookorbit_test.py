@@ -2,6 +2,8 @@
 field names, refusals), so the tests built on it mean something.
 
     python3 -I mock_bookorbit_test.py <port>
+
+Run by the plugin suite (run_tests.lua), which checks its last line.
 """
 import hashlib, json, os, subprocess, sys, time, urllib.request, urllib.error
 
