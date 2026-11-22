@@ -164,7 +164,7 @@ local function grimmorySection(st, base)
             -- the API key for BookOrbit's audiobooks (never shown back: only whether one is kept)
             if g.key_error then parts[#parts + 1] = '<p class="err">' .. esc(g.key_error) .. "</p>" end
             parts[#parts + 1] = form(base .. "/grimmory/apikey",
-                '<label for="g_apikey">API key for audiobooks' .. (g.bookorbit_api_key and " (one is saved)" or "") .. "</label>"
+                '<label for="g_apikey">API key (audiobooks, collections, book requests)' .. (g.bookorbit_api_key and " (one is saved)" or "") .. "</label>"
                 .. '<input id="g_apikey" name="api_key" type="password" autocomplete="off" placeholder="bok_…">'
                 .. '<p class="note">From BookOrbit: Settings → API keys, with read and write access. Needed for audiobooks only. Leave empty and save to remove it.</p>'
                 .. '<button type="submit">Save API key</button>', "Checking…")

@@ -19,6 +19,7 @@ What works with BookOrbit today:
 | Setting a book's read status from the Kindle | not yet (BookOrbit works it out from your progress) |
 | Putting books on your collections and taking them off, from a book's menu (needs an API key, below) | yes |
 | Audiobooks: list, covers, download with resume, chapters, listening position both ways (needs an API key, below) | yes |
+| Requesting a book or audiobook BookOrbit doesn't have, and seeing what became of it (needs an API key, below) | yes |
 | Kindles without Wi-Fi (the sync page) | not yet |
 
 Only the "yes" rows send anything to BookOrbit. The Kindle shows up in BookOrbit's Settings → KOReader → Devices as "GZreader" and its model.
@@ -86,11 +87,20 @@ Signing in to BookOrbit signs this Kindle out of Grimmory (and the other way rou
 BookOrbit keeps its audiobook routes apart from the e-reader sign-in, so audiobooks need a second credential: an **API key**.
 
 1. In BookOrbit: **Settings → API keys**, make a key with **read and write** access. BookOrbit shows it once (it starts with `bok_`).
-2. Give it to the Kindle, either on the setup page (under the BookOrbit connection: *API key for audiobooks*) or on the Kindle: Settings → Accounts and services → Books → **BookOrbit API key (audiobooks)**.
+2. Give it to the Kindle, either on the setup page (under the BookOrbit connection: *API key (audiobooks, collections, book requests)*) or on the Kindle: Settings → Accounts and services → Books → **BookOrbit API key**.
 
 Then the Catalog's Audiobooks page lists BookOrbit's audiobooks. Downloading, chapters and playing work as with Grimmory's; an interrupted download continues where it stopped. Where you stopped listening is sent to BookOrbit and, when you start an audiobook, taken from it if BookOrbit's place is more than a minute from the Kindle's.
 
 The same key lets the Kindle change your **collections**: a book's menu gets *Add to shelf* and *Remove from shelf*, listing the collections that are yours (not ones shared with you). A change shows on the Kindle at once and is sent to BookOrbit when there's Wi-Fi. Without the key, collections can still be browsed and auto-downloaded; the menu says where to enter the key.
+
+## Book requests
+
+If your BookOrbit has requests set up, the Kindle can ask for a book it doesn't have. This uses the API key, which needs **Request books** ticked when you make it (and your account allowed to request books).
+
+1. Catalog → the **BookOrbit** card → **Request a book**.
+2. Type the title and, if you like, the author, then choose **Book** or **Audiobook**.
+
+**My book requests** in the same card lists what you asked for with its state (waiting for approval, approved, searching, downloading, in the library, declined…). Tap one for its details and any note from whoever decided; one that isn't finished can be cancelled there. If someone already asked for the same book, you're added to their request. When a request arrives it's in the Catalog like any other book (use **Rebuild library** if it isn't showing yet). The list is BookOrbit's each time: nothing about requests is kept on the Kindle.
 
 - The key is checked when you enter it, kept on the Kindle's own disk, never shown again and never written to the log.
 - BookOrbit's keys expire (90 days unless you choose otherwise). When one does, the Audiobooks page says BookOrbit didn't accept the key: make a new one and enter it.

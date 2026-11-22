@@ -891,6 +891,61 @@ function BookOrbit:setBookShelves(book_id, add, remove)
     return {}
 end
 
+---------------------------------------------------------------- book requests (API key)
+
+-- Asking BookOrbit for a book it doesn't have (its Requests page). On the main API, so
+-- with the API key, which needs the "Request books" permission (gzreader_bo_requests.lua).
+
+function BookOrbit:canRequestBooks() return self:hasApiKey() end
+
+local function requestRecord(r)
+    if type(r) ~= "table" or not n(r.id) then return nil end
+    local authors = {}
+    for _i, a in ipairs(type(r.authors) == "table" and r.authors or {}) do
+        if s(a) then authors[#authors + 1] = a end
+    end
+    return { id = r.id, title = s(r.title), authors = authors, kind = r.mediaKind == "audiobook" and "audiobook" or "ebook",
+        status = s(r.status), reason = s(r.statusReason), note = s(r.decisionNote), book_id = n(r.matchedBookId) }
+end
+
+local function requestError(code, err)
+    if err then return err end
+    if code == 403 then return "bookorbit_requests_refused" end
+    return "http_" .. tostring(code)
+end
+
+--- Ask for a book. `kind`: "ebook" or "audiobook"; `authors`: a list or nil. Returns the
+--- request ({ id, title, status, …, joined = someone had asked already }), or nil, err, code.
+function BookOrbit:requestBook(title, authors, kind)
+    local Json = require("gzreader_json")
+    local body = { title = title, mediaKind = kind == "audiobook" and "audiobook" or "ebook" }
+    if type(authors) == "table" and #authors > 0 then body.authors = Json.list(authors) end
+    local code, data, err = self:keyCall("POST", "/api/v1/book-requests", { body = body, timeouts = { 10, 30 } })
+    if not (code == 200 or code == 201) or type(data) ~= "table" then return nil, requestError(code, err), code end
+    local r = requestRecord(data.request) or { title = title, kind = body.mediaKind }
+    r.joined = data.subscribed == true or nil
+    return r
+end
+
+--- What you asked for, newest first (up to 100), or nil, err.
+function BookOrbit:listRequests()
+    local code, data, err = self:keyCall("GET", "/api/v1/book-requests?page=1&limit=100", { timeouts = { 10, 30 } })
+    if code ~= 200 or type(data) ~= "table" then return nil, requestError(code, err), code end
+    local out = {}
+    for _i, r in ipairs(type(data.items) == "table" and data.items or {}) do
+        out[#out + 1] = requestRecord(r)
+    end
+    return out
+end
+
+--- Cancel one of your requests. Returns true, or false, err, code.
+function BookOrbit:cancelRequest(id)
+    if not tonumber(id) then return false, "http_400", 400 end
+    local code, _, err = self:keyCall("POST", "/api/v1/book-requests/" .. tostring(id) .. "/cancel", { body = {}, timeouts = { 10, 30 } })
+    if code == 200 or code == 201 or code == 204 then return true end
+    return false, requestError(code, err), code
+end
+
 ---------------------------------------------------------------- not yet
 
 -- Grimmory-only (its single sign-on, its web list) or not sent to BookOrbit yet: each

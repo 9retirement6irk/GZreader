@@ -15526,6 +15526,94 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
         plugin.store.shelves_cache, plugin.store.pending.shelves = nil, nil
         NM.isConnected = was_conn
     end
+    -- book requests: asked for from the Catalog's BookOrbit card, with the API key
+    do
+        local Rq = require("gzreader_bo_requests")
+        local Browser = require("gzreader_browser")
+        local NetQ = require("gzreader_net")
+        local was_run, was_usb = NetQ.run, NetQ.usb
+        NetQ.run = function(fn) fn() end
+        NetQ.usb = false
+        local IM_was, CB_was = package.loaded["ui/widget/infomessage"], package.loaded["ui/widget/confirmbox"]
+        local box
+        package.loaded["ui/widget/infomessage"] = { new = function(_, o) captured.info = o.text; return o end }
+        package.loaded["ui/widget/confirmbox"] = { new = function(_, o) box = o; return o end }
+        local pushed, replaced
+        local fake = { plugin = plugin, api = plugin.api, push = function(_s, t, items) pushed = { t, items } end,
+            replace = function(_s, t, items) replaced = { t, items } end }
+        local function texts(items)
+            local t = {}
+            for _i, it in ipairs(items) do t[#t + 1] = it.text .. (it.mandatory and (" = " .. it.mandatory) or "") end
+            return table.concat(t, "|")
+        end
+        local card = texts(Browser.grimmoryItems(fake))
+        check(card:find("|Request a book|My book requests|About BookOrbit", 1, true) ~= nil, "requests: the BookOrbit card has Request a book and My book requests " .. card)
+        check(Rq.can(plugin) == true and plugin.api:canRequestBooks() == true, "requests: possible with the API key")
+        captured.info = nil
+        local sent
+        Rq.send(plugin, "  The Salt Road ", " Ines Ward ", "ebook", function(ok) sent = ok end)
+        local st = bctl("/_mock/state").requests
+        check(sent == true and #st == 1 and st[1].title == "The Salt Road" and st[1].authors[1] == "Ines Ward" and st[1].mediaKind == "ebook"
+            and captured.info == "Asked BookOrbit for “The Salt Road” (book). Status: Waiting for approval.",
+            "requests: a book asked for, by title and author (" .. tostring(captured.info) .. ")")
+        sent = nil
+        Rq.send(plugin, "   ", "", "ebook", function(ok) sent = ok end)
+        check(sent == false and captured.info == "Enter the book's title." and #bctl("/_mock/state").requests == 1, "requests: no title, nothing sent")
+        bctl("/_mock/set", '{"add_request": {"title": "Low Tide", "mediaKind": "audiobook", "userId": 2, "status": "searching"}}')
+        Rq.send(plugin, "Low Tide", "", "audiobook")
+        check(captured.info == "Someone already asked for “Low Tide” (audiobook): you'll be counted in. Status: Searching.",
+            "requests: one someone else made is joined, and said so (" .. tostring(captured.info) .. ")")
+        local list = plugin.api:listRequests()
+        check(type(list) == "table" and #list == 2 and list[1].title == "Low Tide" and list[1].kind == "audiobook" and list[1].status == "searching"
+            and list[2].title == "The Salt Road" and list[2].authors[1] == "Ines Ward", "requests: yours listed, newest first")
+        Rq.open(fake)
+        check(pushed and pushed[1] == "Book requests"
+            and texts(pushed[2]) == "Request a book…|Low Tide = Searching|The Salt Road = Waiting for approval", "requests: the list, each with its status " .. texts(pushed and pushed[2] or {}))
+        -- a tap: what it is; one still open can be cancelled
+        box = nil
+        pushed[2][3].callback()
+        check(box and box.text == "The Salt Road\nInes Ward · book\n\nStatus: Waiting for approval" and box.ok_text == "Cancel this request",
+            "requests: a tap shows it, with a way to cancel " .. tostring(box and box.text))
+        box.ok_callback()
+        check(bctl("/_mock/state").requests[1].status == "cancelled" and captured.info == "The request for “The Salt Road” was cancelled."
+            and replaced and texts(replaced[2]):find("The Salt Road = Cancelled", 1, true) ~= nil, "requests: cancelled, and the list shows it")
+        box, captured.info = nil, nil
+        replaced[2][3].callback()
+        check(box == nil and captured.info == "The Salt Road\nInes Ward · book\n\nStatus: Cancelled", "requests: one that's over is only shown")
+        local low = bctl("/_mock/state").requests[2].id
+        bctl("/_mock/set", '{"request_update": {"id": ' .. low .. ', "status": "available", "matchedBookId": 102}}')
+        check(Rq.detail(plugin.api:listRequests()[1]) == "Low Tide\naudiobook\n\nStatus: In the library\n\nIt's in the Catalog's Audiobooks page now.",
+            "requests: one that arrived says where it is")
+        bctl("/_mock/set", '{"request_update": {"id": ' .. low .. ', "status": "rejected", "decisionNote": "Not this month"}}')
+        check(Rq.detail(plugin.api:listRequests()[1]):find("Status: Declined\nNote from BookOrbit: Not this month", 1, true) ~= nil, "requests: a no shows its note")
+        check(Rq.statusText("importing") == "Being added to the library" and Rq.statusText("someday") == "someday" and Rq.statusText(nil) == "Unknown",
+            "requests: every state has words; a new one is shown as it is")
+        -- refused: the permission, a read-only key, no key
+        bctl("/_mock/set", '{"request_permission": false}')
+        local no, no_err, no_code = plugin.api:requestBook("X", nil, "ebook")
+        check(no == nil and no_err == "bookorbit_requests_refused" and no_code == 403 and plugin:describeError(no_err):find("“Request books” ticked", 1, true) ~= nil,
+            "requests: a key without the permission: said so")
+        pushed, captured.info = nil, nil
+        Rq.open(fake)
+        check(pushed == nil and captured.info and captured.info:find("Request books", 1, true) ~= nil, "…and the list says so too")
+        bctl("/_mock/set", '{"request_permission": true, "api_key_write": false}')
+        no, no_err = plugin.api:requestBook("X", nil, "ebook")
+        check(no == nil and no_err == "bookorbit_api_key_read_only" and plugin:describeError(no_err):find("book requests", 1, true) ~= nil
+            and #plugin.api:listRequests() == 2, "requests: a read-only key lists them but can't ask")
+        bctl("/_mock/set", '{"api_key_write": true}')
+        local key_was = plugin.store.bookorbit.api_key
+        plugin.store.bookorbit.api_key = nil
+        captured.info, pushed = nil, nil
+        Rq.ask(plugin)
+        Rq.open(fake)
+        check(Rq.can(plugin) == false and pushed == nil and captured.info and captured.info:find("needs BookOrbit's API key", 1, true) ~= nil,
+            "requests: without the API key, where to enter it")
+        plugin.store.bookorbit.api_key = key_was
+        NetQ.usb = true
+        check(not texts(Browser.grimmoryItems(fake)):find("Request a book", 1, true), "requests: not offered on a Kindle without Wi-Fi")
+        NetQ.run, NetQ.usb = was_run, was_usb
+        package.loaded["ui/widget/infomessage"], package.loaded["ui/widget/confirmbox"] = IM_was, CB_was
+    end
     -- signing in again as the same user keeps the key; another user doesn't get it
     plugin:connect(BO, "will-kindle", "hunter22", "bookorbit")
     check(plugin.api:hasApiKey(), "signing in again to the same server and user keeps the API key")
