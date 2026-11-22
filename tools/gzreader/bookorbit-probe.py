@@ -188,6 +188,29 @@ def main():
         code, j, _, err = call(A, "/koreader/syncs/progress/" + file_hash, ko)
         line("reading position (KOSync)", code, err or (j and keys(j) or "none stored ({})"))
 
+    # Can the e-reader sign-in alone list and download an audio file? (Only when BookOrbit's
+    # "Hide audiobook-only books" is off; GZreader uses an API key for audiobooks until this says yes.)
+    found = None
+    for fmt in ("m4b", "mp3", "m4a"):
+        code, j, _, err = call(A, "/koreader/plugin/catalog/books?size=1&format=" + fmt, ko)
+        items = isinstance(j, dict) and j.get("items") or []
+        if items:
+            found = (fmt, items[0]["id"])
+            break
+    if not found:
+        line("audio through the e-reader sign-in", "-", "no audiobook in the e-reader catalog (BookOrbit's \"Hide audiobook-only books\" is on, or there are none)")
+    else:
+        code, d, _, err = call(A, "/koreader/plugin/catalog/books/%d" % found[1], ko)
+        audio = [f for f in (isinstance(d, dict) and d.get("files") or []) if str(f.get("format")).lower() in ("m4b", "mp3", "m4a", "flac", "ogg", "opus")]
+        if not audio:
+            line("audio through the e-reader sign-in", code, err or "a %s book is listed, but its record has no audio file" % found[0])
+        else:
+            f = audio[0]
+            code, raw, hdr, err = call(base, f["downloadUrl"], dict(ko, Range="bytes=0-1023"), want_bytes=1024)
+            line("audio through the e-reader sign-in", code, err or "format %s, role %s, duration %s; type %s; Content-Range %s" % (
+                f.get("format"), f.get("role"), "present" if f.get("durationSeconds") else "absent", hdr.get("Content-Type"),
+                "present" if hdr.get("Content-Range") else "absent"))
+
     if not key:
         print("\nNo API key given: audiobooks not checked.")
         return 0

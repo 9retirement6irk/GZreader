@@ -42,7 +42,7 @@ local T = require("ffi/util").template
 
 local BookOrbit = {
     books_only = true,
-    supports = { progress = true, annotations = true, bookmarks = true },
+    supports = { progress = true, annotations = true, bookmarks = true, audiobooks = true },
     koreader_positions = true, -- (the percentage and place are KOReader's own, not a web reader's)
     NAME = "BookOrbit",
     BASE = "/api/v1/koreader",
@@ -76,7 +76,7 @@ BookOrbit.FEATURES = {
     { "bookmarks", _("bookmarks") },
     { "sessions", _("reading time") },
     { "ratings", _("ratings") },
-    { "audiobooks", _("audiobooks") },
+    { "audiobooks", _("audiobooks (with a BookOrbit API key)") },
 }
 function BookOrbit.note()
     local yes, no = {}, {}
@@ -89,6 +89,10 @@ function BookOrbit.note()
     if #no > 0 then out = out .. " " .. T(_("Not yet: %1."), table.concat(no, ", ")) end
     return out
 end
+
+-- (an audiobook's id here is "a<BookOrbit's id>": see "audiobooks" below)
+function BookOrbit.isAudioId(id) return type(id) == "string" and id:match("^a%d+$") ~= nil end
+local function audioId(id) return tonumber((tostring(id):gsub("^a", ""))) end
 
 function BookOrbit:new(store, on_change)
     return setmetatable({ store = store, on_change = on_change or function() end }, self)
@@ -105,7 +109,7 @@ function BookOrbit:ensureToken()
 end
 
 function BookOrbit:clearTokens()
-    if type(self.store.bookorbit) == "table" then self.store.bookorbit.key = nil end
+    if type(self.store.bookorbit) == "table" then self.store.bookorbit.key, self.store.bookorbit.api_key = nil, nil end
     self.on_change()
 end
 
@@ -160,7 +164,10 @@ function BookOrbit:login(server, username, password)
         if code == 200 and type(data) == "table" and data.authorized == "OK" then
             self.store.server = base
             self.store.username = username
-            self.store.bookorbit = { key = key }
+            -- (the API key for audiobooks stays when this is the same server and user again)
+            local old = self.store.bookorbit
+            local same = type(old) == "table" and self.store.server == base and self.store.username == username
+            self.store.bookorbit = { key = key, api_key = same and old.api_key or nil }
             self:deviceId()
             self.store.access_token, self.store.refresh_token, self.store.access_expires_at = nil, nil, nil
             self:readVersion()
@@ -262,6 +269,7 @@ end
 --- (the download's `hash`). Returns true, or false, err, code (404: BookOrbit has
 --- no book with that file, so it isn't asked again).
 function BookOrbit:putProgress(book_id, body)
+    if BookOrbit.isAudioId(tostring(book_id)) then return self:putAudioProgress(tostring(book_id), body) end
     local entry = type(self.store.downloads) == "table" and self.store.downloads[tostring(book_id)]
     local hash = type(entry) == "table" and s(entry.hash)
     if not hash then return false, "bookorbit_unmatched", 404 end
@@ -390,7 +398,7 @@ end
 function BookOrbit:listBooks(params)
     params = params or {}
     local page, size = tonumber(params.page) or 0, math.min(tonumber(params.size) or 20, BookOrbit.PAGE_MAX)
-    if wantsOnlyAudio(params.fileType) then return emptyPage(page, size) end -- (audiobooks: not yet)
+    if wantsOnlyAudio(params.fileType) then return self:listAudiobooks(params) end -- (the main API, with an API key)
     local q = { page = page + 1, size = size, sort = SORT[params.sort] or "title",
         order = (params.dir == "asc" or params.dir == "desc") and params.dir or nil,
         q = s(params.search), libraryId = params.libraryId, collectionId = params.shelfId, smartScopeId = params.magicShelfId,
@@ -488,6 +496,7 @@ end
 
 --- A book's record, as Grimmory's /books/{id}: its file and metadata.
 function BookOrbit:getBook(book_id)
+    if BookOrbit.isAudioId(book_id) then return self:audiobookRecord(book_id) end
     local d, err = detail(self, book_id)
     if not d then return nil, err end
     local f = BookOrbit.pickFile(d)
@@ -528,13 +537,17 @@ end
 
 function BookOrbit:downloadThumbnail(book_id, path, kind)
     if not self:isPaired() then return false, "not_paired" end
-    if kind == "audiobook" then return false, "http_404", 404 end -- (audiobooks: not yet)
+    local audio = BookOrbit.isAudioId(tostring(book_id))
+    if kind == "audiobook" and not audio then return false, "http_404", 404 end
+    if audio and not self:hasApiKey() then return false, "bookorbit_no_api_key", 404 end
     local part = path .. ".part"
     local fh, ferr = io.open(part, "wb")
     if not fh then return false, ferr end
-    local headers = self:authHeaders()
+    local headers = audio and { ["Authorization"] = "Bearer " .. self.store.bookorbit.api_key } or self:authHeaders()
     headers["Accept"] = "image/*"
-    local code, _, resp = Api.rawRequest("GET", self.store.server .. BookOrbit.CATALOG .. "/books/" .. tostring(book_id) .. "/thumbnail", {
+    local where = audio and ("/api/v1/books/" .. tostring(audioId(book_id)) .. "/thumbnail")
+        or (BookOrbit.CATALOG .. "/books/" .. tostring(book_id) .. "/thumbnail")
+    local code, _, resp = Api.rawRequest("GET", self.store.server .. where, {
         headers = headers, sink = ltn12.sink.file(fh), timeouts = { 10, 30 },
     })
     local ctype = type(resp) == "table" and (resp["content-type"] or resp["Content-Type"]) or ""
@@ -590,13 +603,233 @@ function BookOrbit:downloadToFile(book_id, path, _resume)
     return false, code and ("http_" .. code) or tostring(status or "unreachable")
 end
 
+---------------------------------------------------------------- audiobooks (the main API, with an API key)
+
+-- BookOrbit's e-reader sign-in doesn't reach its audiobook routes (the manifest, the
+-- audio files with resume, the listening position): those take an API key the user
+-- makes in BookOrbit (Settings → API keys), kept as store.bookorbit.api_key with the
+-- other secrets. Without one there are no BookOrbit audiobooks here.
+--
+-- A BookOrbit book can be an ebook and an audiobook at once, under one id. GZreader
+-- keeps the two apart everywhere (downloads, the progress queue), so an audiobook's
+-- id here is "a<id>": added in the lists below, taken off again in each call.
+
+BookOrbit.AUDIO_PREFIX = "a"
+local AUDIO_FORMATS = { "m4b", "mp3", "m4a", "flac", "ogg", "opus", "aac", "wav" }
+
+
+function BookOrbit:hasApiKey()
+    local b = self.store.bookorbit
+    return self.store.server ~= nil and type(b) == "table" and type(b.api_key) == "string" and b.api_key ~= ""
+end
+
+--- A request with the API key. Returns code, data, err, headers.
+function BookOrbit:keyCall(method, path, opts)
+    if not self:hasApiKey() then return nil, nil, "bookorbit_no_api_key" end
+    local o = {}
+    for k, v in pairs(opts or {}) do o[k] = v end
+    o.headers = { ["Authorization"] = "Bearer " .. self.store.bookorbit.api_key }
+    for k, v in pairs((opts or {}).headers or {}) do o.headers[k] = v end
+    local code, data, headers = Api.rawRequest(method, self.store.server .. path, o)
+    if not code then return nil, nil, "unreachable" end
+    if code == 401 then
+        Log.warn("BookOrbit refused the API key (HTTP 401): expired, deleted, or API keys switched off")
+        return code, data, "bookorbit_api_key_refused", headers
+    end
+    if code == 403 and type(data) == "table" and data.errorCode == "API_KEY_READ_ONLY" then
+        return code, data, "bookorbit_api_key_read_only", headers
+    end
+    return code, data, nil, headers
+end
+
+--- Check an API key against the signed-in server and keep it. Returns true, or false, err.
+function BookOrbit:setApiKey(key)
+    if not self:isPaired() then return false, "not_paired" end
+    key = type(key) == "string" and key:gsub("%s+", "") or ""
+    if key == "" then
+        self.store.bookorbit.api_key = nil
+        self.on_change()
+        return true
+    end
+    local code = Api.rawRequest("GET", self.store.server .. "/api/v1/auth/me",
+        { headers = { ["Authorization"] = "Bearer " .. key }, timeouts = { 10, 20 } })
+    if code == 200 then
+        self.store.bookorbit.api_key = key
+        self.on_change()
+        return true
+    end
+    return false, code == 401 and "bookorbit_api_key_refused" or (code and ("http_" .. code) or "unreachable")
+end
+
+--- A page of audiobooks (the main API's book query), as the Catalog reads one.
+function BookOrbit:listAudiobooks(params)
+    local page, size = tonumber(params.page) or 0, math.min(tonumber(params.size) or 20, BookOrbit.PAGE_MAX)
+    if not self:hasApiKey() then return emptyPage(page, size) end
+    local formats = {}
+    for _i, f in ipairs(AUDIO_FORMATS) do formats[#formats + 1] = f; formats[#formats + 1] = f:upper() end
+    local Json = require("gzreader_json")
+    local field = ({ title = "title", addedOn = "addedAt", lastReadTime = "lastReadAt" })[params.sort] or "title"
+    local body = {
+        sort = Json.list({ { field = field, dir = (params.dir == "desc") and "desc" or "asc" } }),
+        pagination = { page = page + 1, size = size },
+        filter = { type = "group", join = "AND", rules = Json.list({
+            { type = "rule", field = "format", operator = "includesAny", value = Json.list(formats) } }) },
+        q = s(params.search),
+    }
+    local code, data, err = self:keyCall("POST", "/api/v1/books/query", { body = body, timeouts = { 15, 45 } })
+    if not ((code == 200 or code == 201) and type(data) == "table") then return nil, err or ("http_" .. tostring(code)) end
+    local content = {}
+    for _i, card in ipairs(list(data.items)) do
+        if type(card) == "table" and n(card.id) then
+            content[#content + 1] = {
+                id = BookOrbit.AUDIO_PREFIX .. tostring(card.id), title = s(card.title) or ("Audiobook " .. tostring(card.id)),
+                authors = names(card.authors), narrators = names(card.narrators), primaryFileType = "AUDIOBOOK",
+                seriesName = s(card.seriesName), seriesNumber = n(card.seriesIndex), readProgress = n(card.readingProgress),
+                hasCover = card.hasCover == true,
+            }
+        end
+    end
+    local total = n(data.total) or #content
+    return { content = content, page = page, size = size, totalElements = total, totalPages = math.ceil(total / size),
+        hasNext = (page + 1) * size < total, hasPrevious = page > 0 }
+end
+
+local function manifest(self, book_id)
+    local code, data, err = self:keyCall("GET", "/api/v1/audiobooks/" .. tostring(audioId(book_id)) .. "/manifest", { timeouts = { 10, 30 } })
+    if code == 200 and type(data) == "table" and type(data.assets) == "table" and #data.assets > 0 then
+        table.sort(data.assets, function(a, b) return (n(a.sequence) or 0) < (n(b.sequence) or 0) end)
+        return data
+    end
+    return nil, err or ("http_" .. tostring(code)), code
+end
+
+--- An audiobook's files and chapters, as Grimmory's audiobook info (what
+--- gzreader_audiobook.lua's describe reads): one file with chapters, or one per track.
+function BookOrbit:audiobookInfo(book_id)
+    local m, err = manifest(self, book_id)
+    if not m then return nil, err end
+    local book = type(m.book) == "table" and m.book or {}
+    local first = m.assets[1]
+    local info = {
+        title = s(book.title), author = table.concat(names(book.authors), ", "), narrator = table.concat(names(book.narrators), ", "),
+        bookFileId = n(first.fileId), durationMs = n(m.totalDurationMs) or 0, folderBased = #m.assets > 1,
+        codec = (s(first.format) or ""):lower() == "mp3" and "mp3" or "aac", totalSizeBytes = 0, tracks = {}, chapters = {},
+        gz_manifest = s(m.revision),
+    }
+    if info.author == "" then info.author = nil end
+    if info.narrator == "" then info.narrator = nil end
+    local at = 0
+    for i, a in ipairs(m.assets) do
+        info.totalSizeBytes = info.totalSizeBytes + (n(a.sizeBytes) or 0)
+        info.tracks[i] = { index = n(a.sequence) or (i - 1), fileName = string.format("%03d.%s", i, (s(a.format) or "mp3"):lower()),
+            title = nil, durationMs = n(a.durationMs) or 0, fileSizeBytes = n(a.sizeBytes), cumulativeStartMs = at }
+        at = at + (n(a.durationMs) or 0)
+    end
+    for i, c in ipairs(list(m.chapters)) do
+        if type(c) == "table" then
+            local start, stop = n(c.startMs) or 0, n(c.endMs)
+            info.chapters[#info.chapters + 1] = { index = i - 1, title = s(c.title) or ("Chapter " .. i), startTimeMs = start,
+                endTimeMs = stop, durationMs = stop and (stop - start) or nil }
+            -- (one file per track: a track is named after the chapter that starts it)
+            for _j, t in ipairs(info.tracks) do
+                if t.title == nil and t.cumulativeStartMs == start then t.title = s(c.title) end
+            end
+        end
+    end
+    if not info.folderBased then info.tracks = nil end
+    return info
+end
+
+--- One audio file of an audiobook to `path`, continuing what's there (BookOrbit's
+--- audio files take a Range). track: its sequence (nil: the only file).
+--- Returns true | false, err, retryable.
+function BookOrbit:downloadAudio(book_id, track, path)
+    local m, err, mcode = manifest(self, book_id)
+    if not m then return false, err, mcode == nil end
+    local asset = m.assets[1]
+    for _i, a in ipairs(m.assets) do if track ~= nil and n(a.sequence) == tonumber(track) then asset = a end end
+    local have = lfs.attributes(path, "size") or 0
+    local fh, ferr = io.open(path, have > 0 and "ab" or "wb")
+    if not fh then return false, ferr end
+    local headers = { ["Authorization"] = "Bearer " .. self.store.bookorbit.api_key, ["Accept"] = "*/*" }
+    if have > 0 then headers["Range"] = "bytes=" .. have .. "-" end
+    local code = Api.rawRequest("GET", self.store.server .. "/api/v1/audiobooks/" .. tostring(audioId(book_id)) .. "/assets/"
+        .. tostring(asset.assetId) .. "/content", { headers = headers, sink = ltn12.sink.file(fh), timeouts = { 60, -1 } })
+    if code == 206 or (code == 200 and have == 0) or code == 416 then return true end
+    if code == 200 and have > 0 then
+        os.remove(path) -- (the whole file came after the part: start it again)
+        return false, "restart", true
+    end
+    if code == 401 or code == 403 or code == 404 then return false, "http_" .. code, false end
+    return false, code and ("http_" .. code) or "unreachable", true
+end
+
+local function uuid4()
+    local md5 = require("ffi/sha2").md5
+    local h = md5(tostring(os.time()) .. tostring(math.random()) .. tostring({}) .. tostring(os.clock()))
+    local variant = ({ "8", "9", "a", "b" })[(tonumber(h:sub(17, 17), 16) % 4) + 1]
+    return h:sub(1, 8) .. "-" .. h:sub(9, 12) .. "-4" .. h:sub(14, 16) .. "-" .. variant .. h:sub(18, 20) .. "-" .. h:sub(21, 32)
+end
+BookOrbit.uuid4 = uuid4
+
+local function playbackState(self, book_id)
+    local code, data, err = self:keyCall("GET", "/api/v1/audiobooks/" .. tostring(audioId(book_id)) .. "/playback-state", { timeouts = { 8, 15 } })
+    if code == 200 then return type(data) == "table" and n(data.positionMs) and data or false end -- (false: none stored)
+    return nil, err or ("http_" .. tostring(code)), code
+end
+
+--- Where an audiobook was left, as Grimmory's record gives it (audiobookProgress:
+--- positionMs within the track, trackIndex), for gzreader_audiobook.lua's pull.
+function BookOrbit:audiobookRecord(book_id)
+    local state, err = playbackState(self, book_id)
+    if state == nil then return nil, err end
+    local book = { id = book_id, metadata = {} }
+    if state then
+        local m = manifest(self, book_id)
+        local index = 0
+        for _i, a in ipairs(m and m.assets or {}) do if a.assetId == state.assetId then index = n(a.sequence) or 0 end end
+        book.audiobookProgress = { positionMs = state.positionMs, trackIndex = index, percentage = n(state.percentage) }
+    end
+    return book
+end
+
+--- Save where an audiobook is (body as gzreader_audiobook.lua makes it for Grimmory:
+--- positionData = ms in the track, positionHref = the track's index when it has
+--- several files). BookOrbit wants the file, its place, and the revisions this is
+--- based on; a place moved elsewhere meanwhile (409) is read again and sent once more.
+function BookOrbit:putAudioProgress(book_id, body)
+    local fp = type(body) == "table" and type(body.fileProgress) == "table" and body.fileProgress or {}
+    local ms = tonumber(fp.positionData)
+    if not ms then return false, "bookorbit_unmatched", 400 end
+    local m, merr, mcode = manifest(self, book_id)
+    if not m then return false, merr, mcode end
+    local asset = m.assets[1]
+    for _i, a in ipairs(m.assets) do if fp.positionHref ~= nil and n(a.sequence) == tonumber(fp.positionHref) then asset = a end end
+    ms = math.max(0, math.min(math.floor(ms), n(asset.durationMs) or math.floor(ms)))
+    local last_err, last_code
+    for _try = 1, 2 do
+        local state, serr, scode = playbackState(self, book_id)
+        if state == nil then return false, serr, scode end
+        local code, _, err = self:keyCall("PUT", "/api/v1/audiobooks/" .. tostring(audioId(book_id)) .. "/playback-state", {
+            body = { assetId = asset.assetId, positionMs = ms, capturedAt = os.date("!%Y-%m-%dT%H:%M:%SZ"), operationId = uuid4(),
+                baseRevision = state and n(state.revision) or 0, manifestRevision = m.revision },
+            timeouts = { 8, 15 } })
+        if code == 200 then return true end
+        last_err, last_code = err or ("http_" .. tostring(code)), code
+        if code ~= 409 then break end -- (409: moved elsewhere since we read it: once more from its new revision)
+    end
+    -- (a read-only key, or the audiobook gone or changed: not something to keep retrying)
+    if last_code == 403 or last_code == 404 or last_code == 400 or last_code == 412 then return false, last_err, 404 end
+    return false, last_err, last_code
+end
+
 ---------------------------------------------------------------- not yet
 
 -- Grimmory-only (its single sign-on, its web list) or not sent to BookOrbit yet: each
 -- answers nil, "unsupported". Main and the sync modules don't call them while
 -- `books_only` is set; this is so a call that slips through fails quietly.
 for _i, name in ipairs{ "listWebBooks", "listMyShelves", "setBookShelves", "listAuthors", "listSeries",
-    "audiobookInfo", "downloadAudio", "listBookmarks", "createBookmark", "deleteBookmark", "listAnnotations",
+    "listBookmarks", "createBookmark", "deleteBookmark", "listAnnotations",
     "createAnnotation", "updateAnnotation", "deleteAnnotation", "listBookNotes", "createBookNote", "updateBookNote",
     "deleteBookNote", "putRating", "postSession", "hasSession", "publicSettings", "oidcExchange" } do
     BookOrbit[name] = function() return nil, "unsupported" end

@@ -15028,7 +15028,7 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
     check(plugin.api:searchBooks("okafor").totalElements == 2 and plugin.api:listBooks{ page = 0, size = 50, search = "trains" }.content[1].id == 104, "searching")
     check(plugin.api:listBooks{ page = 0, size = 500 }.size == 100, "a page is never asked for bigger than the server gives")
     local audio = plugin.api:listBooks{ page = 0, size = 20, fileType = { "AUDIOBOOK" } }
-    check(audio and #audio.content == 0 and audio.totalPages == 0, "audiobooks: an empty list for now, not an error")
+    check(audio and #audio.content == 0 and audio.totalPages == 0 and not plugin.api:hasApiKey(), "audiobooks without an API key: an empty list, not an error")
     local libs = plugin.api:listLibraries()
     check(libs and #libs == 2 and libs[1].id == 1 and libs[1].name == "Fiction" and libs[1].bookCount == 3, "libraries")
     local shelves = plugin.api:listShelves()
@@ -15323,6 +15323,108 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
     plugin.store.bookmark_sync_disabled = nil
     plugin.store.downloads["101"] = nil
 
+    -- audiobooks: BookOrbit's main API, with an API key
+    local KEY = "bok_" .. string.rep("a1B2c3D4e5", 4) .. "f6G7h8I9j"
+    local k_ok, k_err = plugin:setBookOrbitApiKey("bok_" .. string.rep("x", 49))
+    check(k_ok == false and k_err:find("didn't accept the API key", 1, true) and not plugin.api:hasApiKey(), "a wrong API key: said so, not kept")
+    k_ok, k_err = plugin:setBookOrbitApiKey("  " .. KEY .. "\n")
+    check(k_ok == true and plugin.api:hasApiKey() and plugin.store.bookorbit.api_key == KEY, "the API key is checked against the server and kept (spaces around it dropped)", k_err)
+    local key_secret = false
+    for _i, sp in ipairs(require("gzreader_secrets").PATHS) do if sp[1] == "bookorbit" and sp[2] == "api_key" then key_secret = true end end
+    check(key_secret, "…with the other secrets, off the USB drive")
+    local abs = plugin.api:listBooks{ page = 0, size = 20, sort = "title", dir = "asc", fileType = { "AUDIOBOOK" } }
+    check(abs and #abs.content == 2 and abs.totalElements == 2 and abs.content[1].id == "a201" and abs.content[1].title == "The Long Way Round"
+        and abs.content[1].primaryFileType == "AUDIOBOOK" and abs.content[1].authors[1] == "Ada Marsh" and abs.content[2].id == "a102"
+        and abs.content[2].narrators[2] == "Sam Lee", "the audiobooks list: each under its own id (a…), so an ebook with the same BookOrbit id stays apart")
+    check(#plugin.api:listBooks{ page = 0, size = 20, fileType = { "AUDIOBOOK" }, search = "short" }.content == 1, "searching the audiobooks")
+    check(#plugin.api:listBooks{ page = 0, size = 50, fileType = plugin.api.READABLE_TYPES }.content == 5, "the books list is unchanged")
+    local AB = require("gzreader_audiobook")
+    local info = plugin.api:audiobookInfo("a201")
+    check(info and info.folderBased == true and #info.tracks == 2 and info.tracks[2].index == 1 and info.tracks[2].cumulativeStartMs == 60000
+        and info.tracks[2].fileSizeBytes == 3003 and info.durationMs == 105000 and info.bookFileId == 6201 and info.title == "The Long Way Round"
+        and info.author == "Ada Marsh" and info.narrator == "June Park" and info.codec == "mp3" and info.tracks[1].title == "Part 1",
+        "an audiobook of several files: its tracks, as the player reads Grimmory's")
+    local described = AB.describe("a201", info)
+    check(described.id == "a201" and described.folder and #described.tracks == 2 and described.tracks[2].start == 60000 and described.file_id == 6201
+        and described.files[1] == "track-001.mp3" and #described.chapters == 2, "…and the player's own record of it")
+    local info2 = plugin.api:audiobookInfo("a102")
+    local d2 = AB.describe("a102", info2)
+    check(info2.folderBased == false and info2.tracks == nil and #info2.chapters == 3 and info2.chapters[2].startTimeMs == 200000 and info2.chapters[2].durationMs == 200000
+        and info2.codec == "aac" and d2.files[1] == "audiobook.m4b" and #d2.chapters == 3 and d2.tracks[1].size == 5012 and not d2.folder,
+        "an audiobook in one M4B file: its chapters from BookOrbit's manifest")
+    check(select(2, plugin.api:audiobookInfo("a999")) == "http_404", "an audiobook that isn't there: its error")
+    local apath = WORK .. "/bo-audio.part"
+    os.remove(apath)
+    local a_ok, a_err = plugin.api:downloadAudio("a201", 1, apath)
+    check(a_ok == true and lfs.attributes(apath, "size") == 3003, "a track downloaded (the second file)", a_err)
+    local cut = io.open(apath, "rb"); local whole = cut:read("*a"); cut:close()
+    cut = io.open(apath, "wb"); cut:write(whole:sub(1, 1000)); cut:close()
+    a_ok = plugin.api:downloadAudio("a201", 1, apath)
+    cut = io.open(apath, "rb"); local again2 = cut:read("*a"); cut:close()
+    check(a_ok == true and again2 == whole, "an interrupted download continues where it stopped (BookOrbit's audio takes a Range)")
+    check(plugin.api:downloadAudio("a201", 1, apath) == true and lfs.attributes(apath, "size") == 3003, "a finished one asked again: nothing more to fetch")
+    os.remove(apath)
+    check(plugin.api:downloadAudio("a102", nil, apath) == true and lfs.attributes(apath, "size") == 5012, "the single file of an M4B audiobook")
+    os.remove(apath)
+    local acover = WORK .. "/bo-acover.jpg"
+    check(plugin.api:downloadThumbnail("a201", acover, "audiobook") == true and lfs.attributes(acover, "size") > 50, "an audiobook's cover")
+    check(select(3, plugin.api:downloadThumbnail(101, acover .. "x", "audiobook")) == 404, "a book asked for as an audiobook: no cover (as before)")
+    -- where you stopped listening
+    local rec = plugin.api:getBook("a201")
+    check(rec and rec.audiobookProgress == nil, "no listening position yet")
+    local put_ok, put_err = plugin.api:putProgress("a201", { fileProgress = { bookFileId = 6201, positionData = "15000", positionHref = "1", progressPercent = 71.4 } })
+    local pstate = bctl("/_mock/state").playback["201"]
+    check(put_ok == true and pstate and pstate.positionMs == 15000 and pstate.assetId:match("^aud_2222") and pstate.revision == 1
+        and pstate.operationId:match("^%x+%-%x+%-4%x+%-[89ab]%x+%-%x+$") ~= nil, "the position saved: which file, where in it, with a fresh operation id", put_err)
+    rec = plugin.api:getBook("a201")
+    check(rec.audiobookProgress.positionMs == 15000 and rec.audiobookProgress.trackIndex == 1, "…and read back as the player reads Grimmory's (ms in the track, the track's index)")
+    put_ok = plugin.api:putProgress("a201", { fileProgress = { positionData = "30000", positionHref = "1" } })
+    check(put_ok == true and bctl("/_mock/state").playback["201"].revision == 2 and bctl("/_mock/state").playback["201"].positionMs == 30000,
+        "the next save is based on the revision BookOrbit has now")
+    put_ok = plugin.api:putProgress("a201", { fileProgress = { positionData = "99999999", positionHref = "0" } })
+    check(put_ok == true and bctl("/_mock/state").playback["201"].positionMs == 60000, "a position past the file's end is sent as its end")
+    check(plugin.api:putProgress("a102", { fileProgress = { positionData = "250000" } }) == true
+        and plugin.api:getBook("a102").audiobookProgress.positionMs == 250000 and plugin.api:getBook("a102").audiobookProgress.trackIndex == 0,
+        "an M4B audiobook: the place in its one file")
+    plugin:queue("progress", "a201", { fileProgress = { bookFileId = 6201, positionData = "20000", positionHref = "0" } })
+    plugin:queue("progress", 101, { fileProgress = { progressPercent = 12 } })
+    check(plugin.store.pending.progress["a201"] ~= nil and plugin.store.pending.progress["101"] ~= nil, "an audiobook's place and a book's place queue apart")
+    plugin.store.pending.progress["101"] = nil
+    plugin:flushPending()
+    runLoop(function() return not plugin.flushing and plugin.store.pending.progress["a201"] == nil end, 20)
+    check(bctl("/_mock/state").playback["201"].positionMs == 20000, "…and the audiobook's goes out by the usual queue")
+    bctl("/_mock/set", '{"api_key_write": false}')
+    local ro_ok, ro_err, ro_code = plugin.api:putProgress("a201", { fileProgress = { positionData = "1000", positionHref = "0" } })
+    check(ro_ok == false and ro_err == "bookorbit_api_key_read_only" and ro_code == 404 and plugin:describeError(ro_err):find("read%-only") ~= nil
+        and #plugin.api:listBooks{ page = 0, size = 20, fileType = { "AUDIOBOOK" } }.content == 2,
+        "a read-only key: listing still works, the position isn't saved (and isn't retried forever)")
+    bctl("/_mock/set", '{"api_key_write": true, "api_keys_enabled": false}')
+    local off, off_err = plugin.api:listBooks{ page = 0, size = 20, fileType = { "AUDIOBOOK" } }
+    check(off == nil and off_err == "bookorbit_api_key_refused" and plugin:describeError(off_err):find("make a new one", 1, true) ~= nil, "a key that stopped working: said so")
+    bctl("/_mock/set", '{"api_keys_enabled": true}')
+    -- the setup page: the key's form, and the key never shown back
+    PS.new = function(self, o) screen = o; return o end
+    plugin:startQrPairing()
+    local kurl = screen.url:gsub("#.*$", "")
+    local kcode, kbody = phone("'" .. kurl .. "'")
+    check(kcode == 200 and kbody:find('name="api_key" type="password"', 1, true) and kbody:find("(one is saved)", 1, true) and not kbody:find(KEY, 1, true)
+        and not kbody:find("a1B2c3", 1, true), "the setup page: a form for the API key; it says one is saved, never which")
+    kcode, kbody = phone("-L --data-urlencode 'api_key=bok_wrongwrong' '" .. kurl .. "/grimmory/apikey'")
+    check(kbody:find("accept the API key. It may have expired", 1, true) and plugin.api:hasApiKey() and not kbody:find("bok_wrongwrong", 1, true),
+        "the setup page: a wrong key is refused, the saved one kept, the typed one not echoed")
+    kcode, kbody = phone("-L --data-urlencode 'api_key=' '" .. kurl .. "/grimmory/apikey'")
+    check(not plugin.api:hasApiKey() and not kbody:find("(one is saved)", 1, true), "the setup page: saving it empty removes the key")
+    phone("-L --data-urlencode 'api_key=" .. KEY .. "' '" .. kurl .. "/grimmory/apikey'")
+    check(plugin.api:hasApiKey(), "the setup page: a good key is kept")
+    screen.on_cancel()
+    -- signing in again as the same user keeps the key; another user doesn't get it
+    plugin:connect(BO, "will-kindle", "hunter22", "bookorbit")
+    check(plugin.api:hasApiKey(), "signing in again to the same server and user keeps the API key")
+    local dumped = require("dump")(plugin.store)
+    check(not dumped:find("hunter22", 1, true), "(still no password in the settings)")
+    plugin.api:setApiKey("")
+    check(not plugin.api:hasApiKey(), "the key removed")
+
     -- a refused sign-in later, and the server away
     bctl("/_mock/set", '{"ko_permission": false}')
     local r, rerr = plugin.api:listLibraries()
@@ -15341,9 +15443,10 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
     local code, body = phone("'" .. url .. "'")
     local sec = body and body:match('<section id="grimmory".-</section>') or ""
     check(code == 200 and sec:find("Connected to BookOrbit as <b>will%-kindle</b>") and sec:find('<option value="bookorbit" selected>', 1, true)
-        and sec:find("Synced with BookOrbit: your place in each book, highlights and their notes, bookmarks.", 1, true) and sec:find("Not yet: reading time", 1, true),
+        and sec:find("Synced with BookOrbit: your place in each book, highlights and their notes, bookmarks, audiobooks (with a BookOrbit API key).", 1, true)
+        and sec:find("Not yet: reading time", 1, true),
         "the setup page: connected to BookOrbit, the choice shown, and what is synced so far")
-    check(BookOrbit.note() == "You can browse and download your books. Synced with BookOrbit: your place in each book, highlights and their notes, bookmarks. Not yet: reading time, ratings, audiobooks.",
+    check(BookOrbit.note() == "You can browse and download your books. Synced with BookOrbit: your place in each book, highlights and their notes, bookmarks, audiobooks (with a BookOrbit API key). Not yet: reading time, ratings.",
         "one sentence says what is and isn't synced, from what the client supports")
     code, body = phone("-L --data-urlencode 'backend=bookorbit' --data-urlencode 'server=" .. BO .. "' --data-urlencode 'username=will-kindle' "
         .. "--data-urlencode 'password=nope' --data-urlencode 'action=password' '" .. url .. "/grimmory'")

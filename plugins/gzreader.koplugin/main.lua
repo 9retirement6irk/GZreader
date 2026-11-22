@@ -646,6 +646,15 @@ function Grimmory:menuItems()
             callback = function() self:keyboardLogin() end,
         },
         {
+            text_func = function()
+                return self.api.hasApiKey and self.api:hasApiKey() and _("BookOrbit API key (audiobooks): set") or _("BookOrbit API key (audiobooks)")
+            end,
+            enabled_func = function() return self:backend() == "bookorbit" and self.api:isPaired() end,
+            help_text = _("BookOrbit's audiobooks (listing, downloading, and where you stopped listening) need an API key as well as the sign-in. Make one in BookOrbit: Settings → API keys, with read and write access. Leave the box empty to remove the key."),
+            keep_menu_open = true,
+            callback = function(touchmenu) self:askBookOrbitApiKey(touchmenu) end,
+        },
+        {
             text = _("Connect to BookOrbit by typing"),
             help_text_func = function()
                 return T(_("BookOrbit instead of Grimmory as this Kindle's book server. It asks for BookOrbit's address and the %1 sync user name and password (BookOrbit: Settings → %1)."), "KOReader")
@@ -865,6 +874,9 @@ local ERRORS = {
     bookorbit_refused = T(_("BookOrbit didn't accept this Kindle's sign-in. If you changed the %1 sync password in BookOrbit, connect again."), "KOReader"),
     bookorbit_not_found = _("That address answered, but not as BookOrbit (or its BookOrbit is too old for e-readers). Check the address."),
     bookorbit_no_file = _("BookOrbit has no file for this book that this Kindle can open."),
+    bookorbit_no_api_key = _("BookOrbit's audiobooks need an API key: make one in BookOrbit (Settings → API keys, with read and write access), then enter it in Settings → Accounts and services → Books → BookOrbit API key."),
+    bookorbit_api_key_refused = _("BookOrbit didn't accept the API key. It may have expired or been deleted: make a new one in BookOrbit (Settings → API keys) and enter it again."),
+    bookorbit_api_key_read_only = _("This BookOrbit API key is read-only, so where you stopped listening can't be saved. Make one with read and write access."),
     unsupported = _("That isn't available with BookOrbit yet."),
     no_https = require("gzreader_lan").noHttpsText(),
 }
@@ -1299,6 +1311,45 @@ end
 function Grimmory:onGzSendBooksPage()
     self:openPhonePage("books")
     return true
+end
+
+--- Keep (or, empty, remove) the BookOrbit API key, checked against the server.
+--- Returns true, or false and a message.
+function Grimmory:setBookOrbitApiKey(key)
+    if self:backend() ~= "bookorbit" or type(self.api.setApiKey) ~= "function" then return false, self:describeError("not_paired") end
+    local ok, err = self.api:setApiKey(key)
+    Log.info("BookOrbit API key", (type(key) == "string" and key:gsub("%s+", "") ~= "") and (ok and "set" or ("not accepted: " .. tostring(err))) or "removed")
+    if not ok then return false, self:describeError(err) end
+    self:save()
+    pcall(function() require("gzreader_listcache").clear() end) -- (the audiobook lists were empty without it)
+    return true
+end
+
+function Grimmory:askBookOrbitApiKey(touchmenu)
+    local InputDialog = require("ui/widget/inputdialog")
+    local dialog
+    dialog = InputDialog:new{
+        title = _("BookOrbit API key"),
+        input = "",
+        input_hint = "bok_…",
+        text_type = "password",
+        description = _("From BookOrbit: Settings → API keys. Empty removes the key kept here."),
+        buttons = { {
+            { text = _("Cancel"), id = "close", callback = function() UIManager:close(dialog) end },
+            { text = _("Save"), is_enter_default = true, callback = function()
+                local key = dialog:getInputText()
+                UIManager:close(dialog)
+                Net.run(function()
+                    local ok, err = self:setBookOrbitApiKey(key)
+                    UIManager:show(InfoMessage:new{ text = ok and ((key:gsub("%s+", "") == "") and _("The BookOrbit API key was removed.")
+                        or _("BookOrbit accepted the API key. Its audiobooks are in the Catalog's Audiobooks page.")) or err, timeout = ok and 4 or nil })
+                    if touchmenu and touchmenu.updateItems then touchmenu:updateItems() end
+                end, { reason = "checking the BookOrbit API key" })
+            end },
+        } },
+    }
+    UIManager:show(dialog)
+    dialog:onShowKeyboard()
 end
 
 function Grimmory:onBookOrbitKeyboardLogin()

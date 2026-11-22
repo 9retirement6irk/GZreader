@@ -35,7 +35,7 @@ local Secrets = {
     -- { key, key, … } inside the state
     PATHS = {
         { "refresh_token" }, { "access_token" },
-        { "bookorbit", "key" },
+        { "bookorbit", "key" }, { "bookorbit", "api_key" },
         { "caldav", "password" },
         { "memos", "token" },
         { "plex", "token" }, { "plex", "server", "token" },
