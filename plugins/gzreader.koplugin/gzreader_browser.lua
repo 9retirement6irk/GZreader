@@ -255,6 +255,12 @@ local function hostOf(server)
     return type(server) == "string" and (server:gsub("^https?://", ""):gsub("/+$", "")) or "?"
 end
 
+--- The book server's name, as shown: "Grimmory", or "BookOrbit" when signed in to that.
+function Browser.serverName(self)
+    local p = type(self) == "table" and self.plugin
+    return type(p) == "table" and type(p.serverName) == "function" and p:serverName() or "Grimmory"
+end
+
 --- The Grimmory card (last in the Books and Audiobooks pages' bookcase, as
 --- Plex's is on the Music page): who you are, or that you aren't signed in.
 function Browser:grimmoryItem(gz_id)
@@ -265,7 +271,7 @@ function Browser:grimmoryItem(gz_id)
     else
         sub = (store.server and store.username) and _("signed out") or _("not signed in")
     end
-    return { gz_id = gz_id, gz_kind = "section", gz_contents = "none", text = _("Grimmory"), mandatory = sub,
+    return { gz_id = gz_id, gz_kind = "section", gz_contents = "none", text = Browser.serverName(self), mandatory = sub,
         callback = function() self:openGrimmory() end }
 end
 
@@ -296,12 +302,13 @@ function Browser.grimmoryItems(self)
     local function account() return T(_("%1 · %2"), store.username or "?", hostOf(store.server)) end
     local items = {}
     local function add(text, icon, fn) items[#items + 1] = { text = text, gz_icon = icon, callback = fn } end
+    local orbit = type(plugin.backend) == "function" and plugin:backend() == "bookorbit"
     if Browser.signedIn(self) then
         items[1] = { text = _("Signed in"), mandatory = account(), gz_icon = "name:settings_account_outline", select_enabled = false }
         add(_("Rebuild library"), "refresh", function() plugin:rebuildLibrary() end)
         if not usb then
             add(_("Reconnect with QR code"), "send", function() plugin:onGrimmoryPair() end)
-            add(_("Connect by typing"), "keyboard", function() plugin:keyboardLogin() end)
+            add(_("Connect by typing"), "keyboard", function() plugin:keyboardLogin(nil, orbit and "bookorbit" or nil) end)
         end
     elseif usb then
         -- (a Kindle without Wi-Fi signs in through the sync page)
@@ -312,8 +319,17 @@ function Browser.grimmoryItems(self)
             mandatory = (store.server and store.username) and account() or nil,
             gz_icon = "name:settings_account_outline", select_enabled = false }
         add(_("Connect with QR code"), "send", function() plugin:onGrimmoryPair() end)
-        add(_("Connect by typing"), "keyboard", function() plugin:keyboardLogin() end)
+        add(_("Connect by typing"), "keyboard", function() plugin:keyboardLogin(nil, orbit and "bookorbit" or nil) end)
         add(_("Copy from another GZreader"), "copy", function() require("gzreader_copy").receive(plugin, { only = "grimmory" }) end)
+        if orbit then
+            add(_("Connect to Grimmory by typing"), "keyboard", function() plugin:keyboardLogin(nil, "grimmory") end)
+        elseif type(plugin.backend) == "function" then
+            add(_("Connect to BookOrbit by typing"), "keyboard", function() plugin:keyboardLogin(nil, "bookorbit") end)
+        end
+    end
+    if orbit then
+        items[#items + 1] = Rows.about(_("About BookOrbit"), T(_("BookOrbit is your book server: the Catalog's books come from it. For now you can browse and download them; reading progress, highlights, bookmarks and audiobooks aren't synced with BookOrbit yet.\n\nSign in with the %1 sync user name and password you made in BookOrbit (Settings → %1), not your website sign-in.\n\nRebuild library: BookOrbit's list of books fetched again, when the Catalog is missing books or shows old ones."), "KOReader"))
+        return Rows.mark(items)
     end
     items[#items + 1] = Rows.about(_("About Grimmory"), usb
         and _("Grimmory is your book server. This Kindle has no Wi-Fi: sign in on the sync page on a computer, then sync. Books, progress and shelves come and go with each sync.")
@@ -322,7 +338,7 @@ function Browser.grimmoryItems(self)
 end
 
 function Browser:openGrimmory()
-    self:push(_("Grimmory"), Browser.grimmoryItems(self))
+    self:push(Browser.serverName(self), Browser.grimmoryItems(self))
 end
 
 --- Signed in (or out) while the Catalog is open: its page again, from the top.
@@ -339,7 +355,7 @@ function Browser:bookItems()
     if not Browser.signedIn(self) then return Browser.signedOutItems(self, "books") end
     return {
         gz_root = true,
-        { gz_id = "search", gz_action = "search", text = _("Search Grimmory…"), callback = function() self:promptSearch() end },
+        { gz_id = "search", gz_action = "search", text = T(_("Search %1…"), Browser.serverName(self)), callback = function() self:promptSearch() end },
         { gz_id = "continue", text = _("Continue reading"), callback = function() self:openSimple("continue-reading", _("Continue reading")) end },
         { gz_id = "recent", text = _("Recently added"), callback = function() self:openSimple("recently-added", _("Recently added")) end },
         { gz_id = "all", text = _("All books"), callback = function() self:openPaged(_("All books"), { sort = "title", dir = "asc" }) end },
@@ -940,7 +956,7 @@ function Browser:openPaged(title, params, with_series_number, opts)
             or (opts.audio and Browser.audioScope()) or nil
         header = { {
             gz_action = "search",
-            text = scoped and T(_("Search in %1…"), title) or (opts.audio and _("Search audiobooks…") or _("Search Grimmory…")),
+            text = scoped and T(_("Search in %1…"), title) or (opts.audio and _("Search audiobooks…") or T(_("Search %1…"), Browser.serverName(self))),
             callback = function() self:promptSearch(scope) end,
         } }
     end
@@ -1162,7 +1178,7 @@ end
 function Browser:promptSearch(scope, text)
     local dialog
     dialog = InputDialog:new{
-        title = scope and T(_("Search in %1"), scope.title) or _("Search Grimmory"),
+        title = scope and T(_("Search in %1"), scope.title) or T(_("Search %1"), Browser.serverName(self)),
         input = text,
         input_hint = _("Title, author or series"),
         buttons = {{

@@ -33,12 +33,19 @@ CAPABILITIES = ["catalogBulkManifest", "catalogDashboardSections", "bookmarkSync
                 "annotationPendingBooks", "catalogBooksQuery"]
 SORTS = {"title", "author", "published", "recently_added", "recently_updated", "recently_read", "series"}
 
-# A tiny valid PNG (1x1) for thumbnails, and the "book files" (their bytes are
-# what a download returns; hash = KOReader's partial MD5, which for a file this
-# small is the MD5 of its first 1024 bytes at offset 0... the mock just keeps
-# the value a test gives it).
-PNG = bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
-                    "0000000d49444154789c6360606060000000050001a5f645400000000049454e44ae426082")
+# The "book files": their bytes are what a download returns. fileHash here is the
+# file's MD5 (the real server's is KOReader's partial MD5; the tests only need the
+# two ends to agree).
+def _png(w, h):
+    """A plain cover: light grey with a dark edge (stdlib only)."""
+    import struct, zlib
+    rows = b"".join(b"\0" + bytes(60 if x < 3 or y < 3 or x >= w - 3 or y >= h - 3 else 205 for x in range(w)) for y in range(h))
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xffffffff)
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 0, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b"")
+
+
+PNG = _png(120, 168)
 
 
 def book(i, title, authors, library, series=None, idx=None, fmt="epub", collections=()):

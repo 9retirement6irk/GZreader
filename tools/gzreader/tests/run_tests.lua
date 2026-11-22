@@ -15088,5 +15088,219 @@ print("Immich photos for notes and drawings (gzreader_immichpick.lua): the Memos
     plugin.store.memos, plugin.store.immich = saved.memos, saved.immich
 end)()
 
+print("BookOrbit as the book server: sign in, browse, covers, download")
+;(function()
+    local BP = PORT + 61
+    local BO = "http://127.0.0.1:" .. BP
+    os.execute("python3 -I " .. PLUGIN .. "/../../tools/gzreader/tests/mock_bookorbit.py " .. BP
+        .. " > " .. WORK .. "/bookorbit.log 2>&1 & echo $! > " .. WORK .. "/bookorbit.pid")
+    local function bctl(path, body)
+        local pp = io.popen("curl -s " .. (body and ("-H 'Content-Type: application/json' -d '" .. body .. "' ") or "") .. BO .. path)
+        local t = pp:read("*a"); pp:close()
+        return t ~= "" and json.decode(t) or {}
+    end
+    for _try = 1, 50 do
+        if bctl("/_mock/state").capabilities then break end
+        socket.sleep(0.2)
+    end
+    local BookOrbit = require("gzreader_bookorbit")
+    local Api = require("gzreader_api")
+    local Covers = require("gzreader_covers")
+    local lfs = require("libs/libkoreader-lfs")
+    local md5 = require("ffi/sha2").md5
+
+    -- the pure parts
+    check(BookOrbit.pickFormat({ "pdf", "m4b", "EPUB" }) == "epub" and BookOrbit.pickFormat({ "m4b" }) == nil and BookOrbit.pickFormat(nil) == nil,
+        "the format to read: the first KOReader opens, EPUB before PDF; none for an audiobook")
+    local tb = BookOrbit.toBook({ id = 7, title = "A: B/C?", authors = { "X", json.null }, formats = { "epub" }, seriesName = json.null,
+        seriesIndex = 2, progressPercentage = 42.5, readStatus = "reading", lastReadAt = "2026-11-21T10:00:00.000Z" })
+    check(tb.id == 7 and tb.primaryFileType == "EPUB" and tb.primaryFileName == "A B C.epub" and #tb.authors == 1 and tb.seriesName == nil
+        and tb.seriesNumber == 2 and tb.readProgress == 42.5 and tb.readStatus == "READING", "a catalog item as a GZreader book (nulls dropped, a safe file name)")
+    check(BookOrbit.toBook({ id = 8, title = "T", formats = { "m4b" } }).primaryFileType == "AUDIOBOOK" and BookOrbit.toBook({ title = "no id" }) == nil,
+        "an audiobook is told apart; an item without an id is left out")
+    check(BookOrbit.pickFile({ files = { { id = 1, format = "pdf", role = "content", downloadUrl = "/a" }, { id = 2, format = "epub", role = "primary", downloadUrl = "/b" },
+        { id = 3, format = "epub", role = "content", downloadUrl = "/c" } } }).id == 3, "the file to download: one the server serves, EPUB first")
+
+    -- signing in
+    local saved = { server = plugin.store.server, username = plugin.store.username, downloads = plugin.store.downloads }
+    -- (earlier tests put their stand-ins back as fields of the client itself, which would hide the other class's methods)
+    for k, v in pairs(plugin.api) do
+        if type(v) == "function" and k ~= "on_change" then plugin.api[k] = nil end
+    end
+    check(plugin:backend() == "grimmory" and plugin.api:isPaired() and not plugin:booksOnly(), "before: signed in to Grimmory")
+    plugin.store.downloads = { ["101"] = { path = "/nowhere/grimmory-book.epub", title = "Grimmory's 101" } }
+    local g_refresh = plugin.store.refresh_token
+    local ok, err = plugin:connect(BO, "will-kindle", "wrong", "bookorbit")
+    check(not ok and err:find("KOReader sync user name", 1, true) and plugin:backend() == "grimmory" and plugin.store.refresh_token == g_refresh
+        and plugin.store.server == saved.server and getmetatable(plugin.api) == Api,
+        "a wrong BookOrbit password: said plainly, and the Grimmory sign-in is untouched")
+    bctl("/_mock/set", '{"sync_enabled": false}')
+    ok, err = plugin:connect(BO, "will-kindle", "hunter22", "bookorbit")
+    check(not ok and err:find("sync switched off", 1, true), "sync switched off in BookOrbit: said so")
+    bctl("/_mock/set", '{"sync_enabled": true}')
+    ok, err = plugin:connect("http://127.0.0.1:" .. PORT, "will-kindle", "hunter22", "bookorbit")
+    check(not ok and err:find("check that the address is BookOrbit's", 1, true) and plugin:backend() == "grimmory",
+        "Grimmory's address given as BookOrbit's (it answers 401): the message also says to check the address")
+    check(plugin:describeError("bookorbit_not_found"):find("not as BookOrbit", 1, true) ~= nil, "an address with no BookOrbit there (404): said so")
+    local api_table = plugin.api
+    ok, err = plugin:connect(BO, "will-kindle", "hunter22", "bookorbit")
+    check(ok and plugin:backend() == "bookorbit" and plugin.api == api_table and getmetatable(plugin.api) == BookOrbit and plugin:booksOnly()
+        and plugin.api:isPaired() and plugin:serverName() == "BookOrbit", "signed in to BookOrbit: the same client table, now BookOrbit's")
+    check(plugin.store.server == BO and plugin.store.username == "will-kindle" and plugin.store.bookorbit.key == md5("hunter22")
+        and plugin.store.refresh_token == nil and plugin.store.access_token == nil, "kept: the address, the name and the password's MD5; Grimmory's tokens gone")
+    local dump = require("dump") and require("dump")(plugin.store) or ""
+    check(not dump:find("hunter22", 1, true), "the password itself is nowhere in the settings")
+    check(plugin.store.bookorbit.server_version == "0.9.0" and plugin.api:can("bookmarkSync") and not plugin.api:can("nope"), "the server's version and capabilities are read")
+    check(next(plugin.store.downloads) == nil and plugin.store.downloads_other.grimmory["101"].title == "Grimmory's 101",
+        "Grimmory's list of downloads is put aside (its ids are other books here)")
+    check(Covers.dir():match("gzreader%-covers%-bookorbit$") ~= nil, "BookOrbit's covers have their own folder")
+    local S = require("gzreader_secrets")
+    local in_secrets = false
+    for _i, p in ipairs(S.PATHS) do if p[1] == "bookorbit" and p[2] == "key" then in_secrets = true end end
+    check(in_secrets, "the sign-in key is one of the secrets kept off the USB drive")
+    check(not plugin:syncEnabled(), "nothing is synced to BookOrbit yet: progress sync is off")
+    plugin:queue("progress", 101, { percentage = 10 })
+    check(next(plugin.store.pending.progress) == nil, "…and nothing is queued to send")
+
+    -- browsing
+    local page = plugin.api:listBooks{ page = 0, size = 2, sort = "title", dir = "asc", fileType = plugin.api.READABLE_TYPES }
+    check(page and #page.content == 2 and page.totalElements == 5 and page.totalPages == 3 and page.hasNext and not page.hasPrevious
+        and page.content[1].title == "A Field Guide to Fog" and page.content[1].primaryFileType == "EPUB"
+        and page.content[1].primaryFileName == "A Field Guide to Fog.epub", "a page of books, as the Catalog reads one")
+    local last = plugin.api:listBooks{ page = 2, size = 2, sort = "title", dir = "asc" }
+    check(last and #last.content == 1 and not last.hasNext and last.content[1].primaryFileType == "PDF", "the last page; a PDF book")
+    check(plugin.api:listBooks{ page = 0, size = 50, libraryId = 2 }.totalElements == 2, "a library's books")
+    check(plugin.api:listBooks{ page = 0, size = 50, shelfId = 12 }.totalElements == 2, "a collection's books (GZreader's shelf)")
+    check(plugin.api:listBooks{ page = 0, size = 50, authors = "Ada Marsh" }.totalElements == 2, "an author's books")
+    local ser = plugin.api:listBooks{ page = 0, size = 50, series = "Waymarks", sort = "seriesNumber", dir = "asc" }
+    check(ser.totalElements == 2 and ser.content[1].seriesNumber == 1 and ser.content[2].seriesNumber == 2, "a series, in order")
+    check(plugin.api:searchBooks("okafor").totalElements == 2 and plugin.api:listBooks{ page = 0, size = 50, search = "trains" }.content[1].id == 104, "searching")
+    check(plugin.api:listBooks{ page = 0, size = 500 }.size == 100, "a page is never asked for bigger than the server gives")
+    local audio = plugin.api:listBooks{ page = 0, size = 20, fileType = { "AUDIOBOOK" } }
+    check(audio and #audio.content == 0 and audio.totalPages == 0, "audiobooks: an empty list for now, not an error")
+    local libs = plugin.api:listLibraries()
+    check(libs and #libs == 2 and libs[1].id == 1 and libs[1].name == "Fiction" and libs[1].bookCount == 3, "libraries")
+    local shelves = plugin.api:listShelves()
+    check(shelves and #shelves == 2 and shelves[1].name == "Beach reads" and shelves[1].bookCount == 2 and not shelves[1].magic, "collections as shelves")
+    local recent = plugin.api:simpleList("recently-added", 3)
+    check(recent and #recent == 3 and recent[1].addedOn >= recent[2].addedOn, "recently added, newest first")
+    check(#plugin.api:continueReading(10) == 0, "continue reading: nothing in progress yet")
+    local full = plugin.api:getBook(101)
+    check(full and full.primaryFile.id == 5101 and full.primaryFileId == 5101 and full.metadata.description == "About The Long Way Round."
+        and full.libraryId == 1 and full.fileSizeKb == 2 and #full.primaryFile.fileHash == 32, "a book's record: its file and metadata")
+    local d = plugin.api:getBookDetail(101)
+    check(d and d.publisher == "Example House" and d.pageCount == 240 and d.seriesName == "Waymarks" and d.seriesNumber == 1, "a book's page")
+    local none, nerr = plugin.api:getBook(999)
+    check(none == nil and nerr == "http_404" and plugin:describeError(nerr) == "BookOrbit returned an error (404).", "a missing book: BookOrbit's error, by name")
+    -- the library index (authors and series come from it) builds from these pages
+    local Index = require("gzreader_index")
+    local built
+    Index.build(plugin, false, function(data) built = data end)
+    runLoop(function() return built ~= nil end, 30)
+    if type(built) ~= "table" then print("    index:", tostring(built)) end
+    check(type(built) == "table" and built.total == 5 and built.authors["Ben Okafor"] == 2 and built.series["Waymarks"].count == 2
+        and built.libraries["1"] == 3, "the library index builds from BookOrbit (authors, series, libraries)")
+
+    -- covers and files
+    local cover = WORK .. "/bo-cover.jpg"
+    os.remove(cover)
+    check(plugin.api:downloadThumbnail(101, cover) == true and lfs.attributes(cover, "size") > 50, "a cover")
+    local c_ok, c_err, c_code = plugin.api:downloadThumbnail(999, cover .. "2")
+    check(c_ok == false and c_code == 404 and lfs.attributes(cover .. "2.part") == nil, "no cover: 404, nothing left behind")
+    local got = plugin.api:downloadThumbnails{ { id = 102, path = WORK .. "/bo-c102.jpg" }, { id = 999, path = WORK .. "/bo-c999.jpg" } }
+    check(got.got == 1 and #got.none == 1 and got.none[1] == 999, "a page of covers: the ones there, and which have none")
+    local file = WORK .. "/bo-book.epub.part"
+    local f = io.open(file, "wb"); f:write("an interrupted part from before"); f:close()
+    local d_ok, d_err = plugin.api:downloadToFile(101, file, true)
+    local fh = io.open(file, "rb"); local data = fh and fh:read("*a") or ""; if fh then fh:close() end
+    check(d_ok == true and md5(data) == full.primaryFile.fileHash and #data == 1280, "a book's file, whole (an old part is started again, not added to)", d_err)
+    d_ok, d_err = plugin.api:downloadToFile(999, file .. "x")
+    check(d_ok == false and d_err == "http_404" and lfs.attributes(file .. "x") == nil, "a missing book's file: an error, nothing left behind")
+    local seen = bctl("/_mock/state").seen
+    local only_get = #seen > 10
+    for _i, e in ipairs(seen) do if e[1] ~= "GET" then only_get = false end end
+    check(only_get, "browsing and downloading only ever read from BookOrbit")
+
+    -- a refused sign-in later, and the server away
+    bctl("/_mock/set", '{"ko_permission": false}')
+    local r, rerr = plugin.api:listLibraries()
+    check(r == nil and rerr == "bookorbit_refused" and plugin.api:isPaired(), "refused later: an error to show, the sign-in kept")
+    bctl("/_mock/set", '{"ko_permission": true, "offline": true}')
+    r, rerr = plugin.api:listBooks{ page = 0, size = 5 }
+    check(r == nil and rerr == "http_503", "the server down: its error")
+    bctl("/_mock/set", '{"offline": false}')
+    check(select(2, plugin.api:putProgress(101, {})) == "unsupported" and select(2, plugin.api:listAnnotations(101)) == "unsupported",
+        "what isn't sent to BookOrbit yet answers \"unsupported\"")
+
+    -- the setup page
+    PS.new = function(self, o) screen = o; return o end
+    plugin:startQrPairing()
+    local url = screen.url:gsub("#.*$", "")
+    local code, body = phone("'" .. url .. "'")
+    local sec = body and body:match('<section id="grimmory".-</section>') or ""
+    check(code == 200 and sec:find("Connected to BookOrbit as <b>will%-kindle</b>") and sec:find('<option value="bookorbit" selected>', 1, true)
+        and sec:find("aren't sent to BookOrbit yet", 1, true), "the setup page: connected to BookOrbit, the choice shown")
+    code, body = phone("-L --data-urlencode 'backend=bookorbit' --data-urlencode 'server=" .. BO .. "' --data-urlencode 'username=will-kindle' "
+        .. "--data-urlencode 'password=nope' --data-urlencode 'action=password' '" .. url .. "/grimmory'")
+    sec = body and body:match('<section id="grimmory".-</section>') or ""
+    check(sec:find("KOReader sync user name and password", 1, true) and sec:find('<option value="bookorbit" selected>', 1, true)
+        and not (body or ""):find("nope", 1, true), "the setup page: a wrong password says which one BookOrbit wants (and isn't echoed)")
+    code, body = phone("-L --data-urlencode 'backend=bookorbit' --data-urlencode 'server=" .. BO .. "' --data-urlencode 'action=sso' '" .. url .. "/grimmory'")
+    check((body or ""):find("not single sign%-on") ~= nil, "the setup page: single sign-on isn't offered for BookOrbit")
+    screen.on_cancel()
+
+    -- the menu
+    local found
+    local function walk(items)
+        for _i, it in ipairs(items or {}) do
+            if it.text == "Connect to BookOrbit by typing" then found = it end
+            if type(it.sub_item_table) == "table" then walk(it.sub_item_table) end
+        end
+    end
+    walk(plugin:menuItems())
+    check(found and found.help_text:find("KOReader sync user name", 1, true), "the menu: Connect to BookOrbit by typing")
+    check(plugin:menuItems()[1].text_func() == "Connected to BookOrbit as will-kindle", "the menu's first line names BookOrbit")
+
+    -- a restart keeps it; the backup list of downloads is this server's
+    local again = Grimmory:new{ ui = { menu = { registerToMainMenu = function() end } } }
+    check(getmetatable(again.api) == BookOrbit and again.api:isPaired() and again:backend() == "bookorbit", "after a restart: still BookOrbit")
+    plugin.store.downloads["104"] = { path = plugin.store.library_dir .. "/Night Trains.epub", title = "Night Trains" }
+    plugin:writeManifest()
+    local mf = io.open(plugin.store.library_dir .. "/.gzreader-library.json", "rb")
+    local manifest = mf and json.decode(mf:read("*a")) or {}; if mf then mf:close() end
+    check(manifest.backend == "bookorbit", "the backup list of downloads says whose it is")
+
+    -- back to Grimmory
+    ok, err = plugin:connect("http://127.0.0.1:" .. PORT, "will", "wrong", "grimmory")
+    check(not ok and plugin:backend() == "bookorbit" and plugin.api:isPaired(), "a wrong Grimmory password leaves the BookOrbit sign-in as it was")
+    ok, err = plugin:connect("http://127.0.0.1:" .. PORT, "will", "hunter22", "grimmory")
+    check(ok and plugin:backend() == "grimmory" and getmetatable(plugin.api) == Api and plugin.api == api_table and plugin.store.bookorbit == nil
+        and plugin.store.backend == nil and not plugin:booksOnly() and plugin:syncEnabled(), "back to Grimmory: its client, sync on again, BookOrbit's key gone")
+    check(plugin.store.downloads["101"] and plugin.store.downloads["101"].title == "Grimmory's 101" and plugin.store.downloads["104"] == nil
+        and plugin.store.downloads_other.bookorbit["104"].title == "Night Trains" and plugin.store.downloads_other.grimmory == nil,
+        "Grimmory's downloads are back; BookOrbit's are put aside")
+    check(Covers.dir():match("gzreader%-covers$") ~= nil, "Grimmory's covers folder again")
+    plugin.store.downloads["777"] = nil
+    local before = 0
+    for _ in pairs(plugin.store.downloads) do before = before + 1 end
+    plugin:restoreFromManifest()
+    local after = 0
+    for _ in pairs(plugin.store.downloads) do after = after + 1 end
+    check(after == before, "BookOrbit's backup list isn't merged into Grimmory's downloads")
+    check(plugin.api:listBooks{ page = 0, size = 5 } ~= nil, "Grimmory's lists work again")
+
+    -- disconnecting from BookOrbit
+    plugin:connect(BO, "will-kindle", "hunter22", "bookorbit")
+    plugin.api:logout()
+    check(not plugin.api:isPaired() and plugin.store.bookorbit.key == nil and plugin:backend() == "bookorbit"
+        and select(2, plugin.api:listLibraries()) == "not_paired", "disconnected from BookOrbit: the key is gone, nothing is asked")
+
+    os.execute("kill $(cat " .. WORK .. "/bookorbit.pid) 2>/dev/null")
+    plugin.store.downloads_other = nil
+    plugin.store.downloads = saved.downloads
+    plugin:connect("http://127.0.0.1:" .. PORT, "will", "hunter22")
+    plugin:writeManifest()
+end)()
+
 print(string.format("\n%d passed, %d failed", pass, fail))
 os.exit(fail == 0 and 0 or 1)

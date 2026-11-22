@@ -194,6 +194,7 @@ function Grimmory:init()
     self.store.pending.ratings = self.store.pending.ratings or {}
     Log.enabled = self.store.logging_disabled ~= true
     self.api = Api:new(self.store, function() self:save() end)
+    if self.store.backend == "bookorbit" then self:useBackend("bookorbit") end
     -- no Wi-Fi (Kindle 2, DX): Grimmory through a computer, the library
     -- from the copy the sync page left (gzreader_usbsync.lua)
     local Usb = require("gzreader_usbsync")
@@ -488,7 +489,7 @@ do
 end
 
 function Grimmory:syncEnabled()
-    return self.store.sync_disabled ~= true and self.api:isPaired()
+    return self.store.sync_disabled ~= true and self.api:isPaired() and not self:booksOnly()
 end
 
 -- exit: the next save is a whole one, and there is one if only the recent part
@@ -577,6 +578,7 @@ function Grimmory:menuItems()
         {
             text_func = function()
                 if self.api:isPaired() then
+                    if self:backend() == "bookorbit" then return T(_("Connected to BookOrbit as %1"), self.store.username or "?") end
                     return T(_("Connected as %1"), self.store.username or "?")
                 end
                 return _("Not connected")
@@ -642,6 +644,11 @@ function Grimmory:menuItems()
         {
             text = _("Connect by typing"),
             callback = function() self:keyboardLogin() end,
+        },
+        {
+            text = _("Connect to BookOrbit by typing"),
+            help_text = T(_("BookOrbit instead of Grimmory as this Kindle's book server. It asks for BookOrbit's address and the %1 sync user name and password (BookOrbit: Settings → %1). For now you can browse and download your books; reading progress, highlights and bookmarks aren't sent to BookOrbit yet."), "KOReader"),
+            callback = function() self:keyboardLogin(nil, "bookorbit") end,
         },
         {
             text = _("Single sign-on (SSO)"),
@@ -849,6 +856,13 @@ local ERRORS = {
     bad_credentials = _("Wrong username or password."),
     rate_limited = _("Too many attempts. Wait a minute and try again."),
     usb = _("This Kindle syncs with Grimmory through a computer: Menu → Sync with computer."),
+    -- (the name goes in as an argument: gettext.lua turns "KOReader" in a message into "GZreader")
+    bookorbit_credentials = T(_("Wrong user name or password. BookOrbit wants the %1 sync user name and password (BookOrbit: Settings → %1), not the ones you sign in to its website with. Also check that the address is BookOrbit's."), "KOReader"),
+    bookorbit_sync_off = T(_("BookOrbit has sync switched off for this %1 user. Switch it on in BookOrbit: Settings → %1."), "KOReader"),
+    bookorbit_refused = T(_("BookOrbit didn't accept this Kindle's sign-in. If you changed the %1 sync password in BookOrbit, connect again."), "KOReader"),
+    bookorbit_not_found = _("That address answered, but not as BookOrbit (or its BookOrbit is too old for e-readers). Check the address."),
+    bookorbit_no_file = _("BookOrbit has no file for this book that this Kindle can open."),
+    unsupported = _("That isn't available with BookOrbit yet."),
     no_https = require("gzreader_lan").noHttpsText(),
 }
 
@@ -858,9 +872,34 @@ function Grimmory:describeError(err)
         return T(_("The download stalled (%1). Check the Kindle's Wi-Fi signal and try again."), err:gsub("^stalled:%s*", ""))
     end
     if type(err) == "string" and err:match("^http_") then
-        return T(_("Grimmory returned an error (%1)."), err:sub(6))
+        return T(_("%1 returned an error (%2)."), self:serverName(), err:sub(6))
     end
     return T(_("Something went wrong: %1"), tostring(err))
+end
+
+--- Which book server this Kindle is signed in to: "grimmory" (the default) or "bookorbit".
+function Grimmory:backend()
+    return self.store.backend == "bookorbit" and "bookorbit" or "grimmory"
+end
+
+function Grimmory:serverName()
+    return self:backend() == "bookorbit" and "BookOrbit" or "Grimmory"
+end
+
+--- Make plugin.api the client for that server. The same table keeps being the
+--- client (every part of GZreader that holds it follows): only its class changes.
+function Grimmory:useBackend(name)
+    name = name == "bookorbit" and "bookorbit" or "grimmory"
+    self.store.backend = name == "bookorbit" and "bookorbit" or nil
+    if self.api.offline then return end -- (syncing through a computer: Grimmory's copy)
+    setmetatable(self.api, name == "bookorbit" and require("gzreader_bookorbit") or Api)
+    pcall(function() require("gzreader_covers").useSpace(name == "bookorbit" and "bookorbit" or nil) end)
+end
+
+--- With BookOrbit, only the books so far (browse, covers, download): nothing is
+--- synced to it yet (gzreader_bookorbit.lua).
+function Grimmory:booksOnly()
+    return self.api.books_only == true
 end
 
 function Grimmory:exportLog()
@@ -1159,28 +1198,66 @@ end
 ---------------------------------------------------------------- pairing
 
 --- Log in. Returns ok, err.
-function Grimmory:connect(server_input, username, password)
+function Grimmory:connect(server_input, username, password, backend)
+    backend = backend == "bookorbit" and "bookorbit" or "grimmory"
     local server = Api.normalizeServer(server_input)
     if not server then return false, _("That server address doesn't look right.") end
     username = (username or ""):gsub("^%s+", ""):gsub("%s+$", "")
     if username == "" or not password or password == "" then
         return false, _("Enter your username and password.")
     end
-    local previous = { self.store.server, self.store.username }
-    self.api.explicit_https = server_input:match("^%s*https://") ~= nil
-    local ok, err = self.api:login(server, username, password)
-    Log.info("password login to", ok and self.store.server or server, ok and "ok" or ("failed: " .. tostring(err)))
+    local previous = self:signedInAs()
+    local client = self:clientFor(backend)
+    client.explicit_https = server_input:match("^%s*https://") ~= nil
+    local ok, err = client:login(server, username, password)
+    Log.info(backend == "bookorbit" and "BookOrbit sign-in to" or "password login to", ok and self.store.server or server,
+        ok and "ok" or ("failed: " .. tostring(err)))
     if not ok then return false, self:describeError(err) end
-    self:afterLogin(previous)
+    self:afterLogin(previous, backend)
     return true
 end
 
---- Bookkeeping after any successful login. `previous` = { server, username }
---- from before the login.
-function Grimmory:afterLogin(previous)
-    if type(previous) ~= "table" or previous[1] ~= self.store.server or previous[2] ~= self.store.username then
-        -- Different server/account: queued data belongs to the old one.
+--- What this Kindle is signed in to, to compare after a sign-in (afterLogin).
+function Grimmory:signedInAs()
+    return { self.store.server, self.store.username, self:backend() }
+end
+
+--- The client to sign in to that book server with: plugin.api if it is that server's,
+--- or one of its own (a sign-in that fails then leaves this Kindle as it was).
+function Grimmory:clientFor(backend)
+    backend = backend == "bookorbit" and "bookorbit" or "grimmory"
+    if backend == self:backend() or self.api.offline then return self.api end
+    return (backend == "bookorbit" and require("gzreader_bookorbit") or Api):new(self.store, self.api.on_change)
+end
+
+--- Bookkeeping after any successful login. `previous` = signedInAs() from before
+--- the login; `backend`: the book server it was (nil: the one in use).
+function Grimmory:afterLogin(previous, backend)
+    backend = backend or self:backend()
+    if backend ~= self:backend() then
+        if self.sync then pcall(self.sync.onLeave, self.sync) end
+        if backend ~= "bookorbit" then self.store.bookorbit = nil end
+        self:useBackend(backend)
+    end
+    if type(previous) ~= "table" or previous[1] ~= self.store.server or previous[2] ~= self.store.username
+        or (previous[3] or "grimmory") ~= self:backend() then
+        -- Different server/account: queued data belongs to the old one, and so do
+        -- the saved lists and the library index (book ids mean other books there).
         self.store.pending = { progress = {}, sessions = {}, ratings = {} }
+        local was = type(previous) == "table" and previous[3] or "grimmory"
+        if was ~= self:backend() then
+            -- The other server's books: its ids mean other books here, so the list of
+            -- its downloads is put aside (the files stay in the books folder) and comes
+            -- back if this Kindle signs in to it again; the saved lists go.
+            local other = self.store.downloads_other or {}
+            other[was] = self.store.downloads
+            self.store.downloads = other[self:backend()] or {}
+            other[self:backend()] = nil
+            self.store.downloads_other = other
+            pcall(self.writeManifest, self)
+            pcall(function() require("gzreader_listcache").clear() end)
+            Log.info("book server changed:", was, "->", self:backend())
+        end
         self:save()
     end
     self:flushPending()
@@ -1193,6 +1270,11 @@ function Grimmory:onGrimmoryPair(touchmenu)
     closeTouchMenu(touchmenu)
     if Net.usb then require("gzreader_usbsync").show(self); return true end
     Net.run(function() self:startQrPairing() end, { reason = "connecting to Grimmory" })
+    return true
+end
+
+function Grimmory:onBookOrbitKeyboardLogin()
+    self:keyboardLogin(nil, "bookorbit")
     return true
 end
 
@@ -1512,21 +1594,25 @@ end
 
 function Grimmory:announceConnected()
     UIManager:show(InfoMessage:new{
-        text = T(_("Connected to Grimmory as %1."), self.store.username or "") .. "\n\n"
-            .. _("Reading progress syncs automatically for books you download from Grimmory."),
+        text = T(_("Connected to %1 as %2."), self:serverName(), self.store.username or "") .. "\n\n"
+            .. (self:booksOnly() and _("You can browse and download your books. Reading progress, highlights and bookmarks aren't sent to BookOrbit yet.")
+                or _("Reading progress syncs automatically for books you download from Grimmory.")),
     })
 end
 
 --- prefill = { server, username } (copied from another GZreader), or the saved ones.
-function Grimmory:keyboardLogin(prefill)
+function Grimmory:keyboardLogin(prefill, backend)
     prefill = type(prefill) == "table" and prefill or {}
+    backend = backend == "bookorbit" and "bookorbit" or "grimmory"
+    local same = backend == self:backend() -- (the saved address and name are that server's)
     local dialog
     dialog = MultiInputDialog:new{
-        title = _("Connect to Grimmory"),
+        title = backend == "bookorbit" and _("Connect to BookOrbit") or _("Connect to Grimmory"),
         fields = {
-            { text = prefill.server or self.store.server or "", hint = _("Server, e.g. https://books.example.com") },
-            { text = prefill.username or self.store.username or "", hint = _("Username") },
-            { text = "", hint = _("Password"), text_type = "password" },
+            { text = prefill.server or (same and self.store.server) or "", hint = _("Server, e.g. https://books.example.com") },
+            { text = prefill.username or (same and self.store.username) or "",
+              hint = backend == "bookorbit" and T(_("%1 sync user name (BookOrbit: Settings → %1)"), "KOReader") or _("Username") },
+            { text = "", hint = backend == "bookorbit" and T(_("%1 sync password"), "KOReader") or _("Password"), text_type = "password" },
         },
         buttons = {{
             { text = _("Cancel"), id = "close", callback = function() UIManager:close(dialog) end },
@@ -1537,7 +1623,7 @@ function Grimmory:keyboardLogin(prefill)
                     local msg = InfoMessage:new{ text = _("Connecting…"), timeout = 0 }
                     UIManager:show(msg)
                     UIManager:forceRePaint()
-                    local ok, err = self:connect(f[1], f[2], f[3])
+                    local ok, err = self:connect(f[1], f[2], f[3], backend)
                     UIManager:close(msg)
                     if ok then
                         self:announceConnected()
@@ -1554,13 +1640,13 @@ end
 
 function Grimmory:confirmDisconnect()
     UIManager:show(ConfirmBox:new{
-        text = _("Disconnect this Kindle from Grimmory? Downloaded books stay on the Kindle. Progress sync will stop until you connect again."),
+        text = T(_("Disconnect this Kindle from %1? Downloaded books stay on the Kindle. Progress sync will stop until you connect again."), self:serverName()),
         ok_text = _("Disconnect"),
         ok_callback = function()
             if self.sync then self.sync:onLeave() end
             NetworkMgr:runWhenConnected(function() self.api:logout() end)
             self.api:clearTokens()
-            UIManager:show(InfoMessage:new{ text = _("Disconnected from Grimmory."), timeout = 3 })
+            UIManager:show(InfoMessage:new{ text = T(_("Disconnected from %1."), self:serverName()), timeout = 3 })
         end,
     })
 end
@@ -1572,6 +1658,7 @@ Grimmory.gone_books = {} -- book ids Grimmory answered "not found" for (this run
 
 function Grimmory:queue(kind, book_id, body)
     local pending = self.store.pending
+    if self:booksOnly() then return end -- (nothing is sent to BookOrbit yet: nothing is kept to send)
     if kind == "progress" and Grimmory.gone_books[tostring(book_id)] then return end
     if kind == "progress" then
         pending.progress[tostring(book_id)] = body
@@ -1590,7 +1677,7 @@ end
 --- Send progress and reading sessions queued while offline. In the
 --- background (gzreader_async): sending a backlog can take many seconds.
 function Grimmory:flushPending()
-    if self.flushing or not self.api:isPaired() or not NetworkMgr:isConnected() then return end
+    if self.flushing or not self.api:isPaired() or self:booksOnly() or not NetworkMgr:isConnected() then return end
     local pending = self.store.pending
     pending.ratings = pending.ratings or {}
     if next(pending.progress) == nil and #pending.sessions == 0 and next(pending.ratings) == nil then return end
@@ -2154,7 +2241,7 @@ function Grimmory:writeManifest()
         end
     end
     local f = io.open(dir .. "/" .. MANIFEST, "wb")
-    if f then f:write(JSON.encode({ version = 1, books = list })); f:close() end
+    if f then f:write(JSON.encode({ version = 1, backend = self:backend(), books = list })); f:close() end
 end
 
 --- Merge the backup list into the settings (after an update wiped them).
@@ -2165,7 +2252,9 @@ function Grimmory:restoreFromManifest()
     local ok, data = pcall(JSON.decode, f:read("*a"))
     f:close()
     local restored = 0
-    if ok and type(data) == "table" and type(data.books) == "table" then
+    -- (a list from the other book server isn't this one's: its ids are other books here)
+    if ok and type(data) == "table" and type(data.books) == "table"
+        and (type(data.backend) == "string" and data.backend or "grimmory") == self:backend() then
         for _, b in ipairs(data.books) do
             local id = b.id and tostring(b.id)
             local path = type(b.file) == "string" and (dir .. "/" .. b.file)
@@ -2395,7 +2484,7 @@ end
 --- Downloads from before 1.22.4: ask Grimmory for their authors (in the
 --- background, while Wi-Fi is on anyway; 40 at a time; each book once).
 function Grimmory:backfillAuthors()
-    if self.backfilling or not self.api:isPaired() or not Net.connected() then return end
+    if self.backfilling or not self.api:isPaired() or self:booksOnly() or not Net.connected() then return end
     local ids = {}
     for id, e in pairs(self.store.downloads or {}) do
         if type(e) == "table" and e.authors == nil and not e.authors_asked and tonumber(id) then

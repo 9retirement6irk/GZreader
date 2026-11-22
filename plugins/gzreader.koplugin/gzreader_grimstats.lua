@@ -75,7 +75,7 @@ end
 
 --- Fetch them if they're old (and Wi-Fi is on): Home redraws when they change.
 function GS.refresh(plugin, force)
-    if GS.busy or not (plugin.api and plugin.api:isPaired()) then return end
+    if GS.busy or not (plugin.api and plugin.api:isPaired()) or plugin.api.books_only then return end
     local cached = plugin.store.grimmory_stats
     if not force and cached and os.time() - (tonumber(cached.at) or 0) < GS.TTL then return end
     local NetworkMgr = require("ui/network/manager")

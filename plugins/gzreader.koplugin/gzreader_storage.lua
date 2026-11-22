@@ -200,7 +200,7 @@ function Storage.measure(plugin)
     out.notes = Storage.notes(data_dir, settings_dir)
     out.calendar = { bytes = fileSize(settings_dir .. "/gzreader-calendar.json") }
     local caches = fileSize(settings_dir .. "/gzreader_index.json") + fileSize(settings_dir .. "/bookinfo_cache.sqlite3")
-    for _i, d in ipairs({ "gzreader-thumbs", "gzreader-lists", "gzreader-covers", "gz-covers", "gzreader-update" }) do
+    for _i, d in ipairs({ "gzreader-thumbs", "gzreader-lists", "gzreader-covers", "gzreader-covers-bookorbit", "gz-covers", "gzreader-update" }) do
         caches = caches + (Storage.dirSize(data_dir .. "/cache/" .. d))
     end
     out.caches = { bytes = caches }

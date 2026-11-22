@@ -425,7 +425,7 @@ end
 
 function Sync:canTalk()
     -- (syncing through a computer: the library copy has the other devices' places)
-    return self.api:isPaired() and (NetworkMgr:isConnected() or self.api.offline == true)
+    return self.api:isPaired() and not self.api.books_only and (NetworkMgr:isConnected() or self.api.offline == true)
 end
 
 --- Grimmory's progress fields of a book (what a download keeps for the

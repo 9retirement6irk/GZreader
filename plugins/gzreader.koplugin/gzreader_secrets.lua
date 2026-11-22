@@ -7,7 +7,7 @@ state (settings/gzreader.lua, and gzreader_recent.lua between full saves)
 held the sign-ins in it: the CalDAV password, the Home Assistant, Memos and
 Plex tokens, the Immich key, the Access key and Cloudflare token, the handwriting
 services' keys (Claude, OpenAI-style), Grimmory's
-sign-in tokens and the calendar links (their keys are in the address).
+sign-in tokens, BookOrbit's sign-in key and the calendar links (their keys are in the address).
 
 Those (PATHS, and each calendar link's url) are kept in SECRET_FILE on the
 Kindle's own disk instead (/var/local: not shared over USB), and every save
@@ -35,6 +35,7 @@ local Secrets = {
     -- { key, key, … } inside the state
     PATHS = {
         { "refresh_token" }, { "access_token" },
+        { "bookorbit", "key" },
         { "caldav", "password" },
         { "memos", "token" },
         { "plex", "token" }, { "plex", "server", "token" },

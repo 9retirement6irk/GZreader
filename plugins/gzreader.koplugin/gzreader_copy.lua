@@ -109,7 +109,7 @@ end
 --- What this device could send, without anything secret (shown on the other).
 function Copy.offer(plugin)
     local store, out = plugin.store, { name = Copy.deviceName(plugin) }
-    if plugin.api and plugin.api:isPaired() then
+    if plugin.api and plugin.api:isPaired() and not plugin.api.books_only then
         out.grimmory = { host = host(store.server), username = store.username }
     end
     local ms = store.memos or {}
@@ -135,7 +135,7 @@ end
 function Copy.payload(plugin, want)
     local store, out = plugin.store, {}
     want = type(want) == "table" and want or {}
-    if want.grimmory and plugin.api and plugin.api:isPaired() then
+    if want.grimmory and plugin.api and plugin.api:isPaired() and not plugin.api.books_only then
         -- (the address and account: Grimmory's sign-in stays on this device)
         out.grimmory = { server = store.server, username = store.username }
     end
@@ -548,7 +548,7 @@ end
 function Copy.defaults(plugin, offer, only)
     local store = plugin.store
     local has = {
-        grimmory = plugin.api and plugin.api:isPaired(),
+        grimmory = plugin.api and plugin.api:isPaired() and not plugin.api.books_only,
         memos = (store.memos or {}).token ~= nil,
         caldav = (store.caldav or {}).password ~= nil,
     }
