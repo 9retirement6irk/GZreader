@@ -14963,8 +14963,12 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
         and tb.seriesNumber == 2 and tb.readProgress == 42.5 and tb.readStatus == "READING", "a catalog item as a GZreader book (nulls dropped, a safe file name)")
     check(BookOrbit.toBook({ id = 8, title = "T", formats = { "m4b" } }).primaryFileType == "AUDIOBOOK" and BookOrbit.toBook({ title = "no id" }) == nil,
         "an audiobook is told apart; an item without an id is left out")
-    check(BookOrbit.pickFile({ files = { { id = 1, format = "pdf", role = "content", downloadUrl = "/a" }, { id = 2, format = "epub", role = "primary", downloadUrl = "/b" },
-        { id = 3, format = "epub", role = "content", downloadUrl = "/c" } } }).id == 3, "the file to download: one the server serves, EPUB first")
+    check(BookOrbit.pickFile({ files = { { id = 1, format = "pdf", role = "primary", downloadUrl = "/a" }, { id = 2, format = "epub", role = "content", downloadUrl = "/b" },
+        { id = 3, format = "epub", role = "primary", downloadUrl = "/c" }, { id = 4, format = "epub", role = "supplement", downloadUrl = "/d" } } }).id == 3,
+        "the file to download: EPUB before PDF, the book's main file before another of the same format")
+    check(BookOrbit.pickFile({ files = { { id = 5, format = "m4b", role = "primary", downloadUrl = "/a" }, { id = 6, format = "epub", role = "content", downloadUrl = "/b" } } }).id == 6
+        and BookOrbit.pickFile({ files = { { id = 7, format = "epub", role = "cover", downloadUrl = "/a" }, { id = 8, format = "epub", role = "primary" } } }) == nil,
+        "…a book whose main file is audio: its ebook; a file that isn't the book's, or has no address: none")
 
     -- signing in
     local saved = { server = plugin.store.server, username = plugin.store.username, downloads = plugin.store.downloads }

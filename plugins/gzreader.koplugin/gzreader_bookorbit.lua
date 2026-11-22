@@ -308,13 +308,17 @@ local function detail(self, book_id)
     return get(self, BookOrbit.CATALOG .. "/books/" .. tostring(book_id), { 10, 20 })
 end
 
---- The file of a book's detail that GZreader downloads: one the server serves
---- (role "content") in the first format KOReader reads.
+--- The file of a book's detail that GZreader downloads: one of the book's own files
+--- (role "primary", its main file, or "content", another one; both download) in the
+--- first format KOReader reads; the main file when two share that format.
 function BookOrbit.pickFile(d)
     local best, rank
     for _i, f in ipairs(list(type(d) == "table" and d.files)) do
         local r = type(f) == "table" and type(f.format) == "string" and READABLE_RANK[f.format:lower()]
-        if r and f.role == "content" and s(f.downloadUrl) and (not rank or r < rank) then best, rank = f, r end
+        if r and (f.role == "primary" or f.role == "content") and s(f.downloadUrl) then
+            r = r * 2 - (f.role == "primary" and 1 or 0)
+            if not rank or r < rank then best, rank = f, r end
+        end
     end
     return best
 end
