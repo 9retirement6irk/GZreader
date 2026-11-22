@@ -1957,7 +1957,8 @@ function Grimmory:onReaderReady()
     self.sync = Sync:new(self, self.ui, entry, book_id)
     self.sync:onReady() -- (then openSync, below: a moment after the first page)
     self.bookmarks = Bookmarks:new(self.sync)
-    self.annotations = Mod.Annotations:new(self.sync)
+    -- (BookOrbit's highlights go by its own exchange: gzreader_bo_annotations.lua)
+    self.annotations = (self.api.koreader_positions and require("gzreader_bo_annotations") or Mod.Annotations):new(self.sync)
     if self:syncEnabled() and self.api:isPaired() and not Net.connected() then
         -- Wi-Fi only when needed: bring it up quietly to sync this book
         Net.run(function() self:syncOpenBook() end, { quiet = true, reason = "sync on open" })

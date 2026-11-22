@@ -42,7 +42,7 @@ local T = require("ffi/util").template
 
 local BookOrbit = {
     books_only = true,
-    supports = { progress = true },
+    supports = { progress = true, annotations = true },
     koreader_positions = true, -- (the percentage and place are KOReader's own, not a web reader's)
     NAME = "BookOrbit",
     BASE = "/api/v1/koreader",
@@ -279,6 +279,31 @@ function BookOrbit:putProgress(book_id, body)
         return false, "bookorbit_unmatched", 404
     end
     return false, err or ("http_" .. tostring(code)), code
+end
+
+--- One book's highlight exchange (gzreader_bo_annotations.lua). book: { hash, keys,
+--- keysComplete, sidecarState, changes }. Returns its result ({ toApply, more… }), or
+--- nil, err ("bookorbit_unmatched": no book with this file; "bookorbit_incompatible":
+--- BookOrbit's copy differs, so its positions can't be placed).
+function BookOrbit:exchangeAnnotations(book)
+    local body = self:deviceFields({ books = require("gzreader_json").list({ book }) })
+    body.deviceTime = os.date("%Y-%m-%d %H:%M:%S") -- (BookOrbit dates what it makes in this Kindle's clock)
+    local code, data, err = self:call("POST", BookOrbit.BASE .. "/plugin/annotations/exchange", { body = body, timeouts = { 10, 45 } })
+    if not ((code == 200 or code == 201) and type(data) == "table") then return nil, err or ("http_" .. tostring(code)) end
+    local res = list(data.results)[1]
+    if type(res) == "table" then return res end
+    if #list(data.positionIncompatible) > 0 then return nil, "bookorbit_incompatible" end
+    return nil, "bookorbit_unmatched"
+end
+
+--- Tell BookOrbit which of its changes were put into the book. Returns true, or false, err.
+function BookOrbit:ackAnnotations(hash, applied, deleted)
+    local Json = require("gzreader_json")
+    local code, data, err = self:call("POST", BookOrbit.BASE .. "/plugin/annotations/exchange-ack", {
+        body = self:deviceFields({ books = Json.list({ { hash = hash, applied = Json.list(applied or {}), deleted = Json.list(deleted or {}) } }) }),
+        timeouts = { 10, 30 } })
+    if (code == 200 or code == 201) and type(data) == "table" then return true end
+    return false, err or ("http_" .. tostring(code))
 end
 
 function BookOrbit:can(capability)

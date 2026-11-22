@@ -15007,8 +15007,8 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
     local in_secrets = false
     for _i, p in ipairs(S.PATHS) do if p[1] == "bookorbit" and p[2] == "key" then in_secrets = true end end
     check(in_secrets, "the sign-in key is one of the secrets kept off the USB drive")
-    check(plugin:syncEnabled() and plugin:serverCan("progress") and not plugin:serverCan("annotations") and not plugin:serverCan("bookmarks")
-        and not plugin:serverCan("ratings"), "with BookOrbit: reading progress is synced; highlights, bookmarks and ratings not yet")
+    check(plugin:syncEnabled() and plugin:serverCan("progress") and plugin:serverCan("annotations") and not plugin:serverCan("bookmarks")
+        and not plugin:serverCan("ratings"), "with BookOrbit: reading progress and highlights are synced; bookmarks and ratings not yet")
     plugin:queue("session", nil, { bookId = 101 })
     check(#plugin.store.pending.sessions == 0, "…and what it doesn't take (reading sessions) isn't kept to send")
     check(type(plugin.store.bookorbit_device) == "string" and plugin.store.bookorbit_device:match("^gz%-%x+$") ~= nil, "this Kindle's device id is made at sign-in")
@@ -15136,6 +15136,118 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
     check(matchCalls() == calls, "…and isn't asked about again until it changes")
     os.remove(other); os.remove(ldir .. "/Stray.epub")
     plugin.store.downloads["104"] = nil
+
+    -- highlights and their notes: BookOrbit's exchange
+    local BA = require("gzreader_bo_annotations")
+    local function hl(dt, n, extra)
+        local a = { datetime = dt, drawer = "lighten", color = "yellow", text = "text " .. n, chapter = "One", pageno = n,
+            page = "/body/DocFragment[2]/body/p[" .. n .. "]/text().0", pos0 = "/body/DocFragment[2]/body/p[" .. n .. "]/text().0",
+            pos1 = "/body/DocFragment[2]/body/p[" .. n .. "]/text().9" }
+        for k, v in pairs(extra or {}) do a[k] = v end
+        return a
+    end
+    local h1, h2 = hl("2026-11-22 09:00:00", 1, { note = "mine" }), hl("2026-11-22 09:05:00", 2)
+    local page_mark = { datetime = "2026-11-22 09:06:00", page = "/body/DocFragment[2]/body/p[3]/text().0" }
+    check(BA.key(h1) == md5("2026-11-22 09:00:00|/body/DocFragment[2]/body/p[1]/text().0"), "a highlight's key is md5 of its datetime and start")
+    local keys, changes, complete = BA.outgoing({ h1, page_mark, h2 }, nil)
+    check(#keys == 2 and #changes == 2 and complete and keys[1].dt == h1.datetime and changes[1].note == "mine" and changes[1].posFormat == "xpointer"
+        and changes[2].note == nil and changes[1].page == nil, "what's sent: every highlight's key, the new ones in full; a page bookmark isn't a highlight")
+    local known = { [BA.key(h1)] = BA.fingerprint(h1), [BA.key(h2)] = BA.fingerprint(h2) }
+    keys, changes = BA.outgoing({ h1, h2 }, known)
+    check(#keys == 2 and #changes == 0, "nothing changed since the last exchange: keys only")
+    h2.note = "added later"
+    keys, changes = BA.outgoing({ h1, h2 }, known)
+    check(#changes == 1 and changes[1].note == "added later", "a note added to a highlight: that highlight is sent again")
+    h2.note = nil
+    check(BA.toRemote(hl("2026-11-22 09:00:00", 1, { drawer = "wavy", color = "" })).drawer == "lighten"
+        and BA.toRemote(hl("2026-11-22 09:00:00", 1, { color = "" })).color == nil, "a style BookOrbit doesn't know goes as a plain highlight; no empty fields")
+    -- merging an answer
+    local mlist = { hl("2026-11-22 09:00:00", 1), hl("2026-11-22 09:05:00", 2), page_mark }
+    local ch, applied, deleted = BA.merge(mlist, {
+        add = { { serverId = 7, version = 1, datetime = "2026-11-22 10:00:00", drawer = "underscore", color = "blue", text = "from the web", note = json.null,
+                  posFormat = "xpointer", pos0 = "/body/DocFragment[3]/body/p[2]/text().0", pos1 = "/body/DocFragment[3]/body/p[2]/text().9", pageno = 12 },
+                { serverId = 8, version = 1, datetime = "2026-11-22 10:01:00", drawer = "lighten", posFormat = "xpointer", pos0 = "/bad", pos1 = "/bad2" },
+                { serverId = 9, version = 1, datetime = "2026-11-22 10:02:00", drawer = "lighten", posFormat = "pdf", pos0 = "1", pos1 = "2" } },
+        edit = { { serverId = 3, version = 4, key = BA.key(mlist[1]), drawer = "strikeout", color = "red", text = "text 1", note = "from the web", datetimeUpdated = "2026-11-22 11:00:00" },
+                 { serverId = 4, version = 2, key = string.rep("9", 32), drawer = "lighten", color = "red", text = "?" } },
+        delete = { { serverId = 5, key = BA.key(mlist[2]), datetime = "2026-11-22 09:05:00" }, { serverId = 6, key = string.rep("8", 32) } },
+    }, function(xp) return xp:sub(1, 5) == "/body" end)
+    check(ch and #mlist == 3 and mlist[1].drawer == "strikeout" and mlist[1].note == "from the web" and mlist[1].color == "red"
+        and mlist[1].datetime_updated == "2026-11-22 11:00:00" and mlist[2] == page_mark and mlist[3].text == "from the web"
+        and mlist[3].drawer == "underscore" and mlist[3].note == nil and mlist[3].page == mlist[3].pos0 and mlist[3].pageno == 12,
+        "an answer merged: a highlight added, one changed, one removed; the page bookmark untouched")
+    local function status(list, id) for _i, e in ipairs(list) do if e.serverId == id then return e.status, e.version end end end
+    check(status(applied, 7) == "applied" and status(applied, 8) == "failed" and status(applied, 9) == "failed" and status(applied, 3) == "applied"
+        and select(2, status(applied, 3)) == 4 and status(applied, 4) == "failed" and status(deleted, 5) == "applied" and status(deleted, 6) == "applied",
+        "…and what's acknowledged: placed or not (a place not in the book, a PDF place, a highlight not here); a removal already done counts as done")
+    local before_n = #mlist
+    BA.merge(mlist, { add = { { serverId = 7, version = 1, datetime = "2026-11-22 10:00:00", drawer = "underscore", posFormat = "xpointer",
+        pos0 = "/body/DocFragment[3]/body/p[2]/text().0", pos1 = "/body/DocFragment[3]/body/p[2]/text().9" } } })
+    check(#mlist == before_n, "a highlight offered twice (the acknowledgement was lost) isn't added twice")
+    -- a whole pass against the server, with a book "open"
+    local saves = 0
+    local entry101 = plugin.store.downloads["101"]
+    local book = { h1, h2 }
+    local ui = { document = { file = file, isXPointerInDocument = function(_d, xp) return xp:sub(1, 5) == "/body" end },
+        annotation = { annotations = book, updateAnnotations = function() end, sortItems = function(_s, l) table.sort(l, function(a, b) return a.pos0 < b.pos0 end) end },
+        doc_settings = { saveSetting = function() saves = saves + 1 end, flush = function() end }, view = {} }
+    local fsync = { ui = ui, api = plugin.api, plugin = plugin, entry = entry101, book_id = "101", isRolling = function() return true end }
+    local anno = BA:new(fsync)
+    check(anno:enabled(), "highlight sync is on for a BookOrbit book with a fingerprint")
+    local finished
+    anno:run(function(ok) finished = ok end)
+    runLoop(function() return finished ~= nil and not next(require("gzreader_async").jobs or {}) end, 20)
+    local srv = bctl("/_mock/state").annotations["101"]
+    check(finished == true and #srv == 2 and srv[1].note == "mine" and srv[1].pos0 == h1.pos0 and entry101.bo_anno[BA.key(h1)] == BA.fingerprint(h1)
+        and entry101.anno_dirty == nil, "first pass: this Kindle's highlights are on BookOrbit, and remembered as sent")
+    local web = bctl("/_mock/set", '{"web_highlight": {"book": 101, "op": "add", "pos0": "/body/DocFragment[3]/body/p[2]/text().0", "pos1": "/body/DocFragment[3]/body/p[2]/text().9", "text": "from the web", "color": "blue", "datetime": "2026-11-22 10:00:00"}}')
+    bctl("/_mock/set", '{"web_highlight": {"book": 101, "op": "edit", "serverId": ' .. srv[1].serverId .. ', "note": "changed on the web"}}')
+    bctl("/_mock/set", '{"web_highlight": {"book": 101, "op": "delete", "serverId": ' .. srv[2].serverId .. '}}')
+    finished = nil
+    anno:run(function(ok) finished = ok end)
+    runLoop(function() return finished ~= nil end, 20)
+    runLoop(function() return bctl("/_mock/state").anno_devices[plugin.store.bookorbit_device .. ":101"][tostring(web.serverId)] ~= nil end, 10)
+    book = ui.annotation.annotations
+    check(finished == true and #book == 2 and book[1].note == "changed on the web" and book[2].text == "from the web" and book[2].color == "blue" and saves >= 1,
+        "second pass: the web's new highlight, changed note and removal are in the book, and saved")
+    local dev = bctl("/_mock/state").anno_devices[plugin.store.bookorbit_device .. ":101"]
+    check(dev[tostring(web.serverId)] == 1 and dev[tostring(srv[1].serverId)] == 2 and dev[tostring(srv[2].serverId)] == nil,
+        "…and acknowledged, so BookOrbit doesn't offer them again")
+    finished = nil
+    anno:run(function(ok) finished = ok end)
+    runLoop(function() return finished ~= nil end, 20)
+    check(#ui.annotation.annotations == 2 and not anno:changedHere(), "a third pass changes nothing")
+    -- changes here: a note edited (KOReader says nothing), a highlight removed
+    book[2].note = "my note on the web's highlight"
+    check(anno:changedHere(), "a note edited here is noticed when the book closes")
+    table.remove(book, 1)
+    anno:onAnnotationsModified({ hl("2026-11-22 09:00:00", 1) })
+    check(entry101.anno_dirty == true and anno.pending ~= nil, "removing a highlight schedules a pass")
+    UI.scheduled[anno.pending] = nil; anno.pending = nil
+    finished = nil
+    anno:run(function(ok) finished = ok end)
+    runLoop(function() return finished ~= nil end, 20)
+    srv = bctl("/_mock/state").annotations["101"]
+    local gone, noted = false, false
+    for _i, a in ipairs(srv) do
+        if a.pos0 == h1.pos0 and a.deleted then gone = true end
+        if a.text == "from the web" and a.note == "my note on the web's highlight" then noted = true end
+    end
+    check(finished == true and gone and noted and #ui.annotation.annotations == 1, "…both reach BookOrbit: the removal and the note")
+    anno:onAnnotationsModified({ page_mark })
+    check(anno.pending == nil, "a page bookmark changing doesn't start a highlight pass")
+    plugin.store.annotation_sync_disabled = true
+    check(not anno:enabled(), "the highlights switch in Settings turns it off")
+    plugin.store.annotation_sync_disabled = nil
+    fsync.isRolling = function() return false end
+    check(not BA:new(fsync):enabled(), "a PDF's highlights aren't exchanged (BookOrbit places them in reflowable books only)")
+    fsync.isRolling = function() return true end
+    -- a book BookOrbit doesn't have
+    local lost = BA:new({ ui = ui, api = plugin.api, plugin = plugin, entry = { hash = string.rep("cd", 16) }, book_id = "901", isRolling = function() return true end })
+    finished = nil
+    lost:run(function(ok) finished = ok end)
+    runLoop(function() return finished ~= nil end, 20)
+    check(finished == false and lost.off == true and not lost:enabled(), "a book BookOrbit doesn't have: said once in the log, not tried again")
     plugin.store.downloads["101"] = nil
 
     -- a refused sign-in later, and the server away
@@ -15146,7 +15258,7 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
     r, rerr = plugin.api:listBooks{ page = 0, size = 5 }
     check(r == nil and rerr == "http_503", "the server down: its error")
     bctl("/_mock/set", '{"offline": false}')
-    check(select(2, plugin.api:putRating(101, 4)) == "unsupported" and select(2, plugin.api:listAnnotations(101)) == "unsupported",
+    check(select(2, plugin.api:putRating(101, 4)) == "unsupported" and select(2, plugin.api:listBookmarks(101)) == "unsupported",
         "what isn't sent to BookOrbit yet answers \"unsupported\"")
 
     -- the setup page
@@ -15156,9 +15268,9 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
     local code, body = phone("'" .. url .. "'")
     local sec = body and body:match('<section id="grimmory".-</section>') or ""
     check(code == 200 and sec:find("Connected to BookOrbit as <b>will%-kindle</b>") and sec:find('<option value="bookorbit" selected>', 1, true)
-        and sec:find("Synced with BookOrbit: your place in each book.", 1, true) and sec:find("Not yet: highlights and their notes, bookmarks", 1, true),
+        and sec:find("Synced with BookOrbit: your place in each book, highlights and their notes.", 1, true) and sec:find("Not yet: bookmarks", 1, true),
         "the setup page: connected to BookOrbit, the choice shown, and what is synced so far")
-    check(BookOrbit.note() == "You can browse and download your books. Synced with BookOrbit: your place in each book. Not yet: highlights and their notes, bookmarks, reading time, ratings, audiobooks.",
+    check(BookOrbit.note() == "You can browse and download your books. Synced with BookOrbit: your place in each book, highlights and their notes. Not yet: bookmarks, reading time, ratings, audiobooks.",
         "one sentence says what is and isn't synced, from what the client supports")
     code, body = phone("-L --data-urlencode 'backend=bookorbit' --data-urlencode 'server=" .. BO .. "' --data-urlencode 'username=will-kindle' "
         .. "--data-urlencode 'password=nope' --data-urlencode 'action=password' '" .. url .. "/grimmory'")
