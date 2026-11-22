@@ -272,6 +272,10 @@ echo "== the Nook package, from the Kindle 2/3/DX package (GZreader/app or korea
 timeout 120 bash "$T/package_nook_test.sh" "$REPO" 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
 
+echo "== the mock BookOrbit server, and the probe script"
+timeout 120 python3 -I "$T/mock_bookorbit_test.py" $((PORT + 60)) 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+
 echo "== the wiki's links"
 timeout 60 python3 "$T/wiki_test.py" 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
