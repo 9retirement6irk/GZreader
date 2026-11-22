@@ -1,5 +1,9 @@
 """Mock BookOrbit server: the routes GZreader's BookOrbit backend uses.
 
+A book's file is listed with role "primary" (the book's main file) or "content"
+(another of its files), as a real server (v3.9.0, probed 2026-11-22) does; both
+download.
+
 Shapes and checks follow BookOrbit's source at commit e60ab43 (2026-11-21;
 github.com/bookorbit/bookorbit: server/src/modules/koreader, .../audiobook,
 packages/types/src/koreader.ts and audiobook.ts). Nothing of BookOrbit's code
@@ -120,7 +124,7 @@ def detail(b):
               "collections": [{"id": c, "name": COLLECTIONS[c]} for c in b["collections"]], "genres": [], "tags": [],
               "progress": p and {"fileId": b["fileId"], "percentage": pct100(p["percentage"]),
                                  "koreaderProgress": p.get("progress"), "updatedAt": p["updatedAt"]} or None,
-              "files": [{"id": b["fileId"], "format": b["format"], "role": "content", "downloadVariant": "original",
+              "files": [{"id": b["fileId"], "format": b["format"], "role": "primary", "downloadVariant": "original",
                          "sizeBytes": len(b["data"]), "sourceSizeBytes": len(b["data"]), "durationSeconds": None, "fileHash": b["hash"],
                          "downloadUrl": "/api/v1/koreader/plugin/catalog/files/%d/download" % b["fileId"],
                          "devicePath": "%s/%s.%s" % (b["authors"][0], b["title"], b["format"])}],

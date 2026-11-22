@@ -104,7 +104,7 @@ try:
     check(call("GET", "/api/v1/koreader/plugin/catalog/books?size=500", KO)[0] == 400, "books: oversize page is refused")
     code, d = call("GET", "/api/v1/koreader/plugin/catalog/books/101", KO)
     f = d["files"][0]
-    check(code == 200 and d["libraryName"] == "Fiction" and d["seriesName"] == "Waymarks" and f["format"] == "epub" and f["role"] == "content" and f["downloadUrl"], "book detail")
+    check(code == 200 and d["libraryName"] == "Fiction" and d["seriesName"] == "Waymarks" and f["format"] == "epub" and f["role"] == "primary" and f["downloadUrl"], "book detail (its main file is \"primary\")")
     check(call("GET", "/api/v1/koreader/plugin/catalog/books/999", KO)[0] == 404, "missing book: 404")
     code, png, hdr = call("GET", "/api/v1/koreader/plugin/catalog/books/101/thumbnail", KO, raw=True)
     check(code == 200 and png[:4] == b"\x89PNG" and hdr["Content-Type"] == "image/png", "thumbnail is a PNG")
