@@ -10,7 +10,9 @@ other value from the library.
 It asks for the server's address, the KOReader sync user name and password
 (BookOrbit: Settings, KOReader), and optionally an API key (for audiobooks).
 Or set BOOKORBIT_URL, BOOKORBIT_KO_USER, BOOKORBIT_KO_PASSWORD and
-BOOKORBIT_API_KEY. It only reads books and positions; the one trace it leaves is
+BOOKORBIT_API_KEY. It also says whether the server answers GZreader's sync page (the
+web page that fills Kindles without Wi-Fi from a computer), and what the API key
+is allowed to do. It only reads books and positions; the one trace it leaves is
 a device named "GZreader probe" in BookOrbit's KOReader device list (from the
 match check), which can be removed there.
 """
@@ -102,6 +104,32 @@ def call(base, path, headers, method="GET", body=None, want_bytes=0):
         return code, json.loads(raw) if raw else None, hdr, None
     except ValueError:
         return code, None, hdr, "not JSON"
+
+
+SYNC_PAGE = "https://9retirement6irk.github.io"  # where GZreader's sync page is served from
+
+
+def cors(A, ko):
+    """Would a browser on the sync page be allowed to call this server? BookOrbit itself
+    sends no cross-origin headers in production, so this is a question about the reverse
+    proxy in front of it."""
+    want = {"x-auth-user", "x-auth-key", "authorization", "content-type"}
+    code, _, hdr, err = call(A, "/koreader/users/auth", {
+        "Origin": SYNC_PAGE, "Access-Control-Request-Method": "GET",
+        "Access-Control-Request-Headers": ", ".join(sorted(want))}, "OPTIONS")
+    allow = (hdr.get("Access-Control-Allow-Origin") or "").strip()
+    heads = {h.strip().lower() for h in (hdr.get("Access-Control-Allow-Headers") or "").split(",") if h.strip()}
+    pre_ok = code in (200, 204) and allow in (SYNC_PAGE, "*") and (want <= heads or "*" in heads)
+    line("sync page: preflight (OPTIONS)", code, err or "allowed origin: %s; headers allowed: %s" % (
+        allow == SYNC_PAGE and "the sync page" or allow == "*" and "any" or allow and "another site" or "none",
+        "all GZreader sends" if (want <= heads or "*" in heads) else heads and "missing " + ", ".join(sorted(want - heads)) or "none"))
+    code, _, hdr, err = call(A, "/koreader/users/auth", dict(ko, Origin=SYNC_PAGE))
+    allow = (hdr.get("Access-Control-Allow-Origin") or "").strip()
+    get_ok = code == 200 and allow in (SYNC_PAGE, "*")
+    line("sync page: a signed-in request", code, err or "allowed origin: %s" % (
+        allow == SYNC_PAGE and "the sync page" or allow == "*" and "any" or allow and "another site" or "none"))
+    print("    Kindles without Wi-Fi (the sync page) could use this server: %s" % (
+        "yes" if pre_ok and get_ok else "no: BookOrbit sends no cross-origin headers itself, so the reverse proxy in front of it would have to let %s in" % SYNC_PAGE))
 
 
 def keys(v):
@@ -211,6 +239,8 @@ def main():
                 f.get("format"), f.get("role"), "present" if f.get("durationSeconds") else "absent", hdr.get("Content-Type"),
                 "present" if hdr.get("Content-Range") else "absent"))
 
+    cors(A, ko)
+
     if not key:
         print("\nNo API key given: audiobooks not checked.")
         return 0
@@ -219,6 +249,17 @@ def main():
     line("API key (auth/me)", code, err or (isinstance(j, dict) and "method %s" % j.get("authenticationMethod") or ""))
     if code != 200:
         return 1
+    # What the key is allowed to do (each is a tick box when the key is made)
+    code, j, _, err = call(A, "/koreader/credentials", api)
+    line("key: KOReader sync sign-in", code, err or (code == 200 and (isinstance(j, dict) and "can sign in with only the key (fields: %s)" % ", ".join(keys(j))
+                                                                   or "no sync sign-in on the account yet (GZreader would make one)")
+                                                    or code == 403 and "the key lacks \"KOReader sync\"" or ""))
+    code, j, _, err = call(A, "/collections", api)
+    line("key: collections", code, err or (isinstance(j, list) and "%d listed; fields: %s" % (len(j), j and ", ".join(keys(j[0])) or "-") or ""))
+    code, j, _, err = call(A, "/book-requests?page=1&limit=1", api)
+    items = isinstance(j, dict) and j.get("items") or []
+    line("key: book requests", code, err or (code == 200 and "total %s; fields: %s" % (j.get("total"), items and ", ".join(keys(items[0])) or "-")
+                                            or code == 403 and "the key (or the account) lacks \"Request books\"" or ""))
     audio = ["m4b", "mp3", "m4a", "flac", "ogg", "opus"]
     query = {"sort": [{"field": "title", "dir": "asc"}], "pagination": {"page": 1, "size": 1},
              "filter": {"type": "group", "join": "AND", "rules": [

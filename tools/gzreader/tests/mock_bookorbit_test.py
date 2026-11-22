@@ -392,6 +392,22 @@ try:
           and call("GET", KC, API)[1]["username"] == "will-2", "one made with the key signs in")
     call("POST", "/_mock/set", body={"ko_credentials": True, "ko_made": None, "ko_names_taken": []})
 
+    # --- a browser on another site (the sync page): only when a reverse proxy lets it in
+    PAGE = "https://sync.example.com"
+    pre = {"Origin": PAGE, "Access-Control-Request-Method": "GET", "Access-Control-Request-Headers": "x-auth-user, x-auth-key"}
+    code, raw, hdr = call("OPTIONS", "/api/v1/koreader/users/auth", pre, raw=True)
+    code2, raw, hdr2 = call("GET", "/api/v1/koreader/users/auth", dict(KO, Origin=PAGE), raw=True)
+    check(code == 404 and hdr.get("Access-Control-Allow-Origin") is None and code2 == 200 and hdr2.get("Access-Control-Allow-Origin") is None,
+          "as BookOrbit in production: no preflight answer, no cross-origin headers")
+    call("POST", "/_mock/set", body={"cors_origin": PAGE})
+    code, raw, hdr = call("OPTIONS", "/api/v1/koreader/users/auth", pre, raw=True)
+    code2, raw, hdr2 = call("GET", "/api/v1/koreader/users/auth", dict(KO, Origin=PAGE), raw=True)
+    check(code == 204 and hdr.get("Access-Control-Allow-Origin") == PAGE and "x-auth-key" in hdr.get("Access-Control-Allow-Headers", "")
+          and code2 == 200 and hdr2.get("Access-Control-Allow-Origin") == PAGE, "behind a proxy that lets the page in: preflight and requests answered for it")
+    code, raw, hdr = call("OPTIONS", "/api/v1/koreader/users/auth", dict(pre, Origin="https://other.example.com"), raw=True)
+    check(code == 404 and hdr.get("Access-Control-Allow-Origin") is None, "…and for no other site")
+    call("POST", "/_mock/set", body={"cors_origin": None})
+
     # --- the server away
     call("POST", "/_mock/set", body={"offline": True})
     check(call("GET", "/api/v1/koreader/users/auth", KO)[0] == 503, "offline: 503")
