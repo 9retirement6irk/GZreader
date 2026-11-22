@@ -21,7 +21,7 @@ What works with BookOrbit today:
 | Audiobooks: list, covers, download with resume, chapters, listening position both ways (needs an API key, below) | yes |
 | Requesting a book or audiobook BookOrbit doesn't have, and seeing what became of it (needs an API key, below) | yes |
 | Home's reading stats widget and the reading stats page, from BookOrbit's numbers ([Home and bookshelves](Home-and-Bookshelves#reading-stats-on-home)) | yes |
-| Kindles without Wi-Fi (the sync page) | not yet |
+| Kindles without Wi-Fi (the sync page) | not yet; the server side can be set up now, see [below](#kindles-without-wi-fi-letting-the-sync-page-in) |
 
 Only the "yes" rows send anything to BookOrbit. The Kindle shows up in BookOrbit's Settings → KOReader → Devices as "GZreader" and its model.
 
@@ -124,6 +124,121 @@ If your BookOrbit has requests set up, the Kindle can ask for a book it doesn't 
 - A read-only key lists and downloads, but your place isn't saved.
 - To remove the key from the Kindle, save the box empty. Signing out removes it too.
 - Audiobooks from Plex are separate and still work alongside.
+
+## Kindles without Wi-Fi: letting the sync page in
+
+The Kindle 2 and DX have no Wi-Fi, so they sync through GZreader's sync page: a web page, open in a browser on your computer, that talks to your book server and writes to the Kindle over USB. **The sync page doesn't work with BookOrbit yet.** This section is the part you do on your server, and it can be done ahead of time.
+
+The page is served from `https://9retirement6irk.github.io`. A browser only lets a page from one site call a server on another when that server says so in its answers, and BookOrbit doesn't say so: it's built to be used from its own address. So the reverse proxy in front of BookOrbit has to add the headers for that one site, and answer the browser's question-before-the-request (an `OPTIONS` request) itself. The same thing is needed for [Immich from the sync page](Home-and-Bookshelves#immich-from-the-sync-page).
+
+What the rule does and doesn't do:
+
+- It lets pages from `https://9retirement6irk.github.io`, and no other site, make requests to BookOrbit from a browser.
+- It gives nobody access. Every request still needs your KOReader sync sign-in or your API key, which only you type into the page.
+- The Kindles with Wi-Fi don't need it: they aren't browsers.
+- BookOrbit has to be on `https://` for the page to reach it (the page itself is on `https://`, and browsers don't let such a page call plain `http://`).
+
+In both examples, replace `books.example.com` with your BookOrbit address and `bookorbit:3000` with where BookOrbit listens.
+
+### Caddy
+
+    books.example.com {
+        @gzsync header Origin https://9retirement6irk.github.io
+        header @gzsync Access-Control-Allow-Origin "https://9retirement6irk.github.io"
+        header @gzsync Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+        header @gzsync Access-Control-Allow-Headers "x-auth-user, x-auth-key, authorization, content-type, range, if-none-match"
+        header @gzsync Access-Control-Expose-Headers "content-length, content-range, content-disposition, etag"
+        header @gzsync Access-Control-Max-Age "86400"
+        header @gzsync +Vary "Origin"
+
+        @gzsync_preflight {
+            method OPTIONS
+            header Origin https://9retirement6irk.github.io
+        }
+        respond @gzsync_preflight 204
+
+        reverse_proxy bookorbit:3000
+    }
+
+Then `caddy reload` (or restart the container).
+
+### nginx
+
+The first block goes in the `http { }` part (in most setups, the top of the site's file in `conf.d` or `sites-available`, outside `server { }`). It turns the page's address into a value that is empty for every other site, and nginx leaves a header out when its value is empty.
+
+    map $http_origin $gzsync_origin {
+        default "";
+        "https://9retirement6irk.github.io" $http_origin;
+    }
+
+    server {
+        server_name books.example.com;
+        # … your listen and certificate lines, as they are …
+
+        location / {
+            # the browser's question before a request
+            if ($request_method = OPTIONS) {
+                add_header Access-Control-Allow-Origin $gzsync_origin always;
+                add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS" always;
+                add_header Access-Control-Allow-Headers "x-auth-user, x-auth-key, authorization, content-type, range, if-none-match" always;
+                add_header Access-Control-Max-Age 86400 always;
+                add_header Vary Origin always;
+                return 204;
+            }
+
+            # the requests themselves
+            add_header Access-Control-Allow-Origin $gzsync_origin always;
+            add_header Access-Control-Expose-Headers "content-length, content-range, content-disposition, etag" always;
+            add_header Vary Origin always;
+
+            proxy_pass http://bookorbit:3000;
+            # … your other proxy_set_header lines, as they are …
+        }
+    }
+
+Then `nginx -t` to check the file, and `nginx -s reload`.
+
+Two things to know with nginx:
+
+- `add_header` lines in a `location` replace the ones in the `server` block above it for that location, they don't add to them. If your `server` block has `add_header` lines (security headers, for instance), repeat them inside `location /`.
+- **Nginx Proxy Manager**: the `map` block can't go in a proxy host's *Advanced* box. Use this there instead, which needs no `map`:
+
+      location / {
+          set $gzsync_origin "";
+          if ($http_origin = "https://9retirement6irk.github.io") {
+              set $gzsync_origin $http_origin;
+          }
+          if ($request_method = OPTIONS) {
+              add_header Access-Control-Allow-Origin $gzsync_origin always;
+              add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS" always;
+              add_header Access-Control-Allow-Headers "x-auth-user, x-auth-key, authorization, content-type, range, if-none-match" always;
+              add_header Access-Control-Max-Age 86400 always;
+              add_header Vary Origin always;
+              return 204;
+          }
+          add_header Access-Control-Allow-Origin $gzsync_origin always;
+          add_header Access-Control-Expose-Headers "content-length, content-range, content-disposition, etag" always;
+          add_header Vary Origin always;
+          proxy_pass $forward_scheme://$server:$port;
+      }
+
+### Other proxies, and anything in front
+
+Whatever the proxy (Traefik, HAProxy, a tunnel), the rule is the same six headers for requests whose `Origin` is `https://9retirement6irk.github.io`, and a `204` answer to `OPTIONS` requests from it. If something else sits in front of the proxy (a tunnel or a login wall such as Cloudflare Access or Authelia), it has to let these requests through without its own sign-in page, or the browser gets that page instead of BookOrbit's answer.
+
+### Checking it
+
+On a computer, run GZreader's check (it sends no changes, and prints status codes and field names only):
+
+    python3 tools/gzreader/bookorbit-probe.py
+
+Before the rule, its last *sync page* line says `no`. After it, the three lines should read:
+
+    sync page: preflight (OPTIONS)               204  allowed origin: the sync page; headers allowed: all GZreader sends
+    sync page: a signed-in request               200  allowed origin: the sync page
+        Kindles without Wi-Fi (the sync page) could use this server: yes
+
+If the first line is still `404`, the `OPTIONS` rule isn't being reached (in nginx, check it's in the `location` that serves BookOrbit). If it's `204` but the allowed origin is `none`, the page's address in the rule doesn't match exactly: `https://`, no slash at the end.
 
 ## BookOrbit and GZreader
 
