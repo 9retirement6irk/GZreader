@@ -42,7 +42,7 @@ GZreader keeps the server's address, the user name and a fingerprint (MD5) of th
 
 Signing in to BookOrbit signs this Kindle out of Grimmory (and the other way round). Each server numbers its books differently, so:
 
-- The books you downloaded from the other server **stay on the Kindle** in `GZreader/books`, and you can still open them from the file list, but they leave the Downloads tab and the Catalog's "downloaded" marks until you sign in to that server again.
+- The books you downloaded from the other server **stay on the Kindle** in `GZreader/books` and stay listed in the Downloads tab, and they open as before. What they lose is the tie to a book on the server: the Catalog doesn't mark them as downloaded and nothing is synced for them. Sign in to that server again and the tie is back. (Matching them to the same books on the new server, by the file's fingerprint, is planned with reading progress.)
 - Covers and saved lists are kept apart for each server.
 - Progress waiting to be sent to the old server is dropped.
 

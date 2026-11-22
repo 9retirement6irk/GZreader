@@ -14,12 +14,24 @@ add({ fn = function()
 end, after = 6 })
 add({ fn = function(E)
     local p = plugin()
+    -- a book downloaded from Grimmory before the switch: it must stay in the Downloads tab's list
+    local old = p.store.library_dir .. "/From Grimmory.epub"
+    local f = io.open(old, "wb"); f:write("a book from the other server"); f:close()
+    p.store.downloads["900"] = { path = old, title = "From Grimmory" }
     local ok, err = p:connect("http://127.0.0.1:18096", "will-kindle", "wrong", "bookorbit")
     E.say("wrong password:", tostring(ok), tostring(err))
     ok, err = p:connect("http://127.0.0.1:18096", "will-kindle", "hunter22", "bookorbit")
     E.say("sign-in:", tostring(ok), tostring(err), "backend", p:backend(), "books only", tostring(p:booksOnly()),
         "server", tostring((p.store.bookorbit or {}).server_version))
     p:announceConnected()
+    local fm = require("apps/filemanager/filemanager").instance
+    fm.file_chooser:changeToPath(p.store.library_dir)
+    local listed = false
+    for _i, it in ipairs(fm.file_chooser.item_table or {}) do
+        if tostring(it.path or ""):match("From Grimmory%.epub$") then listed = true end
+    end
+    E.say("the Grimmory book after the switch: in the Downloads list:", tostring(listed), "| linked to a server book:",
+        tostring(p.store.downloads["900"] ~= nil), "| put aside:", tostring(((p.store.downloads_other or {}).grimmory or {})["900"] ~= nil))
 end, after = 2 })
 add({ shot = "bookorbit-1-connected" })
 add({ fn = function()
