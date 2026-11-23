@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Daily paper: the Aa key opens the type box, Menu the quick panel", text = "On a Kindle with a keyboard (Kindle 2, Keyboard, DX), the Aa key now opens the type box on the daily paper's pages and in an opened story, and Menu opens the quick panel there, as it does in a book and at Home. Menu used to open the type box. A Kindle 4 has no Aa key, so Menu still opens the type box there." },
+        },
+    },
+    {
         version = "2026.11.22",
         changes = {
             { short = "Colour Kindles: Immich photos in colour", text = "On a Kindle Colorsoft or Scribe Colorsoft, the pictures from your Immich album (the sleep screen and the Home wallpaper) are kept in colour instead of being made grey. Pictures already on the Kindle stay grey until they are swapped for others from the album (about half each time GZreader gets new pictures)." },

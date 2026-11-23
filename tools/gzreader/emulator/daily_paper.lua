@@ -158,6 +158,26 @@ add({ fn = function(E)
     check(E, inside, "every story is inside the page, above the foot")
     page:turn(1)
 end, after = 8 })
+-- a Kindle with a keyboard: the Aa key opens the pages' type box, Menu the quick panel (real key presses)
+if os.getenv("GZ_EMU_MODEL") == "k3" or not os.getenv("GZ_EMU_MODEL") then
+    add({ key = "AA", after = 4 })
+    add({ fn = function(E)
+        local Paper = require("gzreader_dailyscreen")
+        check(E, Paper.front_dialog ~= nil and require("gzreader_panel").open == nil, "the Aa key on the paper: the pages' type box, not the quick panel")
+        if Paper.front_dialog then require("ui/uimanager"):close(Paper.front_dialog); Paper.front_dialog = nil end
+    end, after = 3 })
+    add({ key = "Menu", after = 4 })
+    add({ shot = "daily-3a-menu-panel" })
+    add({ fn = function(E)
+        local Paper = require("gzreader_dailyscreen")
+        check(E, require("gzreader_panel").open ~= nil and Paper.front_dialog == nil, "the Menu key on the paper: the quick panel")
+    end, after = 2 })
+    add({ key = "Menu", after = 4 })
+    add({ fn = function(E)
+        local Paper = require("gzreader_dailyscreen")
+        check(E, require("gzreader_panel").open == nil and Paper.instance and not Paper.instance.closed, "Menu again closes it; the paper is still there")
+    end, after = 2 })
+end
 -- the pages' type: Aa at the foot; Large + Sans, laid out again
 add({ fn = function(E)
     local Paper = require("gzreader_dailyscreen")
@@ -232,6 +252,23 @@ add({ fn = function(E)
     check(E, opened and Panel.open ~= nil, "a swipe down from the top of a story: the quick panel")
     if Panel.open then require("ui/uimanager"):close(Panel.open) end
 end, after = 4 })
+-- in a story too, on a Kindle with a keyboard: the Aa key is the type box, Menu the quick panel
+if os.getenv("GZ_EMU_MODEL") == "k3" or not os.getenv("GZ_EMU_MODEL") then
+    add({ key = "AA", after = 4 })
+    add({ fn = function(E)
+        local Paper = require("gzreader_dailyscreen")
+        check(E, Paper.type_dialog ~= nil and require("gzreader_panel").open == nil, "the Aa key in a story: the story's type box")
+        if Paper.type_dialog then require("ui/uimanager"):close(Paper.type_dialog); Paper.type_dialog = nil end
+    end, after = 3 })
+    add({ key = "Menu", after = 4 })
+    add({ fn = function(E)
+        check(E, require("gzreader_panel").open ~= nil and require("gzreader_dailyscreen").type_dialog == nil, "the Menu key in a story: the quick panel")
+    end, after = 2 })
+    add({ key = "Menu", after = 4 })
+    add({ fn = function(E)
+        check(E, require("gzreader_panel").open == nil and E.story ~= nil, "Menu again closes it; the story is still open")
+    end, after = 2 })
+end
 -- the story's type: Aa, bigger, another typeface, wider lines; the story is set again at the same place
 add({ fn = function(E)
     local Paper = require("gzreader_dailyscreen")

@@ -760,8 +760,10 @@ local function pageClass()
                 GzFocusNext = { { { "Down", "Right" } } },
                 GzFocusPrev = { { { "Up", "Left" } } },
                 GzPress = { { "Press" } },
-                GzType = { { "Menu" } },
             }
+            local k = Paper.typeKeys(Device:hasKeyboard())
+            self.key_events.GzType = { { k.type } }
+            if k.panel then self.key_events.GzPanel = { { k.panel } } end
         end
         if Device:isTouchDevice() then
             local range = function() return self.dimen end
@@ -912,7 +914,7 @@ local function pageClass()
         local foot_y = H - foot_h
         self.widgets[#self.widgets + 1] = fetch
         self.foot = { y = foot_y, h = foot_h, fetch = { widget = fetch, x = margin, y = foot_y + S(5), w = fetch:getSize().w + S(20) } }
-        -- Aa: the front page's type (touch: a tap; keys: Menu)
+        -- Aa: the front page's type (touch: a tap; keys: Paper.typeKeys)
         local aa = TextWidget:new{ text = "Aa", face = Font:getFace("smallinfofontbold", 10) }
         self.widgets[#self.widgets + 1] = aa
         self.foot.type = { widget = aa, x = self.foot.fetch.x + self.foot.fetch.w + S(14), y = foot_y + S(5), w = aa:getSize().w + S(28) }
@@ -1067,6 +1069,7 @@ local function pageClass()
     end
 
     function PaperPage:onGzType() Paper.frontDialog(self.plugin); return true end
+    function PaperPage:onGzPanel() return Paper.openPanel(self.plugin, "Menu") end
     function PaperPage:onGzNextPage() return self:turn(1) end
     function PaperPage:onGzPrevPage() return self:turn(-1) end
     function PaperPage:onGzClose() UIManager:close(self); return true end
@@ -1187,10 +1190,19 @@ function Paper.pulledDown(ges)
     return ges.pos.y < Device.screen:getHeight() * Paper.PULL_ZONE
 end
 
-function Paper.openPanel(plugin)
+--- Which keys open the type box and the quick panel on the paper and in a
+--- story. A Kindle with a keyboard has an Aa key: Aa is the type, Menu the
+--- quick panel, as in a book. One with keys but no keyboard (the Kindle 4)
+--- has no Aa key, so Menu stays the type there.
+function Paper.typeKeys(keyboard)
+    if keyboard then return { type = "AA", panel = "Menu" } end
+    return { type = "Menu" }
+end
+
+function Paper.openPanel(plugin, how)
     local ok, Panel = pcall(require, "gzreader_panel")
     if not ok then return false end
-    require("gzreader_log").info("daily paper: the quick panel pulled down")
+    require("gzreader_log").info("daily paper: the quick panel opened (" .. (how or "pulled down") .. ")")
     Panel.show(plugin)
     return true
 end
@@ -1399,8 +1411,10 @@ function Paper.article(plugin, item)
                     PageDown = { { g.PgFwd }, { "Down" } },
                     PageUp = { { g.PgBack }, { "Up" } },
                     ShowQR = { { "Press" } },
-                    ShowType = { { "Menu" } },
                 }
+                local k = Paper.typeKeys(Device:hasKeyboard())
+                self.key_events.ShowType = { { k.type } }
+                if k.panel then self.key_events.KeyPanel = { { k.panel } } end
             end
             if Device:isTouchDevice() then
                 local sw, sh = self.dimen.w, self.dimen.h
@@ -1490,6 +1504,7 @@ function Paper.article(plugin, item)
             Paper.typeDialog(self.plugin)
             return true
         end
+        function ArticleView:onKeyPanel() return Paper.openPanel(self.plugin, "Menu") end
         function ArticleView:onCloseWidget()
             self.closed = true
             if Paper.story == self then Paper.story = nil end
@@ -1848,13 +1863,13 @@ function Paper.settingsItems(plugin)
         },
         {
             text = _("The paper's pages"),
-            help_text = _("The type of the paper's own pages: the headlines, how each story begins, the weather and TODAY boxes. A typeface and four sizes; bigger type means fewer stories on a page and more pages, and fewer days in the weather box. The same can be changed on the paper itself, with Aa at its foot (on a Kindle with keys: Menu). The paper's name keeps its own face."),
+            help_text = _("The type of the paper's own pages: the headlines, how each story begins, the weather and TODAY boxes. A typeface and four sizes; bigger type means fewer stories on a page and more pages, and fewer days in the weather box. The same can be changed on the paper itself, with Aa at its foot (on a Kindle with a keyboard: the Aa key; on a Kindle 4: Menu). The paper's name keeps its own face."),
             enabled_func = on,
             sub_item_table_func = function() return Paper.frontItems(plugin) end,
         },
         {
             text = _("Story text"),
-            help_text = _("How an opened story is set: its typeface, size and line spacing. The same can be changed while reading a story, with Aa at its top (on a Kindle with keys: Menu)."),
+            help_text = _("How an opened story is set: its typeface, size and line spacing. The same can be changed while reading a story, with Aa at its top (on a Kindle with a keyboard: the Aa key; on a Kindle 4: Menu)."),
             enabled_func = on,
             sub_item_table_func = function() return Paper.fontItems(plugin) end,
         },
