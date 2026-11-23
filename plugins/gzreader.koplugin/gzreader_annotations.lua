@@ -42,7 +42,7 @@ function Anno:new(sync)
 end
 
 function Anno:enabled()
-    return self.plugin:syncEnabled() and self.plugin.store.annotation_sync_disabled ~= true
+    return self.plugin:syncEnabled() and self.plugin:serverCan("annotations") and self.plugin.store.annotation_sync_disabled ~= true
         and self.is_epub and self.file ~= nil
 end
 

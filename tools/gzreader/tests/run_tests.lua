@@ -15993,9 +15993,11 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
     local in_secrets = false
     for _i, p in ipairs(S.PATHS) do if p[1] == "bookorbit" and p[2] == "key" then in_secrets = true end end
     check(in_secrets, "the sign-in key is one of the secrets kept off the USB drive")
-    check(not plugin:syncEnabled(), "nothing is synced to BookOrbit yet: progress sync is off")
-    plugin:queue("progress", 101, { percentage = 10 })
-    check(next(plugin.store.pending.progress) == nil, "…and nothing is queued to send")
+    check(plugin:syncEnabled() and plugin:serverCan("progress") and not plugin:serverCan("annotations") and not plugin:serverCan("bookmarks")
+        and not plugin:serverCan("ratings"), "with BookOrbit: reading progress is synced; highlights, bookmarks and ratings not yet")
+    plugin:queue("session", nil, { bookId = 101 })
+    check(#plugin.store.pending.sessions == 0, "…and what it doesn't take (reading sessions) isn't kept to send")
+    check(type(plugin.store.bookorbit_device) == "string" and plugin.store.bookorbit_device:match("^gz%-%x+$") ~= nil, "this Kindle's device id is made at sign-in")
 
     -- browsing
     local page = plugin.api:listBooks{ page = 0, size = 2, sort = "title", dir = "asc", fileType = plugin.api.READABLE_TYPES }
@@ -16056,6 +16058,72 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
     for _i, e in ipairs(seen) do if e[1] ~= "GET" then only_get = false end end
     check(only_get, "browsing and downloading only ever read from BookOrbit")
 
+    -- reading progress: out by the file's fingerprint, in from the book's record
+    local xp = "/body/DocFragment[3]/body/p[7]/text().0"
+    local p_ok, p_err, p_code = plugin.api:putProgress(101, { fileProgress = { progressPercent = 42.5 }, gz_xp = xp })
+    check(p_ok == false and p_err == "bookorbit_unmatched" and p_code == 404, "progress for a book with no fingerprint kept: not sent (dropped, as a book that's gone)")
+    local hash101 = BookOrbit.hashFile(file)
+    check(hash101 == full.primaryFile.fileHash, "the downloaded file's fingerprint (KOReader's partial MD5) is the one BookOrbit has")
+    plugin.store.downloads["101"] = { path = file, title = "The Long Way Round", file_id = 5101, hash = hash101 }
+    p_ok, p_err = plugin.api:putProgress(101, { fileProgress = { progressPercent = 42.5 }, gz_xp = xp, gz_file = "ignored" })
+    local st = bctl("/_mock/state")
+    local sent = st.progress[hash101]
+    check(p_ok == true and sent and math.abs(sent.percentage - 0.425) < 1e-9 and sent.progress == xp and sent.device:match("^GZreader ")
+        and sent.device_id == plugin.store.bookorbit_device and st.devices[plugin.store.bookorbit_device] ~= nil,
+        "progress sent: the percentage as 0-1, the page's XPointer as it is, this Kindle named", p_err)
+    local back = plugin.api:getBook(101)
+    check(back.epubProgress and back.epubProgress.percentage == 42.5 and back.gz_xp == xp and back.readProgress == 42.5,
+        "…and read back from the book's record in the shape the progress sync reads (percent, exact place)")
+    local kept = require("gzreader_sync").progressOf(back)
+    check(kept and kept.epubProgress.percentage == 42.5, "a download keeps it for the book's first opening")
+    plugin.store.downloads["105"] = { path = "/nowhere/tide.pdf", hash = plugin.api:getBook(105).primaryFile.fileHash }
+    check(plugin.api:putProgress(105, { fileProgress = { progressPercent = 30, positionData = "12" } }) == true
+        and plugin.api:getBook(105).pdfProgress.page == 12 and plugin.api:getBook(105).epubProgress == nil, "a PDF: the page number out and back")
+    plugin.store.downloads["105"] = nil
+    plugin.store.downloads["900"] = { path = "/nowhere/x.epub", hash = string.rep("ab", 16) }
+    p_ok, p_err, p_code = plugin.api:putProgress(900, { fileProgress = { progressPercent = 10 } })
+    check(p_ok == false and p_err == "bookorbit_unmatched" and p_code == 404, "a file BookOrbit has no book for: said so (it's dropped, not retried forever)")
+    plugin.store.downloads["900"] = nil
+    -- queued and sent in the background, as when reading
+    plugin:queue("progress", 101, { fileProgress = { progressPercent = 55 }, gz_xp = "/body/DocFragment[4]/body/p[1]/text().0" })
+    check(plugin.store.pending.progress["101"] ~= nil, "progress is queued")
+    plugin:flushPending()
+    runLoop(function() return not plugin.flushing and plugin.store.pending.progress["101"] == nil end, 20)
+    check(plugin.store.pending.progress["101"] == nil and math.abs(bctl("/_mock/state").progress[hash101].percentage - 0.55) < 1e-9,
+        "…and sent by the usual queue")
+    local Sync = require("gzreader_sync")
+    local sy = setmetatable({ api = plugin.api, localPosition = function() return { pct = 15, local_pct = 11.2 } end, atEnd = function() return false end }, { __index = Sync })
+    check(sy:sentPosition().pct == 11.2, "the percentage sent to BookOrbit is KOReader's own (the footer's), not the web reader's")
+    sy.api = { }
+    check(sy:sentPosition().pct == 15, "…Grimmory still gets the web reader's")
+    -- the books already on the Kindle are matched to BookOrbit's by fingerprint
+    local m = plugin.api:matchCheck({ hash101, string.rep("0", 32) })
+    check(m and m[hash101].book_id == 101 and m[hash101].file_id == 5101 and m[string.rep("0", 32)] == nil, "match-check: which fingerprints BookOrbit has a book for")
+    local ldir = plugin.store.library_dir
+    local other = ldir .. "/Grimmory named it differently.epub"
+    check(plugin.api:downloadToFile(104, other) == true, "(a copy of book 104 under another name, as left by another server)")
+    local stray = io.open(ldir .. "/Stray.epub", "wb"); stray:write("not a book BookOrbit has"); stray:close()
+    plugin.store.downloads["104"] = nil
+    plugin:matchLibraryFiles()
+    runLoop(function() return plugin.matching == nil end, 20)
+    local e104 = plugin.store.downloads["104"]
+    check(e104 and e104.path == other and e104.file_id == 5104 and #e104.hash == 32 and e104.format == "EPUB",
+        "a book on the Kindle that BookOrbit has is tied to it by its file, whatever its name")
+    check(plugin.store.bookorbit_unmatched["Stray.epub"] ~= nil and plugin.store.bookorbit_unmatched["Grimmory named it differently.epub"] == nil,
+        "a file BookOrbit doesn't have is remembered as asked")
+    local function matchCalls()
+        local c = 0
+        for _i, e in ipairs(bctl("/_mock/state").seen) do if e[2] == "koreader/plugin/match-check" then c = c + 1 end end
+        return c
+    end
+    local calls = matchCalls()
+    plugin:matchLibraryFiles()
+    runLoop(function() return plugin.matching == nil end, 5)
+    check(matchCalls() == calls, "…and isn't asked about again until it changes")
+    os.remove(other); os.remove(ldir .. "/Stray.epub")
+    plugin.store.downloads["104"] = nil
+    plugin.store.downloads["101"] = nil
+
     -- a refused sign-in later, and the server away
     bctl("/_mock/set", '{"ko_permission": false}')
     local r, rerr = plugin.api:listLibraries()
@@ -16064,7 +16132,7 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
     r, rerr = plugin.api:listBooks{ page = 0, size = 5 }
     check(r == nil and rerr == "http_503", "the server down: its error")
     bctl("/_mock/set", '{"offline": false}')
-    check(select(2, plugin.api:putProgress(101, {})) == "unsupported" and select(2, plugin.api:listAnnotations(101)) == "unsupported",
+    check(select(2, plugin.api:putRating(101, 4)) == "unsupported" and select(2, plugin.api:listAnnotations(101)) == "unsupported",
         "what isn't sent to BookOrbit yet answers \"unsupported\"")
 
     -- the setup page
@@ -16074,7 +16142,10 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
     local code, body = phone("'" .. url .. "'")
     local sec = body and body:match('<section id="grimmory".-</section>') or ""
     check(code == 200 and sec:find("Connected to BookOrbit as <b>will%-kindle</b>") and sec:find('<option value="bookorbit" selected>', 1, true)
-        and sec:find("aren't sent to BookOrbit yet", 1, true), "the setup page: connected to BookOrbit, the choice shown")
+        and sec:find("Synced with BookOrbit: your place in each book.", 1, true) and sec:find("Not yet: highlights and their notes, bookmarks", 1, true),
+        "the setup page: connected to BookOrbit, the choice shown, and what is synced so far")
+    check(BookOrbit.note() == "You can browse and download your books. Synced with BookOrbit: your place in each book. Not yet: highlights and their notes, bookmarks, reading time, ratings, audiobooks.",
+        "one sentence says what is and isn't synced, from what the client supports")
     code, body = phone("-L --data-urlencode 'backend=bookorbit' --data-urlencode 'server=" .. BO .. "' --data-urlencode 'username=will-kindle' "
         .. "--data-urlencode 'password=nope' --data-urlencode 'action=password' '" .. url .. "/grimmory'")
     sec = body and body:match('<section id="grimmory".-</section>') or ""
@@ -16093,7 +16164,8 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
         end
     end
     walk(plugin:menuItems())
-    check(found and found.help_text:find("KOReader sync user name", 1, true), "the menu: Connect to BookOrbit by typing")
+    check(found and found.help_text_func():find("KOReader sync user name", 1, true) and found.help_text_func():find("Not yet:", 1, true),
+        "the menu: Connect to BookOrbit by typing")
     check(plugin:menuItems()[1].text_func() == "Connected to BookOrbit as will-kindle", "the menu's first line names BookOrbit")
 
     -- a restart keeps it; the backup list of downloads is this server's

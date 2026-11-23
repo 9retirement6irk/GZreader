@@ -160,7 +160,7 @@ local function grimmorySection(st, base)
     if g.connected then
         parts[#parts + 1] = status(true, (orbit and "Connected to BookOrbit as <b>" or "Connected as <b>") .. esc(g.username) .. "</b> · " .. esc(g.host))
         if orbit then
-            parts[#parts + 1] = '<p class="note">With BookOrbit you can browse and download your books. Reading progress, highlights and bookmarks aren\'t sent to BookOrbit yet.</p>'
+            parts[#parts + 1] = '<p class="note">' .. esc(g.bookorbit_note or "") .. "</p>"
         end
         parts[#parts + 1] = form(base .. "/grimmory/disconnect",
             '<button class="danger" type="submit"' .. confirmJs("Disconnect the Kindle from " .. (orbit and "BookOrbit" or "Grimmory") .. "? Downloaded books stay on the Kindle.")
@@ -198,7 +198,7 @@ local function grimmorySection(st, base)
         .. '<option value="grimmory">Grimmory</option>'
         .. '<option value="bookorbit"' .. (picked == "bookorbit" and " selected" or "") .. ">BookOrbit</option></select>"
         .. '<p class="note">BookOrbit: use the KOReader sync user name and password from BookOrbit\'s Settings → KOReader (not your website sign-in). '
-        .. "For now: browse and download books; nothing is synced back yet.</p>"
+        .. esc(g.bookorbit_note or "") .. "</p>"
     parts[#parts + 1] = form(base .. "/grimmory",
         which .. input("g_server", "server", "Server address", (g.form or {}).server, 'required placeholder="https://books.example.com or 192.168.1.20:6060" ' .. URL_ATTRS)
         .. body, "Connecting…")

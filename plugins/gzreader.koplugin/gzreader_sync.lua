@@ -226,6 +226,8 @@ end
 --- The position sent to Grimmory: the local one, 100% on the last page.
 function Sync:sentPosition()
     local p = self:localPosition()
+    -- (BookOrbit takes KOReader's own percentage, the footer's; Grimmory the web reader's)
+    if self.api.koreader_positions and p.local_pct then p.pct = p.local_pct end
     if p.pct < 100 and self:atEnd() then p.pct = 100 end
     return p
 end
@@ -425,7 +427,7 @@ end
 
 function Sync:canTalk()
     -- (syncing through a computer: the library copy has the other devices' places)
-    return self.api:isPaired() and not self.api.books_only and (NetworkMgr:isConnected() or self.api.offline == true)
+    return self.api:isPaired() and self.plugin:serverCan("progress") and (NetworkMgr:isConnected() or self.api.offline == true)
 end
 
 --- Grimmory's progress fields of a book (what a download keeps for the
@@ -487,15 +489,20 @@ function Sync:applyRemote(book, interactive, err)
         if interactive then self.plugin:showError(err) end
         return
     end
-    pcall(function()
-        require("gzreader_ratings").reconcile(self.plugin, self.book_id, self.entry, self.ui.doc_settings, book)
-    end)
+    if self.plugin:serverCan("ratings") then
+        pcall(function()
+            require("gzreader_ratings").reconcile(self.plugin, self.book_id, self.entry, self.ui.doc_settings, book)
+        end)
+    end
     -- which of your Grimmory shelves it's on (kept on the Kindle: gzreader_shelves.lua)
-    pcall(function() require("gzreader_shelves").remember(self.plugin, self.book_id, book) end)
+    if not self.api.books_only then
+        pcall(function() require("gzreader_shelves").remember(self.plugin, self.book_id, book) end)
+    end
+    local server = self.plugin:serverName()
     local remote = self:remotePosition(book)
     local here = self:localPosition()
     if not remote or remote.pct <= 0 then
-        if interactive then UIManager:show(InfoMessage:new{ text = _("No reading progress on Grimmory yet."), timeout = 3 }) end
+        if interactive then UIManager:show(InfoMessage:new{ text = T(_("No reading progress on %1 yet."), server), timeout = 3 }) end
         return
     end
     -- compare on KOReader's scale: where the remote place is in this book
@@ -518,7 +525,7 @@ function Sync:applyRemote(book, interactive, err)
     Log.info("sync pull book", self.book_id, "remote", remote.pct .. "%", "(here " .. remote_local .. "%" .. (exact and ", from its CFI)" or ")"),
         remote.href or remote.cfi or "", "local", here.pct .. "%")
     if math.abs(diff) < SAME_POSITION_PCT then
-        if interactive then UIManager:show(InfoMessage:new{ text = _("Already in sync with Grimmory."), timeout = 2 }) end
+        if interactive then UIManager:show(InfoMessage:new{ text = T(_("Already in sync with %1."), server), timeout = 2 }) end
         return
     end
     local last = num(self.entry.last_pushed_pct)
@@ -528,11 +535,11 @@ function Sync:applyRemote(book, interactive, err)
         self:jumpTo(remote)
         self.entry.last_pushed_pct = remote.pct -- now in agreement
         self.plugin:save()
-        UIManager:show(InfoMessage:new{ text = T(_("Jumped to %1% from Grimmory."), round1(remote_local)), timeout = 2 })
+        UIManager:show(InfoMessage:new{ text = T(_("Jumped to %1% from %2."), round1(remote_local), server), timeout = 2 })
     elseif diff < 0 and (not is_our_echo or interactive) then
         UIManager:show(ConfirmBox:new{
-            text = T(_("Grimmory has an earlier position (%1%) than this Kindle (%2%), probably from another device. Go back to it?"),
-                round1(remote_local), round1(here.pct)),
+            text = T(_("%3 has an earlier position (%1%) than this Kindle (%2%), probably from another device. Go back to it?"),
+                round1(remote_local), round1(here.pct), server),
             ok_text = _("Go back"),
             cancel_text = _("Stay here"),
             ok_callback = function()
@@ -571,7 +578,9 @@ function Sync:push(force, _background)
         return
     end
     local body = self:progressBody(p)
-    if p.xp and p.href and self:isEpub() then
+    if self.api.koreader_positions then
+        body.gz_xp = p.xp -- (BookOrbit takes the XPointer as it is)
+    elseif p.xp and p.href and self:isEpub() then
         body.gz_xp = p.xp -- turned into the CFI in the background (gz_* fields aren't sent)
         body.gz_file = self.ui.document.file
     end

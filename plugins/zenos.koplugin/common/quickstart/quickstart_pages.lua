@@ -777,8 +777,9 @@ local function buildGrimmoryPage(ctx)
         if type(page) ~= "table" then return end
         if mode == "bookorbit" then
             page.title = _("Books from BookOrbit")
-            page.description = _("Browse and download your BookOrbit books in the Catalog tab.") .. "\n\n"
-                .. _("Reading progress, highlights and bookmarks aren't synced with BookOrbit yet.")
+            local ok_note, note = pcall(function() return require("gzreader_bookorbit").note() end)
+            page.description = _("Your BookOrbit books are in the Catalog tab.") .. "\n\n"
+                .. (ok_note and type(note) == "string" and note or _("You can browse and download your books."))
         elseif mode == "local" then
             page.title = _("Your books")
             page.description = _("Books you send from your browser are kept on this Kindle, and keep their place and bookmarks here.") .. "\n\n"

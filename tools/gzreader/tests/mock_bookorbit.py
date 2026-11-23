@@ -248,7 +248,14 @@ class Handler(BaseHTTPRequestHandler):
             STATE = fresh()
             return self.send(200, {"ok": True})
         if path == "/_mock/set":
-            STATE.update(self.body() or {})
+            changes = self.body() or {}
+            # "book_hashes": {"101": "<32 hex>"}: a book's file is the one with that fingerprint
+            # (for a test that puts a real book on the device)
+            for bid, h in (changes.pop("book_hashes", None) or {}).items():
+                for b in BOOKS:
+                    if str(b["id"]) == str(bid):
+                        b["hash"] = h
+            STATE.update(changes)
             return self.send(200, {"ok": True})
         if STATE["offline"]:
             return self.error(503, "Service Unavailable")

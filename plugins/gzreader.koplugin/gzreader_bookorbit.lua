@@ -16,10 +16,19 @@ BookOrbit's KOReader API (/api/v1/koreader/…) is what it offers e-readers:
   * the catalog: /koreader/plugin/catalog/… (sections, books, a book, its
     cover, its file).
 
-This is the first part: sign in, browse, covers, download. Reading progress,
-highlights, bookmarks, statistics, collections and audiobooks are not sent to
-BookOrbit yet (`books_only`: main and the sync modules leave them alone), so
-every method for those answers nil, "unsupported".
+What is synced with BookOrbit so far is in `supports` (main's serverCan): reading
+progress. Highlights, bookmarks, statistics, collections and audiobooks are not
+yet, so every method for those answers nil, "unsupported"; `books_only` keeps
+the Grimmory-only parts (its statistics, shelf editing, copying the sign-in) off.
+
+Books are told apart by their file's fingerprint (KOReader's partial MD5, kept
+as the download's `hash`): progress is sent by it, and the files already on the
+Kindle are matched to BookOrbit's books by it (matchCheck).
+  * progress out: POST /koreader/plugin/progress, the percentage as KOReader counts
+    it (0-1) and the page's XPointer (or the page number): BookOrbit turns that
+    into its web reader's place itself, so nothing is converted here.
+  * progress in: the book's catalog record (its `progress`), given to
+    gzreader_sync.lua in the shape it reads Grimmory's in.
 
 Written from BookOrbit's routes and field names; none of its code is here.
 ]]
@@ -28,9 +37,13 @@ local Api = require("gzreader_api")
 local lfs = require("libs/libkoreader-lfs")
 local ltn12 = require("ltn12")
 local Log = require("gzreader_log")
+local _ = require("gettext")
+local T = require("ffi/util").template
 
 local BookOrbit = {
     books_only = true,
+    supports = { progress = true },
+    koreader_positions = true, -- (the percentage and place are KOReader's own, not a web reader's)
     NAME = "BookOrbit",
     BASE = "/api/v1/koreader",
     CATALOG = "/api/v1/koreader/plugin/catalog",
@@ -43,13 +56,39 @@ local BookOrbit = {
 }
 BookOrbit.__index = BookOrbit
 
+BookOrbit.PAGED = { pdf = true, cbz = true, cbr = true, djvu = true }
+
 local READABLE_RANK = {}
 for i, f in ipairs(BookOrbit.READABLE) do READABLE_RANK[f] = i end
+BookOrbit.READABLE_EXT = READABLE_RANK
 
 -- (JSON null is a function here: only real values are taken)
 local function s(v) return type(v) == "string" and v ~= "" and v or nil end
 local function n(v) return type(v) == "number" and v or nil end
 local function list(v) return type(v) == "table" and v or {} end
+
+--- What is and isn't synced with BookOrbit, in a sentence or two, for every place
+--- that tells the user (the sign-in message, the setup page, the Catalog's About,
+--- the setup guide): it follows `supports`, so it's right after each new part.
+BookOrbit.FEATURES = {
+    { "progress", _("your place in each book") },
+    { "annotations", _("highlights and their notes") },
+    { "bookmarks", _("bookmarks") },
+    { "sessions", _("reading time") },
+    { "ratings", _("ratings") },
+    { "audiobooks", _("audiobooks") },
+}
+function BookOrbit.note()
+    local yes, no = {}, {}
+    for _i, f in ipairs(BookOrbit.FEATURES) do
+        local into = BookOrbit.supports[f[1]] and yes or no
+        into[#into + 1] = f[2]
+    end
+    local out = _("You can browse and download your books.")
+    if #yes > 0 then out = out .. " " .. T(_("Synced with BookOrbit: %1."), table.concat(yes, ", ")) end
+    if #no > 0 then out = out .. " " .. T(_("Not yet: %1."), table.concat(no, ", ")) end
+    return out
+end
 
 function BookOrbit:new(store, on_change)
     return setmetatable({ store = store, on_change = on_change or function() end }, self)
@@ -122,6 +161,7 @@ function BookOrbit:login(server, username, password)
             self.store.server = base
             self.store.username = username
             self.store.bookorbit = { key = key }
+            self:deviceId()
             self.store.access_token, self.store.refresh_token, self.store.access_expires_at = nil, nil, nil
             self:readVersion()
             self.on_change()
@@ -155,6 +195,90 @@ function BookOrbit:readVersion()
         if type(c) == "string" then b.capabilities[c] = true end
     end
     return b.capabilities
+end
+
+--- This Kindle's name to BookOrbit (its KOReader devices list): made once and kept.
+function BookOrbit:deviceId()
+    if type(self.store.bookorbit_device) ~= "string" or not self.store.bookorbit_device:match("^[%w_-]+$") then
+        local md5 = require("ffi/sha2").md5
+        self.store.bookorbit_device = "gz-" .. md5(tostring(os.time()) .. tostring(math.random()) .. tostring({})):sub(1, 16)
+        self.on_change()
+    end
+    return self.store.bookorbit_device
+end
+
+--- What every plugin request carries: which device, and which GZreader.
+function BookOrbit:deviceFields(body)
+    body = body or {}
+    body.deviceId = self:deviceId()
+    local ok, model = pcall(function() return require("device").model end)
+    body.deviceModel = ("GZreader " .. tostring(ok and model or "e-reader")):sub(1, 100)
+    local okv, v = pcall(function() return require("gzreader_update").currentVersion() end)
+    body.pluginVersion = ("gz" .. tostring(okv and v or "")):sub(1, 20)
+    return body
+end
+
+--- KOReader's fingerprint of a file (its partial MD5), or nil.
+--- (As KOReader's util.partialMD5, which its own sync and BookOrbit use: 1 KB at
+--- offsets 0, 1 KB, 4 KB, 16 KB… up to 1 GB, as far as the file goes.)
+function BookOrbit.hashFile(path)
+    local ok, h = pcall(function()
+        local f = io.open(path, "rb")
+        if not f then return nil end
+        local update = require("ffi/sha2").md5()
+        for i = -1, 10 do
+            f:seek("set", i < 0 and 0 or 1024 * 4 ^ i)
+            local sample = f:read(1024)
+            if not sample then break end
+            update(sample)
+        end
+        f:close()
+        return update()
+    end)
+    return ok and type(h) == "string" and #h == 32 and h:lower() or nil
+end
+
+--- Which of these fingerprints BookOrbit has a book for:
+--- { [hash] = { book_id =, file_id = } }, or nil, err.
+function BookOrbit:matchCheck(hashes)
+    local out = {}
+    for from = 1, #hashes, 500 do
+        local part = {}
+        for i = from, math.min(from + 499, #hashes) do part[#part + 1] = hashes[i] end
+        local code, data, err = self:call("POST", BookOrbit.BASE .. "/plugin/match-check",
+            { body = self:deviceFields({ hashes = require("gzreader_json").list(part) }), timeouts = { 10, 30 } })
+        if not ((code == 200 or code == 201) and type(data) == "table") then return nil, err or ("http_" .. tostring(code)) end
+        for _i, m in ipairs(list(data.matches)) do
+            if type(m) == "table" and s(m.hash) and n(m.bookId) then
+                out[m.hash:lower()] = { book_id = m.bookId, file_id = n(m.bookFileId) }
+            end
+        end
+    end
+    return out
+end
+
+--- Send a book's place (body as gzreader_sync.lua makes it for Grimmory, with the
+--- page's XPointer in gz_xp). The book is named by its file's fingerprint
+--- (the download's `hash`). Returns true, or false, err, code (404: BookOrbit has
+--- no book with that file, so it isn't asked again).
+function BookOrbit:putProgress(book_id, body)
+    local entry = type(self.store.downloads) == "table" and self.store.downloads[tostring(book_id)]
+    local hash = type(entry) == "table" and s(entry.hash)
+    if not hash then return false, "bookorbit_unmatched", 404 end
+    local fp = type(body) == "table" and type(body.fileProgress) == "table" and body.fileProgress or {}
+    local pct = n(fp.progressPercent)
+    if not pct then return false, "bookorbit_unmatched", 400 end
+    local item = { hash = hash, percentage = math.max(0, math.min(1, pct / 100)), timestamp = os.time(),
+        progress = s(body.gz_xp) or s(fp.positionData) }
+    local code, data, err = self:call("POST", BookOrbit.BASE .. "/plugin/progress",
+        { body = self:deviceFields({ items = require("gzreader_json").list({ item }) }), timeouts = { 8, 15 } })
+    if (code == 200 or code == 201) and type(data) == "table" then
+        for _i, r in ipairs(list(data.results)) do
+            if type(r) == "table" and r.accepted == true then return true end
+        end
+        return false, "bookorbit_unmatched", 404
+    end
+    return false, err or ("http_" .. tostring(code)), code
 end
 
 function BookOrbit:can(capability)
@@ -343,6 +467,17 @@ function BookOrbit:getBook(book_id)
     book.primaryFileId = f and f.id or nil
     book.fileSizeKb = book.primaryFile and book.primaryFile.fileSizeKb or nil
     book.libraryId = n(d.libraryId)
+    -- where the book was left, on any device: as gzreader_sync.lua reads Grimmory's
+    local p = type(d.progress) == "table" and d.progress
+    if p and n(p.percentage) and p.percentage > 0 then
+        local place = s(p.koreaderProgress)
+        if f and BookOrbit.PAGED[f.format:lower()] then
+            book.pdfProgress = { percentage = p.percentage, page = tonumber(place) }
+        else
+            book.epubProgress = { percentage = p.percentage }
+            if place and place:sub(1, 1) == "/" then book.gz_xp = place end
+        end
+    end
     book.metadata = { title = book.title, subtitle = s(d.subtitle), description = s(d.description), publisher = s(d.publisher),
         publishedDate = s(d.publishedDate), pageCount = n(d.pageCount), seriesName = book.seriesName, seriesNumber = book.seriesNumber,
         categories = names(d.genres), authors = book.authors }
@@ -430,7 +565,7 @@ end
 -- Grimmory-only (its single sign-on, its web list) or not sent to BookOrbit yet: each
 -- answers nil, "unsupported". Main and the sync modules don't call them while
 -- `books_only` is set; this is so a call that slips through fails quietly.
-for _i, name in ipairs{ "listWebBooks", "listMyShelves", "setBookShelves", "listAuthors", "listSeries", "putProgress",
+for _i, name in ipairs{ "listWebBooks", "listMyShelves", "setBookShelves", "listAuthors", "listSeries",
     "audiobookInfo", "downloadAudio", "listBookmarks", "createBookmark", "deleteBookmark", "listAnnotations",
     "createAnnotation", "updateAnnotation", "deleteAnnotation", "listBookNotes", "createBookNote", "updateBookNote",
     "deleteBookNote", "putRating", "postSession", "hasSession", "publicSettings", "oidcExchange" } do

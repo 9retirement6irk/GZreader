@@ -51,6 +51,7 @@ end
 --- The Kindle's rating changed since it last agreed with Grimmory? Queue it.
 function Ratings.check(plugin, book_id, entry, doc_settings)
     if not entry then return false end
+    if type(plugin.serverCan) == "function" and not plugin:serverCan("ratings") then return false end
     local here = Ratings.localStars(doc_settings) or 0
     local synced = tonumber(entry.rating_synced)
     if synced == nil then

@@ -518,7 +518,7 @@ do
 end
 
 function Grimmory:syncEnabled()
-    return self.store.sync_disabled ~= true and self.api:isPaired() and not self:booksOnly()
+    return self.store.sync_disabled ~= true and self.api:isPaired() and self:serverCan("progress")
 end
 
 -- exit: the next save is a whole one, and there is one if only the recent part
@@ -676,7 +676,10 @@ function Grimmory:menuItems()
         },
         {
             text = _("Connect to BookOrbit by typing"),
-            help_text = T(_("BookOrbit instead of Grimmory as this Kindle's book server. It asks for BookOrbit's address and the %1 sync user name and password (BookOrbit: Settings → %1). For now you can browse and download your books; reading progress, highlights and bookmarks aren't sent to BookOrbit yet."), "KOReader"),
+            help_text_func = function()
+                return T(_("BookOrbit instead of Grimmory as this Kindle's book server. It asks for BookOrbit's address and the %1 sync user name and password (BookOrbit: Settings → %1)."), "KOReader")
+                    .. " " .. require("gzreader_bookorbit").note()
+            end,
             callback = function() self:keyboardLogin(nil, "bookorbit") end,
         },
         {
@@ -925,10 +928,18 @@ function Grimmory:useBackend(name)
     pcall(function() require("gzreader_covers").useSpace(name == "bookorbit" and "bookorbit" or nil) end)
 end
 
---- With BookOrbit, only the books so far (browse, covers, download): nothing is
---- synced to it yet (gzreader_bookorbit.lua).
+--- A book server that isn't Grimmory: the Grimmory-only parts (its statistics,
+--- shelf editing, copying the sign-in) are left alone (gzreader_bookorbit.lua).
 function Grimmory:booksOnly()
     return self.api.books_only == true
+end
+
+--- Is this synced with the book server signed in to? Grimmory: everything.
+--- BookOrbit: what its client lists in `supports` ("progress", "annotations",
+--- "bookmarks", "sessions", "ratings"…).
+function Grimmory:serverCan(feature)
+    local supports = self.api.supports
+    return supports == nil or supports[feature] == true
 end
 
 function Grimmory:exportLog()
@@ -1273,6 +1284,7 @@ function Grimmory:afterLogin(previous, backend)
         -- Different server/account: queued data belongs to the old one, and so do
         -- the saved lists and the library index (book ids mean other books there).
         self.store.pending = { progress = {}, sessions = {}, ratings = {} }
+        self.store.bookorbit_unmatched = nil
         local was = type(previous) == "table" and previous[3] or "grimmory"
         if was ~= self:backend() then
             -- The other server's books: its ids mean other books here, so the list of
@@ -1640,7 +1652,7 @@ end
 function Grimmory:announceConnected()
     UIManager:show(InfoMessage:new{
         text = T(_("Connected to %1 as %2."), self:serverName(), self.store.username or "") .. "\n\n"
-            .. (self:booksOnly() and _("You can browse and download your books. Reading progress, highlights and bookmarks aren't sent to BookOrbit yet.")
+            .. (self:booksOnly() and require("gzreader_bookorbit").note()
                 or _("Reading progress syncs automatically for books you download from Grimmory.")),
     })
 end
@@ -1703,7 +1715,8 @@ Grimmory.gone_books = {} -- book ids Grimmory answered "not found" for (this run
 
 function Grimmory:queue(kind, book_id, body)
     local pending = self.store.pending
-    if self:booksOnly() then return end -- (nothing is sent to BookOrbit yet: nothing is kept to send)
+    -- (what the book server doesn't take isn't kept to send)
+    if not self:serverCan(kind == "progress" and "progress" or "sessions") then return end
     if kind == "progress" and Grimmory.gone_books[tostring(book_id)] then return end
     if kind == "progress" then
         pending.progress[tostring(book_id)] = body
@@ -1722,7 +1735,7 @@ end
 --- Send progress and reading sessions queued while offline. In the
 --- background (gzreader_async): sending a backlog can take many seconds.
 function Grimmory:flushPending()
-    if self.flushing or not self.api:isPaired() or self:booksOnly() or not NetworkMgr:isConnected() then return end
+    if self.flushing or not self.api:isPaired() or not self:serverCan("progress") or not NetworkMgr:isConnected() then return end
     local pending = self.store.pending
     pending.ratings = pending.ratings or {}
     if next(pending.progress) == nil and #pending.sessions == 0 and next(pending.ratings) == nil then return end
@@ -1820,7 +1833,7 @@ function Grimmory:onNetworkConnected()
     pcall(function() require("gzreader_reqhelper").start(self.path) end)
     UIManager:scheduleIn(2, function()
         -- books rated in the file browser (not opened) since GZreader started
-        if self.api:isPaired() and self:syncEnabled() and not self._ratings_swept then
+        if self.api:isPaired() and self:syncEnabled() and self:serverCan("ratings") and not self._ratings_swept then
             local ok, _, done = pcall(require("gzreader_ratings").sweep, self, 60)
             if ok and done then self._ratings_swept = true end
         end
@@ -1960,6 +1973,11 @@ function Grimmory:onReaderReady()
             local pf = type(book) == "table" and type(book.primaryFile) == "table" and tonumber(book.primaryFile.id)
             if pf then entry.file_id = pf; self:save(); self:writeManifest() end
         end)
+    end
+    -- (BookOrbit knows a book by its file's fingerprint: worked out once, kept with the download)
+    if self.api.koreader_positions and not entry.hash then
+        entry.hash = self.api.hashFile(self.ui.document.file)
+        if entry.hash then self:save() end
     end
     Log.info("opened Grimmory book", book_id, "file_id", tostring(entry.file_id), "format", tostring(entry.format))
     -- (Grimmory's copy replaced since this one was downloaded: offered again, once)
@@ -2328,7 +2346,76 @@ function Grimmory:libraryUpkeep(index, force)
     if not force and Grimmory.upkeep_sig == sig then return end
     Grimmory.upkeep_sig = sig
     pcall(self.relinkLibrary, self, index)
+    pcall(self.matchLibraryFiles, self, index)
     pcall(require("gzreader_titles").backfill, self)
+end
+
+--- BookOrbit: books in the GZreader folder that aren't tied to one of its books yet
+--- (downloaded from Grimmory before the switch, or copied over USB) are matched by
+--- their file's fingerprint: BookOrbit says which of them it has (matchCheck), and
+--- those become its downloads (the Catalog's mark, progress sync). In the background.
+function Grimmory:matchLibraryFiles(index)
+    local dir = self.store.library_dir
+    if not dir or type(self.api.matchCheck) ~= "function" or not self.api:isPaired() or self.matching then return end
+    if not NetworkMgr:isConnected() then return end
+    local linked = {}
+    for _id, e in pairs(self.store.downloads) do if type(e) == "table" and e.path then linked[e.path] = true end end
+    local tried = self.store.bookorbit_unmatched or {}
+    local paths = {}
+    for name in lfs.dir(dir) do
+        local path = dir .. "/" .. name
+        local ext = name:match("%.([%w]+)$")
+        if ext and self.api.READABLE_EXT and self.api.READABLE_EXT[ext:lower()] and not linked[path] and name:sub(1, 1) ~= "."
+            and lfs.attributes(path, "mode") == "file" then
+            -- (asked before and not BookOrbit's: again only when the file changed)
+            local stamp = tostring(lfs.attributes(path, "size")) .. ":" .. tostring(lfs.attributes(path, "modification"))
+            if tried[name] ~= stamp then paths[#paths + 1] = { path = path, name = name, stamp = stamp } end
+        end
+        if #paths >= 400 then break end
+    end
+    if #paths == 0 then return end
+    self.matching = true
+    local titles = {}
+    for _name, info in pairs(type(index) == "table" and type(index.files) == "table" and index.files or {}) do
+        titles[tostring(info[1])] = info[4]
+    end
+    require("gzreader_async").run(self.api, function(api)
+        local hashes, by_hash = {}, {}
+        for _i, f in ipairs(paths) do
+            f.hash = api.hashFile(f.path)
+            if f.hash and not by_hash[f.hash] then hashes[#hashes + 1] = f.hash; by_hash[f.hash] = true end
+        end
+        if #hashes == 0 then return { files = paths, matches = {} } end
+        local matches, err = api:matchCheck(hashes)
+        if not matches then return nil, err end
+        return { files = paths, matches = matches }
+    end, function(res, err)
+        self.matching = nil
+        if type(res) ~= "table" then
+            Log.info("BookOrbit: matching the books on this Kindle failed:", tostring(err))
+            return
+        end
+        local n_linked = 0
+        self.store.bookorbit_unmatched = self.store.bookorbit_unmatched or {}
+        for _i, f in ipairs(res.files) do
+            local m = f.hash and res.matches[f.hash]
+            local id = type(m) == "table" and m.book_id and tostring(m.book_id)
+            if id and not self.store.downloads[id] and lfs.attributes(f.path, "mode") == "file" then
+                self.store.downloads[id] = { path = f.path, title = titles[id] or f.name:gsub("%.[%w]+$", ""),
+                    format = (f.name:match("%.([%w]+)$") or ""):upper(), file_id = tonumber(m.file_id), hash = f.hash }
+                self.store.bookorbit_unmatched[f.name] = nil
+                n_linked = n_linked + 1
+            elseif not id then
+                self.store.bookorbit_unmatched[f.name] = f.stamp
+            end
+        end
+        Log.info("BookOrbit: matched", n_linked, "of", #res.files, "books on this Kindle by their files")
+        self:save()
+        if n_linked > 0 then
+            self:writeManifest()
+            pcall(self.refreshDownloadsTab, self)
+        end
+    end, "match books")
 end
 
 --- Match books in the folder that aren't linked yet to Grimmory books by
@@ -2441,6 +2528,7 @@ function Grimmory:downloadAndOpen(book, menu, opts)
         -- Grimmory's progress, for the book's first opening without Wi-Fi
         -- (gzreader_sync.lua: Sync:onReady)
         entry.grimmory_progress = Sync.progressOf(book)
+        if self.api.koreader_positions then entry.hash = self.api.hashFile(path) end
         self.store.downloads[tostring(book.id)] = entry
         self:save()
         self:writeManifest()

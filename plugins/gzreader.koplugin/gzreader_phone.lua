@@ -109,6 +109,7 @@ local function state(S, flash)
     -- Grimmory
     local store = plugin.store
     local g = { connected = plugin.api and plugin.api:isPaired() or false, username = store.username, backend = plugin:backend(),
+        bookorbit_note = require("gzreader_bookorbit").note(),
         host = host(store.server) }
     g.redirect_uri, g.sso_relay = Phone.ssoRedirect(plugin, S.origin)
     g.form = sec == "grimmory" and flash.form
