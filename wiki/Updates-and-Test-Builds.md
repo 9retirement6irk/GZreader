@@ -21,6 +21,10 @@ asks a time server, `pool.ntp.org`, for the time; if that's blocked, it
 takes the time from GitHub's answer. The log says `clock: said … set from a
 time server …`. Nothing is asked while the clock is right.
 
+Releases are named for the day they came out, as year.month.day: **2026.11.21**
+(a second one that day: 2026.11.21.2). Versions up to 1.35.0 were numbered;
+the first one by date is newer than all of them.
+
 After an update, GZreader opens a **What's new** screen once: "Updated to
 v<version>" and a short point for each change (for a test build, what it
 brings; for a release after a skipped one, both). Press Get Started (or the
@@ -28,7 +32,7 @@ brings; for a release after a skipped one, both). Press Get Started (or the
 
 **Test builds.** Settings → General → Software update → **Test builds** gets what's
 waiting to be tried instead of releases, over Wi‑Fi like a release (the
-version then reads like `1.26.5-beta.d6819bd`). They come from the
+version then reads like `2026.11.21-beta.d6819bd`). They come from the
 repository's `beta` branch: every push there builds an update package
 ("GZreader test builds (beta)" workflow) onto the `updates` branch, as
 `gzreader-beta-update.zip` with `latest-beta.json` next to the release's

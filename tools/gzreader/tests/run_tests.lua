@@ -6662,6 +6662,10 @@ end
 print("Updates from GitHub releases")
 local Update = require("gzreader_update")
 check(Update.compare("1.10.0", "1.9.2") == 1 and Update.compare("v1.0.0", "1.0.0") == 0 and Update.compare("1.0.0-beta1", "1.0.0") == -1, "version comparison")
+check(Update.compare("2026.11.21", "1.35.0") == 1 and Update.compare("v2026.11.21.2", "2026.11.21") == 1
+    and Update.compare("2026.12.01", "2026.11.30") == 1 and Update.compare("2026.11.21", "2026.11.21-beta.abc1234") == 1
+    and Update.compare("2026.11.21-beta.abc1234", "2026.11.20") == 1 and Update.compare("2027.01.05", "2027.1.5") == 0,
+    "versions by date (year.month.day): after 1.35.0, .2 the same day, a test build before its release")
 check(Update.apiUrl() == "https://api.github.com/repos/9retirement6irk/GZreader/releases/latest", "checks the GZreader GitHub repository")
 local KO = WORK .. "/ko"
 os.execute("rm -rf '" .. KO .. "' && mkdir -p '" .. KO .. "/frontend' '" .. KO .. "/plugins/gzreader.koplugin' '" .. KO .. "/settings'")
