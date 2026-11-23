@@ -938,7 +938,7 @@ local function paintContents(bb, kind, room, info)
         end
     elseif kind == "faceout" then
         local cw = math.min(S(42), math.floor(h * 0.62))
-        x = miniCover(bb, x, bottom, cw, math.floor(h * 0.86), info.shelf_name or _("Shelves"))
+        x = miniCover(bb, x, bottom, cw, math.floor(h * 0.86), info.shelf_name or require("gzreader_servername").shelves())
         local _, sp = spines(bb, x, bottom, right, h * 0.95, sd .. "shelf")
         spans = sp
     elseif kind == "dividers" then
@@ -1026,7 +1026,7 @@ function Page:paintLedge(bb, ox, oy, i, L)
     local bottom = ledge.y
     local Sh = Shelf()
     local p = S(Sh.PAGES)
-    local msg = #spec.books == 0 and (spec.loading and _("Fetching from Grimmory…") or spec.empty) or ""
+    local msg = #spec.books == 0 and (spec.loading and require("gzreader_servername").fix(_("Fetching from Grimmory…")) or spec.empty) or ""
     if msg ~= "" then
         text(bb, msg, hand(20), ox + math.floor(L.w / 2), bottom - math.floor(led.cover_h / 2), { center = true, middle = true, color = gray(0.7) })
     end
@@ -1379,7 +1379,7 @@ function Shop.build(m, browser, select_number, no_recalculate_dimen)
     page.info = info
     page.cells = {}
     local names = {
-        all = _("All books"), libraries = _("Libraries"), shelves = _("Shelves"), authors = _("Authors"),
+        all = _("All books"), libraries = _("Libraries"), shelves = require("gzreader_servername").shelves(), authors = _("Authors"),
         series = _("Series"), audiobooks = _("Audiobooks"),
     }
     local comps = Shop.arrange(pspec.compartments, function(id) return by[id] ~= nil end, section == "books" or signed_out, #L.cells)

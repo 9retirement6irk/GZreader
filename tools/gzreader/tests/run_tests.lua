@@ -16957,6 +16957,39 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
             "the Kindle's summary after setup names BookOrbit " .. tostring(summary))
         check(plugin.api:hasApiKey() and plugin.store.username == "will-kindle", "(signed in with the key saved for what follows)")
     end
+    -- the Catalog speaks the server's words: BookOrbit, Collections, SmartScope
+    do
+        local Name = require("gzreader_servername")
+        local was = rawget(_G, "__GZ_BOOK_SERVER")
+        rawset(_G, "__GZ_BOOK_SERVER", function() return plugin:backend() end)
+        check(Name.get() == "BookOrbit" and Name.shelves() == "Collections" and Name.smart() == "SmartScope"
+            and Name.fix("Fetching from Grimmory…") == "Fetching from BookOrbit…" and Name.fix(nil) == nil,
+            "with BookOrbit: its name, Collections and SmartScope")
+        local Browser = require("gzreader_browser")
+        local opened
+        local fake = setmetatable({ plugin = plugin, api = plugin.api, openCached = function(_s, spec) opened = spec end, openPaged = function() end }, { __index = Browser })
+        fake:openShelves()
+        local listed = plugin.api:listShelves()
+        listed[#listed + 1] = { id = 9, name = "Unread this year", magic = true } -- (a SmartScope, as listShelves marks them)
+        local items = opened.build(listed)
+        local names = {}
+        for _i, it in ipairs(items) do names[#names + 1] = it.text .. "=" .. tostring(it.mandatory) end
+        check(opened.title == "Collections" and table.concat(names, "|"):find("=SmartScope", 1, true) ~= nil and #items >= 3,
+            "the Catalog's shelves list with BookOrbit: called Collections, with its collections and its SmartScopes " .. table.concat(names, "|"))
+        rawset(_G, "__GZ_BOOK_SERVER", function() return "grimmory" end)
+        fake:openShelves()
+        check(Name.get() == "Grimmory" and Name.shelves() == "Shelves" and Name.smart() == "smart shelf" and Name.fix("Fetching from Grimmory…") == "Fetching from Grimmory…"
+            and opened.title == "Shelves", "with Grimmory everything reads as before")
+        rawset(_G, "__GZ_BOOK_SERVER", was)
+        local left = {}
+        for _i, f in ipairs{ "gzreader_bookshop.lua", "gzreader_bookpage.lua" } do
+            local fh = io.open(PLUGIN .. "/" .. f, "rb"); local src = fh:read("*a"); fh:close()
+            for line in src:gmatch("[^\n]+") do
+                if line:find('_%("[^"]*Grimmory') and not line:find("gzreader_servername", 1, true) and not line:match("^%s*%-%-") then left[#left + 1] = f end
+            end
+        end
+        check(#left == 0, "the Catalog's screens have no text naming Grimmory that doesn't follow the server " .. table.concat(left, " "))
+    end
     -- signing in again as the same user keeps the key; another user doesn't get it
     plugin:connect(BO, "will-kindle", "hunter22", "bookorbit")
     check(plugin.api:hasApiKey(), "signing in again to the same server and user keeps the API key")
