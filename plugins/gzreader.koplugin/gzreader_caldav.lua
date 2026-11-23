@@ -798,8 +798,10 @@ function CalDAV.fetchFeed(url, from, to)
     if code >= 400 then return nil, "http_" .. code end
     if type(body) ~= "string" or not body:find("BEGIN:VCALENDAR", 1, true) then return nil, "not a calendar" end
     local name = body:match("\nX%-WR%-CALNAME[^:\r\n]*:([^\r\n]*)")
+    -- (its colour, as Apple's and others' calendars give it)
+    local color = CalDAV.color(body:match("\nX%-APPLE%-CALENDAR%-COLOR[^:\r\n]*:([^\r\n]*)"))
     local evs = CalDAV.parseEvents(body)
-    return { events = CalDAV.occurrences(evs, from, to), name = name and unescape(name) or nil, count = #evs }
+    return { events = CalDAV.occurrences(evs, from, to), name = name and unescape(name) or nil, count = #evs, color = color }
 end
 
 --- Everything for the Calendar tab: the CalDAV account's chosen calendars
@@ -827,7 +829,7 @@ function CalDAV.syncAll(caldav_store, feeds, from, to)
             local res, err = CalDAV.fetchFeed(feed.url, from, to)
             if res then
                 ok_any = true
-                if res.name then names[#names + 1] = { index = j, name = res.name } end
+                if res.name or res.color then names[#names + 1] = { index = j, name = res.name, color = res.color } end
                 for _i, ev in ipairs(res.events) do ev.cal = n + j; all[#all + 1] = ev end
             else
                 Log.warn("calendar: link", j, "failed:", tostring(err))
@@ -843,6 +845,13 @@ function CalDAV.syncAll(caldav_store, feeds, from, to)
         return (a.title or "") < (b.title or "")
     end)
     return { events = all, failed = failed, names = names }
+end
+
+--- A calendar's colour as "#rrggbb" (CalDAV's calendar-color and Apple's
+--- X-APPLE-CALENDAR-COLOR are "#RRGGBB" or "#RRGGBBAA"), or nil.
+function CalDAV.color(v)
+    local hex = type(v) == "string" and v:match("^%s*#(%x%x%x%x%x%x)%x?%x?%s*$")
+    return hex and ("#" .. hex:lower()) or nil
 end
 
 ---------------------------------------------------------------- the cache
