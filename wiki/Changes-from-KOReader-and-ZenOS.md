@@ -40,7 +40,7 @@ GZreader keeps ZenOS's Home, tabs, library views, settings and setup guide, and 
 - **Home:** a bookshelf view (books on shelves, audiobooks as a cassette walkman, music as a CD player), Grimmory reading stats on a notebook page in place of ZenOS's local reading stats widget (no longer offered), two shelves on the DX's taller screen and the Scribe's bigger one; font sizes in Home widgets and the end-of-book page aren't scaled twice.
 - **Tabs:** Catalog (Grimmory's books and audiobooks and Plex music, a page each; the Grimmory tab before 1.27.x), Notes (in Favorites' place) and Calendar, Music and Audiobooks on request.
 - **The book menu:** Add to shelf and Remove from shelf (your Grimmory shelves, kept on the Kindle, changes sent over Wi‑Fi or by the sync page) instead of Add to collection, also for several selected books; no Add to collection anywhere.
-- **The setup guide:** shorter (fewer pages, GZreader's reading defaults set on a first setup), starting with *Set up from your browser*, ending with whether to send debug reports.
+- **The setup guide:** shorter (fewer pages, GZreader's reading defaults set on a first setup), starting with *How will you use GZreader?* (Grimmory, BookOrbit, or on its own) and *Set up from your browser*, ending with whether to send debug reports.
 - **Settings → Home and tabs → Quick panel:** which tiles the quick panel shows, in place of ZenOS's Controls and Launcher (they set up the touch menu GZreader replaces).
 - **Zen mode is always on** (ZenOS's own tabs only): there's no Zen mode switch in Settings → Interface, and it's turned back on if it was off.
 - **The update screen:** GZreader's version and what's new in it, after every GZreader update (ZenOS showed its own version and list, only when ZenOS changed).

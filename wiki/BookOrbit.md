@@ -32,6 +32,7 @@ That user name and password are what GZreader asks for. Your website user name, 
 
 Any of these:
 
+- **The setup guide** (on the first start, or Settings → General → Setup Guide): answer **With BookOrbit, my book server** to *How will you use GZreader?*, then *Set up from a browser* or *Type my BookOrbit login here*.
 - **The setup page** (Settings → Accounts and services → Books → Connect from your browser, then scan the code): under **Book server**, choose **BookOrbit**, then enter BookOrbit's address and the KOReader sync user name and password.
 - **On the Kindle**: Settings → Accounts and services → Books → **Connect to BookOrbit by typing**.
 - **In the Catalog**, when you aren't signed in: the server tile at the bottom → **Connect to BookOrbit by typing**.

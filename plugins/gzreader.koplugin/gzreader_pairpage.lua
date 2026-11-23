@@ -165,7 +165,7 @@ local function grimmorySection(st, base)
         parts[#parts + 1] = form(base .. "/grimmory/disconnect",
             '<button class="danger" type="submit"' .. confirmJs("Disconnect the Kindle from " .. (orbit and "BookOrbit" or "Grimmory") .. "? Downloaded books stay on the Kindle.")
             .. ">Disconnect</button>", "Disconnecting…")
-        parts[#parts + 1] = "<details><summary>Sign in again or with another account</summary><div style=\"margin-top:12px\">"
+        parts[#parts + 1] = "<details" .. (g.other and " open" or "") .. "><summary>Sign in again or with another account</summary><div style=\"margin-top:12px\">"
     else
         parts[#parts + 1] = status(false, "Not connected")
     end

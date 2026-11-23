@@ -811,6 +811,16 @@ end
 
 function QuickstartScreen:_nextPage()
     self:_applyCurrentPage()
+    -- (GZreader: a page's answer can change the next page's choices: its defaults again)
+    local nxt = self.pages[self._page_idx + 1]
+    if type(nxt) == "table" and nxt.reset_selection and nxt.choices then
+        local sel = {}
+        for _i, choice in ipairs(nxt.choices) do
+            if choice.checked then sel[choice.id] = true end
+        end
+        self._selections[self._page_idx + 1] = sel
+        nxt.reset_selection = nil
+    end
     if self._page_idx >= self._total then
         self:onClose()
     else

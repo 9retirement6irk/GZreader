@@ -19,7 +19,7 @@ You'll need a computer with a USB cable, and about 100 MB free on the device.
 
 ## After installing
 
-**The first start.** A setup guide runs. Its first page, **Set up from your browser**, shows a QR code: scan it with your phone, or type the address under it into any browser on the same Wi‑Fi and enter the PIN, to connect Grimmory, Notes (Memos) and Calendar, or to send books, or pick *Skip for now*. You can come back to it any time: the quick panel → **Send books** (Menu, or on a touch Kindle swipe down from the top). The guide then asks about the library view, tabs, sleep screen, clock and whether to send debug reports. → [Setup page and connections](Setup-Page-and-Connections)
+**The first start.** A setup guide runs. It first asks **How will you use GZreader?**: with Grimmory, with [BookOrbit](BookOrbit), or on its own, sending books from your browser. The next page fits your answer. For a book server it is **Set up from your browser**, which shows a QR code: scan it with your phone, or type the address under it into any browser on the same Wi‑Fi and enter the PIN, to connect Grimmory, Notes (Memos) and Calendar, or to send books, or pick *Skip for now* (you can also type the sign-in on the Kindle). On its own, the page is **Send books from your browser**: the same QR code, opening the page where you drop your books. You can come back to it any time: the quick panel → **Send books** (Menu, or on a touch Kindle swipe down from the top). The guide then asks about the library view, tabs, sleep screen, clock and whether to send debug reports. → [Setup page and connections](Setup-Page-and-Connections)
 
 Books you download or send go to **GZreader/books** on the Kindle's drive; the **Downloads** tab shows them.
 
