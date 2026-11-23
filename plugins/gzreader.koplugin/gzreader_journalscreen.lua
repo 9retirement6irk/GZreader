@@ -862,19 +862,23 @@ function JournalScreen:moodSlider(width)
         self.dimen.x, self.dimen.y = x, y
         local th = S(10)
         local ty = y + math.floor((h - th) / 2)
-        -- the track: each step's stretch in its face's grey
+        -- the track: each step's stretch in its face's colour (grey on a grey screen)
         local x1 = x + pad
         local seg = (width - 2 * pad) / (n - 1)
         for i = 1, n do
             local a = math.floor(x1 + seg * (i - 1.5))
             local b2 = math.floor(x1 + seg * (i - 0.5))
             a, b2 = math.max(x + pad - math.floor(th / 2), a), math.min(x + width - pad + math.floor(th / 2), b2)
-            local c = Blitbuffer.Color8(MoodFace.greys(Journal.VALENCES[i]).fill)
+            local c = MoodFace.fillColor(Journal.VALENCES[i])
+            -- (a colour: the RGB painters, which keep it)
+            local rgb = MoodFace.colour() and bb.paintRectRGB32
+            local rect = rgb and bb.paintRectRGB32 or bb.paintRect
             if i == 1 or i == n then
-                bb:paintRoundedRect(a, ty, b2 - a, th, c, math.floor(th / 2))
-                bb:paintRect(i == 1 and (a + math.floor(th / 2)) or a, ty, b2 - a - math.floor(th / 2), th, c)
+                local round = rgb and bb.paintRoundedRectRGB32 or bb.paintRoundedRect
+                round(bb, a, ty, b2 - a, th, c, math.floor(th / 2))
+                rect(bb, i == 1 and (a + math.floor(th / 2)) or a, ty, b2 - a - math.floor(th / 2), th, c)
             else
-                bb:paintRect(a, ty, b2 - a, th, c)
+                rect(bb, a, ty, b2 - a, th, c)
             end
         end
         -- the steps' places (where a tap picks each)
@@ -891,7 +895,7 @@ function JournalScreen:moodSlider(width)
         if cur then
             bb:paintCircle(cx, cy, r + S(1), Blitbuffer.COLOR_DARK_GRAY, S(1))
             bb:paintCircle(cx, cy, r, Blitbuffer.COLOR_WHITE, S(3))
-            bb:paintCircle(cx, cy, r - S(3), Blitbuffer.Color8(MoodFace.greys(Journal.VALENCES[cur]).fill))
+            bb:paintCircle(cx, cy, r - S(3), MoodFace.fillColor(Journal.VALENCES[cur]))
         else
             bb:paintCircle(cx, cy, r, Blitbuffer.COLOR_WHITE)
             bb:paintCircle(cx, cy, r, Blitbuffer.COLOR_DARK_GRAY, S(2))
