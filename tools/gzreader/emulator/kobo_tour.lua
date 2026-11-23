@@ -41,7 +41,7 @@ shot("02-home")
 add({ fn = function(E)
     local p = plugin()
     check(E, p ~= nil and p:libraryDir() == "/mnt/onboard/GZreader", "the GZreader folder on the Kobo's drive: " .. tostring(p and p:libraryDir()))
-    check(E, require("gzreader_copy").modelName() == (E.model == "libra" and "Kobo Libra 2" or "Kobo Clara HD"),
+    check(E, require("gzreader_copy").modelName() == (({ libra = "Kobo Libra 2", condor = "Kobo Elipsa 2E" })[E.model] or "Kobo Clara HD"),
         "named " .. require("gzreader_copy").modelName())
 end, after = 1 })
 -- the tabs along the bottom (five, evenly spread)

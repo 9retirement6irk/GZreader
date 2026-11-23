@@ -34,13 +34,17 @@ the same version and overlays GZreader's Lua code, plugins and dictionary.
   Grimmory, Memos and CalDAV servers, the setup guide, the Nooks' screen commands; that
   GZreader's changes to KOReader's and ZenOS's files are all still there
   ([`keeps.py`](tools/gzreader/tests/keeps.py)); and GZreader running in the emulator
-  on a Kindle 3, Kindle 4, Kindle Touch, Paperwhite 3, Nook 1st Edition and Nook Simple
-  Touch, checking what makes it GZreader
+  on one model for each package, checking what makes it GZreader
   ([`keeps.lua`](tools/gzreader/emulator/keeps.lua)): the setup guide, Home's tabs, the
   GZreader and Reading menus and their names (and the Menu key, never ZenOS's touch panel
   without touch), Settings' Connections, the touch launcher's entries at Home and in a
   book, the Kindle Touch's Listen, the Nook's colour screen, picture books filling the
-  screen, pages turning, and menu text between 2.2 and 3.8 mm tall on the real screen. Locally: `tools/gzreader/ci-test.sh koreader-kindle-legacy-vX.zip out/`
+  screen, pages turning, and menu text between 2.2 and 3.8 mm tall on the real screen.
+  CI runs one model for each package (Kindle 3 and DX Graphite, Kindle Touch, Paperwhite 3,
+  Scribe, Nook 1st Edition, Nook Simple Touch, a Kobo Elipsa 2E), each as its own job
+  beside the tests, with the Kindle 3's CPU budgets in a job of their own; the job
+  named `test` is the one result. Locally: `tools/gzreader/ci-test.sh koreader-kindle-legacy-vX.zip out/`
+  runs everything one after another (`GZ_CI_PART=model:pw3` for one model, `tests`, or `perf`)
   (Linux, with qemu), or just the tests: `tools/gzreader/tests/run.sh <unzipped koreader/>`.
 - **Upstream check** ([workflow](.github/workflows/gzreader-upstream.yml), Mondays, or by
   hand from the Actions tab): compares [`tools/gzreader/UPSTREAM`](tools/gzreader/UPSTREAM)

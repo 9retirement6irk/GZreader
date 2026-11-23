@@ -7,6 +7,12 @@ look like a change in GZreader. A phase that costs more than the baseline by
 WARN (25%) is flagged; by FAIL (50%), the check fails. Phases under
 MIN_CPU s are only shown (too short to time reliably).
 
+The phases in SOFT never fail the check, they are only flagged: the quick
+panel and moving around Home are mostly waiting, under a second of CPU, and
+on CI their time swings past +50% from one machine to the next with no change
+in GZreader (three runs of 2026-11-22, one of them a wiki-only change). The
+start, opening a book, page turns and closing it still fail it.
+
   perf_check.py <perf.json> <perf_baseline.json>         markdown for summary.md; exit 1 on a FAIL
   perf_check.py --update <perf.json> <perf_baseline.json> record this run as the model's baseline
 
@@ -15,6 +21,7 @@ No baseline for the model yet: the numbers are shown, nothing fails.
 import json, sys
 
 WARN, FAIL, MIN_CPU = 1.25, 1.50, 0.3
+SOFT = {"quick panel x3", "10 moves on Home"}
 
 
 def load(path, default=None):
@@ -50,11 +57,14 @@ def compare(run, base):
         ratio = (c / cal) / (bc / float(base["calibration"])) if bc > 0 else 1.0
         pct = (ratio - 1) * 100
         mark = "✅"
-        if max(c, bc) >= MIN_CPU and ratio >= FAIL:
+        note = ""
+        if max(c, bc) >= MIN_CPU and ratio >= FAIL and name in SOFT:
+            mark, note = "⚠️", " (a short, mostly idle phase: flagged, never fails the check)"
+        elif max(c, bc) >= MIN_CPU and ratio >= FAIL:
             mark, failed = "❌", True
         elif max(c, bc) >= MIN_CPU and ratio >= WARN:
             mark = "⚠️"
-        lines.append(f"  - {mark} {name}: {c:.2f} s, {pct:+.0f}% against the baseline ({bc:.2f} s)")
+        lines.append(f"  - {mark} {name}: {c:.2f} s, {pct:+.0f}% against the baseline ({bc:.2f} s){note}")
     if run.get("lua_mb") is not None:
         lines.append(f"  - Lua memory {float(run['lua_mb']):.1f} MB, modules loaded {run.get('modules', '?')}")
     return lines, failed

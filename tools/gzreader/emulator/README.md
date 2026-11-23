@@ -37,8 +37,10 @@ library: `GZ_SCRIBE_LIB=<library dir>`, `demo/demo_grimmory.py` on 18080,
 `demo/demo_plex.py` on 18090): screenshots of reading, the quick panel, Home,
 Downloads, the Catalog, a book's page, Notes and Settings at the Scribe's
 size, a pen tap on a quick panel tile, and a pen stroke and the eraser
-through a stylus callback; its checks go to `<out>/scribe-checks.txt`. Not
-in CI's model list (`GZ_CI_MODELS`): a 1860 × 2480 screen is slow under qemu.
+through a stylus callback; its checks go to `<out>/scribe-checks.txt`. CI
+doesn't run this tour (it needs the demo servers); it runs `keeps.lua` on the
+Scribe, as on every model (`tools/gzreader/ci-test.sh`), which takes under
+three minutes there.
 
 `model_shots.lua` (any model): the landing page's screenshots for its model
 picker (`docs/index.html` #devices): Home, a page of a book, the quick panel
