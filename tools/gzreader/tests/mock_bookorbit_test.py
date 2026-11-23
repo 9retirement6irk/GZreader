@@ -364,6 +364,34 @@ try:
           "a read-only key lists requests but can't make one")
     call("POST", "/_mock/set", body={"api_key_write": True})
 
+    # --- the KOReader sync sign-in through the API key
+    KC = "/api/v1/koreader/credentials"
+    code, j = call("GET", KC, API)
+    check(code == 200 and j["username"] == "will-kindle" and j["syncEnabled"] is True and "password" not in j and "passwordMd5" not in j,
+          "the sync sign-in's name with the API key (never its password)")
+    check(call("GET", KC, KO)[0] == 401, "…not with the e-reader sign-in")
+    check(call("POST", KC, API, {"username": "another", "password": "secret12"})[0] == 409, "a second sign-in can't be made")
+    import io as _io, zipfile as _zip, hashlib as _hl
+    code, raw, _h = call("GET", "/api/v1/koreader/plugin-package?origin=http%3A%2F%2Fbooks.example.com", API, raw=True)
+    names = _zip.ZipFile(_io.BytesIO(raw)).namelist() if code == 200 else []
+    prov = _zip.ZipFile(_io.BytesIO(raw)).read("bookorbit.koplugin/bookorbit_provision.lua").decode() if names else ""
+    check(code == 200 and 'username = "will-kindle"' in prov and ('userkey = "%s"' % _hl.md5(b"hunter22").hexdigest()) in prov
+          and 'server_url = "http://books.example.com"' in prov, "the preconfigured plugin download carries the sync name and key")
+    check(call("GET", "/api/v1/koreader/plugin-package", API)[0] == 400, "…and needs an origin")
+    call("POST", "/_mock/set", body={"ko_md5_known": False})
+    check(call("GET", "/api/v1/koreader/plugin-package?origin=http%3A%2F%2Fbooks.example.com", API)[0] == 400, "an old sign-in: its key can't be handed over")
+    call("POST", "/_mock/set", body={"ko_md5_known": True, "key_ko_permission": False})
+    check(call("GET", KC, API)[0] == 403, "a key without the KOReader sync permission: 403")
+    call("POST", "/_mock/set", body={"key_ko_permission": True, "ko_credentials": False, "ko_names_taken": ["will"]})
+    code, raw, _h = call("GET", KC, API, raw=True)
+    check(code == 200 and raw == b"" and call("GET", "/api/v1/koreader/users/auth", KO)[0] == 401, "no sign-in yet: an empty answer, and the old one doesn't work")
+    check(call("POST", KC, API, {"username": "will", "password": "secret12"})[0] == 409 and call("POST", KC, API, {"username": "wi", "password": "secret12"})[0] == 400
+          and call("POST", KC, API, {"username": "will-2", "password": "short"})[0] == 400, "making one: a taken name, a short name, a short password refused")
+    check(call("POST", KC, API, {"username": "will-2", "password": "secret12"})[0] == 201
+          and call("GET", "/api/v1/koreader/users/auth", {"x-auth-user": "will-2", "x-auth-key": _hl.md5(b"secret12").hexdigest()})[0] == 200
+          and call("GET", KC, API)[1]["username"] == "will-2", "one made with the key signs in")
+    call("POST", "/_mock/set", body={"ko_credentials": True, "ko_made": None, "ko_names_taken": []})
+
     # --- the server away
     call("POST", "/_mock/set", body={"offline": True})
     check(call("GET", "/api/v1/koreader/users/auth", KO)[0] == 503, "offline: 503")

@@ -906,6 +906,10 @@ local ERRORS = {
     bookorbit_no_api_key = _("BookOrbit's audiobooks need an API key: make one in BookOrbit (Settings → API keys, with read and write access), then enter it in Settings → Accounts and services → Books → BookOrbit API key."),
     bookorbit_api_key_refused = _("BookOrbit didn't accept the API key. It may have expired or been deleted: make a new one in BookOrbit (Settings → API keys) and enter it again."),
     bookorbit_api_key_read_only = _("This BookOrbit API key is read-only, so nothing can be saved to BookOrbit with it (where you stopped listening, collections, book requests). Make one with read and write access."),
+    bookorbit_key_no_kosync = T(_("BookOrbit didn't let this API key see the %1 sync sign-in. Make a key with “%1 sync” ticked (BookOrbit: Settings → API keys), or sign in with the %1 sync user name and password instead."), "KOReader"),
+    bookorbit_key_cannot_create = T(_("Your BookOrbit account has no %1 sync sign-in yet, and this API key is read-only, so one can't be made with it. Make the sign-in in BookOrbit (Settings → %1) or use a key with read and write access."), "KOReader"),
+    bookorbit_key_old_signin = T(_("BookOrbit can't hand over this account's %1 sync sign-in until its password has been saved once more: in BookOrbit, Settings → %1, set the sync password again (the same one is fine), then try again. Or sign in here with the %1 sync user name and password."), "KOReader"),
+    bookorbit_key_no_signin = T(_("BookOrbit accepted the API key but didn't hand over the %1 sync sign-in. Sign in with the %1 sync user name and password instead (BookOrbit: Settings → %1)."), "KOReader"),
     bookorbit_requests_refused = _("BookOrbit didn't allow that. The API key needs “Request books” ticked when you make it, and your BookOrbit account has to be allowed to request books."),
     unsupported = _("That isn't available with BookOrbit yet."),
     no_https = require("gzreader_lan").noHttpsText(),
@@ -1267,6 +1271,23 @@ function Grimmory:connect(server_input, username, password, backend)
         ok and "ok" or ("failed: " .. tostring(err)))
     if not ok then return false, self:describeError(err) end
     self:afterLogin(previous, backend)
+    return true
+end
+
+--- Sign in to BookOrbit with only its API key (gzreader_bookorbit.lua's loginWithApiKey:
+--- the key fetches, or makes, the account's e-reader sign-in). Returns true, or false, message.
+function Grimmory:connectWithApiKey(server_input, api_key)
+    local server = Api.normalizeServer(server_input)
+    if not server then return false, _("That server address doesn't look right.") end
+    api_key = type(api_key) == "string" and api_key:gsub("%s+", "") or ""
+    if api_key == "" then return false, _("Enter the API key.") end
+    local previous = self:signedInAs()
+    local client = self:clientFor("bookorbit")
+    client.explicit_https = server_input:match("^%s*https://") ~= nil
+    local ok, err = client:loginWithApiKey(server, api_key)
+    Log.info("BookOrbit sign-in with an API key to", ok and self.store.server or server, ok and "ok" or ("failed: " .. tostring(err)))
+    if not ok then return false, self:describeError(err) end
+    self:afterLogin(previous, "bookorbit")
     return true
 end
 

@@ -80,4 +80,39 @@ function Gzip.inflate(data, max)
     return table.concat(parts)
 end
 
+--- Decompress a bare deflate stream (a zip's entry: gzreader_zipread.lua); nil, err on
+--- failure. `max`: give up past that many bytes ("too big"). Its own function, so the
+--- gzip one above stays as it is.
+function Gzip.inflateRaw(data, max)
+    local z = lib()
+    if not z then return nil, "no zlib" end
+    local strm = ffi.new("gz_z_stream")
+    strm.next_in = ffi.cast("const unsigned char *", data)
+    strm.avail_in = #data
+    if z.inflateInit2_(strm, -15, z.zlibVersion(), ffi.sizeof("gz_z_stream")) ~= 0 then
+        return nil, "inflateInit failed"
+    end
+    local chunk = math.max(65536, #data * 4)
+    local buf = ffi.new("unsigned char[?]", chunk)
+    local parts, total = {}, 0
+    local ret
+    repeat
+        strm.next_out = buf
+        strm.avail_out = chunk
+        ret = z.inflate(strm, 0)
+        if ret ~= 0 and ret ~= 1 then
+            z.inflateEnd(strm)
+            return nil, "inflate error " .. tostring(ret)
+        end
+        parts[#parts + 1] = ffi.string(buf, chunk - strm.avail_out)
+        total = total + chunk - strm.avail_out
+        if max and total > max then
+            z.inflateEnd(strm)
+            return nil, "too big"
+        end
+    until ret == 1 or (strm.avail_in == 0 and strm.avail_out ~= 0)
+    z.inflateEnd(strm)
+    return table.concat(parts)
+end
+
 return Gzip

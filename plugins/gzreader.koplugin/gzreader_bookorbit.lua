@@ -157,38 +157,146 @@ function BookOrbit:login(server, username, password)
     end
     local last_err
     for _i, base in ipairs(candidates) do
-        local code, data = Api.rawRequest("GET", base .. BookOrbit.BASE .. "/users/auth", {
-            headers = { ["x-auth-user"] = username, ["x-auth-key"] = key },
-            timeouts = { 10, 20 },
-        })
-        if code == 200 and type(data) == "table" and data.authorized == "OK" then
-            self.store.server = base
-            self.store.username = username
-            -- (the API key for audiobooks stays when this is the same server and user again)
-            local old = self.store.bookorbit
-            local same = type(old) == "table" and self.store.server == base and self.store.username == username
-            self.store.bookorbit = { key = key, api_key = same and old.api_key or nil }
-            self:deviceId()
-            self.store.access_token, self.store.refresh_token, self.store.access_expires_at = nil, nil, nil
-            self:readVersion()
-            self.on_change()
-            return true
-        elseif code == 401 then
-            return false, "bookorbit_credentials"
-        elseif code == 403 then
-            return false, "bookorbit_sync_off"
-        elseif code == 429 then
-            return false, "rate_limited"
-        elseif code then
-            -- (a 404 here: an address that answers but isn't BookOrbit, or one too old for this)
-            last_err = code == 404 and "bookorbit_not_found" or ("http_" .. code)
+        local ok, err, final = self:signInWith(base, username, key)
+        if ok then return true end
+        last_err = err
+        if final then
+            if err ~= "bookorbit_not_found" and not err:match("^http_") then return false, err end
             break
-        else
-            last_err = "unreachable"
         end
     end
     if last_err == "unreachable" and typed_bare and not candidates[2] then last_err = "no_https" end
     return false, last_err
+end
+
+--- Check a KOReader sync user name and key (the password's MD5) with the server at `base`
+--- and, when it accepts them, keep them. Returns true; or false, err, final (true: the
+--- server answered, so another address needn't be tried).
+function BookOrbit:signInWith(base, username, key, api_key)
+    local code, data = Api.rawRequest("GET", base .. BookOrbit.BASE .. "/users/auth", {
+        headers = { ["x-auth-user"] = username, ["x-auth-key"] = key },
+        timeouts = { 10, 20 },
+    })
+    if code == 200 and type(data) == "table" and data.authorized == "OK" then
+        -- (the API key stays when this is the same server and user again)
+        local old = self.store.bookorbit
+        local same = type(old) == "table" and self.store.server == base and self.store.username == username
+        self.store.server = base
+        self.store.username = username
+        self.store.bookorbit = { key = key, api_key = api_key or (same and old.api_key) or nil }
+        self:deviceId()
+        self.store.access_token, self.store.refresh_token, self.store.access_expires_at = nil, nil, nil
+        self:readVersion()
+        self.on_change()
+        return true
+    elseif code == 401 then
+        return false, "bookorbit_credentials", true
+    elseif code == 403 then
+        return false, "bookorbit_sync_off", true
+    elseif code == 429 then
+        return false, "rate_limited", true
+    elseif code then
+        -- (a 404 here: an address that answers but isn't BookOrbit, or one too old for this)
+        return false, code == 404 and "bookorbit_not_found" or ("http_" .. code), true
+    end
+    return false, "unreachable"
+end
+
+--- A password nobody has to remember (48 hex digits), for a sign-in GZreader makes itself.
+local function newPassword()
+    local f = io.open("/dev/urandom", "rb")
+    local bytes = f and f:read(24)
+    if f then f:close() end
+    if type(bytes) == "string" and #bytes == 24 then
+        return (bytes:gsub(".", function(c) return string.format("%02x", c:byte()) end))
+    end
+    local md5 = require("ffi/sha2").md5
+    local seed = tostring(os.time()) .. tostring(os.clock()) .. tostring({}) .. tostring(math.random())
+    return md5(seed) .. md5(seed .. tostring({})):sub(1, 16)
+end
+
+--- Sign in with only an API key: BookOrbit is asked, with the key, for the account's
+--- KOReader sync sign-in, and the Kindle then signs in with that as usual.
+---   * There is one already: its user name (GET koreader/credentials) and its key, which
+---     BookOrbit only hands out inside its "preconfigured plugin" download (GET
+---     koreader/plugin-package: a zip whose bookorbit_provision.lua has it). Only that one
+---     value is read from the zip; nothing in it is kept or run.
+---   * There is none: one is made (POST koreader/credentials) under the account's name with
+---     a random password that only its MD5 is kept of. It can be changed in BookOrbit.
+--- The key needs the "KOReader sync" permission (and write access to make a sign-in).
+--- Returns true, or false, err.
+function BookOrbit:loginWithApiKey(server, api_key)
+    api_key = type(api_key) == "string" and api_key:gsub("%s+", "") or ""
+    if api_key == "" then return false, "bookorbit_no_api_key" end
+    local auth = { ["Authorization"] = "Bearer " .. api_key }
+    local candidates = { server }
+    local typed_bare = server:match("^https://") and not self.explicit_https
+    if typed_bare and require("gzreader_lan").isPrivate(server) then
+        candidates[2] = "http://" .. server:sub(9)
+    end
+    local base, code, creds
+    for _i, b in ipairs(candidates) do
+        code, creds = Api.rawRequest("GET", b .. "/api/v1/koreader/credentials", { headers = auth, timeouts = { 10, 20 } })
+        if code then base = b break end
+    end
+    if not base then return false, (typed_bare and not candidates[2]) and "no_https" or "unreachable" end
+    if code == 401 then return false, "bookorbit_api_key_refused" end
+    if code == 403 then return false, "bookorbit_key_no_kosync" end
+    if code == 404 then return false, "bookorbit_not_found" end
+    if code ~= 200 then return false, "http_" .. tostring(code) end
+    local username, key
+    if type(creds) == "table" and s(creds.username) then
+        username = creds.username
+        if creds.syncEnabled == false then return false, "bookorbit_sync_off" end
+        local chunks, size = {}, 0
+        local zcode = Api.rawRequest("GET", base .. "/api/v1/koreader/plugin-package?origin="
+                .. base:gsub("[^%w%-%._~]", function(c) return string.format("%%%02X", c:byte()) end), {
+            headers = auth, timeouts = { 15, 60 }, log_url = base .. "/api/v1/koreader/plugin-package",
+            sink = function(chunk)
+                if chunk then
+                    size = size + #chunk
+                    if size > 16 * 1024 * 1024 then return nil, "too big" end
+                    chunks[#chunks + 1] = chunk
+                end
+                return 1
+            end,
+        })
+        if zcode == 400 then return false, "bookorbit_key_old_signin" end
+        if zcode ~= 200 then return false, zcode and ("http_" .. tostring(zcode)) or "unreachable" end
+        local text = require("gzreader_zipread").read(table.concat(chunks), "bookorbit_provision.lua")
+        chunks = nil -- luacheck: ignore
+        key = type(text) == "string" and text:match('\n%s*userkey%s*=%s*"(%x+)"') or nil
+        if not key or #key ~= 32 then
+            Log.warn("BookOrbit: the plugin download had no sync key in it")
+            return false, "bookorbit_key_no_signin"
+        end
+        key = key:lower()
+    else
+        -- none yet: make one, named after the account
+        local mcode, me = Api.rawRequest("GET", base .. "/api/v1/auth/me", { headers = auth, timeouts = { 8, 15 } })
+        local name = mcode == 200 and type(me) == "table" and (s(me.username) or s(me.name)) or nil
+        name = name and name:gsub("%s+", "-") or "gzreader"
+        if #name < 3 then name = name .. "-reader" end
+        local password = newPassword()
+        local made
+        for try = 1, 2 do
+            local pcode, pdata = Api.rawRequest("POST", base .. "/api/v1/koreader/credentials", {
+                headers = auth, body = { username = name:sub(1, 100), password = password }, timeouts = { 10, 30 } })
+            if pcode == 200 or pcode == 201 then made = true break end
+            if pcode == 403 then
+                return false, (type(pdata) == "table" and pdata.errorCode == "API_KEY_READ_ONLY") and "bookorbit_key_cannot_create" or "bookorbit_key_no_kosync"
+            end
+            local taken = pcode == 409 and type(pdata) == "table" and tostring(pdata.message):lower():find("taken", 1, true)
+            if not taken or try == 2 then return false, pcode and ("http_" .. tostring(pcode)) or "unreachable" end
+            name = name:sub(1, 90) .. "-" .. newPassword():sub(1, 4) -- (someone has that name: with four digits)
+        end
+        if not made then return false, "unreachable" end
+        Log.info("BookOrbit: no e-reader sign-in existed for this account, so one was made")
+        username, key = name:sub(1, 100), require("ffi/sha2").md5(password)
+    end
+    local ok, err = self:signInWith(base, username, key, api_key)
+    if not ok then return false, err end
+    return true
 end
 
 --- What this server can do (its version and capabilities), kept for the parts that depend on it.
