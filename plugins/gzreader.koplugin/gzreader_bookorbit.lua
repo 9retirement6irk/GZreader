@@ -42,7 +42,7 @@ local T = require("ffi/util").template
 
 local BookOrbit = {
     books_only = true,
-    supports = { progress = true, annotations = true, bookmarks = true, audiobooks = true },
+    supports = { progress = true, annotations = true, bookmarks = true, audiobooks = true, stats = true, ratings = true },
     koreader_positions = true, -- (the percentage and place are KOReader's own, not a web reader's)
     NAME = "BookOrbit",
     BASE = "/api/v1/koreader",
@@ -74,7 +74,7 @@ BookOrbit.FEATURES = {
     { "progress", _("your place in each book") },
     { "annotations", _("highlights and their notes") },
     { "bookmarks", _("bookmarks") },
-    { "sessions", _("reading time") },
+    { "stats", _("reading time") },
     { "ratings", _("ratings") },
     { "audiobooks", _("audiobooks (with a BookOrbit API key)") },
 }
@@ -287,6 +287,30 @@ function BookOrbit:putProgress(book_id, body)
         return false, "bookorbit_unmatched", 404
     end
     return false, err or ("http_" .. tostring(code)), code
+end
+
+--- A book's rating (value as gzreader_ratings.lua has Grimmory's: 1-10, nil for none):
+--- BookOrbit's is 0-5 stars. Returns true, or false, err, code.
+function BookOrbit:putRating(book_id, value)
+    local stars = tonumber(value) and math.max(0, math.min(5, tonumber(value) / 2)) or 0
+    local code, _, err = self:call("PUT", BookOrbit.CATALOG .. "/books/" .. tostring(book_id) .. "/rating",
+        { body = { rating = stars }, timeouts = { 8, 15 } })
+    if code == 200 then return true end
+    return false, err or ("http_" .. tostring(code)), code
+end
+
+--- Reading time: pages read, by book (gzreader_bo_stats.lua). books = { { hash, bookFileId,
+--- events = { { page, startTime, durationSeconds, totalPages }… } }… }.
+--- Returns { unmatched = { hash… } }, or nil, err.
+function BookOrbit:putPageStats(books)
+    local code, data, err = self:call("POST", BookOrbit.BASE .. "/plugin/page-stats",
+        { body = self:deviceFields({ books = require("gzreader_json").list(books) }), timeouts = { 10, 60 } })
+    if (code == 200 or code == 201) and type(data) == "table" then
+        local unmatched = {}
+        for _i, h in ipairs(list(data.unmatched)) do if type(h) == "string" then unmatched[#unmatched + 1] = h:lower() end end
+        return { unmatched = unmatched }
+    end
+    return nil, err or ("http_" .. tostring(code))
 end
 
 --- One book's highlight exchange (gzreader_bo_annotations.lua). book: { hash, keys,
@@ -506,6 +530,8 @@ function BookOrbit:getBook(book_id)
     book.primaryFileId = f and f.id or nil
     book.fileSizeKb = book.primaryFile and book.primaryFile.fileSizeKb or nil
     book.libraryId = n(d.libraryId)
+    -- (BookOrbit's stars, 0-5, as Grimmory's 1-10: gzreader_ratings.lua reads that)
+    book.personalRating = n(d.rating) and d.rating > 0 and math.floor(d.rating * 2 + 0.5) or nil
     -- where the book was left, on any device: as gzreader_sync.lua reads Grimmory's
     local p = type(d.progress) == "table" and d.progress
     if p and n(p.percentage) and p.percentage > 0 then
@@ -831,7 +857,7 @@ end
 for _i, name in ipairs{ "listWebBooks", "listMyShelves", "setBookShelves", "listAuthors", "listSeries",
     "listBookmarks", "createBookmark", "deleteBookmark", "listAnnotations",
     "createAnnotation", "updateAnnotation", "deleteAnnotation", "listBookNotes", "createBookNote", "updateBookNote",
-    "deleteBookNote", "putRating", "postSession", "hasSession", "publicSettings", "oidcExchange" } do
+    "deleteBookNote", "postSession", "hasSession", "publicSettings", "oidcExchange" } do
     BookOrbit[name] = function() return nil, "unsupported" end
 end
 

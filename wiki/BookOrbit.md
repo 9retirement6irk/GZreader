@@ -14,7 +14,9 @@ What works with BookOrbit today:
 | Books already on the Kindle matched to BookOrbit's (by the file's fingerprint) | yes |
 | Highlights and the notes on them, both ways (EPUB and other reflowable books) | yes |
 | Page bookmarks (dog-ears), both ways (EPUB and other reflowable books) | yes |
-| Reading statistics, read status, ratings | not yet |
+| Reading time (the pages you read, from KOReader's statistics) | yes |
+| Ratings, both ways | yes |
+| Setting a book's read status from the Kindle | not yet (BookOrbit works it out from your progress) |
 | Putting books on collections from the Kindle | not yet |
 | Audiobooks: list, covers, download with resume, chapters, listening position both ways (needs an API key, below) | yes |
 | Kindles without Wi-Fi (the sync page) | not yet |
@@ -72,6 +74,12 @@ Signing in to BookOrbit signs this Kindle out of Grimmory (and the other way rou
 - When: as a book opens, a few seconds after you add or remove a bookmark, and on Sync now.
 - Reflowable books only, and only if your BookOrbit offers bookmark sync (GZreader asks at sign-in; sign in again after updating BookOrbit).
 - The same switch as for Grimmory's bookmarks, in Settings → Accounts and services → Books.
+
+## Reading time and ratings
+
+- **Reading time:** the pages you read and how long each took (KOReader's own reading statistics) are sent to BookOrbit a few seconds after a book closes, and at most every ten minutes otherwise. BookOrbit builds its reading sessions and activity from them. Rows it already has are ignored, so nothing counts twice. Only books that are BookOrbit's are sent, and only if reading statistics are on (the default).
+- **Ratings:** the stars you give a book on the Kindle are set in BookOrbit; a rating made in BookOrbit is taken on the Kindle when you haven't rated the book here.
+- The Home screen's Grimmory statistics widget stays empty with BookOrbit: it reads Grimmory's own numbers.
 
 ## Audiobooks
 

@@ -15994,7 +15994,8 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
     for _i, p in ipairs(S.PATHS) do if p[1] == "bookorbit" and p[2] == "key" then in_secrets = true end end
     check(in_secrets, "the sign-in key is one of the secrets kept off the USB drive")
     check(plugin:syncEnabled() and plugin:serverCan("progress") and plugin:serverCan("annotations") and plugin:serverCan("bookmarks")
-        and not plugin:serverCan("ratings"), "with BookOrbit: reading progress, highlights and bookmarks are synced; ratings not yet")
+        and plugin:serverCan("ratings") and plugin:serverCan("stats") and not plugin:serverCan("sessions"),
+        "with BookOrbit: progress, highlights, bookmarks, ratings and reading time are synced (Grimmory's own reading sessions aren't sent to it)")
     plugin:queue("session", nil, { bookId = 101 })
     check(#plugin.store.pending.sessions == 0, "…and what it doesn't take (reading sessions) isn't kept to send")
     check(type(plugin.store.bookorbit_device) == "string" and plugin.store.bookorbit_device:match("^gz%-%x+$") ~= nil, "this Kindle's device id is made at sign-in")
@@ -16309,6 +16310,63 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
     plugin.store.bookmark_sync_disabled = nil
     plugin.store.downloads["101"] = nil
 
+    -- ratings: BookOrbit's 0-5 stars, through the usual rating sync
+    local Ratings = require("gzreader_ratings")
+    check(plugin.api:putRating(101, Ratings.toGrimmory(4)) == true and bctl("/_mock/state").ratings["101"] == 4
+        and Ratings.fromGrimmory(plugin.api:getBook(101).personalRating) == 4, "a rating out as stars, and read back as the rating sync reads Grimmory's")
+    check(plugin.api:putRating(101, nil) == true and bctl("/_mock/state").ratings["101"] == 0 and plugin.api:getBook(101).personalRating == nil, "a rating taken off")
+    local r_ok, r_err, r_code = plugin.api:putRating(999, 6)
+    check(r_ok == false and r_code == 404, "a rating for a book that's gone: dropped by the queue, as with Grimmory", r_err)
+    local rate_ds = { data = { summary = { rating = 5 } }, readSetting = function(self, k) return self.data[k] end, saveSetting = function(self, k, v) self.data[k] = v end, flush = function() end }
+    plugin.store.downloads["101"] = entry101
+    entry101.rating_synced = nil
+    plugin.store.pending.ratings = {}
+    check(Ratings.check(plugin, "101", entry101, rate_ds) == true and plugin.store.pending.ratings["101"] == 5, "a rating made on the Kindle is queued for BookOrbit")
+    plugin:flushPending()
+    runLoop(function() return not plugin.flushing and plugin.store.pending.ratings["101"] == nil end, 20)
+    check(bctl("/_mock/state").ratings["101"] == 5, "…and sent by the usual queue")
+    -- reading time: KOReader's own statistics, page by page
+    local Stats = require("gzreader_bo_stats")
+    local rows = { [hash101] = {} }
+    for i = 1, 620 do rows[hash101][i] = { page = i % 240, startTime = 1790000000 + i * 30, durationSeconds = 25, totalPages = 240 } end
+    rows[string.rep("ef", 16)] = { { page = 1, startTime = 1790000001, durationSeconds = 10, totalPages = 10 } }
+    local real_read, asked = Stats.read, {}
+    Stats.read = function(_db, hash, since, limit)
+        asked[#asked + 1] = { hash = hash, since = since }
+        local out = {}
+        for _i, r in ipairs(rows[hash] or {}) do
+            if r.startTime > (since or 0) and #out < limit then out[#out + 1] = r end
+        end
+        return out
+    end
+    plugin.store.downloads["902"] = { path = "/nowhere/y.epub", hash = string.rep("ef", 16) }
+    plugin.store.bookorbit_stats = nil
+    Stats.last, Stats.busy = nil, nil
+    check(Stats.enabled(plugin), "reading time is sent to BookOrbit")
+    local s_done
+    Stats.send(plugin, true, function(ok) s_done = ok end)
+    runLoop(function() return s_done ~= nil end, 30)
+    local got_rows = bctl("/_mock/state").page_stats[hash101]
+    check(s_done == true and #got_rows == 500 and got_rows[1][2] == 1790000030 and got_rows[1][3] == 25 and got_rows[1][4] == 240
+        and plugin.store.bookorbit_stats[hash101] == 1790000000 + 500 * 30, "the pages read are sent (500 rows at a time), and how far is remembered")
+    check(plugin.store.bookorbit_stats[string.rep("ef", 16)] == nil, "a book BookOrbit doesn't have: nothing remembered as sent")
+    s_done = nil
+    Stats.send(plugin, false, function(ok) s_done = ok end)
+    check(s_done == false and #bctl("/_mock/state").page_stats[hash101] == 500, "not again within ten minutes unless asked (a book just closed)")
+    s_done = nil
+    Stats.send(plugin, true, function(ok) s_done = ok end)
+    runLoop(function() return s_done ~= nil end, 30)
+    check(s_done == true and #bctl("/_mock/state").page_stats[hash101] == 620 and plugin.store.bookorbit_stats[hash101] == 1790000000 + 620 * 30,
+        "the next send carries on from there: no row twice, none missed")
+    local since_ok = false
+    for _i, a in ipairs(asked) do if a.hash == hash101 and a.since == 1790000000 + 500 * 30 then since_ok = true end end
+    check(since_ok, "…asking the database only for rows after the last one sent")
+    plugin.store.sync_disabled = true
+    check(not Stats.enabled(plugin), "with sync switched off, no reading time is sent")
+    plugin.store.sync_disabled = nil
+    Stats.read = real_read
+    plugin.store.downloads["902"], plugin.store.downloads["101"] = nil, nil
+
     -- audiobooks: BookOrbit's main API, with an API key
     local KEY = "bok_" .. string.rep("a1B2c3D4e5", 4) .. "f6G7h8I9j"
     local k_ok, k_err = plugin:setBookOrbitApiKey("bok_" .. string.rep("x", 49))
@@ -16419,7 +16477,7 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
     r, rerr = plugin.api:listBooks{ page = 0, size = 5 }
     check(r == nil and rerr == "http_503", "the server down: its error")
     bctl("/_mock/set", '{"offline": false}')
-    check(select(2, plugin.api:putRating(101, 4)) == "unsupported" and select(2, plugin.api:listBookmarks(101)) == "unsupported",
+    check(select(2, plugin.api:postSession({})) == "unsupported" and select(2, plugin.api:listBookmarks(101)) == "unsupported",
         "what isn't sent to BookOrbit yet answers \"unsupported\"")
 
     -- the setup page
@@ -16429,10 +16487,10 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
     local code, body = phone("'" .. url .. "'")
     local sec = body and body:match('<section id="grimmory".-</section>') or ""
     check(code == 200 and sec:find("Connected to BookOrbit as <b>will%-kindle</b>") and sec:find('<option value="bookorbit" selected>', 1, true)
-        and sec:find("Synced with BookOrbit: your place in each book, highlights and their notes, bookmarks, audiobooks (with a BookOrbit API key).", 1, true)
-        and sec:find("Not yet: reading time", 1, true),
+        and sec:find("Synced with BookOrbit: your place in each book, highlights and their notes, bookmarks, reading time, ratings, audiobooks (with a BookOrbit API key).", 1, true)
+        and not sec:find("Not yet:", 1, true),
         "the setup page: connected to BookOrbit, the choice shown, and what is synced so far")
-    check(BookOrbit.note() == "You can browse and download your books. Synced with BookOrbit: your place in each book, highlights and their notes, bookmarks, audiobooks (with a BookOrbit API key). Not yet: reading time, ratings.",
+    check(BookOrbit.note() == "You can browse and download your books. Synced with BookOrbit: your place in each book, highlights and their notes, bookmarks, reading time, ratings, audiobooks (with a BookOrbit API key).",
         "one sentence says what is and isn't synced, from what the client supports")
     code, body = phone("-L --data-urlencode 'backend=bookorbit' --data-urlencode 'server=" .. BO .. "' --data-urlencode 'username=will-kindle' "
         .. "--data-urlencode 'password=nope' --data-urlencode 'action=password' '" .. url .. "/grimmory'")
@@ -16452,7 +16510,7 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
         end
     end
     walk(plugin:menuItems())
-    check(found and found.help_text_func():find("KOReader sync user name", 1, true) and found.help_text_func():find("Not yet:", 1, true),
+    check(found and found.help_text_func():find("KOReader sync user name", 1, true) and found.help_text_func():find("Synced with BookOrbit:", 1, true),
         "the menu: Connect to BookOrbit by typing")
     check(plugin:menuItems()[1].text_func() == "Connected to BookOrbit as will-kindle", "the menu's first line names BookOrbit")
 
