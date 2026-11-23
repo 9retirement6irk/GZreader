@@ -18,7 +18,8 @@ Rooms are Home Assistant's areas; with a token that isn't an administrator's
 the list is grouped by kind instead (gzreader_homeassistant.lua says why).
 The list shown at once is the last one kept on the Kindle; it's fetched again
 when the tab opens and every REFRESH seconds while it's on the screen (not
-under a book or another window), and a switch's answer goes straight in. The
+under a book or another window), drawn again only when something it shows
+changed (each draw is an e-ink refresh), and a switch's answer goes straight in. The
 Kindles without Wi-Fi (2, DX) can't reach Home Assistant: the tab says so,
 and Settings doesn't offer it.
 ]]
@@ -177,17 +178,56 @@ function House:rootItems()
     return Rows.mark(items)
 end
 
---- Draw the list again (keeping the page).
-function House:redraw()
-    if self.closed or not self.menu then return end
-    self.menu:switchItemTable(nil, self:rootItems(), -1)
+--- What a list shows, as one string: each row's words, icon and marks (all
+--- its plain fields, whatever they are) and whether it's ticked. Two lists
+--- with the same one look the same on the screen.
+function House.signature(items)
+    local out = {}
+    for _i, it in ipairs(items or {}) do
+        local parts = {}
+        if type(it) == "table" then
+            local keys = {}
+            for k, v in pairs(it) do
+                local t = type(v)
+                if type(k) == "string" and (t == "string" or t == "number" or t == "boolean") then keys[#keys + 1] = k end
+            end
+            table.sort(keys)
+            for _j, k in ipairs(keys) do parts[#parts + 1] = k .. "=" .. tostring(it[k]) end
+            if type(it.checked_func) == "function" then
+                local ok, on = pcall(it.checked_func)
+                parts[#parts + 1] = "ticked=" .. tostring(ok and on)
+            end
+        end
+        out[#out + 1] = table.concat(parts, "\1")
+    end
+    return table.concat(out, "\2")
+end
+
+--- Draw the list again (keeping the page). `if_changed` (a refresh by
+--- itself): only when it would look different from what's on the screen,
+--- as each draw is an e-ink refresh. False when it wasn't drawn.
+function House:redraw(if_changed)
+    if self.closed or not self.menu then return false end
+    local items = self:rootItems()
+    local sig = House.signature(items)
+    if if_changed and sig == self.drawn_sig then
+        self.unchanged = (self.unchanged or 0) + 1
+        if self.unchanged == 1 then Log.info("house: refreshed, nothing changed: not drawn again until something does") end
+        return false
+    end
+    if if_changed then Log.info("house: refreshed, something changed after", self.unchanged or 0, "unchanged refreshes: drawn again") end
+    self.drawn_sig, self.unchanged = sig, 0
+    self.menu:switchItemTable(nil, items, -1)
+    return true
 end
 
 --- After connecting or disconnecting: the list from the start.
 function House:reload()
     if self.closed or not self.menu then return end
     self.house, self.err = HA().loadCache(), nil
-    self.menu:switchItemTable(nil, self:rootItems())
+    local items = self:rootItems()
+    self.drawn_sig, self.unchanged = House.signature(items), 0
+    self.menu:switchItemTable(nil, items)
     self:follow()
 end
 
@@ -235,7 +275,8 @@ function House:refresh(asked)
                 self.err = err
                 Log.warn("house: couldn't update:", tostring(err))
             end
-            self:redraw()
+            -- (by itself, every REFRESH seconds: drawn only if something changed)
+            self:redraw(not asked)
         end, "house")
     end, { reason = "Home Assistant", quiet = not asked })
 end
