@@ -12,7 +12,8 @@ What works with BookOrbit today:
 | Auto-download a shelf (a BookOrbit collection) | yes |
 | Reading progress, both ways (the exact page; BookOrbit converts it for its web reader) | yes |
 | Books already on the Kindle matched to BookOrbit's (by the file's fingerprint) | yes |
-| Highlights, notes, bookmarks | not yet |
+| Highlights and the notes on them, both ways (EPUB and other reflowable books) | yes |
+| Bookmarks | not yet |
 | Reading statistics, read status, ratings | not yet |
 | Putting books on collections from the Kindle | not yet |
 | Audiobooks | not yet |
@@ -56,6 +57,14 @@ Signing in to BookOrbit signs this Kindle out of Grimmory (and the other way rou
 - When you open a book, GZreader looks at where BookOrbit has it. Further on: it goes there. Earlier (another device went back): it asks.
 - Sync now, in the book's quick panel, does the same on request.
 - BookOrbit shows the percentage KOReader shows in its footer.
+
+## Highlights and notes
+
+- A highlight made on the Kindle, with its colour, style and note, appears in BookOrbit's web reader. One made, changed or removed in BookOrbit appears, changes or goes on the Kindle.
+- When: a few seconds after a book opens, a few seconds after you change a highlight (with Wi-Fi on), on Sync now, and when the book closes if something is waiting.
+- Reflowable books only (EPUB, and the others the Kindle lays out itself). Highlights in PDFs stay on the Kindle.
+- If BookOrbit can't place a highlight in your copy of the book, it is skipped; the log line `BookOrbit highlights … couldn't be placed` counts them.
+- To switch it off: Settings → Accounts and services → Books → Sync highlights and notes.
 
 ## If it doesn't connect
 

@@ -138,6 +138,54 @@ try:
           "the catalog shows the progress, out of 100")
     check(call("GET", "/api/v1/koreader/plugin/catalog/books?readStatus=reading", KO)[1]["total"] == 1, "books: by read status")
 
+    # --- highlights: the exchange
+    X = "/api/v1/koreader/plugin/annotations/exchange"
+    hl = {"datetime": "2026-11-22 09:00:00", "drawer": "lighten", "color": "yellow", "text": "a line", "note": "mine",
+          "chapter": "One", "pageno": 3, "posFormat": "xpointer", "pos0": "/body/DocFragment[2]/body/p[1]/text().0", "pos1": "/body/DocFragment[2]/body/p[1]/text().6"}
+    k1 = hashlib.md5(("%s|%s" % (hl["datetime"], hl["pos0"])).encode()).hexdigest()
+    bk = {"hash": h, "keys": [{"k": k1, "dt": hl["datetime"]}], "keysComplete": True, "sidecarState": "new", "changes": [hl]}
+    code, j = call("POST", X, KO, dict(DEV, books=[bk]))
+    r = j["results"][0]
+    check(code == 201 and r["bookId"] == 101 and r["applied"]["created"] == 1 and r["toApply"] == {"add": [], "edit": [], "delete": []}
+          and j["unmatched"] == [] and j["positionIncompatible"] == [], "a new highlight from the device is taken; nothing comes back")
+    web = call("POST", "/_mock/set", body={"web_highlight": {"book": 101, "op": "add", "pos0": "/body/DocFragment[3]/body/p[2]/text().0",
+                                                              "pos1": "/body/DocFragment[3]/body/p[2]/text().9", "text": "from the web", "color": "blue"}})[1]
+    bk2 = dict(bk, sidecarState="known", changes=[])
+    r = call("POST", X, KO, dict(DEV, books=[bk2]))[1]["results"][0]
+    check(len(r["toApply"]["add"]) == 1 and r["toApply"]["add"][0]["text"] == "from the web" and r["toApply"]["add"][0]["serverId"] == web["serverId"]
+          and r["applied"]["created"] == 0, "a highlight made on the web is offered to the device")
+    check(len(call("POST", X, KO, dict(DEV, books=[bk2]))[1]["results"][0]["toApply"]["add"]) == 1, "…and again until the device says it has it")
+    code, j = call("POST", X + "-ack", KO, dict(DEV, books=[{"hash": h, "applied": [{"serverId": web["serverId"], "version": 1, "status": "applied"}], "deleted": []}]))
+    check(code == 201 and j["results"] == [{"hash": h, "acked": 1}], "the device acknowledges it")
+    kw = web["key"]
+    bk3 = dict(bk2, keys=[{"k": k1, "dt": hl["datetime"]}, {"k": kw, "dt": web["datetime"]}])
+    check(call("POST", X, KO, dict(DEV, books=[bk3]))[1]["results"][0]["toApply"]["add"] == [], "…and it isn't offered again")
+    call("POST", "/_mock/set", body={"web_highlight": {"book": 101, "op": "edit", "serverId": web["serverId"], "note": "a note added on the web"}})
+    r = call("POST", X, KO, dict(DEV, books=[bk3]))[1]["results"][0]
+    check(len(r["toApply"]["edit"]) == 1 and r["toApply"]["edit"][0]["key"] == kw and r["toApply"]["edit"][0]["note"] == "a note added on the web"
+          and r["toApply"]["edit"][0]["version"] == 2, "an edit on the web comes as an edit, by the device's key")
+    call("POST", X + "-ack", KO, dict(DEV, books=[{"hash": h, "applied": [{"serverId": web["serverId"], "version": 2, "status": "applied"}], "deleted": []}]))
+    r = call("POST", X, KO, dict(DEV, books=[dict(bk3, changes=[dict(hl, note="changed on the device", datetimeUpdated="2026-11-22 13:00:00")])]))[1]["results"][0]
+    check(r["applied"]["updated"] == 1 and r["toApply"]["edit"] == [], "an edit on the device is taken")
+    r = call("POST", X, KO, dict(DEV, books=[dict(bk3, keys=[{"k": k1, "dt": hl["datetime"]}])]))[1]["results"][0]
+    check(r["applied"]["deviceDeleted"] == 1 and r["toApply"]["delete"] == [], "a highlight gone from the device's list is deleted on the server")
+    first = call("GET", "/_mock/state")[1]["annotations"]["101"][0]
+    call("POST", "/_mock/set", body={"web_highlight": {"book": 101, "op": "delete", "serverId": first["serverId"]}})
+    r = call("POST", X, KO, dict(DEV, books=[dict(bk3, keys=[{"k": k1, "dt": hl["datetime"]}])]))[1]["results"][0]
+    check(r["toApply"]["delete"] == [{"serverId": first["serverId"], "key": k1, "datetime": hl["datetime"]}], "a delete on the web comes as a delete, by the device's key")
+    call("POST", X + "-ack", KO, dict(DEV, books=[{"hash": h, "applied": [], "deleted": [{"serverId": first["serverId"], "status": "applied"}]}]))
+    check(call("POST", X, KO, dict(DEV, books=[dict(bk3, keys=[])]))[1]["results"][0]["toApply"]["delete"] == [], "…once acknowledged, not again")
+    other = dict(DEV, deviceId="another-kindle")
+    r = call("POST", X, KO, dict(other, books=[dict(bk, changes=[], keys=[])]))[1]["results"][0]
+    check(r["toApply"]["add"] == [] and r["applied"]["deviceDeleted"] == 0, "another device with a fresh copy: nothing is deleted (both were deleted already)")
+    check(call("POST", X, KO, dict(DEV, books=[dict(bk, hash="f" * 32)]))[1]["unmatched"] == ["f" * 32], "a book BookOrbit doesn't have: unmatched")
+    for bad, what in ((dict(hl, drawer="wavy"), "an unknown style"), (dict(hl, datetime="yesterday"), "a bad datetime"),
+                      (dict(hl, posFormat="cfi"), "an unknown position format"), (dict(hl, extra=1), "an unknown field"),
+                      ({k: v for k, v in hl.items() if k != "pos0"}, "no position")):
+        check(call("POST", X, KO, dict(DEV, books=[dict(bk, changes=[bad])]))[0] == 400, "the exchange refuses " + what)
+    check(call("POST", X, KO, dict(DEV, books=[dict(bk, keys=[{"k": "nope", "dt": hl["datetime"]}])]))[0] == 400, "the exchange refuses a bad key")
+    check(call("POST", X, KO, dict(DEV, books=[]))[0] == 400 and call("POST", X, KO, {"books": [bk]})[0] == 400, "the exchange needs books and the device fields")
+
     # --- the main API: key, audiobooks
     code, j = call("GET", "/api/v1/auth/me", API)
     check(code == 200 and j["authenticationMethod"] == "api_key", "API key as Bearer")

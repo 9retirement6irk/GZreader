@@ -93,6 +93,9 @@ def fresh():
         "playback": {},           # book id -> state
         "seen": [],               # (method, path) of signed-in requests, newest last
         "devices": {},            # deviceId -> deviceModel
+        "annotations": {},        # book id -> [server highlights: serverId, version, key, datetime, ..., deleted]
+        "anno_devices": {},       # "<deviceId>:<bookId>" -> {serverId (as text): the version that device has}
+        "next_id": 1,
     }
 
 
@@ -137,6 +140,162 @@ def detail(b):
                          "devicePath": "%s/%s.%s" % (b["authors"][0], b["title"], b["format"])}],
               "relatedSections": []})
     return d
+
+
+# ---------------------------------------------------------------- highlights (the exchange)
+DRAWERS = {"lighten", "underscore", "strikeout", "invert"}
+CONTENT = ("drawer", "color", "text", "note", "chapter")
+
+
+def anno_key(datetime, pos0):
+    """A highlight's identity on the device: md5 of "<datetime>|<pos0>", as the plugin and server make it."""
+    return hashlib.md5(("%s|%s" % (datetime, pos0)).encode()).hexdigest()
+
+
+def check_exchange_book(book):
+    if not isinstance(book, dict) or not isinstance(book.get("hash"), str) or not MD5.match(book["hash"]):
+        return "hash must be an MD5 hex string"
+    keys = book.get("keys")
+    if not isinstance(keys, list) or len(keys) > 5000:
+        return "keys must be an array of at most 5000"
+    for k in keys:
+        if not isinstance(k, dict) or not isinstance(k.get("k"), str) or not MD5.match(k["k"]) \
+                or not isinstance(k.get("dt"), str) or not DEVICE_TIME.match(k["dt"]):
+            return "each key needs k (MD5 hex) and dt (YYYY-MM-DD HH:MM:SS)"
+    if not isinstance(book.get("keysComplete"), bool):
+        return "keysComplete must be a boolean"
+    if "sidecarState" in book and book["sidecarState"] not in ("known", "new"):
+        return "sidecarState must be known or new"
+    changes = book.get("changes")
+    if not isinstance(changes, list) or len(changes) > 50:
+        return "changes must be an array of at most 50"
+    for c in changes:
+        if not isinstance(c, dict) or not isinstance(c.get("datetime"), str) or not DEVICE_TIME.match(c["datetime"]):
+            return "datetime must be YYYY-MM-DD HH:MM:SS"
+        if "datetimeUpdated" in c and not (isinstance(c["datetimeUpdated"], str) and DEVICE_TIME.match(c["datetimeUpdated"])):
+            return "datetimeUpdated must be YYYY-MM-DD HH:MM:SS"
+        if c.get("drawer") not in DRAWERS:
+            return "drawer must be one of lighten, underscore, strikeout, invert"
+        if c.get("posFormat") not in ("xpointer", "pdf"):
+            return "posFormat must be xpointer or pdf"
+        if not isinstance(c.get("pos0"), str) or not c["pos0"] or len(c["pos0"]) > 4000:
+            return "pos0 must be a string"
+        for name, limit in (("color", 30), ("text", 10000), ("note", 5000), ("chapter", 500), ("pos1", 4000)):
+            if name in c and not (isinstance(c[name], str) and len(c[name]) <= limit):
+                return "%s must be a string of at most %d characters" % (name, limit)
+        if "pageno" in c and not (isinstance(c["pageno"], int) and not isinstance(c["pageno"], bool) and c["pageno"] >= 0):
+            return "pageno must be a whole number"
+        extra = set(c) - {"datetime", "datetimeUpdated", "drawer", "color", "text", "note", "chapter", "pageno", "posFormat", "pos0", "pos1"}
+        if extra:
+            return "property %s should not exist" % sorted(extra)[0]
+    return None
+
+
+def check_ack_book(book):
+    if not isinstance(book, dict) or not isinstance(book.get("hash"), str) or not MD5.match(book["hash"]):
+        return "hash must be an MD5 hex string"
+    for name in ("applied", "deleted"):
+        rows = book.get(name)
+        if not isinstance(rows, list) or len(rows) > 200:
+            return "%s must be an array of at most 200" % name
+        for r in rows:
+            if not isinstance(r, dict) or not isinstance(r.get("serverId"), int) or r["serverId"] < 1 or r.get("status") not in ("applied", "failed"):
+                return "%s entries need serverId and status (applied or failed)" % name
+            if name == "applied" and not (isinstance(r.get("version"), int) and r["version"] >= 1):
+                return "applied entries need version"
+    return None
+
+
+def exchange_book(device_id, b, book):
+    """One book's exchange: take the device's changes and deletions, answer with what it lacks."""
+    anns = STATE["annotations"].setdefault(str(b["id"]), [])
+    dev_key = "%s:%d" % (device_id, b["id"])
+    if book.get("sidecarState") == "new":
+        STATE["anno_devices"][dev_key] = {}   # a fresh copy: nothing deleted, everything offered again
+    has = STATE["anno_devices"].setdefault(dev_key, {})
+    created = updated = unchanged = device_deleted = 0
+    for c in book["changes"]:
+        key = anno_key(c["datetime"], c["pos0"])
+        a = next((a for a in anns if a["key"] == key and not a["deleted"]), None)
+        fields = {f: c.get(f) for f in CONTENT}
+        fields["color"] = fields["color"] or "yellow"
+        fields["text"] = fields["text"] or ""
+        if a is None:
+            a = dict(fields, serverId=STATE["next_id"], version=1, key=key, datetime=c["datetime"],
+                     datetimeUpdated=c.get("datetimeUpdated"), pos0=c["pos0"], pos1=c.get("pos1"), pageno=c.get("pageno"),
+                     posFormat=c["posFormat"], deleted=False)
+            STATE["next_id"] += 1
+            anns.append(a)
+            created += 1
+        elif any(a[f] != fields[f] for f in CONTENT):
+            a.update(fields)
+            a["version"] += 1
+            a["datetimeUpdated"] = c.get("datetimeUpdated") or a["datetimeUpdated"]
+            updated += 1
+        else:
+            unchanged += 1
+        has[str(a["serverId"])] = a["version"]
+    if book["keysComplete"] and book.get("sidecarState") != "new":
+        present = {k["k"] for k in book["keys"]}
+        for a in anns:
+            if not a["deleted"] and str(a["serverId"]) in has and a["key"] not in present:
+                a["deleted"] = True      # removed on the device
+                has.pop(str(a["serverId"]), None)
+                device_deleted += 1
+    add, edit, delete = [], [], []
+    for a in anns:
+        sid = str(a["serverId"])
+        if a["deleted"]:
+            if sid in has:
+                delete.append({"serverId": a["serverId"], "key": a["key"], "datetime": a["datetime"]})
+        elif sid not in has:
+            add.append({k: a[k] for k in ("serverId", "version", "datetime", "datetimeUpdated", "drawer", "color", "text", "note",
+                                           "chapter", "posFormat", "pos0", "pos1", "pageno")})
+        elif has[sid] < a["version"]:
+            edit.append({"serverId": a["serverId"], "version": a["version"], "key": a["key"], "datetime": a["datetime"],
+                         "datetimeUpdated": a["datetimeUpdated"] or a["datetime"], "drawer": a["drawer"], "color": a["color"],
+                         "text": a["text"], "note": a["note"], "chapter": a["chapter"]})
+    return {"hash": b["hash"], "bookId": b["id"],
+            "applied": {"created": created, "updated": updated, "unchanged": unchanged, "deviceDeleted": device_deleted},
+            "toApply": {"add": add[:50], "edit": edit, "delete": delete}, "more": len(add) > 50, "skippedNoPosition": 0}
+
+
+def ack_book(device_id, b, book):
+    has = STATE["anno_devices"].setdefault("%s:%d" % (device_id, b["id"]), {})
+    acked = 0
+    for r in book["applied"]:
+        if r["status"] == "applied":
+            has[str(r["serverId"])] = r["version"]
+            acked += 1
+    for r in book["deleted"]:
+        if r["status"] == "applied":
+            has.pop(str(r["serverId"]), None)
+            acked += 1
+    return {"hash": b["hash"], "acked": acked}
+
+
+def web_highlight(w):
+    """What the web reader would do: {"book": id, "op": "add"|"edit"|"delete", ...}. Returns the highlight."""
+    anns = STATE["annotations"].setdefault(str(w["book"]), [])
+    if w["op"] == "add":
+        a = {"serverId": STATE["next_id"], "version": 1, "datetime": w.get("datetime", "2026-11-22 10:00:00"), "datetimeUpdated": None,
+             "drawer": w.get("drawer", "lighten"), "color": w.get("color", "yellow"), "text": w.get("text", ""), "note": w.get("note"),
+             "chapter": w.get("chapter"), "posFormat": "xpointer", "pos0": w["pos0"], "pos1": w.get("pos1"), "pageno": w.get("pageno"),
+             "deleted": False}
+        a["key"] = anno_key(a["datetime"], a["pos0"])
+        STATE["next_id"] += 1
+        anns.append(a)
+        return a
+    a = next(a for a in anns if a["serverId"] == w["serverId"])
+    if w["op"] == "delete":
+        a["deleted"] = True
+    else:
+        for f in CONTENT:
+            if f in w:
+                a[f] = w[f]
+        a["version"] += 1
+        a["datetimeUpdated"] = w.get("datetimeUpdated", "2026-11-22 12:00:00")
+    return a
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -251,6 +410,9 @@ class Handler(BaseHTTPRequestHandler):
             changes = self.body() or {}
             # "book_hashes": {"101": "<32 hex>"}: a book's file is the one with that fingerprint
             # (for a test that puts a real book on the device)
+            web = changes.pop("web_highlight", None)
+            if web:
+                return self.send(200, web_highlight(web))
             for bid, h in (changes.pop("book_hashes", None) or {}).items():
                 for b in BOOKS:
                     if str(b["id"]) == str(bid):
@@ -351,6 +513,25 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     unmatched.append(it["hash"])
             return self.send(201, {"results": results, "unmatched": unmatched})
+        if p in ("plugin/annotations/exchange", "plugin/annotations/exchange-ack") and method == "POST":
+            d = self.body()
+            if not self.device(d):
+                return
+            books = d.get("books")
+            if not isinstance(books, list) or not 1 <= len(books) <= 20:
+                return self.error(400, "books must hold 1 to 20 books")
+            ack = p.endswith("-ack")
+            results, unmatched = [], []
+            for book in books:
+                bad = check_ack_book(book) if ack else check_exchange_book(book)
+                if bad:
+                    return self.error(400, bad)
+                b = next((b for b in BOOKS if b["hash"] == book["hash"].lower()), None)
+                if not b:
+                    unmatched.append(book["hash"].lower())
+                    continue
+                results.append((ack_book if ack else exchange_book)(d["deviceId"], b, book))
+            return self.send(201, {"results": results, "unmatched": unmatched, "positionIncompatible": []})
         if p.startswith("plugin/catalog/") and method == "GET":
             return self.catalog(p[len("plugin/catalog/"):], q)
         return self.error(404, "Not Found")
