@@ -40,6 +40,18 @@ size, a pen tap on a quick panel tile, and a pen stroke and the eraser
 through a stylus callback; its checks go to `<out>/scribe-checks.txt`. Not
 in CI's model list (`GZ_CI_MODELS`): a 1860 × 2480 screen is slow under qemu.
 
+`model_shots.lua` (any model): the landing page's screenshots for its model
+picker (`docs/index.html` #devices): Home, a page of a book, the quick panel
+in it, the Catalog's Books page, the Notes tab (not on the Kindle 2 or DX,
+which have no Wi-Fi), Settings and, on touch and pen models, a drawing. It
+gets there through GZreader's own calls, not keys or taps, so the same tour
+runs everywhere. `model_shots.sh <tree>/koreader <library> [out] [models…]`
+starts the demo servers (`demo/demo_grimmory.py` 18080, `demo/demo_plex.py`
+18090, `demo/mock_memos.py --sample` 18091; the library from
+`demo/make_library.py`), runs it on k3 dx k4 kt pw3 scribe libra condor nook
+nst, and writes the pictures (at most 900 px wide) to
+`docs/screenshots/models/<model>/`. Not beside `tests/run.sh` (port 18080).
+
 `drawing_tour.lua` (any touch model; `demo/mock_memos.py 18090` running): a
 new note's Draw, the drawing screen, Done, Save and the note in Memos with
 its drawing. On pw3/kt it draws with `E.finger(points, sec)`; on scribe only

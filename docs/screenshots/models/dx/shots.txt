@@ -1,0 +1,5 @@
+reading 824x1200
+panel 824x1200
+home 824x1200
+catalog 824x1200
+settings 824x1200

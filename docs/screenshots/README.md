@@ -6,6 +6,10 @@ made-up albums by made-up artists (`tools/gzreader/emulator/catalog_shots.lua`,
 with `demo/demo_grimmory.py` and `demo/demo_plex.py`); the phone page in a
 phone-sized browser talking to the emulated Kindle.</sub>
 
+<sub>The landing page's model picker uses `models/<model>/` (Home, reading, the quick
+panel, the Catalog, Notes, Settings and a drawing, for each emulated Kindle, Kobo and
+Nook), made by `tools/gzreader/emulator/model_shots.sh`.</sub>
+
 ## Setup
 
 <table>
