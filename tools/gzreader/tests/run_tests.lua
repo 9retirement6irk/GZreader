@@ -16461,6 +16461,57 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
     phone("-L --data-urlencode 'api_key=" .. KEY .. "' '" .. kurl .. "/grimmory/apikey'")
     check(plugin.api:hasApiKey(), "the setup page: a good key is kept")
     screen.on_cancel()
+    -- collections (GZreader's shelves): changed with the API key, your own only
+    do
+        local Sh = require("gzreader_shelves")
+        local NM = require("ui/network/manager")
+        local was_conn = NM.isConnected
+        NM.isConnected = function() return true end
+        plugin.store.shelves_cache, plugin.store.pending.shelves, Sh.running = nil, nil, nil
+        check(plugin.api:canEditShelves() == true and Sh.editable(plugin.api) == true, "collections: with the API key they can be changed from here")
+        bctl("/_mock/set", '{"collection_owners": {"12": 2}}')
+        local mine = plugin.api:listMyShelves()
+        check(type(mine) == "table" and #mine == 1 and mine[1].id == 11 and mine[1].name == "Beach reads" and mine[1].own == true,
+            "collections: yours listed, someone else's shared one left out")
+        local set_ok = plugin.api:setBookShelves(102, { 11 }, {})
+        check(type(set_ok) == "table" and #plugin.api:listBooks{ shelfId = 11, page = 0, size = 20 }.content == 3, "collections: a book added to one")
+        set_ok = plugin.api:setBookShelves(102, {}, { 11 })
+        check(type(set_ok) == "table" and #plugin.api:listBooks{ shelfId = 11, page = 0, size = 20 }.content == 2, "…and taken off again")
+        local no, no_err, no_code = plugin.api:setBookShelves(102, { 12 }, {})
+        check(no == nil and no_code == 403 and no_err ~= nil, "collections: someone else's can't be changed (said so, not retried)")
+        local done
+        Sh.sync(plugin, true, function(ok) done = ok end)
+        runLoop(function() return done ~= nil end, 20)
+        local kept = Sh.mine(plugin)
+        check(done == true and kept and #kept == 1 and kept[1].name == "Beach reads" and Sh.isOn(plugin, 101, 11) and not Sh.isOn(plugin, 102, 11),
+            "collections: kept on the Kindle with their books")
+        Sh.set(plugin, { 102 }, 11, true)
+        check(Sh.isOn(plugin, 102, 11), "collections: a change shows at once")
+        runLoop(function() return not Sh.running and not Sh.hasPending(plugin) end, 20)
+        check(not Sh.hasPending(plugin) and #plugin.api:listBooks{ shelfId = 11, page = 0, size = 20 }.content == 3, "…and reaches BookOrbit")
+        Sh.set(plugin, { 102 }, 11, false)
+        runLoop(function() return not Sh.running and not Sh.hasPending(plugin) end, 20)
+        check(#plugin.api:listBooks{ shelfId = 11, page = 0, size = 20 }.content == 2, "collections: taken off again through the queue")
+        local IM_was = package.loaded["ui/widget/infomessage"]
+        package.loaded["ui/widget/infomessage"] = { new = function(_, o) captured.info = o.text; return o end }
+        captured.info = nil
+        check(Sh.ready(plugin) == true and captured.info == nil, "collections: the menus open with the key")
+        -- without the key: said so, nothing sent
+        local key_was = plugin.store.bookorbit.api_key
+        plugin.store.bookorbit.api_key = nil
+        check(plugin.api:canEditShelves() == false and Sh.editable(plugin.api) == false, "collections: without the API key they can't be changed")
+        captured.info = nil
+        check(Sh.ready(plugin) == false and captured.info and captured.info:find("BookOrbit's collections from here needs its API key", 1, true) ~= nil,
+            "…and adding to one says where to put the key")
+        done = nil
+        Sh.sync(plugin, true, function(ok) done = ok end)
+        check(done == false, "…and nothing is asked of BookOrbit")
+        package.loaded["ui/widget/infomessage"] = IM_was
+        plugin.store.bookorbit.api_key = key_was
+        bctl("/_mock/set", '{"collection_owners": {}}')
+        plugin.store.shelves_cache, plugin.store.pending.shelves = nil, nil
+        NM.isConnected = was_conn
+    end
     -- signing in again as the same user keeps the key; another user doesn't get it
     plugin:connect(BO, "will-kindle", "hunter22", "bookorbit")
     check(plugin.api:hasApiKey(), "signing in again to the same server and user keeps the API key")
@@ -16487,10 +16538,10 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
     local code, body = phone("'" .. url .. "'")
     local sec = body and body:match('<section id="grimmory".-</section>') or ""
     check(code == 200 and sec:find("Connected to BookOrbit as <b>will%-kindle</b>") and sec:find('<option value="bookorbit" selected>', 1, true)
-        and sec:find("Synced with BookOrbit: your place in each book, highlights and their notes, bookmarks, reading time, ratings, audiobooks (with a BookOrbit API key).", 1, true)
+        and sec:find("Synced with BookOrbit: your place in each book, highlights and their notes, bookmarks, reading time, ratings, audiobooks and changing collections (with a BookOrbit API key).", 1, true)
         and not sec:find("Not yet:", 1, true),
         "the setup page: connected to BookOrbit, the choice shown, and what is synced so far")
-    check(BookOrbit.note() == "You can browse and download your books. Synced with BookOrbit: your place in each book, highlights and their notes, bookmarks, reading time, ratings, audiobooks (with a BookOrbit API key).",
+    check(BookOrbit.note() == "You can browse and download your books. Synced with BookOrbit: your place in each book, highlights and their notes, bookmarks, reading time, ratings, audiobooks and changing collections (with a BookOrbit API key).",
         "one sentence says what is and isn't synced, from what the client supports")
     code, body = phone("-L --data-urlencode 'backend=bookorbit' --data-urlencode 'server=" .. BO .. "' --data-urlencode 'username=will-kindle' "
         .. "--data-urlencode 'password=nope' --data-urlencode 'action=password' '" .. url .. "/grimmory'")

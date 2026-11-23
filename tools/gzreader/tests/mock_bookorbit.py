@@ -63,6 +63,7 @@ def book(i, title, authors, library, series=None, idx=None, fmt="epub", collecti
 
 LIBRARIES = {1: "Fiction", 2: "Non-fiction"}
 COLLECTIONS = {11: "Beach reads", 12: "Book club"}
+COLLECTION_OWNERS = {}  # collection id -> user id, for the ones that aren't the signed-in user's (id 1)
 BOOKS = [
     book(101, "The Long Way Round", ["Ada Marsh"], 1, "Waymarks", 1, collections=[11]),
     book(102, "The Short Way Back", ["Ada Marsh"], 1, "Waymarks", 2),
@@ -539,6 +540,9 @@ class Handler(BaseHTTPRequestHandler):
             web = changes.pop("web_highlight", None)
             if web:
                 return self.send(200, web_highlight(web))
+            for cid, owner in (changes.pop("collection_owners", None) or {}).items():
+                COLLECTIONS.setdefault(int(cid), "Shared by someone else")
+                COLLECTION_OWNERS[int(cid)] = owner
             for bid, h in (changes.pop("book_hashes", None) or {}).items():
                 for b in BOOKS:
                     if str(b["id"]) == str(bid):
@@ -599,6 +603,35 @@ class Handler(BaseHTTPRequestHandler):
             if int(m.group(1)) not in AUDIOBOOKS and not any(b["id"] == int(m.group(1)) for b in BOOKS):
                 return self.error(404, "Book not found")
             return self.send(200, PNG, "image/png", {"ETag": '"1790000000000"'})
+        # collections on the main API: your own and others' shared ones listed; only your own changed
+        if p == "collections" and method == "GET":
+            if not self.api_key():
+                return
+            STATE["seen"].append([method, p])
+            return self.send(200, [{"id": i, "name": n, "userId": COLLECTION_OWNERS.get(i, 1),
+                                    "bookCount": sum(i in b["collections"] for b in BOOKS)} for i, n in COLLECTIONS.items()])
+        m = re.match(r"^collections/(\d+)/books$", p)
+        if m and method in ("POST", "DELETE"):
+            if not self.api_key(write=True):
+                return
+            STATE["seen"].append([method, p])
+            cid = int(m.group(1))
+            if cid not in COLLECTIONS:
+                return self.error(404, "Collection not found")
+            if COLLECTION_OWNERS.get(cid, 1) != 1:
+                return self.error(403, "You cannot edit this collection")
+            d = self.body()
+            ids = isinstance(d, dict) and d.get("bookIds")
+            if not isinstance(ids, list) or not ids or not all(isinstance(i, int) and not isinstance(i, bool) for i in ids) or set(d) - {"bookIds", "query"}:
+                return self.error(400, "bookIds must be a non-empty array of book ids")
+            changed = 0
+            for b in BOOKS:
+                if b["id"] in ids:
+                    if method == "POST" and cid not in b["collections"]:
+                        b["collections"].append(cid); changed += 1
+                    if method == "DELETE" and cid in b["collections"]:
+                        b["collections"].remove(cid); changed += 1
+            return self.send(200 if method == "DELETE" else 201, {"changed": changed})
         if p.startswith("audiobooks/"):
             if not self.api_key(write=method != "GET"):
                 return

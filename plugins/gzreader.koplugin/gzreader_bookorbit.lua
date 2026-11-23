@@ -76,7 +76,7 @@ BookOrbit.FEATURES = {
     { "bookmarks", _("bookmarks") },
     { "stats", _("reading time") },
     { "ratings", _("ratings") },
-    { "audiobooks", _("audiobooks (with a BookOrbit API key)") },
+    { "audiobooks", _("audiobooks and changing collections (with a BookOrbit API key)") },
 }
 function BookOrbit.note()
     local yes, no = {}, {}
@@ -849,12 +849,54 @@ function BookOrbit:putAudioProgress(book_id, body)
     return false, last_err, last_code
 end
 
+---------------------------------------------------------------- collections (GZreader's shelves), changed from here
+
+-- Reading collections is the e-reader catalog's (listShelves, listBooks{ shelfId }). Putting a
+-- book on one or taking it off is only on the main API, so it needs the API key too.
+
+function BookOrbit:canEditShelves() return self:hasApiKey() end
+
+--- Your own collections, as gzreader_shelves.lua reads Grimmory's shelves ({ id, name, bookCount, own }).
+function BookOrbit:listMyShelves()
+    local code, data, err = self:keyCall("GET", "/api/v1/collections", { timeouts = { 10, 20 } })
+    if code ~= 200 or type(data) ~= "table" then return nil, err or ("http_" .. tostring(code)) end
+    local mine
+    if type(data[1]) == "table" and data[1].userId ~= nil then
+        -- (others' shared collections are listed too: only your own can be changed)
+        local mcode, me = self:keyCall("GET", "/api/v1/auth/me", { timeouts = { 8, 15 } })
+        mine = mcode == 200 and type(me) == "table" and n(me.id) or nil
+    end
+    local out = {}
+    for _i, c in ipairs(data) do
+        if type(c) == "table" and n(c.id) and (mine == nil or n(c.userId) == nil or c.userId == mine) then
+            out[#out + 1] = { id = c.id, name = s(c.name) or ("#" .. tostring(c.id)), bookCount = n(c.bookCount), own = true }
+        end
+    end
+    return out
+end
+
+--- Put a book on collections `add` and take it off `remove` (lists of ids). Returns {}
+--- (nothing more is known of the book), or nil, err, code.
+function BookOrbit:setBookShelves(book_id, add, remove)
+    local Json = require("gzreader_json")
+    local id = tonumber(book_id)
+    if not id then return nil, "bookorbit_unmatched", 400 end
+    for _i, step in ipairs({ { "POST", add }, { "DELETE", remove } }) do
+        for _j, cid in ipairs(type(step[2]) == "table" and step[2] or {}) do
+            local code, _, err = self:keyCall(step[1], "/api/v1/collections/" .. tostring(cid) .. "/books",
+                { body = { bookIds = Json.list({ id }) }, timeouts = { 10, 20 } })
+            if not (code == 200 or code == 201 or code == 204) then return nil, err or ("http_" .. tostring(code)), code end
+        end
+    end
+    return {}
+end
+
 ---------------------------------------------------------------- not yet
 
 -- Grimmory-only (its single sign-on, its web list) or not sent to BookOrbit yet: each
 -- answers nil, "unsupported". Main and the sync modules don't call them while
 -- `books_only` is set; this is so a call that slips through fails quietly.
-for _i, name in ipairs{ "listWebBooks", "listMyShelves", "setBookShelves", "listAuthors", "listSeries",
+for _i, name in ipairs{ "listWebBooks", "listAuthors", "listSeries",
     "listBookmarks", "createBookmark", "deleteBookmark", "listAnnotations",
     "createAnnotation", "updateAnnotation", "deleteAnnotation", "listBookNotes", "createBookNote", "updateBookNote",
     "deleteBookNote", "postSession", "hasSession", "publicSettings", "oidcExchange" } do

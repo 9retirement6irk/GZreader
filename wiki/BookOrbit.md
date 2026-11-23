@@ -17,7 +17,7 @@ What works with BookOrbit today:
 | Reading time (the pages you read, from KOReader's statistics) | yes |
 | Ratings, both ways | yes |
 | Setting a book's read status from the Kindle | not yet (BookOrbit works it out from your progress) |
-| Putting books on collections from the Kindle | not yet |
+| Putting books on your collections and taking them off, from a book's menu (needs an API key, below) | yes |
 | Audiobooks: list, covers, download with resume, chapters, listening position both ways (needs an API key, below) | yes |
 | Kindles without Wi-Fi (the sync page) | not yet |
 
@@ -89,6 +89,8 @@ BookOrbit keeps its audiobook routes apart from the e-reader sign-in, so audiobo
 2. Give it to the Kindle, either on the setup page (under the BookOrbit connection: *API key for audiobooks*) or on the Kindle: Settings → Accounts and services → Books → **BookOrbit API key (audiobooks)**.
 
 Then the Catalog's Audiobooks page lists BookOrbit's audiobooks. Downloading, chapters and playing work as with Grimmory's; an interrupted download continues where it stopped. Where you stopped listening is sent to BookOrbit and, when you start an audiobook, taken from it if BookOrbit's place is more than a minute from the Kindle's.
+
+The same key lets the Kindle change your **collections**: a book's menu gets *Add to shelf* and *Remove from shelf*, listing the collections that are yours (not ones shared with you). A change shows on the Kindle at once and is sent to BookOrbit when there's Wi-Fi. Without the key, collections can still be browsed and auto-downloaded; the menu says where to enter the key.
 
 - The key is checked when you enter it, kept on the Kindle's own disk, never shown again and never written to the log.
 - BookOrbit's keys expire (90 days unless you choose otherwise). When one does, the Audiobooks page says BookOrbit didn't accept the key: make a new one and enter it.

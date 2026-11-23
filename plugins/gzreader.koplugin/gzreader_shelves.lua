@@ -304,9 +304,18 @@ function Shelves.applyDone(plugin, done)
     return n
 end
 
+--- Can this book server's shelves be changed from here? Grimmory: yes. BookOrbit (its
+--- collections): only with its API key (gzreader_bookorbit.lua's canEditShelves).
+local function editable(api)
+    if type(api) ~= "table" then return false end
+    if not api.books_only then return true end
+    return type(api.canEditShelves) == "function" and api:canEditShelves() == true
+end
+Shelves.editable = editable
+
 local function online(plugin)
     local api = plugin.api
-    if type(api) ~= "table" or api.offline or api.books_only or not api:isPaired() then return false end
+    if type(api) ~= "table" or api.offline or not editable(api) or not api:isPaired() then return false end
     local ok, NetworkMgr = pcall(require, "ui/network/manager")
     return ok and NetworkMgr:isConnected() and true or false
 end
@@ -398,10 +407,15 @@ end
 
 ---------------------------------------------------------------- the menus
 
+--- (the messages below name Grimmory: with another book server, its name)
+local function named(text)
+    return Shelves.server and Shelves.server ~= "Grimmory" and (text:gsub("Grimmory", Shelves.server)) or text
+end
+
 local function info(text, timeout)
     local UIManager = require("ui/uimanager")
     local InfoMessage = require("ui/widget/infomessage")
-    UIManager:show(InfoMessage:new{ text = text, timeout = timeout })
+    UIManager:show(InfoMessage:new{ text = named(text), timeout = timeout })
 end
 
 --- Signed in to Grimmory (a Kindle without Wi-Fi: the sync page left a copy)?
@@ -409,8 +423,9 @@ end
 function Shelves.ready(plugin)
     local _ = require("gettext")
     local api = plugin.api
-    if type(api) == "table" and api.books_only then
-        info(_("Putting books on shelves isn't available with BookOrbit yet."), 4)
+    Shelves.server = type(plugin.serverName) == "function" and plugin:serverName() or nil
+    if type(api) == "table" and api:isPaired() and not editable(api) then
+        info(_("Changing BookOrbit's collections from here needs its API key: Settings → Accounts and services → Books → BookOrbit API key."), 6)
         return false
     end
     if type(api) == "table" and api:isPaired() then return true end
@@ -433,7 +448,7 @@ local function shelvesThen(plugin, fn)
     require("gzreader_net").run(function()
         local UIManager = require("ui/uimanager")
         local InfoMessage = require("ui/widget/infomessage")
-        local wait = InfoMessage:new{ text = _("Asking Grimmory about your shelves…") }
+        local wait = InfoMessage:new{ text = named(_("Asking Grimmory about your shelves…")) }
         UIManager:show(wait)
         Shelves.sync(plugin, true, function(ok, err)
             UIManager:close(wait)
