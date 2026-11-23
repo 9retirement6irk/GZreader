@@ -79,6 +79,14 @@ AUDIOBOOK = {
          "durationMs": 45000, "data": b"ID3" + b"\1" * 3000},
     ],
 }
+# A second audiobook: one M4B file with chapters inside it (and a book that is also ebook 102).
+AUDIOBOOK_2 = {
+    "id": 102, "title": "The Short Way Back", "authors": ["Ada Marsh"], "narrators": ["June Park", "Sam Lee"],
+    "assets": [{"assetId": "aud_33333333-3333-4333-8333-333333333333", "fileId": 6301, "sequence": 0, "format": "m4b",
+                "durationMs": 600000, "data": b"\0\0\0\x20ftypM4B " + b"\2" * 5000}],
+    "chapters": [("Opening", 0, 200000), ("Middle", 200000, 400000), ("End", 400000, 600000)],
+}
+AUDIOBOOKS = {201: AUDIOBOOK, 102: AUDIOBOOK_2}
 
 
 def fresh():
@@ -104,9 +112,9 @@ def fresh():
 STATE = fresh()
 
 
-def manifest_revision():
+def manifest_revision(ab=None):
     h = hashlib.sha256()
-    for a in AUDIOBOOK["assets"]:
+    for a in (ab or AUDIOBOOK)["assets"]:
         h.update(a["assetId"].encode() + a["data"])
     return h.hexdigest()
 
@@ -565,10 +573,30 @@ class Handler(BaseHTTPRequestHandler):
             rules = (d.get("filter") or {}).get("rules") or []
             fmts = {str(v).lower() for r in rules if r.get("field") == "format" and r.get("operator") == "includesAny"
                     for v in r.get("value") or []}
-            items = [{"id": AUDIOBOOK["id"], "title": AUDIOBOOK["title"], "authors": AUDIOBOOK["authors"]}] \
-                if not rules or fmts & {a["format"] for a in AUDIOBOOK["assets"]} else []
-            items = items[(pg["page"] - 1) * pg["size"]:pg["page"] * pg["size"]]
-            return self.send(201, {"items": items, "total": len(items), "page": pg["page"], "size": pg["size"]})
+            if "q" in d and not isinstance(d["q"], str):
+                return self.error(400, "q must be a string")
+            found = []
+            for ab in sorted(AUDIOBOOKS.values(), key=lambda ab: ab["title"].lower()):
+                if rules and not fmts & {a["format"] for a in ab["assets"]}:
+                    continue
+                if d.get("q") and d["q"].lower() not in (ab["title"] + " " + " ".join(ab["authors"])).lower():
+                    continue
+                state = STATE["playback"].get(ab["id"])
+                found.append({"id": ab["id"], "title": ab["title"], "authors": ab["authors"], "narrators": ab["narrators"],
+                              "seriesName": None, "seriesIndex": None, "hasCover": True, "subtitle": None,
+                              "readingProgress": state and state["percentage"] or None,
+                              "files": [{"id": a["fileId"], "format": a["format"]} for a in ab["assets"]]})
+            if d["sort"] and isinstance(d["sort"][0], dict) and d["sort"][0].get("dir") == "desc":
+                found.reverse()
+            items = found[(pg["page"] - 1) * pg["size"]:pg["page"] * pg["size"]]
+            return self.send(201, {"items": items, "total": len(found), "page": pg["page"], "size": pg["size"]})
+        m = re.match(r"^books/(\d+)/thumbnail$", p)
+        if m and method == "GET":
+            if not self.api_key():
+                return
+            if int(m.group(1)) not in AUDIOBOOKS and not any(b["id"] == int(m.group(1)) for b in BOOKS):
+                return self.error(404, "Book not found")
+            return self.send(200, PNG, "image/png", {"ETag": '"1790000000000"'})
         if p.startswith("audiobooks/"):
             if not self.api_key(write=method != "GET"):
                 return
@@ -788,25 +816,30 @@ class Handler(BaseHTTPRequestHandler):
     # Main API: audiobooks ------------------------------------------------------
     def audiobooks(self, method, p):
         m = re.match(r"^(\d+)/(.+)$", p)
-        if not m or int(m.group(1)) != AUDIOBOOK["id"]:
+        ab = m and AUDIOBOOKS.get(int(m.group(1)))
+        if not ab:
             return self.error(404, "Book has no audiobook assets")
-        rest, bid = m.group(2), AUDIOBOOK["id"]
+        rest, bid = m.group(2), ab["id"]
         if rest == "manifest" and method == "GET":
             assets = [{"assetId": a["assetId"], "fileId": a["fileId"], "sequence": a["sequence"], "format": a["format"],
                        "durationMs": a["durationMs"], "sizeBytes": len(a["data"]),
-                       "etag": hashlib.md5(a["data"]).hexdigest()} for a in AUDIOBOOK["assets"]]
+                       "etag": hashlib.md5(a["data"]).hexdigest()} for a in ab["assets"]]
             chapters, at = [], 0
-            for a in AUDIOBOOK["assets"]:
-                chapters.append({"id": "ch-%d" % a["sequence"], "title": "Part %d" % (a["sequence"] + 1), "assetId": a["assetId"],
-                                 "sequence": a["sequence"], "startMs": at, "endMs": at + a["durationMs"], "assetOffsetMs": 0})
+            for a in ab["assets"]:
+                if "chapters" not in ab:
+                    chapters.append({"id": "ch-%d" % a["sequence"], "title": "Part %d" % (a["sequence"] + 1), "assetId": a["assetId"],
+                                     "sequence": a["sequence"], "startMs": at, "endMs": at + a["durationMs"], "assetOffsetMs": 0})
                 at += a["durationMs"]
-            return self.send(200, {"schema": "bookorbit.audiobook-manifest", "schemaVersion": 2, "revision": manifest_revision(),
-                                   "book": {"id": bid, "title": AUDIOBOOK["title"], "authors": AUDIOBOOK["authors"],
-                                            "narrators": AUDIOBOOK["narrators"], "hasCover": True},
+            for n, (title, start, end) in enumerate(ab.get("chapters", [])):
+                chapters.append({"id": "ch-%d" % n, "title": title, "assetId": ab["assets"][0]["assetId"], "sequence": n,
+                                 "startMs": start, "endMs": end, "assetOffsetMs": start})
+            return self.send(200, {"schema": "bookorbit.audiobook-manifest", "schemaVersion": 2, "revision": manifest_revision(ab),
+                                   "book": {"id": bid, "title": ab["title"], "authors": ab["authors"],
+                                            "narrators": ab["narrators"], "hasCover": True},
                                    "assets": assets, "chapters": chapters, "totalDurationMs": at})
         m = re.match(r"^assets/([^/]+)/content$", rest)
         if m and method == "GET":
-            a = next((a for a in AUDIOBOOK["assets"] if a["assetId"] == m.group(1)), None)
+            a = next((a for a in ab["assets"] if a["assetId"] == m.group(1)), None)
             if not a:
                 return self.error(404, "Audiobook asset not found")
             data, size = a["data"], len(a["data"])
@@ -844,9 +877,9 @@ class Handler(BaseHTTPRequestHandler):
                 extra = set(d) - {n for n, _ in checks}
                 if extra:
                     return self.error(400, "property %s should not exist" % sorted(extra)[0])
-                if d["manifestRevision"] != manifest_revision():
+                if d["manifestRevision"] != manifest_revision(ab):
                     return self.error(412, "Audiobook manifest has changed")
-                a = next((a for a in AUDIOBOOK["assets"] if a["assetId"] == d["assetId"]), None)
+                a = next((a for a in ab["assets"] if a["assetId"] == d["assetId"]), None)
                 if not a:
                     return self.error(400, "assetId does not belong to this audiobook")
                 if cur and cur.get("operationId") == d["operationId"]:
@@ -856,8 +889,8 @@ class Handler(BaseHTTPRequestHandler):
                 if d["baseRevision"] != (cur["revision"] if cur else 0):
                     return self.error(409, "Playback state revision conflict")
                 pos = min(d["positionMs"], a["durationMs"])
-                total = sum(x["durationMs"] for x in AUDIOBOOK["assets"])
-                before = sum(x["durationMs"] for x in AUDIOBOOK["assets"] if x["sequence"] < a["sequence"])
+                total = sum(x["durationMs"] for x in ab["assets"])
+                before = sum(x["durationMs"] for x in ab["assets"] if x["sequence"] < a["sequence"])
                 pct = max(0.0, min(100.0, (before + pos) * 100.0 / total))
                 STATE["playback"][bid] = {"assetId": d["assetId"], "positionMs": pos, "percentage": pct,
                                           "completed": pct >= 100, "capturedAt": d["capturedAt"],

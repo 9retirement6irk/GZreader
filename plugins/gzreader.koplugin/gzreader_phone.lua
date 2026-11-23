@@ -110,6 +110,7 @@ local function state(S, flash)
     local store = plugin.store
     local g = { connected = plugin.api and plugin.api:isPaired() or false, username = store.username, backend = plugin:backend(),
         bookorbit_note = require("gzreader_bookorbit").note(),
+        bookorbit_api_key = plugin.api.hasApiKey ~= nil and plugin.api:hasApiKey() or false,
         host = host(store.server) }
     g.redirect_uri, g.sso_relay = Phone.ssoRedirect(plugin, S.origin)
     g.form = sec == "grimmory" and flash.form
@@ -123,7 +124,7 @@ local function state(S, flash)
         g.form = { backend = hint }
         g.other = true
     end
-    if sec == "grimmory" then g.error = flash.error end
+    if sec == "grimmory" then g.error, g.key_error = flash.error, flash.key_error end
     -- single sign-on: asked from Grimmory when the form is in view (not
     -- connected, or a sign-in just tried); otherwise what was learnt before
     if not g.connected or sec == "grimmory" then
@@ -490,6 +491,15 @@ function Phone.open(plugin, opts)
         local ok, err = plugin:connect(form.server or "", form.username or "", form.password or "", form.backend)
         if ok then return grimmoryOk() end
         return grimmoryFailed(form, err)
+    end
+    -- BookOrbit's API key (audiobooks): checked against the server, never echoed back
+    routes["/grimmory/apikey"] = function(form)
+        local ok, err = plugin:setBookOrbitApiKey(form.api_key or "")
+        if ok then
+            toast((form.api_key or ""):gsub("%s+", "") == "" and _("The BookOrbit API key was removed.") or _("BookOrbit accepted the API key."))
+            return back({ section = "grimmory" })
+        end
+        return back({ section = "grimmory", key_error = err })
     end
     routes["/grimmory/disconnect"] = function()
         if plugin.sync then pcall(plugin.sync.onLeave, plugin.sync) end

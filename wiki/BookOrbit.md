@@ -16,7 +16,7 @@ What works with BookOrbit today:
 | Page bookmarks (dog-ears), both ways (EPUB and other reflowable books) | yes |
 | Reading statistics, read status, ratings | not yet |
 | Putting books on collections from the Kindle | not yet |
-| Audiobooks | not yet |
+| Audiobooks: list, covers, download with resume, chapters, listening position both ways (needs an API key, below) | yes |
 | Kindles without Wi-Fi (the sync page) | not yet |
 
 Only the "yes" rows send anything to BookOrbit. The Kindle shows up in BookOrbit's Settings → KOReader → Devices as "GZreader" and its model.
@@ -72,6 +72,21 @@ Signing in to BookOrbit signs this Kindle out of Grimmory (and the other way rou
 - When: as a book opens, a few seconds after you add or remove a bookmark, and on Sync now.
 - Reflowable books only, and only if your BookOrbit offers bookmark sync (GZreader asks at sign-in; sign in again after updating BookOrbit).
 - The same switch as for Grimmory's bookmarks, in Settings → Accounts and services → Books.
+
+## Audiobooks
+
+BookOrbit keeps its audiobook routes apart from the e-reader sign-in, so audiobooks need a second credential: an **API key**.
+
+1. In BookOrbit: **Settings → API keys**, make a key with **read and write** access. BookOrbit shows it once (it starts with `bok_`).
+2. Give it to the Kindle, either on the setup page (under the BookOrbit connection: *API key for audiobooks*) or on the Kindle: Settings → Accounts and services → Books → **BookOrbit API key (audiobooks)**.
+
+Then the Catalog's Audiobooks page lists BookOrbit's audiobooks. Downloading, chapters and playing work as with Grimmory's; an interrupted download continues where it stopped. Where you stopped listening is sent to BookOrbit and, when you start an audiobook, taken from it if BookOrbit's place is more than a minute from the Kindle's.
+
+- The key is checked when you enter it, kept on the Kindle's own disk, never shown again and never written to the log.
+- BookOrbit's keys expire (90 days unless you choose otherwise). When one does, the Audiobooks page says BookOrbit didn't accept the key: make a new one and enter it.
+- A read-only key lists and downloads, but your place isn't saved.
+- To remove the key from the Kindle, save the box empty. Signing out removes it too.
+- Audiobooks from Plex are separate and still work alongside.
 
 ## If it doesn't connect
 

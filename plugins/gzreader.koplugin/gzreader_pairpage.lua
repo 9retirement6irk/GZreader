@@ -161,6 +161,13 @@ local function grimmorySection(st, base)
         parts[#parts + 1] = status(true, (orbit and "Connected to BookOrbit as <b>" or "Connected as <b>") .. esc(g.username) .. "</b> · " .. esc(g.host))
         if orbit then
             parts[#parts + 1] = '<p class="note">' .. esc(g.bookorbit_note or "") .. "</p>"
+            -- the API key for BookOrbit's audiobooks (never shown back: only whether one is kept)
+            if g.key_error then parts[#parts + 1] = '<p class="err">' .. esc(g.key_error) .. "</p>" end
+            parts[#parts + 1] = form(base .. "/grimmory/apikey",
+                '<label for="g_apikey">API key for audiobooks' .. (g.bookorbit_api_key and " (one is saved)" or "") .. "</label>"
+                .. '<input id="g_apikey" name="api_key" type="password" autocomplete="off" placeholder="bok_…">'
+                .. '<p class="note">From BookOrbit: Settings → API keys, with read and write access. Needed for audiobooks only. Leave empty and save to remove it.</p>'
+                .. '<button type="submit">Save API key</button>', "Checking…")
         end
         parts[#parts + 1] = form(base .. "/grimmory/disconnect",
             '<button class="danger" type="submit"' .. confirmJs("Disconnect the Kindle from " .. (orbit and "BookOrbit" or "Grimmory") .. "? Downloaded books stay on the Kindle.")
