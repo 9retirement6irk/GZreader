@@ -32,8 +32,7 @@ the same version and overlays GZreader's Lua code, plugins and dictionary.
   Grimmory, Memos and CalDAV servers, the setup guide, the Nooks' screen commands; that
   GZreader's changes to KOReader's and ZenOS's files are all still there
   ([`keeps.py`](tools/gzreader/tests/keeps.py)); and GZreader running in the emulator
-  on a Kindle 3, Kindle 4, Kindle Touch, Paperwhite 3, Nook 1st Edition and Nook Simple
-  Touch, checking what makes it GZreader
+  on one model for each package, checking what makes it GZreader
   ([`keeps.lua`](tools/gzreader/emulator/keeps.lua)): the setup guide, Home's tabs, the
   GZreader and Reading menus and their names (and the Menu key, never ZenOS's touch panel
   without touch), Settings' Connections, the touch launcher's entries at Home and in a
