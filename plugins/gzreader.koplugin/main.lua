@@ -1340,6 +1340,9 @@ function Grimmory:afterLogin(previous, backend)
         self:save()
     end
     self:flushPending()
+    -- BookOrbit: the books already on this Kindle (downloaded from Grimmory, or copied over)
+    -- are matched to BookOrbit's by their files now, not only when the library list is next built
+    if self:backend() == "bookorbit" then UIManager:scheduleIn(2, function() pcall(self.matchLibraryFiles, self) end) end
     -- (the Catalog, if it's open saying to sign in: its page again)
     local B = package.loaded["gzreader_browser"]
     if B and B.signInChanged then UIManager:nextTick(B.signInChanged) end
@@ -1941,6 +1944,9 @@ function Grimmory:onNetworkConnected()
     UIManager:scheduleIn(8, function() pcall(require("gzreader_shelves").sync, self) end)
     -- the Immich album's pictures (sleep screen, wallpaper), when used (at most every 6 h)
     UIManager:scheduleIn(12, function() pcall(require("gzreader_immich").onNetworkConnected, self) end)
+    -- BookOrbit: books in the folder that aren't tied to one of its books yet (it does nothing
+    -- when every file is tied, or was asked about before and hasn't changed)
+    UIManager:scheduleIn(10, function() pcall(self.matchLibraryFiles, self) end)
 end
 
 ---------------------------------------------------------------- reader integration
@@ -2509,7 +2515,7 @@ function Grimmory:matchLibraryFiles(index)
                 self.store.bookorbit_unmatched[f.name] = f.stamp
             end
         end
-        Log.info("BookOrbit: matched", n_linked, "of", #res.files, "books on this Kindle by their files")
+        Log.info("BookOrbit: matched", n_linked, "of", #res.files, "books on this Kindle by their files (the rest aren't in BookOrbit as the same file)")
         self:save()
         if n_linked > 0 then
             self:writeManifest()

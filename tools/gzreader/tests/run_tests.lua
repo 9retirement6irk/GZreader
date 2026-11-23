@@ -16084,7 +16084,8 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
     check(d_ok == false and d_err == "http_404" and lfs.attributes(file .. "x") == nil, "a missing book's file: an error, nothing left behind")
     local seen = bctl("/_mock/state").seen
     local only_get = #seen > 10
-    for _i, e in ipairs(seen) do if e[1] ~= "GET" then only_get = false end end
+    -- (match-check is a POST that only asks which of the Kindle's files BookOrbit has)
+    for _i, e in ipairs(seen) do if e[1] ~= "GET" and e[2] ~= "koreader/plugin/match-check" then only_get = false end end
     check(only_get, "browsing and downloading only ever read from BookOrbit")
 
     -- reading progress: out by the file's fingerprint, in from the book's record
@@ -16149,6 +16150,20 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
     plugin:matchLibraryFiles()
     runLoop(function() return plugin.matching == nil end, 5)
     check(matchCalls() == calls, "…and isn't asked about again until it changes")
+    -- it happens by itself: right after signing in, and whenever Wi-Fi comes on
+    plugin.store.downloads["104"] = nil
+    plugin.store.bookorbit_unmatched = nil
+    plugin:afterLogin(plugin:signedInAs(), "bookorbit")
+    runLoop(function() return plugin.store.downloads["104"] ~= nil end, 20)
+    check(plugin.store.downloads["104"] and plugin.store.downloads["104"].path == other,
+        "after signing in to BookOrbit the books already on the Kindle are matched without waiting for the library list")
+    runLoop(function() return plugin.matching == nil end, 5)
+    do
+        local mf = io.open(PLUGIN .. "/main.lua", "rb")
+        local msrc = mf:read("*a"); mf:close()
+        local hook = msrc:match("function Grimmory:onNetworkConnected%(%)(.-)\nend\n") or ""
+        check(hook:find("pcall(self.matchLibraryFiles, self)", 1, true) ~= nil, "…and again whenever Wi-Fi comes on")
+    end
     os.remove(other); os.remove(ldir .. "/Stray.epub")
     plugin.store.downloads["104"] = nil
 
