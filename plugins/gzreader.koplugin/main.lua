@@ -46,7 +46,6 @@ local Log = require("gzreader_log")
 require("socketutil")
 local Index = require("gzreader_index")
 local JSON = require("gzreader_json")
-local Bookmarks = require("gzreader_bookmarks")
 
 local PAIR_TIMEOUT_S = 10 * 60
 local MAX_QUEUED_SESSIONS = 200
@@ -2062,7 +2061,8 @@ function Grimmory:onReaderReady()
     pcall(function() require("gzreader_layout").opened(self.ui.document, entry, book_id) end)
     self.sync = Sync:new(self, self.ui, entry, book_id)
     self.sync:onReady() -- (then openSync, below: a moment after the first page)
-    self.bookmarks = (self.api.koreader_positions and require("gzreader_bo_bookmarks") or Bookmarks):new(self.sync)
+    -- (each server's own modules, loaded only for the server signed in to)
+    self.bookmarks = require(self.api.koreader_positions and "gzreader_bo_bookmarks" or "gzreader_bookmarks"):new(self.sync)
     -- (BookOrbit's highlights go by its own exchange: gzreader_bo_annotations.lua)
     self.annotations = (self.api.koreader_positions and require("gzreader_bo_annotations") or Mod.Annotations):new(self.sync)
     if self:syncEnabled() and self.api:isPaired() and not Net.connected() then

@@ -16813,6 +16813,27 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
         check(table.concat(rows, "|"):find("|Reading stats|Request a book|", 1, true) ~= nil, "the BookOrbit card has Reading stats " .. table.concat(rows, "|"))
         plugin.store.grimmory_stats = nil
     end
+    -- with BookOrbit, nothing of Grimmory's runs or is loaded
+    do
+        local Async = require("gzreader_async")
+        local run, ran, answered = Async.run, 0, nil
+        Async.run = function() ran = ran + 1 end
+        Async.ensureToken(plugin.api, function(ok) answered = ok end)
+        check(answered == true and ran == 0, "BookOrbit: no background process to refresh a login it doesn't have")
+        answered = nil
+        Async.ensureToken({ store = { access_token = "t", access_expires_at = os.time() - 5 } }, function(ok) answered = ok end)
+        check(ran == 1, "…Grimmory's login is still refreshed when it's old")
+        Async.run = run
+        local mf = io.open(PLUGIN .. "/main.lua", "rb")
+        local msrc = mf:read("*a"); mf:close()
+        local top = true
+        for line in msrc:gmatch("[^\n]+") do
+            if line:match('^local [%w_]+ = require%("gzreader_bookmarks"%)') or line:match('^local [%w_]+ = require%("gzreader_annotations"%)')
+                or line:match('^local [%w_]+ = require%("gzreader_cfi"%)') then top = false end
+        end
+        check(top and msrc:find('require(self.api.koreader_positions and "gzreader_bo_bookmarks" or "gzreader_bookmarks")', 1, true) ~= nil,
+            "Grimmory's bookmark, highlight and position modules are loaded only when Grimmory is the server")
+    end
     -- signing in again as the same user keeps the key; another user doesn't get it
     plugin:connect(BO, "will-kindle", "hunter22", "bookorbit")
     check(plugin.api:hasApiKey(), "signing in again to the same server and user keeps the API key")

@@ -471,6 +471,9 @@ end
 --- A valid login for a process forked outside this queue (downloads, the
 --- library index): refreshed in the background if needed, then cb(ok, err).
 function Async.ensureToken(api, cb)
+    -- (BookOrbit has no login to refresh: its sign-in goes with every request. Without this,
+    -- every download and index run started a background process that did nothing.)
+    if api.koreader_positions then return cb(true) end
     local store = api.store or {}
     if store.access_token and os.time() < (store.access_expires_at or 0) - 120 then return cb(true) end
     Async.run(api, function() return true end, function(ok, err) cb(ok == true, err) end, "refresh login")
