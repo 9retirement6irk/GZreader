@@ -13,7 +13,9 @@ local lines = {}
 local function check(ok, what) lines[#lines + 1] = (ok and "ok   " or "FAIL ") .. what end
 
 local function UIM() return require("ui/uimanager") end
-local TOUCH_MODEL = { kt = true, pw3 = true, nst = true }
+local TOUCH_MODEL = { kt = true, pw3 = true, nst = true, scribe = true }
+-- Kindles without Wi-Fi (they sync through a computer): the setup guide and the quick panel say so
+local NO_WIFI = { k2 = true, dx = true, dxg = true }
 local function topName()
     local st = UIM()._window_stack
     local w = st[#st] and st[#st].widget
@@ -61,7 +63,8 @@ local KINDLE_WORD -- "Kindle", or "Nook" on a Nook
 -- 1. the setup guide, then Home and its tabs
 add({ fn = function(E)
     KINDLE_WORD = (E.model == "nook" or E.model == "nst") and "Nook" or "Kindle"
-    check(has("Set up from your browser"), "setup guide opens on \"Set up from your browser\"")
+    local first = NO_WIFI[E.model] and "Sync with a computer" or "Set up from your browser"
+    check(has(first), "setup guide opens on \"" .. first .. "\"")
     for i = #UIM()._window_stack, 1, -1 do
         local w = UIM()._window_stack[i].widget
         if w.name == "setup guide" or w.name == "QR code screen" then UIM():close(w) end
@@ -137,12 +140,12 @@ add({ shot = "keeps-home" })
 -- 2. the quick panel (the Menu key, or a swipe down from the top)
 add({ fn = function(E) openPanel(E) end, after = 5 })
 add({ fn = function(E)
-    check(topName() == "gzreader quick panel" and hasTile("Connect") and hasTile("Restart") and hasTile("Settings"),
+    check(topName() == "gzreader quick panel" and hasTile(NO_WIFI[E.model] and "Sync" or "Connect") and hasTile("Restart") and hasTile("Settings"),
         (TOUCH[E.model] and "a swipe down at Home: the quick panel" or "Menu key at Home: the quick panel") .. " (top: " .. topName() .. ")")
     check(hasTile("Exit to " .. KINDLE_WORD), "names: \"Exit to " .. KINDLE_WORD .. "\"")
     check(not hasTile("Contents"), "…with Home's tiles, not a book's")
     local px = require("ui/font"):getFace("cfont", 15).size
-    local mm = px / (({ dx = 150, dxg = 150, pw3 = 300 })[E.model] or 167) * 25.4
+    local mm = px / (({ dx = 150, dxg = 150, pw3 = 300, scribe = 300 })[E.model] or 167) * 25.4
     check(mm >= 2.2 and mm <= 3.8, string.format("tile text a readable size: %.1f mm", mm))
 end, after = 1 })
 add({ shot = "keeps-menu" })

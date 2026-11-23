@@ -1,14 +1,22 @@
 name: GZreader tests
 
 # luacheck, the plugin tests against mock servers, and GZreader started in
-# the emulator on a Kindle 3, a Nook 1st Edition and a Nook Simple Touch
-# (tools/gzreader/ci-test.sh), on every push to main and every pull request.
+# the emulator, one model for each package it ships: a Kindle 3 and a DX
+# Graphite (kindle-legacy), a Kindle Touch (kindle), a Paperwhite 3
+# (kindlepw2), a Scribe (kindlehf), a Nook 1st Edition, a Nook Simple Touch
+# and a Kobo (tools/gzreader/ci-test.sh), on every push to main and every
+# pull request.
+#
+# The parts run side by side, each on its own machine: the tests, each model,
+# and the Kindle 3's CPU budgets (alone, so nothing else is using its
+# processor). The last job, "test", fails when any of them did: it's the one
+# check anything waiting on this workflow needs to look at.
+#
 # A pull request that changes only what the emulator can't be affected by
 # (the sync and landing pages, tests, Markdown, the changelog, the workflows
 # and scripts that publish updates and releases:
 # tools/gzreader/ci_emulator_needed.py) gets the tests without the emulator
-# runs: a few minutes instead of half an hour. The same check, so nothing
-# that waits for it changes.
+# jobs.
 
 on:
   push:
@@ -20,24 +28,38 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    runs-on: ubuntu-24.04  # (ubuntu-26.04, where ubuntu-latest is moving, has no qemu-user-static package)
-    timeout-minutes: 75
-    env:
-      GH_TOKEN: ${{ github.token }}
+  plan:
+    name: what the change touches
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      emulator: ${{ steps.touches.outputs.emulator }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 2   # (a pull request's merge commit and its parent on the base branch: what it changes)
-      - name: What the change touches
-        if: github.event_name == 'pull_request'
+      - id: touches
         run: |
-          changed=$(git diff --name-only HEAD^1 HEAD) || changed=""
-          printf '%s\n' "$changed"
-          if [ "$(printf '%s\n' "$changed" | python3 tools/gzreader/ci_emulator_needed.py)" = skip ]; then
-            echo "GZ_CI_MODELS=none" >> "$GITHUB_ENV"
-            echo "Only web pages, tests, Markdown, the changelog or publishing scripts changed: the emulator runs are skipped." >> "$GITHUB_STEP_SUMMARY"
+          emulator=true
+          if [ "${{ github.event_name }}" = pull_request ]; then
+            changed=$(git diff --name-only HEAD^1 HEAD) || changed=""
+            printf '%s\n' "$changed"
+            if [ "$(printf '%s\n' "$changed" | python3 tools/gzreader/ci_emulator_needed.py)" = skip ]; then
+              emulator=false
+              echo "Only web pages, tests, Markdown, the changelog or publishing scripts changed: the emulator jobs are skipped." >> "$GITHUB_STEP_SUMMARY"
+            fi
           fi
+          echo "emulator=$emulator" >> "$GITHUB_OUTPUT"
+
+  tests:
+    name: tests
+    runs-on: ubuntu-24.04  # (ubuntu-26.04, where ubuntu-latest is moving, has no qemu-user-static package)
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GZ_CI_PART: tests
+    steps:
+      - uses: actions/checkout@v7
       - name: Tools
         run: |
           # (ci-apt.sh: falls back to a mirror outside ubuntu.com when Ubuntu's servers can't be reached)
@@ -56,15 +78,109 @@ jobs:
       - name: Summary
         if: always()
         run: cat ci-out/summary.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+      - name: Logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: gzreader-test-output-tests
+          path: |
+            ci-out/*.txt
+            ci-out/summary.md
+          retention-days: 14
+
+  emulator:
+    name: ${{ matrix.model }}
+    needs: plan
+    if: needs.plan.outputs.emulator == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false   # (one model failing says nothing about the others: let them finish)
+      matrix:
+        # one model for each package (ci-test.sh says which is which)
+        model: [k3, dxg, kt, pw3, scribe, nook, nst, kobo]
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GZ_CI_PART: model:${{ matrix.model }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Tools
+        run: |
+          bash tools/gzreader/ci-apt.sh luajit lua-socket lua-sec python3 curl rsync unzip \
+            qemu-user-static libc6-armel-cross libgcc-s1-armel-cross
+          sudo mkdir -p /mnt/us /mnt/onboard && sudo chown "$USER" /mnt/us /mnt/onboard
+      - name: KOReader's Kindle 2/3/DX package (the binaries GZreader runs on)
+        run: |
+          TAG=$(tools/gzreader/upstream.sh current koreader)
+          gh release download "$TAG" --repo koreader/koreader --pattern "koreader-kindle-legacy-$TAG.zip" --dir dl
+      - name: GZreader in the emulator
+        run: tools/gzreader/ci-test.sh dl/koreader-kindle-legacy-*.zip ci-out
+      - name: Summary
+        if: always()
+        run: cat ci-out/summary.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
       - name: Screenshots and logs
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: gzreader-test-output
+          name: gzreader-test-output-${{ matrix.model }}
           path: |
             ci-out/*.txt
             ci-out/summary.md
             ci-out/keeps-*/*.png
             ci-out/keeps-*/keeps.txt
+            ci-out/kobo-*/*.png
+            ci-out/kobo-*/*.txt
+            ci-out/places-*/*.txt
+          retention-days: 14
+
+  perf:
+    name: CPU budgets (Kindle 3)
+    needs: plan
+    if: needs.plan.outputs.emulator == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GZ_CI_PART: perf
+    steps:
+      - uses: actions/checkout@v7
+      - name: Tools
+        run: |
+          bash tools/gzreader/ci-apt.sh luajit lua-socket lua-sec python3 curl rsync unzip \
+            qemu-user-static libc6-armel-cross libgcc-s1-armel-cross
+          sudo mkdir -p /mnt/us /mnt/onboard && sudo chown "$USER" /mnt/us /mnt/onboard
+      - name: KOReader's Kindle 2/3/DX package (the binaries GZreader runs on)
+        run: |
+          TAG=$(tools/gzreader/upstream.sh current koreader)
+          gh release download "$TAG" --repo koreader/koreader --pattern "koreader-kindle-legacy-$TAG.zip" --dir dl
+      - name: CPU budgets
+        run: tools/gzreader/ci-test.sh dl/koreader-kindle-legacy-*.zip ci-out
+      - name: Summary
+        if: always()
+        run: cat ci-out/summary.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+      - name: The numbers
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: gzreader-test-output-perf
+          path: |
+            ci-out/*.txt
+            ci-out/summary.md
             ci-out/perf-*/perf.json
           retention-days: 14
+
+  # The one result for the whole workflow, under the name the single job had
+  # before the parts ran side by side.
+  test:
+    name: test
+    needs: [plan, tests, emulator, perf]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Did every part pass?
+        run: |
+          echo "what the change touches: ${{ needs.plan.result }} · tests: ${{ needs.tests.result }} · emulator: ${{ needs.emulator.result }} · CPU budgets: ${{ needs.perf.result }}" | tee -a "$GITHUB_STEP_SUMMARY"
+          ok() { [ "$1" = success ] || [ "$1" = skipped ]; }
+          [ "${{ needs.plan.result }}" = success ] && [ "${{ needs.tests.result }}" = success ] \
+            && ok "${{ needs.emulator.result }}" && ok "${{ needs.perf.result }}"

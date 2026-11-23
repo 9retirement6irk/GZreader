@@ -38,6 +38,15 @@ check(not bad and "⚠️ open a book" in "\n".join(lines), "35% more: flagged, 
 lines, bad = perf_check.compare(run_of(0.5, **{"20 page turns": 9.6}), base)
 check(bad and "❌ 20 page turns: 9.60 s, +60%" in "\n".join(lines), "60% more: fails")
 
+soft_base = {"calibration": 0.5, "phases": {"quick panel x3": {"cpu": 0.9}, "10 moves on Home": {"cpu": 0.8}, "open a book": {"cpu": 0.9}}}
+lines, bad = perf_check.compare(run_of(0.5, **{"quick panel x3": 1.4, "10 moves on Home": 1.3}), soft_base)
+text = "\n".join(lines)
+check(not bad and "⚠️ quick panel x3: 1.40 s, +56%" in text and "⚠️ 10 moves on Home" in text and "never fails the check" in text and "❌" not in text,
+      "the quick panel and Home moves 50% over: flagged with why, the check doesn't fail")
+lines, bad = perf_check.compare(run_of(0.5, **{"open a book": 1.4}), soft_base)
+check(bad and "❌ open a book" in "\n".join(lines), "…opening a book just as short and as far over still fails")
+check(perf_check.SOFT == {"quick panel x3", "10 moves on Home"}, "only those two phases are let off")
+
 lines, bad = perf_check.compare(run_of(1.0, **{"20 page turns": 11.0}), base)
 check(not bad and "-8%" in "\n".join(lines), "a machine twice as slow (calibration 1.0 s): compared as such, no failure")
 
