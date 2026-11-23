@@ -28,6 +28,7 @@ Scribe's pen; see your calendars; switch your Home Assistant lights.
 - [Using GZreader](Using-GZreader): the quick panel, keys, the 5-way, touch
 - [Setup page and connections](Setup-Page-and-Connections): Grimmory, single sign-on, copying connections, Cloudflare
 - [Grimmory library](Grimmory-Library) and [Grimmory sync](Grimmory-Sync): browsing, downloads, progress, bookmarks, highlights
+- [BookOrbit](BookOrbit): BookOrbit as the book server instead of Grimmory (browse and download so far)
 - [Home and bookshelves](Home-and-Bookshelves), [Picture books](Picture-Books)
 - [Notes](Notes) (and drawing), [Calendar](Calendar), [Music](Music), [Audiobooks and read aloud](Audiobooks-and-Read-Aloud), [Bluetooth](Bluetooth), [House](House) (Home Assistant)
 - [Sync with a computer](Sync-with-a-Computer) (Kindles without Wi‑Fi), [Wi‑Fi: on, off, auto](Wi-Fi)

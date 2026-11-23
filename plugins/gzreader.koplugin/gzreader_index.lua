@@ -89,6 +89,10 @@ local function collect(api, report)
         page = page + 1
         report(page, pages)
     end
+    -- (a server whose book lists don't say each book's library, BookOrbit, counts them itself)
+    if next(libraries) == nil and type(api.libraryCounts) == "function" then
+        libraries = api:libraryCounts() or libraries
+    end
     -- Subtitles: only Grimmory's web book list has them. Optional (older
     -- servers may not have /books/page); failures just leave them out.
     local subtitles = {}

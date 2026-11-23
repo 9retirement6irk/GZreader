@@ -306,7 +306,7 @@ end
 
 local function online(plugin)
     local api = plugin.api
-    if type(api) ~= "table" or api.offline or not api:isPaired() then return false end
+    if type(api) ~= "table" or api.offline or api.books_only or not api:isPaired() then return false end
     local ok, NetworkMgr = pcall(require, "ui/network/manager")
     return ok and NetworkMgr:isConnected() and true or false
 end
@@ -409,6 +409,10 @@ end
 function Shelves.ready(plugin)
     local _ = require("gettext")
     local api = plugin.api
+    if type(api) == "table" and api.books_only then
+        info(_("Putting books on shelves isn't available with BookOrbit yet."), 4)
+        return false
+    end
     if type(api) == "table" and api:isPaired() then return true end
     if type(api) == "table" and api.offline then
         info(_("Sign in to Grimmory to continue: plug this Kindle into a computer and sync with the sync page (Settings → General → Transfer → Sync through a computer)."), 6)

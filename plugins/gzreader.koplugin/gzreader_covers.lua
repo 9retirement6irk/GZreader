@@ -38,8 +38,17 @@ function Covers.notePlex(id, thumb)
     if id and thumb then Covers.plex_thumbs[tostring(id)] = thumb end
 end
 
+--- Covers are kept by book id, and each book server has its own ids: BookOrbit's
+--- are in their own folder (space = "bookorbit"; nil: Grimmory's, as before).
+function Covers.useSpace(space)
+    space = space and ("-" .. space) or ""
+    if space == (Covers.space or "") then return end
+    Covers.space, Covers.dir_ok = space, nil
+    Covers.memory = {} -- (the shrunk ones in memory are the other server's books)
+end
+
 function Covers.dir()
-    local dir = DataStorage:getDataDir() .. "/cache/gzreader-covers"
+    local dir = DataStorage:getDataDir() .. "/cache/gzreader-covers" .. (Covers.space or "")
     if not Covers.dir_ok then
         lfs.mkdir(DataStorage:getDataDir() .. "/cache")
         lfs.mkdir(dir)

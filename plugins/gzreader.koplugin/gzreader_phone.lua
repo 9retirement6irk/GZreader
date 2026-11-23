@@ -108,7 +108,7 @@ local function state(S, flash)
     local st = { base = S.base, flash = flash.text and { ok = flash.ok, text = flash.text } or nil }
     -- Grimmory
     local store = plugin.store
-    local g = { connected = plugin.api and plugin.api:isPaired() or false, username = store.username,
+    local g = { connected = plugin.api and plugin.api:isPaired() or false, username = store.username, backend = plugin:backend(),
         host = host(store.server) }
     g.redirect_uri, g.sso_relay = Phone.ssoRedirect(plugin, S.origin)
     g.form = sec == "grimmory" and flash.form
@@ -391,7 +391,7 @@ function Phone.open(plugin, opts)
         if cached ~= nil then return cached end
         local srv = Api.normalizeServer(server_input)
         if not srv then return nil end
-        local base, settings = plugin.api:publicSettings(srv)
+        local base, settings = plugin:clientFor("grimmory"):publicSettings(srv)
         if not base or type(settings) ~= "table" then return nil end
         local info = false
         if settings.oidcEnabled == true then
@@ -410,14 +410,15 @@ function Phone.open(plugin, opts)
     end
     local function grimmoryFailed(form, err)
         if failedLogin() then return 200, "text/html", PairPage.gone() end
-        return back({ section = "grimmory", error = err, form = { server = form.server, username = form.username } })
+        return back({ section = "grimmory", error = err, form = { server = form.server, username = form.username, backend = form.backend } })
     end
 
     local function startSso(form)
         local srv = Api.normalizeServer(form.server or "")
         if not srv then return grimmoryFailed(form, _("Enter your Grimmory address first.")) end
-        plugin.api.explicit_https = (form.server or ""):match("^%s*https://") ~= nil
-        local base, settings = plugin.api:publicSettings(srv)
+        local client = plugin:clientFor("grimmory") -- (single sign-on is Grimmory's)
+        client.explicit_https = (form.server or ""):match("^%s*https://") ~= nil
+        local base, settings = client:publicSettings(srv)
         if not base then return grimmoryFailed(form, plugin:describeError(settings)) end
         local pd = type(settings.oidcProviderDetails) == "table" and settings.oidcProviderDetails or {}
         if settings.oidcEnabled ~= true or not Api.str(pd.clientId) or not Api.str(pd.issuerUri) then
@@ -457,15 +458,15 @@ function Phone.open(plugin, opts)
             return 200, "text/html", PairPage.gone()
         end
         S.sso = nil -- single use
-        local previous = { plugin.store.server, plugin.store.username }
-        local ok, err = plugin.api:oidcExchange(session.base, {
+        local previous = plugin:signedInAs()
+        local ok, err = plugin:clientFor("grimmory"):oidcExchange(session.base, {
             code = params.code, code_verifier = session.verifier, redirect_uri = session.redirect_uri,
             nonce = session.nonce, state = session.state,
         }, Phone.originOf(session.redirect_uri))
         if ok then
             Log.info("sso: signed in as", tostring(plugin.store.username), session.relay and "(hand-off page)" or "(this Kindle's address)")
             if not session.relay then plugin.store.sso_direct_ok = true end
-            plugin:afterLogin(previous)
+            plugin:afterLogin(previous, "grimmory")
             return grimmoryOk()
         end
         Log.warn("sso: exchange failed:", tostring(err))
@@ -474,8 +475,11 @@ function Phone.open(plugin, opts)
 
     local routes = {}
     routes["/grimmory"] = function(form)
-        if form.action == "sso" then return startSso(form) end
-        local ok, err = plugin:connect(form.server or "", form.username or "", form.password or "")
+        if form.action == "sso" and form.backend ~= "bookorbit" then return startSso(form) end
+        if form.action == "sso" and form.backend == "bookorbit" then
+            return grimmoryFailed(form, T(_("BookOrbit is signed in to with its %1 sync user name and password, not single sign-on."), "KOReader"))
+        end
+        local ok, err = plugin:connect(form.server or "", form.username or "", form.password or "", form.backend)
         if ok then return grimmoryOk() end
         return grimmoryFailed(form, err)
     end
@@ -484,8 +488,8 @@ function Phone.open(plugin, opts)
         pcall(plugin.api.logout, plugin.api)
         plugin.api:clearTokens()
         S.changes.grimmory = true
-        Log.info("phone: disconnected from Grimmory")
-        toast(_("Disconnected from Grimmory."))
+        Log.info("phone: disconnected from", plugin:serverName())
+        toast(T(_("Disconnected from %1."), plugin:serverName()))
         return back({ ok = true, text = _("Disconnected from Grimmory. Downloaded books stay on the Kindle."), section = "grimmory" })
     end
     -- Plex: its own sign-in page (a "strong" PIN), then back here

@@ -25,6 +25,7 @@
 - [Setup page and connections](Setup-Page-and-Connections)
 - [Grimmory library](Grimmory-Library)
 - [Grimmory sync](Grimmory-Sync)
+- [BookOrbit](BookOrbit)
 - [Home and bookshelves](Home-and-Bookshelves)
 - [Picture books](Picture-Books)
 - [Notes](Notes)

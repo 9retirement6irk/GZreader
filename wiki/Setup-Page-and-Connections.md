@@ -87,6 +87,8 @@ settings: [Home and bookshelves](Home-and-Bookshelves#pictures-from-immich).
 
 ## Connect to Grimmory
 
+*(Using BookOrbit instead of Grimmory? Choose **BookOrbit** under **Book server** in the same form: see [BookOrbit](BookOrbit).)*
+
 Open the **Catalog** tab. Grimmory's options (connection, sync, bookmarks,
 highlights, auto-download shelf) are in **Settings → Accounts and services → Books**
 ; Memos (the Notes tab) is in **Settings →
