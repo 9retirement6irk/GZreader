@@ -57,23 +57,21 @@ local Log = require("gzreader_log")
 
 local Usb = {
     FORMAT = 1,
-    MODELS = { Kindle2 = true, KindleDX = true, KindleDXG = true }, -- no Wi-Fi
     PAGE_URL = "https://9retirement6irk.github.io/GZreader/sync/",
     FOLDER = ".gzsync",
 }
 
 ---------------------------------------------------------------- which Kindles
 
---- This model has no Wi-Fi.
+--- This model has no Wi-Fi (the list: gzreader_net.lua Net.NO_WIFI_MODELS).
 function Usb.noWifi(model)
-    return Usb.MODELS[tostring(model or Device.model)] == true
+    return require("gzreader_net").noWifi(model)
 end
 
---- Sync through a computer: Kindles without Wi-Fi, or chosen in Settings.
+--- Sync through a computer: Kindles without Wi-Fi, or chosen in Settings
+--- (gzreader_net.lua: start-up asks there, without loading this module).
 function Usb.active()
-    local s = G_reader_settings and G_reader_settings:readSetting("gzreader_usb_sync")
-    if s == true or s == false then return s end
-    return Usb.noWifi()
+    return require("gzreader_net").usbSyncChosen()
 end
 
 function Usb.setActive(on)
