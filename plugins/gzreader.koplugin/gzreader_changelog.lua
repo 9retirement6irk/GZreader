@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Home: a tap on Reading stats opens the stats page", text = "A tap on Home's Reading stats (every device) widget now opens the reading stats page, as it was meant to. It did nothing because ZenOS's \"hold a widget to change it\" setting, on by default, stopped the tap. A hold still opens the widget's settings." },
+        },
+    },
+    {
         version = "2026.11.22",
         changes = {
             { short = "Colour Kindles: Immich photos in colour", text = "On a Kindle Colorsoft or Scribe Colorsoft, the pictures from your Immich album (the sleep screen and the Home wallpaper) are kept in colour instead of being made grey. Pictures already on the Kindle stay grey until they are swapped for others from the album (about half each time GZreader gets new pictures)." },

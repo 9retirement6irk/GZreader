@@ -5100,6 +5100,29 @@ do
     rplugin.localPathFor = was_local
 end
 
+print("Home's reading stats widget: a tap opens the reading stats page")
+;(function()
+    local f = io.open(PLUGIN .. "/../zenos.koplugin/modules/filebrowser/patches/home/widgets/grimmory_stats.lua", "rb")
+    local src = f:read("*a"); f:close()
+    local body = src:match("(tap%.onTapServerStats = function.-\n    end)\n")
+    check(body ~= nil, "the widget's tap handler is there")
+    if not body then return end
+    local opened = 0
+    local env = setmetatable({ rawget = function(_t, k) if k == "__GZ_SERVER_STATS_PAGE" then return function() opened = opened + 1 end end end,
+        pcall = pcall, tap = {} }, { __index = _G })
+    local ctx = { editMode = true, openTopMenu = function() return false end }
+    env.ctx = ctx
+    assert(load(body, "tap", "t", env))()
+    local inside = { contains = function() return true end }
+    local outside = { contains = function() return false end }
+    local ges = { pos = {} }
+    check(env.tap.onTapServerStats({ dimen = inside }, nil, ges) == true and opened == 1,
+        "a tap opens the page, also with ZenOS's 'hold a widget to change it' on (its default)")
+    check(env.tap.onTapServerStats({ dimen = outside }, nil, ges) == false and opened == 1, "a tap elsewhere doesn't")
+    ctx.openTopMenu = function() return true end
+    check(env.tap.onTapServerStats({ dimen = inside }, nil, ges) == true and opened == 1, "a tap that opens the top menu doesn't open it too")
+end)()
+
 print("Ratings (Grimmory's personal rating)")
 do
     local R = require("gzreader_ratings")
