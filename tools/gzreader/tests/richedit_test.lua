@@ -42,7 +42,9 @@ stub("ui/rendertext", {
     sizeUtf8Text = function(_s, _x, _w, _face, text) return { x = 10 * #require("gzreader_blocks").chars(text) } end,
     renderUtf8Text = function(_s, _bb, x, y, face, text) drawn[#drawn + 1] = { x = x, y = y, face = face, text = text } end,
 })
-stub("ui/uimanager", { setDirty = function() dirty = dirty + 1 end, scheduleIn = function() end })
+local ticks = {}
+stub("ui/uimanager", { setDirty = function() dirty = dirty + 1 end, scheduleIn = function() end,
+    nextTick = function(_s, fn) ticks[#ticks + 1] = fn end })
 local KB = class()
 function KB:init() self.dimen = { h = 400 }; self.visible = false end
 function KB:showKeyboard() self.visible = true end
@@ -391,6 +393,45 @@ do
     pd:onPanReleaseEdit(nil, {})
 end
 
+-- ------------------------------------------------------------ Memos' block menu ("/", the bar's +)
+do
+    local r = editor("Plan", false)
+    local asked = {}
+    r.editor.blockMenu = function(_e, o) asked[#asked + 1] = o or {} end
+    check(RE.BAR[#RE.BAR].id == "block" and RE.BAR[#RE.BAR].label == "+", "the selection bar ends with + (a block)")
+    r:useTool("block")
+    check(#asked == 1 and not asked[1].slash, "+: the note editor's block menu")
+    -- "/" on a line with words: just a /
+    r:addChars("/")
+    for _i, fn in ipairs(ticks) do fn() end
+    ticks = {}
+    check(#asked == 1 and text(r) == "Plan/", "a / after words is just a /")
+    r:delChar()
+    -- "/" on an empty line: the menu, as in Memos
+    r:addChars("\n")
+    r:addChars("/")
+    for _i, fn in ipairs(ticks) do fn() end
+    ticks = {}
+    check(#asked == 2 and asked[2].slash == true, "/ on an empty line: the block menu")
+    r:addBlock("quote", nil, true)
+    r:addChars("Less is more")
+    check(text(r) == "Plan\n\n> Less is more" and kinds(r) == "paragraph,raw",
+        "Quote chosen: the / taken out, a quote typed into (" .. show(text(r)) .. ")")
+    -- a heading on the cursor's line; a callout after it
+    r.cur = at(r, 1, 3)
+    r:addBlock("h4")
+    check(block(r, 1).kind == "heading" and block(r, 1).level == 4, "Heading 4 on the cursor's line")
+    r:addBlock("callout", "NOTE")
+    r:addChars("Read later")
+    check(text(r) == "#### Plan\n\n> [!NOTE]\n> Read later\n\n> Less is more", "Callout after it: > [!NOTE] (" .. show(text(r)) .. ")")
+    -- closed without choosing: the / stays
+    local r2 = editor("", true)
+    r2.editor.blockMenu = function() end
+    r2:addChars("/")
+    ticks = {}
+    check(text(r2) == "/", "the menu closed without a choice: the / stays, as in Memos")
+end
+
 -- ------------------------------------------------------------ a long note scrolls
 do
     local parts = {}
@@ -494,13 +535,13 @@ do
         "…under the line when there's no room above it, inside the page")
     local ids = {}
     for i, t in ipairs(RE.BAR) do ids[i] = t.id end
-    check(table.concat(ids, ",") == "bold,italic,heading,bullet,task,ordered,tag", "its buttons: B, I, H, list, checklist, numbered, tag")
+    check(table.concat(ids, ",") == "bold,italic,heading,bullet,task,ordered,tag,block", "its buttons: B, I, H, list, checklist, numbered, tag, + (a block)")
     r:onHoldPanEdit(nil, ges(l1.x0 + 10 * 26, l1.y + 5))
     r:onHoldReleaseEdit(nil, ges(l1.x0 + 10 * 26, l1.y + 5))
     check(r.bar_open == true and r:selection() ~= nil, "drag for more: the bar stays")
     rect = r:barRect()
     local function barPoint(i) return ges(rect.x + (i - 1) * rect.cell + 5, rect.y + 5) end
-    check(r:barToolAt(rect.x + 5, rect.y + 5).id == "bold" and r:barToolAt(rect.x + rect.w - 2, rect.y + 5).id == "tag"
+    check(r:barToolAt(rect.x + 5, rect.y + 5).id == "bold" and r:barToolAt(rect.x + rect.w - 2, rect.y + 5).id == "block"
         and r:barToolAt(rect.x + 5, rect.y + rect.h + 3) == nil, "a point on the bar is its button; beside it, none")
     r:onTapEdit(nil, barPoint(1))
     check(text(r):match("Pack the %*%*tent and the maps%*%*%.") ~= nil and r.bar_open == true and r:selection() ~= nil,
