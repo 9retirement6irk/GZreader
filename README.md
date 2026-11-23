@@ -5,11 +5,11 @@
 <h1 align="center">GZreader</h1>
 
 <p align="center">
-  <b>Grimmory + ZenOS + KOReader for Kindles, Kobos and Nooks</b><br>
-  Your <a href="https://grimmory.org">Grimmory</a> (formerly BookLore) library on an e-reader,
-  from the Kindle 2 and Nook 1 to the Scribe, and on Kobos: read, and keep your place, bookmarks,
-  highlights and notes in sync with Grimmory; send books from your browser; listen to
-  audiobooks and Plex music; write and draw Memos notes; see your calendars.
+  <b>Your self-hosted library on a Kindle.</b><br>
+  An e-reader for the services you run yourself: books from
+  <a href="https://grimmory.org">Grimmory</a>, notes from Memos, music from Plex, photos from Immich,
+  your calendars and Home Assistant. On Kindles from the Kindle 2 to the Scribe, on Kobos, and on
+  the first Nooks. Every connection is optional.
 </p>
 
 <p align="center">
@@ -22,8 +22,22 @@
 ---
 
 GZreader is [KOReader](https://github.com/koreader/koreader) trimmed down to
-reading, with the [ZenOS](https://github.com/xZenLabs/zen-os) interface and a
-built-in connection to your self-hosted **Grimmory** book server.
+reading, with the [ZenOS](https://github.com/xZenLabs/zen-os) interface and
+built-in connections to the servers a self-hoster already runs. The name is
+where it started (**G**rimmory + **Z**enOS + KO**reader**); it has grown past
+books since:
+
+| Your server | What the e-reader does with it |
+|---|---|
+| [Grimmory](https://grimmory.org) (books; [BookOrbit](https://github.com/bookorbit/bookorbit) is in testing) | browse and download your books and audiobooks; keep your place, bookmarks, highlights and notes in sync |
+| [Memos](https://usememos.com) | sticky notes, a rich text editor, drawings, a journal |
+| [Plex](https://www.plex.tv) | music, and audiobooks from a Plex library |
+| [Immich](https://immich.app) | your photos as the sleep screen and wallpaper, and in notes |
+| CalDAV and calendar links (Nextcloud, Radicale, Baïkal, any `.ics` link) | your calendars |
+| [Home Assistant](https://www.home-assistant.io) | lights, switches and the weather on the House tab |
+
+None of them is required. Without any server it's still a reader you can send
+books to from your browser; each one you connect adds its part.
 
 It runs on Kindles with a keyboard, a 5-way, a touchscreen or a pen, from the
 Kindle 2 to the Kindle Scribe, and as test builds on Kobos, the Nook 1st Edition
