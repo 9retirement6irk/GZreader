@@ -327,6 +327,12 @@ function Browser.grimmoryItems(self)
             add(_("Connect to BookOrbit by typing"), "keyboard", function() plugin:keyboardLogin(nil, "bookorbit") end)
         end
     end
+    if orbit and Browser.signedIn(self) and not usb and type(self.push) == "function" then
+        -- (asking BookOrbit for a book it doesn't have: gzreader_bo_requests.lua)
+        local Requests = require("gzreader_bo_requests")
+        add(_("Request a book"), "add", function() Requests.ask(plugin) end)
+        add(_("My book requests"), "details", function() Requests.open(self) end)
+    end
     if orbit then
         items[#items + 1] = Rows.about(_("About BookOrbit"), T(_("BookOrbit is your book server: the Catalog's books come from it.") .. " " .. require("gzreader_bookorbit").note() .. _("\n\nSign in with the %1 sync user name and password you made in BookOrbit (Settings → %1), not your website sign-in.\n\nRebuild library: BookOrbit's list of books fetched again, when the Catalog is missing books or shows old ones."), "KOReader"))
         return Rows.mark(items)

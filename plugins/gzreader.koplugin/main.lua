@@ -676,10 +676,10 @@ function Grimmory:menuItems()
         },
         {
             text_func = function()
-                return self.api.hasApiKey and self.api:hasApiKey() and _("BookOrbit API key (audiobooks): set") or _("BookOrbit API key (audiobooks)")
+                return self.api.hasApiKey and self.api:hasApiKey() and _("BookOrbit API key: set") or _("BookOrbit API key")
             end,
             enabled_func = function() return self:backend() == "bookorbit" and self.api:isPaired() end,
-            help_text = _("BookOrbit's audiobooks (listing, downloading, and where you stopped listening) need an API key as well as the sign-in. Make one in BookOrbit: Settings → API keys, with read and write access. Leave the box empty to remove the key."),
+            help_text = _("BookOrbit's audiobooks (listing, downloading, and where you stopped listening), changing collections and requesting books need an API key as well as the sign-in. Make one in BookOrbit: Settings → API keys, with read and write access (and “Request books” ticked, to request books). Leave the box empty to remove the key."),
             keep_menu_open = true,
             callback = function(touchmenu) self:askBookOrbitApiKey(touchmenu) end,
         },
@@ -905,7 +905,8 @@ local ERRORS = {
     bookorbit_no_file = _("BookOrbit has no file for this book that this Kindle can open."),
     bookorbit_no_api_key = _("BookOrbit's audiobooks need an API key: make one in BookOrbit (Settings → API keys, with read and write access), then enter it in Settings → Accounts and services → Books → BookOrbit API key."),
     bookorbit_api_key_refused = _("BookOrbit didn't accept the API key. It may have expired or been deleted: make a new one in BookOrbit (Settings → API keys) and enter it again."),
-    bookorbit_api_key_read_only = _("This BookOrbit API key is read-only, so where you stopped listening can't be saved. Make one with read and write access."),
+    bookorbit_api_key_read_only = _("This BookOrbit API key is read-only, so nothing can be saved to BookOrbit with it (where you stopped listening, collections, book requests). Make one with read and write access."),
+    bookorbit_requests_refused = _("BookOrbit didn't allow that. The API key needs “Request books” ticked when you make it, and your BookOrbit account has to be allowed to request books."),
     unsupported = _("That isn't available with BookOrbit yet."),
     no_https = require("gzreader_lan").noHttpsText(),
 }

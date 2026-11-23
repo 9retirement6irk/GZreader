@@ -334,6 +334,36 @@ try:
     check(call("POST", CB, API, {"bookIds": [103]})[1].get("errorCode") == "API_KEY_READ_ONLY", "a read-only key can't change a collection")
     call("POST", "/_mock/set", body={"api_key_write": True})
 
+    # --- book requests on the main API
+    BR = "/api/v1/book-requests"
+    code, j = call("POST", BR, API, {"title": "The Salt Road", "authors": ["Ines Ward"], "mediaKind": "ebook"})
+    check(code == 201 and j["subscribed"] is False and j["request"]["status"] == "pending" and j["request"]["authors"] == ["Ines Ward"], "a book requested")
+    rid = j["request"]["id"]
+    check(call("POST", BR, KO, {"title": "x", "mediaKind": "ebook"})[0] == 401, "…not with the e-reader sign-in")
+    check(call("POST", BR, API, {"title": "", "mediaKind": "ebook"})[0] == 400 and call("POST", BR, API, {"title": "x", "mediaKind": "comic"})[0] == 400
+          and call("POST", BR, API, {"title": "x", "mediaKind": "ebook", "extra": 1})[0] == 400, "requests: bad ones refused")
+    code, j = call("POST", BR, API, {"title": "the salt road", "mediaKind": "ebook"})
+    check(code == 201 and j["request"]["id"] == rid and j["subscribed"] is False, "asking again for the same book is the same request")
+    other = call("POST", "/_mock/set", body={"add_request": {"title": "Low Tide", "mediaKind": "audiobook", "userId": 2, "status": "searching"}})[1]["id"]
+    code, j = call("POST", BR, API, {"title": "Low Tide", "mediaKind": "audiobook"})
+    check(code == 201 and j["request"]["id"] == other and j["subscribed"] is True and j["request"]["status"] == "searching", "someone else's request joined")
+    code, j = call("GET", BR + "?page=1&limit=100", API)
+    check(code == 200 and j["total"] == 2 and [r["id"] for r in j["items"]] == [other, rid], "your requests listed, newest first (the joined one too)")
+    check(call("GET", BR + "?limit=500", API)[0] == 400, "requests: at most 100 a page")
+    call("POST", "/_mock/set", body={"request_update": {"id": rid, "status": "rejected", "decisionNote": "Not this month"}})
+    check(call("GET", BR + "/%d" % rid, API)[1]["decisionNote"] == "Not this month" and call("POST", BR + "/%d/cancel" % rid, API)[0] == 400,
+          "a decided request shows its note and can't be cancelled")
+    code, j = call("POST", BR, API, {"title": "The Salt Road", "mediaKind": "ebook"})
+    rid2 = j["request"]["id"]
+    check(code == 201 and rid2 != rid and call("POST", BR + "/%d/cancel" % rid2, API, {})[1]["status"] == "cancelled", "asked again after a no; then cancelled")
+    check(call("POST", BR + "/%d/cancel" % other, API, {})[0] == 403 and call("POST", BR + "/999/cancel", API, {})[0] == 404, "someone else's can't be cancelled")
+    call("POST", "/_mock/set", body={"request_permission": False})
+    check(call("GET", BR, API)[0] == 403 and call("POST", BR, API, {"title": "x", "mediaKind": "ebook"})[0] == 403, "without the Request books permission: 403")
+    call("POST", "/_mock/set", body={"request_permission": True, "api_key_write": False})
+    check(call("GET", BR, API)[0] == 200 and call("POST", BR, API, {"title": "x", "mediaKind": "ebook"})[1].get("errorCode") == "API_KEY_READ_ONLY",
+          "a read-only key lists requests but can't make one")
+    call("POST", "/_mock/set", body={"api_key_write": True})
+
     # --- the server away
     call("POST", "/_mock/set", body={"offline": True})
     check(call("GET", "/api/v1/koreader/users/auth", KO)[0] == 503, "offline: 503")

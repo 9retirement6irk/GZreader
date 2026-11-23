@@ -98,6 +98,9 @@ def fresh():
         "api_keys_enabled": True,
         "api_key_write": True,    # False: a read key (PUT answers 403 API_KEY_READ_ONLY)
         "offline": False,         # every route answers 503
+        "requests": [],           # book requests: {id, userId, title, authors, mediaKind, status, ...}
+        "request_permission": True,  # the "Request books" permission (False: 403)
+        "request_status": "pending",  # what a new request starts as ("approved" with auto-approve)
         "progress": {},           # hash -> {percentage, progress, device, device_id, timestamp}
         "playback": {},           # book id -> state
         "seen": [],               # (method, path) of signed-in requests, newest last
@@ -540,6 +543,20 @@ class Handler(BaseHTTPRequestHandler):
             web = changes.pop("web_highlight", None)
             if web:
                 return self.send(200, web_highlight(web))
+            # "add_request": {"title", "mediaKind", "userId"?, "status"?, ...}: a request as the server has it
+            add = changes.pop("add_request", None)
+            if add:
+                r = {"id": 500 + len(STATE["requests"]) + 1, "userId": 1, "authors": [], "mediaKind": "ebook", "status": "pending"}
+                r.update(add)
+                STATE["requests"].append(r)
+                return self.send(200, {"id": r["id"]})
+            # "request_update": {"id", ...}: what the server did with one (approved it, found it, ...)
+            upd = changes.pop("request_update", None)
+            if upd:
+                for r in STATE["requests"]:
+                    if r["id"] == upd.get("id"):
+                        r.update(upd)
+                return self.send(200, {"ok": True})
             for cid, owner in (changes.pop("collection_owners", None) or {}).items():
                 COLLECTIONS.setdefault(int(cid), "Shared by someone else")
                 COLLECTION_OWNERS[int(cid)] = owner
@@ -632,6 +649,14 @@ class Handler(BaseHTTPRequestHandler):
                     if method == "DELETE" and cid in b["collections"]:
                         b["collections"].remove(cid); changed += 1
             return self.send(200 if method == "DELETE" else 201, {"changed": changed})
+        # book requests: ask for a book the server doesn't have; your own listed, newest first
+        if p == "book-requests" or p.startswith("book-requests/"):
+            if not self.api_key(write=method != "GET"):
+                return
+            STATE["seen"].append([method, p])
+            if not STATE["request_permission"]:
+                return self.error(403, "Forbidden resource")
+            return self.book_requests(method, p[len("book-requests"):].lstrip("/"), q)
         if p.startswith("audiobooks/"):
             if not self.api_key(write=method != "GET"):
                 return
@@ -893,6 +918,57 @@ class Handler(BaseHTTPRequestHandler):
         return self.error(404, "Not Found")
 
     # Main API: audiobooks ------------------------------------------------------
+    def book_requests(self, method, p, q):
+        def item(r):
+            return {"id": r["id"], "userId": r["userId"], "requesterUsername": "will" if r["userId"] == 1 else "someone",
+                    "mediaKind": r["mediaKind"], "status": r["status"], "title": r["title"], "subtitle": None,
+                    "authors": r["authors"], "statusReason": r.get("statusReason"), "decisionNote": r.get("decisionNote"),
+                    "matchedBookId": r.get("matchedBookId"), "createdAt": "2026-11-%02dT08:00:00.000Z" % (r["id"] % 27 + 1)}
+        mine = [r for r in STATE["requests"] if r["userId"] == 1 or 1 in r.get("subscribers", [])]
+        if p == "" and method == "POST":
+            d = self.body()
+            allowed = {"title", "subtitle", "authors", "mediaKind", "note", "seriesName", "seriesIndex", "isbn10", "isbn13", "publishedYear", "language"}
+            if (not isinstance(d, dict) or set(d) - allowed or not isinstance(d.get("title"), str) or not d["title"].strip() or len(d["title"]) > 500
+                    or d.get("mediaKind") not in ("ebook", "audiobook")
+                    or ("authors" in d and (not isinstance(d["authors"], list) or not all(isinstance(a, str) for a in d["authors"])))):
+                return self.error(400, "Bad Request")
+            for r in STATE["requests"]:
+                if r["title"].lower() == d["title"].strip().lower() and r["mediaKind"] == d["mediaKind"] and r["status"] not in ("cancelled", "rejected"):
+                    if r["userId"] != 1 and 1 not in r.setdefault("subscribers", []):
+                        r["subscribers"].append(1)
+                    return self.send(201, {"request": item(r), "subscribed": r["userId"] != 1})
+            r = {"id": 500 + len(STATE["requests"]) + 1, "userId": 1, "title": d["title"].strip(), "authors": d.get("authors") or [],
+                 "mediaKind": d["mediaKind"], "status": STATE["request_status"]}
+            STATE["requests"].append(r)
+            return self.send(201, {"request": item(r), "subscribed": False})
+        if p == "" and method == "GET":
+            try:
+                page, limit = int(q.get("page", "1")), int(q.get("limit", "20"))
+            except ValueError:
+                return self.error(400, "Bad Request")
+            if page < 1 or limit < 1 or limit > 100:
+                return self.error(400, "Bad Request")
+            rows = sorted(mine, key=lambda r: -r["id"])
+            return self.send(200, {"items": [item(r) for r in rows[(page - 1) * limit:page * limit]], "total": len(rows)})
+        m = re.match(r"^(\d+)/cancel$", p)
+        if m and method == "POST":
+            for r in STATE["requests"]:
+                if r["id"] == int(m.group(1)):
+                    if r["userId"] != 1:
+                        return self.error(403, "You cannot cancel this book request")
+                    if r["status"] in ("cancelled", "rejected", "available"):
+                        return self.error(400, "This request can no longer be cancelled")
+                    r["status"] = "cancelled"
+                    return self.send(200, item(r))
+            return self.error(404, "Book request not found")
+        m = re.match(r"^(\d+)$", p)
+        if m and method == "GET":
+            for r in mine:
+                if r["id"] == int(m.group(1)):
+                    return self.send(200, item(r))
+            return self.error(404, "Book request not found")
+        return self.error(404, "Not Found")
+
     def audiobooks(self, method, p):
         m = re.match(r"^(\d+)/(.+)$", p)
         ab = m and AUDIOBOOKS.get(int(m.group(1)))
