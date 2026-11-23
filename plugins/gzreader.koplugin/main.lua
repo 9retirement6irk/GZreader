@@ -112,11 +112,6 @@ function Grimmory:init()
         Grimmory.layout_scheduled = true
         pcall(function() require("gzreader_layout").schedule(self) end)
     end
-    if not Grimmory.usage_scheduled then
-        Grimmory.usage_scheduled = true
-        -- (usage statistics, sent up to 1.28.1: what's left of them deleted; Full becomes debug reports on)
-        UIManager:scheduleIn(15, function() pcall(function() require("gzreader_remote").forgetUsage() end) end)
-    end
     self.settings = Grimmory.shared_settings
     -- a book opening (this instance is its reader's): the library copy let go
     -- before the book is laid out (gzreader_offlineapi.lua)
@@ -320,7 +315,6 @@ function Grimmory:init()
             if not m._gz_full then return require("gzreader_panel").show(plugin) end
             return orig_key and orig_key(m, a, k) or (orig_show and orig_show(m))
         end
-        pcall(function() require("gzreader_touch").forgetKOReaderDoubleTap() end)
         -- a long press on a book on Home: Manage it (Open and Delete, then
         -- ZenOS's own book menu), as the panel's Manage tile does
         rawset(_G, "__GZ_MANAGE_BOOK", function(path, context)

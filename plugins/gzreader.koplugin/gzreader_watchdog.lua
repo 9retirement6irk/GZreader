@@ -194,8 +194,7 @@ local function flush()
         if payload and ENDPOINT[kind] then
             local f = failing[name]
             if f and now() < f.next_at then return end -- (the feed failed it: not yet; the rest wait, in order)
-            -- (written before 1.34 it can hold a NUL, "\u0000": the feed answered 500 every time)
-            payload = cleanText(payload):gsub("\\u0000", "")
+            payload = cleanText(payload)
             local reached, code = post(base .. ENDPOINT[kind], payload)
             if not reached then return end -- offline: try again later
             if code and code >= 500 then

@@ -116,8 +116,8 @@ s.serve_forever()
     write(fdir .. "/heartbeat", os.time() .. " run on Home")
     write(fdir .. "/spool/10000001-send.json", '{"eventName":"POISON one"}')
     write(fdir .. "/spool/10000002-send.json", '{"eventName":"after it"}')
-    -- written by GZreader before 1.34: the end of a crash.log with NUL bytes, a letter cut in two
-    write(fdir .. "/spool/10000003-send.json", '{"eventName":"nul test","eventContent":"end of crash.log\\u0000\\u0000 caf\195"}')
+    -- the end of a crash.log with a letter cut in two
+    write(fdir .. "/spool/10000003-send.json", '{"eventName":"nul test","eventContent":"end of crash.log caf\195"}')
     local wpid = tonumber(sh(string.format(
         "cd '%s' && GZ_WD_TICK=1 GZ_WD_STALL=100 GZ_WD_MAX_5XX=3 GZ_WD_MAX_WAIT=2 luajit '%s/gzreader_watchdog.lua' '%s' %d >/dev/null 2>&1 & echo $!",
         fdir, PLUGIN, fdir, ffi.C.getpid())))
@@ -150,7 +150,7 @@ s.serve_forever()
     for a in pairs(ua) do agents[#agents + 1] = a end
     check(#agents == 1 and agents[1] == "GZreader/9.8.7-beta.abc", "every request says GZreader/<version>: " .. table.concat(agents, ", "))
     check(poison == 3 and after == 1, "after 3 server errors it's set aside, and the next message is sent (" .. poison .. " tries, " .. after .. " sent)")
-    check(#nul == 1 and nul[1] == "200", "a report with NUL bytes and a cut letter: cleaned, and the feed takes it at once (" .. table.concat(nul, ",") .. ")")
+    check(#nul == 1 and nul[1] == "200", "a report with a cut letter: cleaned, and the feed takes it at once (" .. table.concat(nul, ",") .. ")")
     local files = sh("ls '" .. fdir .. "/spool'")
     check(files:find("10000001%-send%.json%.failed") ~= nil and not files:find("%.json\n") and not files:find("%.json$"),
         "…kept as .failed; nothing left to send: " .. files:gsub("\n", " "))
