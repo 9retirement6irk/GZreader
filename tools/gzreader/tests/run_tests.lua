@@ -15908,6 +15908,17 @@ print("Immich: an album's pictures for the sleep screen and the Home wallpaper")
     plugin.store.immich = nil
 end)()
 
+print("The mock BookOrbit server answers as the real one does, and the probe script (mock_bookorbit_test.py)")
+;(function()
+    local pp = io.popen("python3 -I " .. PLUGIN .. "/../../tools/gzreader/tests/mock_bookorbit_test.py " .. (PORT + 60) .. " 2>&1")
+    local out = pp:read("*a"); pp:close()
+    for line in out:gmatch("[^\n]+") do
+        if line:find("FAIL", 1, true) then print("    " .. line) end
+    end
+    local passed, failed = out:match("(%d+) passed, (%d+) failed")
+    check(tonumber(passed) and tonumber(passed) >= 88 and failed == "0", "mock_bookorbit_test.py: " .. tostring(passed) .. " passed, " .. tostring(failed) .. " failed")
+end)()
+
 print("Immich photos for notes and drawings (gzreader_immichpick.lua): the Memos fork's connection, or GZreader's")
 ;(function()
     local Pick = require("gzreader_immichpick")
