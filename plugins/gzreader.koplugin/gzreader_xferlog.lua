@@ -89,11 +89,41 @@ local function kb(bytes, secs)
 end
 local function mb(bytes) return string.format("%.1f MB", bytes / 1048576) end
 
+--- The Wi-Fi signal as the driver reports it, in dBm ("-56"; closer to 0 is stronger: about
+--- -50 is strong, -70 weak, -80 barely usable), or nil. From /proc/net/wireless: numbers
+--- only, never the network's name.
+function XferLog.signal()
+    local text
+    if XferLog.readFile then
+        text = XferLog.readFile("/proc/net/wireless")
+    else
+        local f = io.open("/proc/net/wireless", "r")
+        if f then text = f:read("*a"); f:close() end
+    end
+    if type(text) ~= "string" then return nil end
+    local ok, ifname = pcall(function() return require("gzreader_wifips").ifname() end)
+    ifname = ok and ifname or "wlan0"
+    for line in text:gmatch("[^\n]+") do
+        local name, rest = line:match("^%s*([%w_%-]+):%s*(.*)$")
+        if name == ifname then
+            -- status, link quality, level, noise
+            local level = rest:match("^%S+%s+%-?[%d%.]+%s+(%-?%d+)")
+            level = tonumber(level)
+            -- (some drivers give the level as a byte: 200 means -56)
+            if level and level > 0 then level = level - 256 end
+            if level and level < 0 and level > -120 then return level end
+        end
+    end
+    return nil
+end
+
 --- The start line: what could hold a transfer back on this device.
 function XferLog.probe()
     local parts = {}
     local ps, why = XferLog.wifiPower()
     parts[#parts + 1] = "Wi-Fi power saving " .. (ps or ("unknown (" .. tostring(why) .. ")"))
+    local dbm = XferLog.signal()
+    if dbm then parts[#parts + 1] = "signal " .. dbm .. " dBm" end
     local rmem = rd("/proc/sys/net/ipv4/tcp_rmem")
     if rmem then parts[#parts + 1] = "TCP receive buffer " .. rmem:gsub("%s+", " ") end
     local gov = rd("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor")
@@ -139,11 +169,12 @@ function XferLog.sink(sink, what)
         local all = (busy and st.mark_busy and jiffies > st.mark_jiffies)
             and (busy - st.mark_busy) / (jiffies - st.mark_jiffies) or nil
         local ps = XferLog.wifiPower()
+        local dbm = XferLog.signal()
         start()
-        Log.info(tag, string.format("%s in %d s (%s), %s so far · own CPU %d%%%s · longest wait %.1f s%s",
+        Log.info(tag, string.format("%s in %d s (%s), %s so far · own CPU %d%%%s · longest wait %.1f s%s%s",
             mb(got), math.floor(secs + 0.5), kb(got, secs), mb(st.total), math.floor(own * 100 + 0.5),
             all and string.format(", all %d%%", math.floor(all * 100 + 0.5)) or "",
-            st.longest, ps and (" · Wi-Fi power saving " .. ps) or ""))
+            st.longest, ps and (" · Wi-Fi power saving " .. ps) or "", dbm and (" · signal " .. dbm .. " dBm") or ""))
         st.lines = st.lines + 1
         st.mark_at, st.mark_bytes, st.mark_cpu = t, st.total, XferLog.cpu()
         st.mark_busy, st.mark_jiffies = busy, jiffies

@@ -45,6 +45,23 @@ local function inner(chunk, err)
     return 1
 end
 
+print("== signal strength")
+;(function()
+    package.loaded["gzreader_wifips"] = package.loaded["gzreader_wifips"] or { ifname = function() return "wlan0" end, get = function() return ps end }
+    local head = "Inter-| sta-|   Quality        |   Discarded packets               | Missed | WE\n face | tus | link level noise |  nwid  crypt   frag  retry   misc | beacon | 22\n"
+    X.readFile = function() return head .. " wlan0: 0000   54.  -56.  -256        0      0      0      0      0        0\n" end
+    check(X.signal() == -56, "the signal in dBm from the driver's numbers")
+    X.readFile = function() return head .. "  eth0: 0000   54.  -40.  -256  0 0 0 0 0 0\n wlan0: 0000   30   200   0  0 0 0 0 0 0\n" end
+    check(X.signal() == -56, "a driver that gives it as a byte; another interface's line isn't taken")
+    X.readFile = function() return head end
+    check(X.signal() == nil, "Wi-Fi off: no signal, nothing said")
+    X.readFile = function() return nil end
+    check(X.signal() == nil and X.probe():find("signal", 1, true) == nil, "no such file: nothing said")
+    X.readFile = function() return head .. " wlan0: 0000   54.  -71.  -256  0 0 0 0 0 0\n" end
+    check(X.probe():find("Wi-Fi power saving on · signal -71 dBm · TCP receive buffer", 1, true) ~= nil, "the start line has the signal " .. X.probe())
+    X.readFile = function() return nil end
+end)()
+
 print("== download speed log")
 
 ;(function()
@@ -132,8 +149,11 @@ end)()
     local function src(p) local f = assert(io.open(REPO .. "/" .. p)); local s = f:read("*a"); f:close(); return s end
     local mod = src("plugins/gzreader.koplugin/gzreader_xferlog.lua")
     check(not mod:find("popen", 1, true) and not mod:find("os.execute", 1, true), "no shell commands (no fork of GZreader per line)")
-    check(not mod:find("ESSID", 1, true) and not mod:find("/proc/net/wireless", 1, true) and not mod:find("wpa", 1, true),
-        "no Wi-Fi network name is read")
+    -- (/proc/net/wireless holds the interface's name and signal numbers, no network name;
+    -- XferLog.signal gives back one number from it and nothing else, checked above)
+    check(not mod:find("ESSID", 1, true) and not mod:find("wpa", 1, true) and not mod:find("iwgetid", 1, true) and not mod:find("iwconfig", 1, true)
+        and select(2, mod:gsub("/proc/net/wireless", "")) <= 3 and type(X.signal) == "function",
+        "no Wi-Fi network name is read (only the signal's number)")
     check(src("plugins/gzreader.koplugin/gzreader_api.lua"):find('require("gzreader_xferlog").sink(ltn12.sink.file(fh), "book "', 1, true) ~= nil,
         "book downloads are measured")
     check(src("plugins/gzreader.koplugin/gzreader_update.lua"):find('require("gzreader_xferlog").sink(ltn12.sink.file(fh), "update")', 1, true) ~= nil,

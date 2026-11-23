@@ -82,13 +82,14 @@ the restart: the last of these lines says how far it got.
 
 **A slow download** (a book or an update) leaves its own lines, starting
 `transfer`: one at the start with what can hold a download back on this
-Kindle (Wi‑Fi power saving on or off, the network's receive buffer, the
+Kindle (Wi‑Fi power saving on or off, the Wi‑Fi signal in dBm, the network's receive buffer, the
 processor's speed setting and load), one every 15 seconds with the speed,
 how busy GZreader's download and the whole processor were and the longest
 wait for data, and a summary at the end. If downloads crawl, download
 something, then send the log (Diagnostics → Send to the developer) and say
 so in the box. No Wi‑Fi network name is written, only whether power saving
-is on.
+is on and how strong the signal is (about -50 dBm is strong, -70 weak, -80
+barely usable).
 
 Putting the bundle together is quick after the first time: the audio/speech
 survey runs about thirty system commands (around 25 s on a Kindle 3), so
