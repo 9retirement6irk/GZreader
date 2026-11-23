@@ -571,6 +571,8 @@ local function tapeFront(bb, x, bottom, w, h, title, cover)
     end
 end
 
+View.tapeFront = tapeFront -- (Home's recently read draws audiobooks with it: gzreader_serverrecent.lua)
+
 --- The CD facing out: its case with the cover, the disc peeking out.
 local function cdFront(bb, x, bottom, side, cover)
     local y = bottom - side

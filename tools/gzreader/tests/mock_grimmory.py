@@ -35,6 +35,7 @@ STATE = {
     "lib500": False,
     "old_search": False,   # an older Grimmory whose book list ignores search=
     "cr_paused": False,    # /continue-reading empty; the books are Paused (the web still lists them)
+    "last_read": {},       # book id -> lastReadTime (/lastread?book=&at=): Home's recently read from the server
     "bookmarks": {},       # id -> BookMark dto
     "bm_next": 500,
     "annotations": {},     # id -> AnnotationResponse
@@ -43,6 +44,12 @@ STATE = {
     "notes": {},           # id -> BookNoteV2 (the web reader's Notes tab)
     "nt_next": 700,
 }
+
+
+def last_read(book):
+    """The book with the time it was last read, when the test set one (/lastread)."""
+    at = STATE["last_read"].get(book["id"])
+    return dict(book, lastReadTime=at) if at else book
 
 
 def bookmark_dto(i, book, cfi=None, page=None, title=None):
@@ -626,6 +633,9 @@ class H(BaseHTTPRequestHandler):
                 books = [b for b in books if b in started and status in want]
                 if STATE["cr_paused"]:   # BOOKS[6] read last
                     books = [dict(b, lastReadTime="2026-11-0%dT10:00:00Z" % (9 if b is BOOKS[6] else 1)) for b in books]
+            books = [last_read(b) for b in books]
+            if q.get("sort") == ["lastReadTime"] and STATE["last_read"]:
+                books = sorted(books, key=lambda b: b.get("lastReadTime") or "", reverse=q.get("dir") == ["desc"])
             if q.get("sort") == ["title"]:
                 books = sorted(books, key=lambda b: b["title"].lower(), reverse=q.get("dir") == ["desc"])
             if q.get("sort") == ["seriesNumber"]:
@@ -651,7 +661,7 @@ class H(BaseHTTPRequestHandler):
         if u.path in ("/api/v1/app/books/continue-reading", "/api/v1/app/books/recently-added"):
             if STATE["cr_paused"] and u.path.endswith("continue-reading"):
                 return self._json(200, [])
-            return self._json(200, BOOKS[:5] + [BOOKS[31]])
+            return self._json(200, [last_read(b) for b in BOOKS[:5] + [BOOKS[31]]])
         m = re.match(r"^/api/v1/audiobooks/(\d+)/info$", u.path)
         if m:
             if not self._user():
@@ -737,6 +747,11 @@ if __name__ == "__main__":
             if u.path == "/set":
                 for k, v in q.items():
                     STATE[k] = int(v[0]) if v[0].isdigit() else v[0] == "true"
+            if u.path == "/lastread":   # read on another device at that time (clear=1: none were)
+                if "clear" in q:
+                    STATE["last_read"] = {}
+                else:
+                    STATE["last_read"][int(q["book"][0])] = q["at"][0]
             if u.path == "/webprogress":
                 bid = int(q["book"][0])
                 STATE["progress"][bid] = {"bookFileId": 1000 + bid, "positionData": q.get("cfi", [None])[0],

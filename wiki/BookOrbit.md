@@ -21,6 +21,7 @@ What works with BookOrbit today:
 | Audiobooks: list, covers, download with resume, chapters, listening position both ways (needs an API key, below) | yes |
 | Requesting a book or audiobook BookOrbit doesn't have, and seeing what became of it (needs an API key, below) | yes |
 | Home's reading stats widget and the reading stats page, from BookOrbit's numbers ([Home and bookshelves](Home-and-Bookshelves#reading-stats-on-home)) | yes |
+| Home's recently read from every device, also what isn't on this Kindle ([Home and bookshelves](Home-and-Bookshelves#recently-read-on-every-device)) | yes (audiobooks: with an API key) |
 | Kindles without Wi-Fi (the sync page) | not yet; the server side can be set up now, see [below](#kindles-without-wi-fi-letting-the-sync-page-in) |
 
 In the Catalog, BookOrbit's collections are on the **Collections** card (Grimmory's shelves are on a card called Shelves): it lists your collections and, marked *SmartScope*, your SmartScopes.

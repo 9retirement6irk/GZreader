@@ -879,6 +879,25 @@ function M.build(ctx)
         }
     end
 
+    -- GZreader: recently read with the book server's books in progress, also the
+    -- ones that aren't on this Kindle (common/gz_server_recent). One setting, for
+    -- the current book and the strip alike. nil without GZreader.
+    local function server_recent_item()
+        local Recent = require("common/gz_server_recent")
+        if not Recent.available() then return nil end
+        return {
+            text_func = function()
+                return T(_("Recently read on every device (%1)"), Recent.serverName())
+            end,
+            help_text = _("Recently read also shows the books and audiobooks you're in the middle of on your other devices, from Grimmory or BookOrbit, newest first: also the ones that aren't on this Kindle (a small arrow on the cover; a tap offers the download). Audiobooks show as cassettes. The list is fetched when Wi-Fi is already on."),
+            checked_func = function() return Recent.on() end,
+            callback = function()
+                Recent.set(not Recent.on())
+                save_home("reinit")
+            end,
+        }
+    end
+
     local function toggle_featured_status_bar(mcfg)
         local enabled = mcfg.show_status_bar ~= true
         mcfg.show_status_bar = enabled
@@ -1040,6 +1059,11 @@ function M.build(ctx)
             },
         }
         if ctx.widget_config then table.remove(items, 1); table.remove(items, 1); table.remove(items, 1) end
+        -- GZreader: the server's books in progress too (after Content)
+        if not ctx.widget_config and mcfg.default_source.kind == "recent" then
+            local server_recent = server_recent_item()
+            if server_recent then table.insert(items, 2, server_recent) end
+        end
         if not ctx.widget_config and mcfg.default_source.kind == "custom" then
             items[#items + 1] = {
                 text_func = function()
@@ -1919,6 +1943,8 @@ function M.build(ctx)
                     filter_status_item(recent, "filter_finished", _("Hide finished books")),
                 },
             })
+            local server_recent = server_recent_item() -- GZreader
+            if server_recent then table.insert(items, 3, server_recent) end
         elseif source.kind == "custom" and source.paths == nil then
             table.insert(items, 2, {
                 text = _("Custom books"),

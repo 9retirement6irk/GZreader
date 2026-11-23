@@ -436,6 +436,16 @@ def web_bookmark(w):
     return m
 
 
+
+def audio_card(ab):
+    """An audiobook as one of the main API's book cards (the real card has many more fields)."""
+    state = STATE["playback"].get(ab["id"])
+    return {"id": ab["id"], "title": ab["title"], "authors": ab["authors"], "narrators": ab["narrators"],
+            "seriesName": None, "seriesIndex": None, "hasCover": True, "subtitle": None,
+            "readingProgress": state and state["percentage"] or None,
+            "files": [{"id": a["fileId"], "format": a["format"]} for a in ab["assets"]]}
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -633,15 +643,27 @@ class Handler(BaseHTTPRequestHandler):
                     continue
                 if d.get("q") and d["q"].lower() not in (ab["title"] + " " + " ".join(ab["authors"])).lower():
                     continue
-                state = STATE["playback"].get(ab["id"])
-                found.append({"id": ab["id"], "title": ab["title"], "authors": ab["authors"], "narrators": ab["narrators"],
-                              "seriesName": None, "seriesIndex": None, "hasCover": True, "subtitle": None,
-                              "readingProgress": state and state["percentage"] or None,
-                              "files": [{"id": a["fileId"], "format": a["format"]} for a in ab["assets"]]})
+                found.append(audio_card(ab))
             if d["sort"] and isinstance(d["sort"][0], dict) and d["sort"][0].get("dir") == "desc":
                 found.reverse()
             items = found[(pg["page"] - 1) * pg["size"]:pg["page"] * pg["size"]]
             return self.send(201, {"items": items, "total": len(found), "page": pg["page"], "size": pg["size"]})
+        m = re.match(r"^dashboard/scrollers/([a-z-]+)$", p)
+        if m and method == "GET":
+            # The web dashboard's shelves. Only "continue-listening" here: audiobooks with a saved
+            # position short of the end, the one listened to last first. Its cards carry no time.
+            if not self.api_key():
+                return
+            if m.group(1) != "continue-listening":
+                return self.error(400, "Validation failed (enum string is expected)")
+            limit = q.get("limit", "20")
+            if not limit.isdigit() or not 1 <= int(limit) <= 50:
+                return self.error(400, "limit must be between 1 and 50")
+            STATE["seen"].append([method, p])
+            going = sorted(((st["capturedAt"], bid) for bid, st in STATE["playback"].items()
+                            if bid in AUDIOBOOKS and 0 < st["percentage"] < 100), reverse=True)
+            return self.send(200, {"books": [audio_card(AUDIOBOOKS[bid]) for _at, bid in going[:int(limit)]],
+                                   "total": len(going)})
         m = re.match(r"^books/(\d+)/thumbnail$", p)
         if m and method == "GET":
             if not self.api_key():

@@ -65,6 +65,10 @@ if os.path.exists(audio_json):
     m.SHELVES[6] = [101, 103]
 
 
+# when each book in progress was last read (Home's "recently read on every device")
+m.STATE["last_read"].update({2: "2026-11-20T21:10:00Z", 3: "2026-11-17T08:30:00Z", 101: "2026-11-21T18:45:00Z", 103: "2026-11-15T07:05:00Z"})
+
+
 def readable():
     return [b for b in m.BOOKS if b["primaryFileType"] != "AUDIOBOOK"]
 
@@ -83,7 +87,7 @@ def do_GET(self):
     if u.path == "/api/v1/app/books/continue-reading":
         if not self._user():
             return self._json(401)
-        return self._json(200, [b for b in readable() if b.get("readProgress")])
+        return self._json(200, [m.last_read(b) for b in readable() if b.get("readProgress")])
     if u.path == "/api/v1/app/books/recently-added":
         if not self._user():
             return self._json(401)
@@ -96,7 +100,9 @@ def do_GET(self):
         types = q.get("fileType", [])
         books = [b for b in m.BOOKS if not types or b["primaryFileType"] in types]
         if q.get("status"):
-            books = [b for b in books if b.get("readProgress")]
+            books = [m.last_read(b) for b in books if b.get("readProgress")]
+            if q.get("sort") == ["lastReadTime"]:
+                books = sorted(books, key=lambda b: b.get("lastReadTime") or "", reverse=q.get("dir") == ["desc"])
         else:
             books = list(reversed(books))
         return self._json(200, m.page_of(books, q, 20))

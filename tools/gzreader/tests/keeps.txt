@@ -49,6 +49,7 @@
 2 plugins/zenos.koplugin/common/gz_bluetooth.lua
 1 plugins/zenos.koplugin/common/gz_header_overlay.lua
 1 plugins/zenos.koplugin/common/gz_home_status.lua
+13 plugins/zenos.koplugin/common/gz_server_recent.lua
 42 plugins/zenos.koplugin/common/gz_settings.lua
 2 plugins/zenos.koplugin/common/gz_settings_icons.lua
 5 plugins/zenos.koplugin/common/gz_tab_title.lua
@@ -80,14 +81,14 @@
 1 plugins/zenos.koplugin/modules/filebrowser/patches/home/components/registry.lua
 13 plugins/zenos.koplugin/modules/filebrowser/patches/home/home_presets.lua
 1 plugins/zenos.koplugin/modules/filebrowser/patches/home/home_quotes.lua
-2 plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/cover_common.lua
+12 plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/cover_common.lua
 14 plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/featured_common.lua
 7 plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/grimmory_stats.lua
-38 plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/shelf.lua
+47 plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/shelf.lua
 8 plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/stats_triplet.lua
 18 plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/strip_common.lua
 1 plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/strip_controls.lua
-57 plugins/zenos.koplugin/modules/filebrowser/patches/home_page.lua
+100 plugins/zenos.koplugin/modules/filebrowser/patches/home_page.lua
 4 plugins/zenos.koplugin/modules/filebrowser/patches/metadata_editor.lua
 20 plugins/zenos.koplugin/modules/filebrowser/patches/navbar.lua
 21 plugins/zenos.koplugin/modules/filebrowser/patches/status_bar.lua
@@ -121,7 +122,7 @@
 19 plugins/zenos.koplugin/modules/settings/sections/global_settings.lua
 19 plugins/zenos.koplugin/modules/settings/sections/interface_settings.lua
 8 plugins/zenos.koplugin/modules/settings/sections/library_settings.lua
-11 plugins/zenos.koplugin/modules/settings/sections/library_settings/home_settings.lua
+18 plugins/zenos.koplugin/modules/settings/sections/library_settings/home_settings.lua
 5 plugins/zenos.koplugin/modules/settings/sections/library_settings/navbar_settings.lua
 3 plugins/zenos.koplugin/modules/settings/sections/reader_settings.lua
 3 plugins/zenos.koplugin/modules/settings/sections/updates_settings.lua
