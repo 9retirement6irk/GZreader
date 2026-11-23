@@ -48,12 +48,19 @@ local PenMode = {
     --- An ordinary update sent longer ago than this has finished: not waited for.
     RECENT = 1.5,
     SETTING = "gzreader_drawing_pen_mode",
+    --- For the log: a wait's length is counted under 50 ms, 50–150, 150–300 or 300 ms and more…
+    BINS = { 0.05, 0.15, 0.3 },
+    --- …and one this long or longer is written as it happens,
+    LONG = 0.2,
+    --- …at most this many times while a drawing screen is open (so its log can't grow without end).
+    LONG_MAX = 20,
     on = false,       -- pen mode is on in the driver
     failed = nil,     -- the driver refused: why (never tried again)
     last_ink = 0,     -- when the last ink update was sent
     ordinary = false, -- an ordinary update was sent since pen mode was last on (waited for before the next ink)
     queued = false,   -- an ordinary update is asked for but not sent yet (ink goes the ordinary way meanwhile)
     stats = nil,
+    settled_at = nil, -- when the drawing screen last did what strokes left for a pause (for the log)
 }
 
 local IMPS = { "refreshFullImp", "refreshPartialImp", "refreshNoMergePartialImp", "refreshFlashPartialImp",
@@ -111,6 +118,89 @@ local function count(key, n)
     if s then s[key] = (s[key] or 0) + (n or 1) end
 end
 
+--- One wait (`kind`: "before" ink, for an ordinary update; "after" ink, before
+--- one), into the numbers for the log: how many, the longest, how long they
+--- were (PenMode.BINS), and for a wait before ink how long before it the
+--- ordinary update (`since`) and the pause's clean-up (`since_settle`) were sent.
+--- A long one (PenMode.LONG) is written as it happens, PenMode.LONG_MAX times at most.
+local function waited(kind, seconds, since, since_settle)
+    local s = PenMode.stats
+    if not s then return end
+    local w = s[kind]
+    if not w then
+        w = { n = 0, max = 0, hist = {} }
+        for i = 1, #PenMode.BINS + 1 do w.hist[i] = 0 end
+        s[kind] = w
+    end
+    w.n = w.n + 1
+    if seconds > w.max then w.max = seconds end
+    local b = #PenMode.BINS + 1
+    for i, top in ipairs(PenMode.BINS) do
+        if seconds < top then b = i; break end
+    end
+    w.hist[b] = (w.hist[b] or 0) + 1
+    if since then
+        w.since_n, w.since_sum = (w.since_n or 0) + 1, (w.since_sum or 0) + since
+        if not w.since_min or since < w.since_min then w.since_min = since end
+        if not w.since_max or since > w.since_max then w.since_max = since end
+    end
+    if since_settle then w.settle_n, w.settle_sum = (w.settle_n or 0) + 1, (w.settle_sum or 0) + since_settle end
+    if seconds >= PenMode.LONG then
+        s.long = (s.long or 0) + 1
+        if s.long <= PenMode.LONG_MAX then PenMode.report(kind, seconds, since, since_settle, s.long == PenMode.LONG_MAX) end
+    end
+end
+
+--- A long wait's log line (numbers only).
+function PenMode.waitLine(kind, seconds, since, since_settle, last)
+    local t
+    if kind == "before" then
+        t = string.format("drawing: pen mode: waited %.0f ms before ink for an ordinary update (sent %s before; the last pause clean-up %s)",
+            seconds * 1000, since and string.format("%.0f ms", since * 1000) or "?",
+            since_settle and string.format("%.0f ms before", since_settle * 1000) or "not yet")
+    else
+        t = string.format("drawing: pen mode: waited %.0f ms after ink before an ordinary update", seconds * 1000)
+    end
+    if last then t = t .. " (no more of these lines this time)" end
+    return t
+end
+
+--- A long wait, as it happens (written only while diagnostic logging is on). Stood in for by the tests.
+function PenMode.report(kind, seconds, since, since_settle, last)
+    local ok, Log = pcall(require, "gzreader_log")
+    if not ok or type(Log) ~= "table" or not Log.enabled then return end
+    Log.info(PenMode.waitLine(kind, seconds, since, since_settle, last))
+end
+
+--- The waits while the drawing screen was open, in one line for the log (`stats`: unhook's).
+function PenMode.waitSummary(stats)
+    local function ms(v) return string.format("%.0f", v * 1000) end
+    local function part(name, w)
+        if not w or w.n == 0 then return name .. " none" end
+        local bins = {}
+        for i = 1, #PenMode.BINS + 1 do
+            local lo, hi = PenMode.BINS[i - 1], PenMode.BINS[i]
+            local label = not lo and ("<" .. ms(hi)) or not hi and (">=" .. ms(lo)) or (ms(lo) .. "-" .. ms(hi))
+            bins[#bins + 1] = label .. " " .. (w.hist[i] or 0)
+        end
+        local t = string.format("%s %d, longest %s ms (ms: %s)", name, w.n, ms(w.max), table.concat(bins, ", "))
+        if w.since_n then
+            t = t .. string.format(", the ordinary update sent %s ms before on average (%s-%s)",
+                ms(w.since_sum / w.since_n), ms(w.since_min), ms(w.since_max))
+        end
+        if w.settle_n then t = t .. string.format(", the last pause clean-up %s ms before on average", ms(w.settle_sum / w.settle_n)) end
+        return t
+    end
+    stats = stats or {}
+    return string.format("drawing: pen mode waits: %s; %s; %d of %s ms or more", part("before ink", stats.before),
+        part("after ink", stats.after), stats.long or 0, ms(PenMode.LONG))
+end
+
+--- The drawing screen did what strokes left for a pause (ordinary updates follow): when, for the log.
+function PenMode.settled()
+    PenMode.settled_at = PenMode.now()
+end
+
 --- Pen mode on (once the last ordinary update is done). False when it can't be.
 function PenMode.enter(screen)
     if PenMode.on then return true end
@@ -120,7 +210,9 @@ function PenMode.enter(screen)
         local t = PenMode.now()
         if t - (PenMode.ordinary_at or t) < PenMode.RECENT then
             PenMode.wait(screen)
-            count("waited_before", PenMode.now() - t)
+            local d = PenMode.now() - t
+            count("waited_before", d)
+            waited("before", d, PenMode.ordinary_at and t - PenMode.ordinary_at, PenMode.settled_at and t - PenMode.settled_at)
         end
         PenMode.ordinary = false
     end
@@ -141,6 +233,7 @@ function PenMode.leave(screen)
     if since >= 0 and since < PenMode.QUIET then
         PenMode.sleep(PenMode.QUIET - since)
         count("waited_after", PenMode.QUIET - since)
+        waited("after", PenMode.QUIET - since)
     end
     PenMode.send(screen, PenMode.OFF)
     PenMode.on = false
@@ -218,6 +311,7 @@ function PenMode.hook(screen, uimanager)
     PenMode.hooked = saved
     PenMode.stats = {}
     PenMode.on, PenMode.queued, PenMode.ordinary, PenMode.ordinary_at = false, false, true, PenMode.now()
+    PenMode.settled_at = nil
     for _i, name in ipairs(IMPS) do
         local own = rawget(screen, name)
         local orig = screen[name]
