@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Setup guide: asks whether Home shows what you read on every device", text = "The setup guide now asks, after Library View, whether Home should also show the books and audiobooks you're in the middle of on your other devices (Home's Recently read on every device), from Grimmory or BookOrbit. Yes is picked when you use a book server; on its own, Not now. Change it later in Settings → Home and tabs → Home → Widgets → Featured book." },
+        },
+    },
+    {
         version = "2026.11.22",
         changes = {
             { short = "Colour Kindles: Immich photos in colour", text = "On a Kindle Colorsoft or Scribe Colorsoft, the pictures from your Immich album (the sleep screen and the Home wallpaper) are kept in colour instead of being made grey. Pictures already on the Kindle stay grey until they are swapped for others from the album (about half each time GZreader gets new pictures)." },

@@ -9,7 +9,7 @@ end
 table.insert(package.loaders, 2, function(name)
     if name == "gettext" then return function() return function(s) return s end end end
     if name == "ffi/util" then return function() return { template = function(f, ...) local a = { ... }; return (f:gsub("%%(%d)", function(i) return tostring(a[tonumber(i)]) end)) end } end end
-    if name:match("^common/quickstart/") or name == "common/quickstart_pages" then return nil end
+    if name:match("^common/quickstart/") or name == "common/quickstart_pages" or name == "common/gz_server_recent" then return nil end
     if name == "ui/event" then return function() return { new = function(_, n) return { name = n } end } end end
     if name == "ui/uimanager" then return function() return { scheduleIn = function(_, _, f) f() end, broadcastEvent = function(_, ev) BROADCAST = ev.name end } end end
     if name == "common/plugin_root" then return function() return "" end end
@@ -160,6 +160,37 @@ do
     for _, t in ipairs(defaults.navbar.custom_tabs) do if t.id == "ct_grimmory" then catalog_tab = t end end
     check(catalog_tab and catalog_tab.label == "Catalog", "the Grimmory tab is labelled Catalog")
     check(cfg.navbar.show_tabs.ct_calendar == false and cfg.navbar.show_tabs.continue == true, "setup tabs: Calendar off and Continue on when chosen so")
+end
+-- Home's "Recently read on every device": asked after Library View, fitted to the answer
+do
+    local none_titles = {}
+    for _, pg in ipairs(build(false)) do none_titles[#none_titles + 1] = pg.title end
+    check(not table.concat(none_titles, "|"):match("Recently read on every device"), "without GZreader's hook: no recently read page")
+    local was_on, set_to = false, nil
+    rawset(_G, "__GZ_SERVER_RECENT", { on = function() return was_on end, set = function(v) set_to = v end, name = function() return "Grimmory" end })
+    local rp = build(false, nil, "grimmory")
+    local at, lib_at, rpage
+    for i, pg in ipairs(rp) do
+        if pg.title == "Recently read on every device" then at, rpage = i, pg end
+        if pg.title == "Library View" then lib_at = i end
+    end
+    check(rpage and at == lib_at + 1, "recently read on every device: asked right after Library View")
+    check(rpage and rpage.description:match("from Grimmory") and idsOf(rpage) == "recent_on*,recent_off" and rpage.description:match("arrow")
+        and rpage.description:match("Wi‑Fi"), "with Grimmory: yes picked, it names Grimmory and says what it shows")
+    rpage.on_apply({ recent_on = true })
+    check(set_to == true, "yes turns the option on (through GZreader)")
+    rpage.on_apply({ recent_off = true })
+    check(set_to == false, "only this Kindle turns it off")
+    -- the first page's answer changes it
+    rp[1].on_apply({ bookorbit = true })
+    check(rpage.description:match("from BookOrbit") and rpage.reset_selection, "BookOrbit picked first: it names BookOrbit")
+    rp[1].on_apply({ ["local"] = true })
+    check(idsOf(rpage) == "recent_off*,recent_on" and rpage.description:match("when this Kindle is connected to a book server"),
+        "on its own: not now picked, it says it comes with a book server")
+    local bo = build(false, nil, "bookorbit")
+    for _, pg in ipairs(bo) do if pg.title == "Recently read on every device" then rpage = pg end end
+    check(rpage.description:match("from BookOrbit"), "a BookOrbit setup: asked too, naming BookOrbit")
+    rawset(_G, "__GZ_SERVER_RECENT", nil)
 end
 print(ok_count .. " passed, " .. fail .. " failed")
 os.exit(fail == 0 and 0 or 1)

@@ -129,7 +129,7 @@ Grimmory or BookOrbit, newest first: also the ones that aren't on this Kindle.
 - **Turn it on:** Settings → Home and tabs → Home → Widgets → Featured book (or
   Book strip) → *Recently read on every device*. It's one setting for both,
   and it's off until you choose it. It's listed when that widget's content is
-  *Recently read*.
+  *Recently read*. The setup guide asks too, after Library View.
 - **A book that isn't on this Kindle** has a small arrow in the corner of its
   cover. A tap shows its page, with *Download* and *Download & open*.
 - **Audiobooks show as cassettes**, the ones on the Kindle too. On the
