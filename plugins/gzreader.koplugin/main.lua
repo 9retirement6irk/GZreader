@@ -1351,6 +1351,25 @@ function Grimmory:setBookOrbitApiKey(key)
     return true
 end
 
+--- What to tell the user after the key was saved: that it was accepted, and what it can
+--- and can't be used for (asked of BookOrbit), so a box left unticked shows at once.
+function Grimmory:bookOrbitKeyReport()
+    if not (type(self.api.hasApiKey) == "function" and self.api:hasApiKey()) then return _("The BookOrbit API key was removed.") end
+    local can = self.api:keyAbilities()
+    local lines = { _("BookOrbit accepted the API key. Audiobooks and collections can use it.") }
+    if can.requests == true then
+        lines[#lines + 1] = _("Requesting books: yes.")
+    elseif can.requests == false then
+        lines[#lines + 1] = _("Requesting books: no (the key was made without “Request books”, or your account can't request books).")
+    end
+    if can.signin == true then
+        lines[#lines + 1] = _("Signing in with just the key: yes.")
+    elseif can.signin == false then
+        lines[#lines + 1] = T(_("Signing in with just the key: no (the key was made without “%1 sync”). You're signed in already, so this only matters next time."), "KOReader")
+    end
+    return table.concat(lines, " ")
+end
+
 function Grimmory:askBookOrbitApiKey(touchmenu)
     local InputDialog = require("ui/widget/inputdialog")
     local dialog

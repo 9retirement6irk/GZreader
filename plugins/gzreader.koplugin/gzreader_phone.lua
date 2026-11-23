@@ -415,8 +415,10 @@ function Phone.open(plugin, opts)
 
     local function grimmoryOk()
         S.changes.grimmory = true
-        toast(T(_("Connected to Grimmory as %1."), plugin.store.username or "?"))
-        return back({ ok = true, text = T(_("Connected to Grimmory as %1."), plugin.store.username or "?"), section = "grimmory" })
+        -- (the server signed in to: Grimmory or BookOrbit)
+        local said = T(_("Connected to %1 as %2."), plugin:serverName(), plugin.store.username or "?")
+        toast(said)
+        return back({ ok = true, text = said, section = "grimmory" })
     end
     local function grimmoryFailed(form, err)
         if failedLogin() then return 200, "text/html", PairPage.gone() end
@@ -504,8 +506,10 @@ function Phone.open(plugin, opts)
     routes["/grimmory/apikey"] = function(form)
         local ok, err = plugin:setBookOrbitApiKey(form.api_key or "")
         if ok then
+            -- said on the page and on the Kindle: accepted (and what the key can do), or removed
+            local said = plugin:bookOrbitKeyReport()
             toast((form.api_key or ""):gsub("%s+", "") == "" and _("The BookOrbit API key was removed.") or _("BookOrbit accepted the API key."))
-            return back({ section = "grimmory" })
+            return back({ ok = true, text = said, section = "grimmory" })
         end
         return back({ section = "grimmory", key_error = err })
     end
@@ -516,7 +520,7 @@ function Phone.open(plugin, opts)
         S.changes.grimmory = true
         Log.info("phone: disconnected from", plugin:serverName())
         toast(T(_("Disconnected from %1."), plugin:serverName()))
-        return back({ ok = true, text = _("Disconnected from Grimmory. Downloaded books stay on the Kindle."), section = "grimmory" })
+        return back({ ok = true, text = T(_("Disconnected from %1. Downloaded books stay on the Kindle."), plugin:serverName()), section = "grimmory" })
     end
     -- Plex: its own sign-in page (a "strong" PIN), then back here
     local function Music() return require("gzreader_music") end
@@ -998,8 +1002,8 @@ function Phone.afterClose(S)
     local plugin = S.plugin
     local ch = S.changes
     if ch.grimmory then
-        lines[#lines + 1] = plugin.api:isPaired() and T(_("Grimmory: connected as %1."), plugin.store.username or "?")
-            or _("Grimmory: disconnected.")
+        lines[#lines + 1] = plugin.api:isPaired() and T(_("%1: connected as %2."), plugin:serverName(), plugin.store.username or "?")
+            or _("Books: disconnected.")
     end
     if ch.notes then
         local m = plugin.store.memos or {}

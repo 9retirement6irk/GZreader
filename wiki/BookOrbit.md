@@ -39,7 +39,7 @@ That user name and password are what GZreader asks for. Your website user name, 
 Any of these:
 
 - **The setup guide** (on the first start, or Settings → General → Setup Guide): answer **With BookOrbit, my book server** to *How will you use GZreader?*, then *Set up from a browser* or *Type my BookOrbit login here*.
-- **The setup page** (Settings → Accounts and services → Books → Connect from your browser, then scan the code): under **Book server**, choose **BookOrbit**, then enter BookOrbit's address and the KOReader sync user name and password.
+- **The setup page** (Settings → Accounts and services → Books → Connect from your browser, then scan the code): on its **Books** tab, under **Book server**, choose **BookOrbit** (the heading changes to BookOrbit and the form to BookOrbit's). Enter BookOrbit's address, then either paste an **API key** and press **Connect with the API key** (the easy way: see [Signing in with just an API key](#signing-in-with-just-an-api-key)), or open **Use the KOReader sync user name and password instead**. There is no single sign-on for BookOrbit: its e-reader sign-in doesn't have one.
 - **On the Kindle**: Settings → Accounts and services → Books → **Connect to BookOrbit by typing**.
 - **In the Catalog**, when you aren't signed in: the server tile at the bottom → **Connect to BookOrbit by typing**.
 
@@ -128,7 +128,7 @@ Instead of the KOReader sync user name and password, the Kindle can be given onl
 
 1. In BookOrbit: **Settings → You → API keys → Create API key**, filled in as in [The API key](#the-api-key-what-to-tick) below (it needs **KOReader sync** ticked). BookOrbit shows it once.
 2. On the Kindle, open the setup page (Settings → Accounts and services → Books → Connect with QR code) and scan the code with your phone.
-3. Choose **BookOrbit** as the book server, enter its address, open **BookOrbit: sign in with an API key instead**, paste the key and press **Connect with the API key**.
+3. On the **Books** tab choose **BookOrbit** as the book server, enter its address, paste the key into **BookOrbit API key** and press **Connect with the API key**. The page then says *Connected to BookOrbit as …*.
 
 What the Kindle does with the key:
 
@@ -158,6 +158,7 @@ If your BookOrbit has requests set up, the Kindle can ask for a book it doesn't 
 
 **My book requests** in the same card lists what you asked for with its state (waiting for approval, approved, searching, downloading, in the library, declined…). Tap one for its details and any note from whoever decided; one that isn't finished can be cancelled there. If someone already asked for the same book, you're added to their request. When a request arrives it's in the Catalog like any other book (use **Rebuild library** if it isn't showing yet). The list is BookOrbit's each time: nothing about requests is kept on the Kindle.
 
+- When you save a key on the setup page, the page says BookOrbit accepted it and what the key can do: whether it may request books and whether it could sign in by itself. A box left unticked in BookOrbit shows there at once.
 - The key is checked when you enter it, kept on the Kindle's own disk, never shown again and never written to the log.
 - BookOrbit's keys expire (90 days unless you choose otherwise). When one does, the Audiobooks page says BookOrbit didn't accept the key: make a new one and enter it.
 - A read-only key lists and downloads, but your place isn't saved.
