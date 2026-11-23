@@ -8775,6 +8775,14 @@ print("Notes (Memos v0.31)")
     local c3 = Notes.client(plugin)
     local all3 = c3:listAll(nil, 5)
     check(all3 and #all3.memos == 5, "paged fetch stops at the limit")
+    -- the tags' colours (Memos' Settings → Tags), shown on a colour screen
+    local tc = all3 and all3.tag_colors or {}
+    check(#tc == 2 and tc[1].pattern == "kindle" and tc[1].color == "#1971c2" and tc[2].pattern == "project/.*" and tc[2].color == "#2f9e44",
+        "the tags' colours from Memos (your Tags setting; a tag without one left out)")
+    check(plugin.store.memos.tag_colors and #plugin.store.memos.tag_colors == 2, "…kept with the notes")
+    check(Notes.tagColor("kindle", tc) == "#1971c2" and Notes.tagColor("project/gz", tc) == "#2f9e44" and Notes.tagColor("project", tc) == nil
+        and Notes.tagColor("kindles", tc) == nil and Notes.tagColor("kindle", {}) == nil,
+        "a tag's colour: its name, or a pattern as Memos reads it (anchored: project/.* is under project/)")
     -- attachments over the limit: the ones used longest ago go
     local dir = Memos.filesDir()
     os.execute("rm -f '" .. dir .. "'/*")

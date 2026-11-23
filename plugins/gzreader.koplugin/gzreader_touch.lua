@@ -208,6 +208,7 @@ function Touch.chips(width, actions, show_parent, opts)
                 bordersize = (a.chosen or opts.big) and Size.border.thick or Size.border.thin, radius = Size.radius.button, margin = 0,
                 padding = opts.big and Size.padding.large or Size.padding.small,
                 text_font_size = opts.big and 20 or (small and 16 or 17), text_font_bold = (opts.big or a.chosen) and true or false,
+                background = a.background, -- (a colour screen: a tag chip in its tag's colour)
             }
             made[i].gz_chosen = a.chosen or nil
             h = h or made[i]:getSize().h
