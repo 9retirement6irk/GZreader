@@ -32,6 +32,7 @@ local stub = {
     end,
 }
 PS.io = stub
+PS.LINGER = 0 -- (the first part: put back at once; the waiting is tested by itself below)
 local function reset(s) state, sets, lines, fail_get, fail_set = s, {}, {}, nil, nil; PS.holding, PS.restore = {}, false end
 
 print("== Wi-Fi power saving while downloading")
@@ -56,8 +57,14 @@ PS.hold("update"); PS.release("update")
 check(#sets == 0, "already off (the Nook, or the user's choice): left alone, not turned on after")
 
 reset("on")
-PS.hold("async"); PS.hold("pairserver"); PS.release("async"); PS.release("pairserver")
-check(#sets == 0, "other Wi-Fi holders (requests, the QR page) don't change it")
+PS.hold("pairserver"); PS.hold("house"); PS.release("pairserver"); PS.release("house")
+check(#sets == 0, "other Wi-Fi holders (the QR page waiting, Home Assistant) don't change it")
+reset("on")
+PS.hold("async"); PS.release("async")
+check(sets[1] == false and sets[2] == true, "background requests (covers, lists, sync): off while they run")
+reset("on")
+PS.hold("debug log"); PS.release("debug log")
+check(sets[1] == false and sets[2] == true, "sending the diagnostic log: off while it goes")
 
 reset("on")
 PS.release("download")
@@ -148,6 +155,39 @@ PS.hold("download")
 PS.release("download")
 check(#sets == 0, "…and not asked again")
 PS.ignored, PS.model = false, nil
+
+print("== put back a while after the last request, not between two covers")
+do
+    local due = {}
+    stub.set = function(_ifname, on) sets[#sets + 1] = on; state = on and "on" or "off"; return true end -- (a driver that takes it, again)
+    PS.schedule = function(secs, fn) due[#due + 1] = { secs = secs, fn = fn } end
+    PS.LINGER = 30
+    reset("on"); PS.waiting = nil
+    PS.hold("async"); PS.release("async")
+    check(#sets == 1 and sets[1] == false and #due == 1 and due[1].secs == 30, "after a request: still off, a put-back in 30 s")
+    PS.hold("async")
+    check(#sets == 1, "the next request within that time: nothing switched")
+    due[1].fn()
+    check(#sets == 1 and state == "off", "the old put-back comes due while a request runs: nothing happens")
+    PS.release("async")
+    check(#due == 2 and #sets == 1, "…and a new wait starts after it")
+    PS.hold("download"); PS.release("download")
+    due[2].fn()
+    check(#sets == 1, "a wait that was overtaken by a later one does nothing")
+    due[3].fn()
+    check(#sets == 2 and sets[2] == true and state == "on" and lines[#lines] == "wifi: power saving back on", "30 s after the last one: back on, once")
+    due[3].fn()
+    check(#sets == 2, "…and not twice")
+    -- Wi-Fi went off and on during the wait: it starts "on" again
+    reset("on"); PS.waiting = nil; due = {}
+    PS.hold("async"); PS.release("async")
+    state = "on"
+    PS.hold("async")
+    check(#sets == 2 and sets[2] == false, "Wi-Fi restarted during the wait: found on, turned off again")
+    PS.release("async"); due[#due].fn()
+    check(state == "on", "…and put back at the end")
+    PS.schedule, PS.LINGER, PS.waiting = nil, 0, nil
+end
 
 print(string.format("Wi-Fi power saving: %d passed, %d failed", pass, fail))
 os.exit(fail == 0 and 0 or 1)

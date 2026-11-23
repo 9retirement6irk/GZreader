@@ -11,6 +11,13 @@ so reading with Wi-Fi on still saves the battery. The same for audiobook and
 music downloads, notes with drawings going to Memos, and while the phone page
 is open (uploads from the phone).
 
+Since the owner's Scribe took 3 to 17 s for each cover in the Catalog
+(2026-11-22), the background requests count too ("async": covers, lists, each
+book's sync, and "debug log": sending the diagnostic log). Those come in
+bursts, so power saving isn't put back the moment the last one ends but
+PS.LINGER seconds later, unless something else started meanwhile: the chip
+isn't switched back and forth between two covers.
+
 Through the wireless extensions ioctl (`device/nook/wifi_power.lua`,
 SIOCGIWPOWER/SIOCSIWPOWER): it reads and writes only power saving's state,
 never the network's name. Where that ioctl isn't there (no Wi-Fi, a driver
@@ -29,7 +36,10 @@ local PS = {
     -- big transfers: Net.hold's keys for books, updates, audiobooks
     -- ("audiobook-download-<id>") and music ("music-<folder>"), and the keys
     -- Memos uploads and the phone page pass to PS.hold themselves
-    KEYS = { download = true, update = true, ["memos-upload"] = true, phone = true },
+    KEYS = { download = true, update = true, ["memos-upload"] = true, phone = true, async = true, ["debug log"] = true },
+    LINGER = 30,      -- seconds power saving stays off after the last holder (0: put back at once)
+    waiting = nil,    -- a put-back is scheduled (its token)
+    schedule = nil,   -- tests: fn(seconds, callback)
     PREFIXES = { "audiobook-download-", "music-" },
     holding = {},     -- keys of PS.KEYS now held
     restore = false,  -- we turned it off: put it back on at the end
@@ -91,8 +101,15 @@ function PS.hold(key)
     if not PS.transfer(key) or PS.holding[key] then return end
     local first = next(PS.holding) == nil
     PS.holding[key] = true
+    PS.waiting = nil -- (a put-back that was waiting is called off)
     if not first then return end
     if PS.SKIP_MODELS[model() or ""] or PS.ignored then return end
+    if PS.restore then
+        -- we turned it off a moment ago and hadn't put it back yet: still off, nothing to do
+        -- (unless Wi-Fi went off and on meanwhile, which starts it "on" again: then as usual)
+        if PS.get() == "off" then return end
+        PS.restore = false
+    end
     local state, why = PS.get()
     if state ~= "on" then
         if not state then Log.info("wifi: power saving unknown, left as it is (" .. tostring(why) .. ")") end
@@ -117,13 +134,31 @@ function PS.release(key)
     if not PS.holding[key] then return end
     PS.holding[key] = nil
     if next(PS.holding) ~= nil or not PS.restore then return end
-    PS.restore = false
-    local ok, err = set(true)
-    if ok then
-        Log.info("wifi: power saving back on")
-    else
-        Log.info("wifi: couldn't turn power saving back on:", tostring(err))
+    local function back()
+        if next(PS.holding) ~= nil or not PS.restore then return end
+        PS.restore = false
+        local ok, err = set(true)
+        if ok then
+            Log.info("wifi: power saving back on")
+        else
+            Log.info("wifi: couldn't turn power saving back on:", tostring(err))
+        end
     end
+    local schedule = PS.schedule
+    if not schedule and PS.LINGER > 0 then
+        local ok, UIManager = pcall(require, "ui/uimanager")
+        if ok and type(UIManager) == "table" and UIManager.scheduleIn then
+            schedule = function(secs, fn) UIManager:scheduleIn(secs, fn) end
+        end
+    end
+    if PS.LINGER <= 0 or not schedule then return back() end
+    local token = {}
+    PS.waiting = token
+    schedule(PS.LINGER, function()
+        if PS.waiting ~= token then return end -- (something started meanwhile, or a later wait took over)
+        PS.waiting = nil
+        back()
+    end)
 end
 
 return PS
