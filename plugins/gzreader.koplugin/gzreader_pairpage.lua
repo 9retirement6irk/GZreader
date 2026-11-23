@@ -154,9 +154,13 @@ end
 
 local function grimmorySection(st, base)
     local g = st.grimmory or {}
-    local parts = { '<section id="grimmory" class="tab"><h2>Grimmory</h2>',
-        '<p class="what">Your book library: browse and download books on the Kindle, reading progress kept in sync.</p>' }
     local orbit = g.backend == "bookorbit"
+    -- which book server the form is for: the one typed last, else the one signed in to
+    local picked = ((g.form or {}).backend or g.backend) == "bookorbit" and "bookorbit" or "grimmory"
+    -- The heading names the server: the one connected, else the one chosen below (it follows the choice).
+    local title = g.connected and (orbit and "BookOrbit" or "Grimmory") or (picked == "bookorbit" and "BookOrbit" or "Grimmory")
+    local parts = { '<section id="grimmory" class="tab"><h2 id="g_title"' .. (g.connected and ' data-fixed="1"' or "") .. ">" .. title .. "</h2>",
+        '<p class="what">Your book library: browse and download books on the Kindle, reading progress kept in sync.</p>' }
     if g.connected then
         parts[#parts + 1] = status(true, (orbit and "Connected to BookOrbit as <b>" or "Connected as <b>") .. esc(g.username) .. "</b> · " .. esc(g.host))
         if orbit then
@@ -179,46 +183,63 @@ local function grimmorySection(st, base)
         parts[#parts + 1] = status(false, "Not connected")
     end
     if g.error then parts[#parts + 1] = '<p class="err">' .. esc(g.error) .. "</p>" end
+    -- Each server's own way in, in its own block: only the chosen server's block shows and is sent
+    -- (the other's fields are disabled, so a browser leaves them out).
+    local function block(server, inner)
+        local on = picked == server
+        return '<div data-for="' .. server .. '"' .. (on and "" or ' style="display:none"') .. ">" .. inner .. "</div>"
+    end
+    local function off(server) return picked == server and "" or " disabled" end
+    -- Grimmory: user name and password, and single sign-on when the server has it
     local sso = g.sso
     local sso_block = ""
     if sso ~= false then
         local label = type(sso) == "table" and sso.name and ("Sign in with " .. sso.name) or "Sign in with SSO"
         sso_block = '<button class="' .. ((type(sso) == "table" and sso.only) and "" or "alt")
-            .. '" type="submit" name="action" value="sso" formnovalidate>' .. esc(label) .. "</button>"
+            .. '" type="submit" name="action" value="sso" formnovalidate' .. off("grimmory") .. ">" .. esc(label) .. "</button>"
             .. '<p class="note">For single sign-on, your identity provider must allow this redirect address: <code>'
             .. esc(g.redirect_uri or "") .. "</code>"
             .. (g.sso_relay and " (the same for every Kindle; the browser just needs to be on the Kindle's Wi-Fi to finish)" or "")
             .. "</p>"
     end
-    local pw = input("g_username", "username", "Username", (g.form or {}).username, 'autocomplete="username" ' .. NAME_ATTRS)
-        .. '<label for="g_password">Password</label><input id="g_password" name="password" type="password" autocomplete="current-password">'
-        .. '<button type="submit" name="action" value="password">Connect</button>'
-    local body
+    local pw = input("g_username", "username", "Username", (g.form or {}).username, 'autocomplete="username" ' .. NAME_ATTRS .. off("grimmory"))
+        .. '<label for="g_password">Password</label><input id="g_password" name="password" type="password" autocomplete="current-password"' .. off("grimmory") .. ">"
+        .. '<button type="submit" name="action" value="password"' .. off("grimmory") .. ">Connect</button>"
+    local grim
     if type(sso) == "table" and sso.only then
-        body = sso_block .. "<details><summary>Use a local Grimmory password instead</summary>" .. pw .. "</details>"
+        grim = sso_block .. "<details><summary>Use a local Grimmory password instead</summary>" .. pw .. "</details>"
     elseif sso ~= false then
-        body = pw .. '<div class="or">or</div>' .. sso_block
+        grim = pw .. '<div class="or">or</div>' .. sso_block
     else
-        body = pw
+        grim = pw
     end
-    -- which book server: Grimmory (the default) or BookOrbit (its KOReader sync user; no single sign-on)
-    local picked = (g.form or {}).backend or g.backend
+    -- BookOrbit: an API key alone (it fetches, or makes, the e-reader sign-in), or the KOReader
+    -- sync user name and password. BookOrbit's e-reader sign-in has no single sign-on.
+    local bo = '<label for="g_signin_key">BookOrbit API key</label>'
+        .. '<input id="g_signin_key" name="api_key" type="password" autocomplete="off" placeholder="bok_…"' .. off("bookorbit") .. ">"
+        .. '<p class="note">The easy way: with the key alone, the Kindle gets your KOReader sync sign-in from BookOrbit (or makes one if you have none) '
+        .. "and keeps the key for audiobooks, collections and book requests. Make it in BookOrbit: Settings → You → API keys → Create API key. "
+        .. esc(g.bookorbit_key_needs or "") .. "</p>"
+        .. '<button type="submit" name="action" value="apikey" formnovalidate' .. off("bookorbit") .. ">Connect with the API key</button>"
+        .. '<div class="or">or</div>'
+        .. "<details" .. (((g.form or {}).username or "") ~= "" and " open" or "") .. "><summary>Use the KOReader sync user name and password instead</summary>"
+        .. input("g_ko_username", "username", "KOReader sync user name", (g.form or {}).username, 'autocomplete="username" ' .. NAME_ATTRS .. off("bookorbit"))
+        .. '<label for="g_ko_password">KOReader sync password</label><input id="g_ko_password" name="password" type="password" autocomplete="current-password"' .. off("bookorbit") .. ">"
+        .. '<p class="note">From BookOrbit\'s Settings → Devices → KOReader (not your website sign-in). ' .. esc(g.bookorbit_note or "") .. "</p>"
+        .. '<button class="alt" type="submit" name="action" value="password"' .. off("bookorbit") .. ">Connect</button></details>"
     local which = '<label for="g_backend">Book server</label><select id="g_backend" name="backend">'
         .. '<option value="grimmory">Grimmory</option>'
         .. '<option value="bookorbit"' .. (picked == "bookorbit" and " selected" or "") .. ">BookOrbit</option></select>"
-        .. '<p class="note">BookOrbit: use the KOReader sync user name and password from BookOrbit\'s Settings → Devices → KOReader (not your website sign-in), '
-        .. "or leave both empty and give an API key below. " .. esc(g.bookorbit_note or "") .. "</p>"
-    -- BookOrbit with only an API key: the key fetches (or makes) the e-reader sign-in
-    local key_only = '<details' .. (picked == "bookorbit" and " open" or "") .. '><summary>BookOrbit: sign in with an API key instead</summary>'
-        .. '<label for="g_signin_key">BookOrbit API key</label>'
-        .. '<input id="g_signin_key" name="api_key" type="password" autocomplete="off" placeholder="bok_…">'
-        .. '<p class="note">From BookOrbit: Settings → You → API keys → Create API key. ' .. esc(g.bookorbit_key_needs or "") .. " "
-        .. "The Kindle uses the key to get your KOReader sync sign-in from BookOrbit, or to make one if you have none, and keeps the key for audiobooks, collections and book requests. "
-        .. "Leave the user name and password empty.</p>"
-        .. '<button type="submit" name="action" value="apikey" formnovalidate>Connect with the API key</button></details>'
     parts[#parts + 1] = form(base .. "/grimmory",
         which .. input("g_server", "server", "Server address", (g.form or {}).server, 'required placeholder="https://books.example.com or 192.168.1.20:6060" ' .. URL_ATTRS)
-        .. body .. key_only, "Connecting…")
+        .. block("grimmory", grim) .. block("bookorbit", bo), "Connecting…")
+    -- choosing a server shows its block, names the heading after it, and switches the other's fields off
+    parts[#parts + 1] = '<script>(function(){var s=document.getElementById("g_backend"),t=document.getElementById("g_title");if(!s||!s.form)return;'
+        .. 'function set(){var v=s.value,g=s.form.querySelectorAll("[data-for]"),i,j,e;'
+        .. 'if(t&&!t.getAttribute("data-fixed"))t.textContent=v=="bookorbit"?"BookOrbit":"Grimmory";'
+        .. 'for(i=0;i<g.length;i++){var on=g[i].getAttribute("data-for")==v;g[i].style.display=on?"":"none";'
+        .. 'e=g[i].querySelectorAll("input,button");for(j=0;j<e.length;j++)e[j].disabled=!on;}}'
+        .. "s.onchange=set;set();})();</script>"
     if g.connected then parts[#parts + 1] = "</div></details>" end
     parts[#parts + 1] = "</section>"
     return table.concat(parts)
@@ -659,7 +680,7 @@ function PairPage.hub(st)
             .. esc(st.flash.text) .. "</div>"
     end
     -- one tab at a time (all of them, one under the other, without JavaScript)
-    local tabs = { { "grimmory", "Grimmory", (st.grimmory or {}).connected }, { "notes", "Notes", (st.memos or {}).connected },
+    local tabs = { { "grimmory", "Books", (st.grimmory or {}).connected }, { "notes", "Notes", (st.memos or {}).connected },
         { "calendar", "Calendar", (st.caldav or {}).connected or #((st.links or {}).list or {}) > 0 or (st.holidays or {}).enabled } }
     if st.house then tabs[#tabs + 1] = { "house", "House", st.house.connected } end
     if st.paper then tabs[#tabs + 1] = { "paper", "Daily paper", st.paper.enabled } end

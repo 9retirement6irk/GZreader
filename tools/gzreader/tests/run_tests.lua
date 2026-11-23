@@ -16694,7 +16694,7 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
         plugin:startQrPairing()
         local purl = screen.url:gsub("#.*$", "")
         local pcode, pbody = phone("'" .. purl .. "'")
-        check(pcode == 200 and pbody:find('name="api_key" type="password"', 1, true) and pbody:find("sign in with an API key instead", 1, true),
+        check(pcode == 200 and pbody:find('name="api_key" type="password"', 1, true) and pbody:find("Connect with the API key", 1, true),
             "the setup page: BookOrbit can be signed in to with an API key")
         pcode, pbody = phone("-L --data-urlencode 'server=" .. BO .. "' --data-urlencode 'backend=grimmory' --data-urlencode 'action=apikey' --data-urlencode 'api_key=bok_wrongwrongwrong' '" .. purl .. "/grimmory'")
         check(pbody:find("accept the API key", 1, true) and not pbody:find("bok_wrongwrongwrong", 1, true) and not plugin.api:isPaired(),
@@ -16882,6 +16882,65 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
         bctl("/_mock/set", '{"key_ko_permission": true, "ko_delivery": null}')
         plugin:setBookOrbitApiKey(KEY)
         check(plugin.store.bookorbit.delivery == "automatic" and plugin.store.username == "will-kindle", "Automatic: nothing to say")
+    end
+    -- the setup page's Books tab: named for the server, each server's own way in, and what happened said
+    do
+        plugin.api:clearTokens()
+        plugin.store.bookorbit, plugin.store.username = nil, nil
+        bctl("/_mock/reset")
+        PS.new = function(self, o) screen = o; return o end
+        plugin:startQrPairing()
+        local purl = screen.url:gsub("#.*$", "")
+        local _c, page = phone("'" .. purl .. "'")
+        if os.getenv("GZ_KEEP_PAGE") then local keep = io.open(os.getenv("GZ_KEEP_PAGE"), "wb"); keep:write(page); keep:close() end
+        check(page:find(">Books<", 1, true) ~= nil or page:find(">Books ", 1, true) ~= nil, "the setup page: the tab is called Books")
+        check(page:find('<h2 id="g_title">BookOrbit</h2>', 1, true) ~= nil and page:find('t.textContent=v=="bookorbit"?"BookOrbit":"Grimmory"', 1, true) ~= nil,
+            "the setup page: the heading names the server chosen (BookOrbit was the last one) and follows the choice")
+        local grim = page:match('<div data%-for="grimmory" style="display:none">(.-)<div data%-for="bookorbit">')
+        local bo = page:match('<div data%-for="bookorbit">(.-)</form>')
+        check(grim and grim:find('name="username"', 1, true) and not grim:find("API key", 1, true)
+            and grim:find('autocomplete="current-password" disabled>', 1, true) and grim:find('name="action" value="password" disabled>', 1, true)
+            and grim:find('id="g_username"[^>]- disabled') and (not grim:find('value="sso"', 1, true) or grim:find('value="sso" formnovalidate disabled>', 1, true)),
+            "the setup page: Grimmory's user name, password and single sign-on are hidden and switched off while BookOrbit is chosen")
+        check(bo and not bo:find("SSO", 1, true) and not bo:find("single sign", 1, true) and not bo:find("disabled", 1, true)
+            and bo:find("Use the KOReader sync user name and password instead", 1, true)
+            and bo:find("The easy way: with the key alone", 1, true) and bo:find("Access: Read and write.", 1, true)
+            and bo:find("Connect with the API key", 1, true) < bo:find("KOReader sync user name", 1, true),
+            "the setup page, BookOrbit's block: the API key first, the sync name and password as the other way, no single sign-on")
+        -- a wrong try at BookOrbit comes back with BookOrbit chosen and named
+        _c, page = phone("-L --data-urlencode 'server=" .. BO .. "' --data-urlencode 'backend=bookorbit' --data-urlencode 'action=password' --data-urlencode 'username=will-kindle' --data-urlencode 'password=wrong' '" .. purl .. "/grimmory'")
+        check(page:find('<h2 id="g_title">BookOrbit</h2>', 1, true) and page:find('<div data-for="grimmory" style="display:none">', 1, true)
+            and page:find('<div data-for="bookorbit">', 1, true) and page:find('<details open><summary>Use the KOReader sync user name', 1, true)
+            and page:find('value="sso" formnovalidate disabled', 1, true),
+            "the setup page: after a wrong BookOrbit password it's still BookOrbit's form, with Grimmory's parts off")
+        -- connecting says which server, on the page and on the Kindle
+        captured.notify = nil
+        _c, page = phone("-L --data-urlencode 'server=" .. BO .. "' --data-urlencode 'backend=bookorbit' --data-urlencode 'action=password' --data-urlencode 'username=will-kindle' --data-urlencode 'password=hunter22' '" .. purl .. "/grimmory'")
+        check(page:find("Connected to BookOrbit as will%-kindle%.") and not page:find("Connected to Grimmory", 1, true) and page:find('<h2 id="g_title" data-fixed="1">BookOrbit</h2>', 1, true),
+            "the setup page: connected to BookOrbit is said as BookOrbit, and the heading is BookOrbit")
+        -- saving the key says it worked and what the key can do
+        _c, page = phone("-L --data-urlencode 'api_key=" .. KEY .. "' '" .. purl .. "/grimmory/apikey'")
+        check(page:find("BookOrbit accepted the API key. Audiobooks and collections can use it. Requesting books: yes. Signing in with just the key: yes.", 1, true)
+            and page:find("(one is saved)", 1, true) and not page:find(KEY, 1, true), "the setup page: a saved key is confirmed, with what it can do")
+        bctl("/_mock/set", '{"request_permission": false, "key_ko_permission": false}')
+        _c, page = phone("-L --data-urlencode 'api_key=" .. KEY .. "' '" .. purl .. "/grimmory/apikey'")
+        check(page:find("Requesting books: no (the key was made without “Request books”", 1, true) and page:find("Signing in with just the key: no (the key was made without “KOReader sync”)", 1, true),
+            "the setup page: a key without the two permissions: said which")
+        bctl("/_mock/set", '{"request_permission": true, "key_ko_permission": true}')
+        _c, page = phone("-L --data-urlencode 'api_key=bok_wrongwrongwrong' '" .. purl .. "/grimmory/apikey'")
+        check(page:find("accept the API key. It may have expired", 1, true) and plugin.api:hasApiKey(), "the setup page: a wrong key is refused in words; the saved one stays")
+        _c, page = phone("-L --data-urlencode 'api_key=' '" .. purl .. "/grimmory/apikey'")
+        check(page:find("The BookOrbit API key was removed.", 1, true) and not plugin.api:hasApiKey(), "the setup page: removing the key is confirmed")
+        _c, page = phone("-L --data-urlencode 'api_key=" .. KEY .. "' '" .. purl .. "/grimmory/apikey'")
+        local UIM = require("ui/uimanager")
+        local show_was, summary = UIM.show, nil
+        UIM.show = function(_s, w) if type(w) == "table" and type(w.text) == "string" then summary = w.text end end
+        require("gzreader_phone").afterClose({ plugin = plugin, changes = { grimmory = true }, opts = {} })
+        UIM.show = show_was
+        screen.on_cancel()
+        check(type(summary) == "string" and summary:find("BookOrbit: connected as will-kindle.", 1, true) ~= nil and not summary:find("Grimmory", 1, true),
+            "the Kindle's summary after setup names BookOrbit " .. tostring(summary))
+        check(plugin.api:hasApiKey() and plugin.store.username == "will-kindle", "(signed in with the key saved for what follows)")
     end
     -- signing in again as the same user keeps the key; another user doesn't get it
     plugin:connect(BO, "will-kindle", "hunter22", "bookorbit")

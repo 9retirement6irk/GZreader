@@ -20,7 +20,7 @@ you came from; without JavaScript they're one under the other):
 ![The setup page in a computer's browser](https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/browser-setup.png)
 
 
-- **Grimmory**: connect with a password or single sign-on, or disconnect.
+- **Books**: your book server. Choose Grimmory (connect with a password or single sign-on) or [BookOrbit](BookOrbit) (connect with an API key, or its KOReader sync user name and password), or disconnect.
 - **Notes (Memos)**: the Memos address and an access token, or disconnect.
 - **Calendar**: your calendars, each with *Show its events*; calendar links
   can be renamed, given a new link (Proton's links change when you reshare)

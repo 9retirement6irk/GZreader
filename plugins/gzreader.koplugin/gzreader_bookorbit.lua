@@ -823,6 +823,19 @@ function BookOrbit:readSyncSettings(base, api_key)
     return self.store.bookorbit.delivery
 end
 
+--- What the saved key turns out to be allowed, asked of the server (two small requests):
+--- { signin = it may see the sync sign-in ("KOReader sync"), requests = it may request
+--- books ("Request books") }; nil for a part that couldn't be asked.
+function BookOrbit:keyAbilities()
+    if not self:hasApiKey() then return {} end
+    local out = {}
+    local code = self:keyCall("GET", "/api/v1/koreader/credentials", { timeouts = { 8, 15 } })
+    if code == 200 then out.signin = true elseif code == 403 then out.signin = false end
+    code = self:keyCall("GET", "/api/v1/book-requests?page=1&limit=1", { timeouts = { 8, 15 } })
+    if code == 200 then out.requests = true elseif code == 403 then out.requests = false end
+    return out
+end
+
 --- A line for the user when a BookOrbit setting works against the Kindle, or nil.
 function BookOrbit:settingsAdvice()
     local b = self.store.bookorbit
