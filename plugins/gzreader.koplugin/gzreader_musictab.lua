@@ -539,7 +539,7 @@ end
 function Tab.audiobooksText(plugin)
     local sec = require("gzreader_plex").audiobookSection(plugin.store.plex)
     if sec then return T(_("Audiobooks: from Plex (%1)"), sec.title or "?") end
-    return _("Audiobooks: from Grimmory")
+    return require("gzreader_servername").fix(_("Audiobooks: from Grimmory"))
 end
 
 --- Where the audiobooks come from on its own (the Plex card's value).

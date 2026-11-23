@@ -195,7 +195,7 @@ function BookPage:build()
     -- the description takes the rest
     local desc = BookPage.description(self.detail)
     if not desc then
-        desc = self.detail and _("No description in Grimmory.") or (self.failed and _("Couldn't get the description from Grimmory.") or _("Getting the description…"))
+        desc = require("gzreader_servername").fix(self.detail and _("No description in Grimmory.") or (self.failed and _("Couldn't get the description from Grimmory.") or _("Getting the description…")))
     end
     if busy then desc = T(_("Another download is running; this one is queued (%1 waiting)."), #Download.queue) .. "\n\n" .. desc end
     local used = head:getSize().h + self.buttontable:getSize().h + 2 * pad + S(28)

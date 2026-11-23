@@ -61,8 +61,8 @@ function NewCopy.check(plugin, ui, book_id, entry)
     UIManager:scheduleIn(2, function()
         if not (ui.document and ui.document.file == entry.path) then return end
         UIManager:show(require("ui/widget/confirmbox"):new{
-            text = T(_("Grimmory has a different copy of “%1” now (%2 here, %3 on Grimmory): it may have been replaced with another edition.\n\nDownload it again? Your place in the book comes back from Grimmory."),
-                entry.title or name or key, mb(size), mb(kb * 1024)),
+            text = require("gzreader_servername").fix(T(_("Grimmory has a different copy of “%1” now (%2 here, %3 on Grimmory): it may have been replaced with another edition.\n\nDownload it again? Your place in the book comes back from Grimmory."),
+                entry.title or name or key, mb(size), mb(kb * 1024))),
             ok_text = _("Download again"),
             cancel_text = _("Keep this one"),
             ok_callback = function()

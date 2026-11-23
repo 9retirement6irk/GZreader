@@ -370,7 +370,7 @@ function Browser:bookItems()
         { gz_id = "recent", text = _("Recently added"), callback = function() self:openSimple("recently-added", _("Recently added")) end },
         { gz_id = "all", text = _("All books"), callback = function() self:openPaged(_("All books"), { sort = "title", dir = "asc" }) end },
         { gz_id = "libraries", text = _("Libraries"), callback = function() self:openLibraries() end },
-        { gz_id = "shelves", text = _("Shelves"), callback = function() self:openShelves() end },
+        { gz_id = "shelves", text = require("gzreader_servername").shelves(), callback = function() self:openShelves() end },
         { gz_id = "authors", text = _("Authors"), callback = function() self:openAuthors() end },
         { gz_id = "series", text = _("Series"), callback = function() self:openSeries() end },
         Browser.grimmoryItem(self, "grimmory"),
@@ -555,7 +555,7 @@ function Browser:audiobookItems()
             mandatory = audioCount(n) or _("M4B and MP3"), callback = function() self:openAudiobooks() end },
         { gz_id = "ab_authors", gz_kind = "section", gz_contents = "dividers", text = _("Authors"),
             mandatory = na and na > 0 and T(_("%1 · A–Z"), na) or _("A–Z"), callback = function() self:openAudioAuthors() end },
-        { gz_id = "ab_shelves", gz_kind = "section", gz_contents = "faceout", text = _("Shelves"),
+        { gz_id = "ab_shelves", gz_kind = "section", gz_contents = "faceout", text = require("gzreader_servername").shelves(),
             mandatory = _("yours and magic"), callback = function() self:openAudioShelves() end },
         { gz_id = "ab_series", gz_kind = "section", gz_contents = "piles", text = _("Series"),
             mandatory = ns and ns > 0 and (ns == 1 and _("1 series") or T(_("%1 series"), ns)) or _("in order"),
@@ -637,7 +637,7 @@ function Browser:openAudioShelves()
     end
     self:openCached{
         key = "shelves",
-        title = _("Shelves"),
+        title = require("gzreader_servername").shelves(),
         fetch = function() return self.api:listShelves() end,
         build = function(shelves)
             local items = {}
@@ -1009,7 +1009,7 @@ end
 local function refreshItem(self, reopen)
     return {
         gz_action = "refresh",
-        text = _("Refresh list from Grimmory"),
+        text = require("gzreader_servername").fix(_("Refresh list from Grimmory")),
         callback = function()
             -- (a list opened from the saved index needs no Wi-Fi, so it may be
             -- off by now: "Wi-Fi only when needed" turns it off when idle)
@@ -1063,7 +1063,7 @@ end
 function Browser:openShelves()
     self:openCached{
         key = "shelves",
-        title = _("Shelves"),
+        title = require("gzreader_servername").shelves(),
         fetch = function() return self.api:listShelves() end,
         build = function(shelves)
             local items = {}
@@ -1074,7 +1074,7 @@ function Browser:openShelves()
                         text = name,
                         sort_key = (sh.magic and "1" or "0") .. name:lower(),
                         gz_kind = "shelf", gz_magic = sh.magic and true or nil, gz_count = tonumber(sh.bookCount),
-                        mandatory = sh.magic and _("smart shelf") or countText(sh.bookCount),
+                        mandatory = sh.magic and require("gzreader_servername").smart() or countText(sh.bookCount),
                         callback = function()
                             local params = { sort = "title", dir = "asc" }
                             if sh.magic then params.magicShelfId = sh.id else params.shelfId = sh.id end

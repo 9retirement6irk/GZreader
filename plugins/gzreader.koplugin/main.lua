@@ -632,7 +632,7 @@ function Grimmory:menuItems()
         },
         {
             text = _("Rebuild library"),
-            help_text = _("Loads the list of your books from Grimmory again (what Authors, Series and searching use) and forgets the saved lists, so books removed from Grimmory disappear here and new ones show. The same as Refresh list from Grimmory in Authors or Series; it's also done by itself once a day."),
+            help_text = require("gzreader_servername").fix(_("Loads the list of your books from Grimmory again (what Authors, Series and searching use) and forgets the saved lists, so books removed from Grimmory disappear here and new ones show. The same as Refresh list from Grimmory in Authors or Series; it's also done by itself once a day.")),
             enabled_func = function() return self.api:isPaired() end,
             keep_menu_open = true,
             callback = function() self:rebuildLibrary() end,
@@ -1723,7 +1723,7 @@ function Grimmory:announceConnected()
     UIManager:show(InfoMessage:new{
         text = T(_("Connected to %1 as %2."), self:serverName(), self.store.username or "") .. "\n\n"
             .. (self:booksOnly() and require("gzreader_bookorbit").note()
-                or _("Reading progress syncs automatically for books you download from Grimmory.")),
+                or require("gzreader_servername").fix(_("Reading progress syncs automatically for books you download from Grimmory."))),
     })
 end
 
@@ -2116,7 +2116,7 @@ end
 function Grimmory:onGrimmorySyncNow()
     if Net.usb then require("gzreader_usbsync").show(self); return true end
     if not self.sync then
-        UIManager:show(InfoMessage:new{ text = _("This book wasn't downloaded from Grimmory, so it can't be synced."), timeout = 3 })
+        UIManager:show(InfoMessage:new{ text = require("gzreader_servername").fix(_("This book wasn't downloaded from Grimmory, so it can't be synced.")), timeout = 3 })
         return true
     end
     Net.run(function()
