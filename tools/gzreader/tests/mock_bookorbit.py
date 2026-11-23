@@ -104,6 +104,7 @@ def fresh():
         "ko_md5_known": True,     # False: an old sign-in whose key the server can't hand over (plugin-package answers 400)
         "key_ko_permission": True,  # the API key's "KOReader sync" permission
         "ko_names_taken": [],     # sync user names other accounts have
+        "cors_origin": None,      # a site a reverse proxy in front lets in (BookOrbit itself sends no CORS headers)
         "requests": [],           # book requests: {id, userId, title, authors, mediaKind, status, ...}
         "request_permission": True,  # the "Request books" permission (False: 403)
         "request_status": "pending",  # what a new request starts as ("approved" with auto-approve)
@@ -445,6 +446,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(raw)))
         for k, v in (headers or {}).items():
             self.send_header(k, v)
+        if STATE.get("cors_origin") and self.headers.get("Origin") == STATE["cors_origin"]:
+            self.send_header("Access-Control-Allow-Origin", STATE["cors_origin"])
+            self.send_header("Access-Control-Expose-Headers", "content-length, content-range, content-disposition, etag")
         self.end_headers()
         if self.command != "HEAD":
             self.wfile.write(raw)
@@ -521,6 +525,18 @@ class Handler(BaseHTTPRequestHandler):
         return True
 
     # ---------------------------------------------------------------- routes
+    def do_OPTIONS(self):
+        # (only a reverse proxy answers a browser's preflight: without one set up, as production BookOrbit, 404)
+        allowed = STATE["cors_origin"]
+        if not allowed or self.headers.get("Origin") != allowed:
+            return self.error(404, "Cannot OPTIONS " + self.path.split("?")[0])
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", allowed)
+        self.send_header("Access-Control-Allow-Headers", "x-auth-user, x-auth-key, authorization, content-type, range, if-none-match")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def do_GET(self):
         self.route("GET")
 
