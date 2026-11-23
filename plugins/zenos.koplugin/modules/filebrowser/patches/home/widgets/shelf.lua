@@ -31,6 +31,11 @@ M.BOARD_H = 14     -- the shelf board under the books (px at 160 dpi)
 M.UNDER_H = 6      -- its shadow on the wall below
 M.MIN_SPINE = 44   -- (1.22.6: wider, for bigger type; were 34-46)
 M.MAX_SPINE = 58
+-- GZreader: an audiobook's cassette on its side (its edge out): how wide, how
+-- tall beside the books (a share of the shelf's height), how dark its shell
+M.TAPE_SPINE = 34
+M.TAPE_TALL = 0.6
+M.TAPE_SHADE = 0.72
 --- How many spines a shelf of `width` holds.
 function M.perRow(width)
     return math.max(4, math.min(24, math.floor((width - S(16)) / S(M.MAX_SPINE))))
@@ -390,6 +395,38 @@ local function draw_spine(book, w, h, shade)
     return stood
 end
 
+--- GZreader: an audiobook's cassette standing on its side, its edge out: the
+--- dark shell, a screw at each end, and the paper label along it with the title.
+local function draw_tape_side(book, w, h, shade)
+    local lying = Blitbuffer.new(h, w, Blitbuffer.TYPE_BB8) -- (lying down: h long, w thick)
+    lying:fill(Blitbuffer.gray(shade))
+    local inset = math.max(2, S(4))
+    local lx, lw = math.floor(h * 0.12), math.floor(h * 0.70)
+    lying:paintRect(lx, inset, lw, w - 2 * inset, Blitbuffer.gray(0.03))
+    lying:paintRect(lx, inset, math.max(2, S(4)), w - 2 * inset, Blitbuffer.gray(0.55)) -- the label's stripe
+    local size = 13
+    local title
+    repeat
+        if title then title:free() end
+        title = TextWidget:new{ text = book_title(book), face = Font:getFace("cfont", size), bold = true,
+            fgcolor = Blitbuffer.COLOR_BLACK, max_width = lw - S(12) }
+        size = size - 1
+    until title:getSize().h <= w - 2 * inset or size < 8
+    local ts = title:getSize()
+    title:paintTo(lying, lx + S(8), math.floor((w - ts.h) / 2))
+    title:free()
+    local r = math.max(2, S(2))
+    for _i, cx in ipairs({ math.floor(h * 0.05), h - math.floor(h * 0.05) }) do
+        lying:paintCircle(cx, math.floor(w / 2), r, Blitbuffer.gray(0.25))
+    end
+    -- the head opening, at the end that stands on the board
+    lying:paintRect(h - math.floor(h * 0.14), math.floor(w * 0.3), math.floor(h * 0.06), w - 2 * math.floor(w * 0.3), Blitbuffer.gray(0.92))
+    local stood = lying:rotatedCopy(270)
+    lying:free()
+    stood:paintBorder(0, 0, w, h, 1, Blitbuffer.gray(0.95))
+    return stood
+end
+
 local function spine_bb(book, w, h, shade)
     local key = cache_key(book, w, h, shade)
     local bb = spine_cache[key]
@@ -398,7 +435,8 @@ local function spine_bb(book, w, h, shade)
         for k, v in pairs(spine_cache) do v:free(); spine_cache[k] = nil end
         spine_cache_n = 0
     end
-    bb = draw_spine(book, w, h, shade)
+    bb = (book.is_group ~= true and type(book.gz_shape) == "table") and draw_tape_side(book, w, h, shade)
+        or draw_spine(book, w, h, shade)
     spine_cache[key] = bb
     spine_cache_n = spine_cache_n + 1
     return bb
@@ -733,7 +771,13 @@ function Shelf:paintTo(bb, x, y)
                 local cs = slot.cover:getSize()
                 local cx = x + px + S(6)
                 local cy = board_y - cs.h - S(M.PAGES)
-                M.paintBook(bb, slot.cover, cx, cy, cs.w, cs.h)
+                if slot.gz_tape then
+                    -- GZreader: an audiobook turned to face out is its cassette: no pages behind it
+                    cy = board_y - cs.h
+                    slot.cover:paintTo(bb, cx, cy)
+                else
+                    M.paintBook(bb, slot.cover, cx, cy, cs.w, cs.h)
+                end
                 for k = 0, 1 do
                     bb:paintBorder(cx - S(3) - k, cy - S(3) - k, cs.w + 2 * (S(3) + k), cs.h + 2 * (S(3) + k), 1, Blitbuffer.COLOR_BLACK)
                 end
@@ -860,9 +904,15 @@ function M.build(books, opts)
         for i = (r - 1) * per_row + 1, math.min(#books, r * per_row) do
             local book = books[i]
             local look = M.look(book, area_h)
+            -- GZreader: an audiobook (common/gz_server_recent) is a cassette on its side,
+            -- shorter than the books; picked, it turns to face out as a book shows its cover
+            local tape = book.is_group ~= true and type(book.gz_shape) == "table"
+            if tape then
+                look = { w = S(M.TAPE_SPINE), h = math.max(S(60), math.floor(area_h * M.TAPE_TALL)), shade = M.TAPE_SHADE }
+            end
             if x + look.w > width - S(4) - keep and #shelf.slots > 0 then break end
             if x + look.w > width - S(4) then break end
-            local slot = { x = x, w = look.w, h = look.h, book = book }
+            local slot = { x = x, w = look.w, h = look.h, book = book, gz_tape = tape or nil }
             local spine = Spine:new{ w = look.w, h = look.h, book = book, shade = look.shade }
             local item = spine
             local path = book.path

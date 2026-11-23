@@ -208,7 +208,11 @@ function M.target_dims(book, max_w, max_h, opts)
     opts = opts or {}
     local target_w, target_h
     local source_w, source_h
-    if opts.uniform == false and book then
+    -- GZreader: a picture with a shape of its own (an audiobook's cassette) keeps it
+    local own_shape = book and type(book.gz_shape) == "table"
+    if own_shape then
+        source_w, source_h = tonumber(book.gz_shape[1]), tonumber(book.gz_shape[2])
+    elseif opts.uniform == false and book then
         source_w, source_h = tonumber(book.cover_w), tonumber(book.cover_h)
         if (not source_w or source_w <= 0 or not source_h or source_h <= 0)
                 and book.cover_bb then
@@ -238,18 +242,24 @@ function M.make_cover_widget(book, max_w, max_h, opts)
     local border = tonumber(opts.border) or M.BORDER_SIZE
     local bg = opts.background or Blitbuffer.COLOR_LIGHT_GRAY
     local target_w, target_h = M.target_dims(book, max_w, max_h, opts)
+    -- GZreader: a cassette is its own outline (no frame, no grey behind it)
+    if book and type(book.gz_shape) == "table" then border, bg = 0, Blitbuffer.COLOR_WHITE end
 
     local child
     local cover_bb
     local cache_owned = false
     local cache_key
     local needs_hydration = false
-    if book and book.has_real_cover == true and book.path then
-        cover_bb = RenderCache:getShared(book.path, target_w, target_h)
+    -- GZreader: a picture that isn't the file's cover (a book that isn't on the
+    -- Kindle, a cassette: common/gz_server_recent) is kept under a key of its own
+    local own_key = book and type(book.gz_cover_key) == "string" and book.gz_cover_key or nil
+    local cover_key = own_key or (book and book.path)
+    if book and book.has_real_cover == true and cover_key then
+        cover_bb = RenderCache:getShared(cover_key, target_w, target_h)
         cache_owned = cover_bb ~= nil
-        cache_key = cache_owned and book.path or nil
+        cache_key = cache_owned and cover_key or nil
         if not cover_bb and type(RenderCache.get) == "function" then
-            cover_bb = RenderCache:get(book.path, target_w, target_h)
+            cover_bb = RenderCache:get(cover_key, target_w, target_h)
         end
         if cover_bb and book.cover_bb then
             free_bitmap(book.cover_bb)
@@ -260,7 +270,7 @@ function M.make_cover_widget(book, max_w, max_h, opts)
     -- shelf, a smaller current book) and not loaded: load and size it now,
     -- instead of a blank cover that nothing would fill in. The size is kept
     -- (the cover then on disk) and noted, so every book gets pre-sized for it.
-    if not cover_bb and book and book.has_real_cover == true and book.path
+    if not cover_bb and book and book.has_real_cover == true and book.path and not own_key
             and not book.cover_bb and opts.load_missing ~= false then
         pcall(function() require("common/cover_disk_cache").recordExact(target_w, target_h) end)
         local ok_bim, BookInfoManager = pcall(require, "bookinfomanager")
@@ -278,10 +288,10 @@ function M.make_cover_widget(book, max_w, max_h, opts)
     if not cover_bb and book and book.cover_bb then
         cover_bb = book.cover_bb
         book.cover_bb = nil
-        if book.path then
+        if cover_key then
             cover_bb, cache_owned = RenderCache:renderShared(
-                book.path, cover_bb, target_w, target_h)
-            cache_key = cache_owned and book.path or nil
+                cover_key, cover_bb, target_w, target_h)
+            cache_key = cache_owned and cover_key or nil
         end
     end
     if cover_bb then

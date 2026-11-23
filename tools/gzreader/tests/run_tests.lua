@@ -4923,6 +4923,123 @@ do
     check(rplugin.store.grimmory_stats.server == "grimmory", "…and Grimmory's are back after asking")
 end
 
+print("Home's recently read from the server (an option: also what isn't on this Kindle)")
+do
+    local Recent = require("gzreader_serverrecent")
+    local ZR = dofile(PLUGIN .. "/../zenos.koplugin/common/gz_server_recent.lua")
+    -- (book 3 is on this Kindle; book 4 isn't, here)
+    local was_local = rplugin.localPathFor
+    rplugin.localPathFor = function(self, id)
+        if tostring(id) == "4" then return nil end
+        return was_local(self, id)
+    end
+    check(Recent.epoch("1970-01-02T00:00:00Z") == 86400 and Recent.epoch("2000-03-01T00:00:00Z") == 951868800
+        and Recent.epoch("2026-01-01T00:00:00.250Z") == 1767225600 and Recent.epoch("2026-01-01T01:00:00+01:00") == 1767225600
+        and Recent.epoch("2025-12-31T19:00:00-05:00") == 1767225600 and Recent.epoch("2026-01-01T00:00:00") == 1767225600
+        and Recent.epoch(1767225600000) == 1767225600 and Recent.epoch("soon") == nil and Recent.epoch(nil) == nil,
+        "the server's times as seconds (Z, an offset, none: UTC), whatever this Kindle's time zone")
+    -- off: nothing asked, nothing shown
+    G_reader_settings:delSetting(Recent.SETTING)
+    rplugin.store.server_recent = nil
+    check(#Recent.entries(rplugin) == 0 and rplugin.store.server_recent == nil and Recent.stamp(rplugin) == "",
+        "the option off: Grimmory isn't asked and Home's history is the Kindle's own")
+    -- on: Grimmory's books and audiobooks in progress, newest first
+    ctl("/lastread?book=2&at=2026-11-20T10:00:00Z")
+    ctl("/lastread?book=4&at=2026-11-21T08:00:00Z")
+    ctl("/lastread?book=32&at=2026-11-21T09:00:00Z")
+    local stamp_off = Recent.stamp(rplugin)
+    Recent.set(rplugin, true)
+    local list = Recent.entries(rplugin)
+    local ids = {}
+    for _i, e in ipairs(list) do ids[#ids + 1] = e.id end
+    check(table.concat(ids, " "):match("^32 4 2 ") ~= nil and #list == 6, "books and audiobooks in progress as one list, the one read last first; those with no time after " .. table.concat(ids, " "))
+    check(list[1].audio == true and list[1].key == "gzserver:32" and list[1].time == Recent.epoch("2026-11-21T09:00:00Z") and list[2].audio == nil,
+        "an audiobook is marked as one; each has a key and its time")
+    local three
+    for _i, e in ipairs(list) do if e.id == "3" then three = e end end
+    check(three and three.path == rplugin:localPathFor(3) and three.path ~= nil and list[2].path == nil,
+        "a book on this Kindle comes with its file; one that isn't, with none")
+    check(Recent.stamp(rplugin) ~= stamp_off and Recent.stamp(rplugin):find("32:", 1, true) ~= nil, "Home is told the list changed")
+    local kept = rplugin.store.server_recent
+    check(type(kept.who) == "string" and kept.who:find("grimmory|", 1, true) == 1 and kept.items[2].book.primaryFileType == "EPUB"
+        and kept.items[2].book.title == "Book 04", "kept with what a download needs, and whose list it is")
+    local at = kept.at
+    Recent.entries(rplugin)
+    check(rplugin.store.server_recent.at == at, "not asked again within ten minutes")
+    Recent.stale(rplugin)
+    ctl("/lastread?book=1&at=2026-11-22T07:00:00Z")
+    check(Recent.entries(rplugin)[1] ~= nil and rplugin.store.server_recent.items[1].id == "1",
+        "asked again after this Kindle's reading reached Grimmory")
+    list = Recent.entries(rplugin)
+    -- another server or user: not this one's list
+    local who = rplugin.store.server_recent.who
+    rplugin.store.server_recent.who = "bookorbit|http://example.com|someone"
+    check(Recent.kept(rplugin) == nil, "a list kept from another server or user isn't shown as this one's")
+    rplugin.store.server_recent.who = who
+    -- Home's side: the Kindle's history and the server's list as one
+    local paths, not_here = ZR.merge({ "/a.epub", "/b.epub" }, { ["/a.epub"] = 300, ["/b.epub"] = 100 }, {
+        { key = "gzserver:8", time = 400, path = "/b.epub" },   -- on the Kindle, read later elsewhere
+        { key = "gzserver:9", time = 200 },                      -- not on the Kindle
+        { key = "gzserver:7", time = 150, path = "/c.epub" },   -- on the Kindle, never opened here
+        { key = "gzserver:6", time = 0 },                        -- no time: last
+    }, 10)
+    check(table.concat(paths, " ") == "/b.epub /a.epub gzserver:9 /c.epub gzserver:6" and not_here["gzserver:9"] ~= nil
+        and not_here["gzserver:6"] ~= nil and not_here["/b.epub"] == nil and not_here["/c.epub"] == nil,
+        "merged by time: a book on the Kindle keeps its file (moved up when read later elsewhere), one that isn't gets a key " .. table.concat(paths, " "))
+    paths = ZR.merge({ "/a.epub" }, { ["/a.epub"] = 300 }, { { key = "gzserver:9", time = 500 }, { key = "gzserver:5", time = 400 } }, 2)
+    check(table.concat(paths, " ") == "gzserver:9 gzserver:5", "…and the most recent ones when there are more than Home shows")
+    check(ZR.isKey("gzserver:9") and not ZR.isKey("/mnt/us/a.epub") and not ZR.isKey(nil), "a key isn't taken for a file")
+    -- Home's record of one that isn't here; an audiobook has a cassette's shape
+    local was_hook = rawget(_G, "__GZ_SERVER_RECENT")
+    rawset(_G, "__GZ_SERVER_RECENT", Recent.hook(rplugin))
+    check(ZR.on() and ZR.serverName() == "Grimmory" and #ZR.entries() == #list and ZR.stamp() == Recent.stamp(rplugin), "Home asks GZreader for it")
+    local four, tape
+    for _i, e in ipairs(ZR.entries()) do
+        if e.id == "4" then four = e end
+        if e.id == "32" then tape = e end
+    end
+    local Covers = require("gzreader_covers")
+    os.remove(Covers.path(4))
+    local b4 = ZR.book(four, true)
+    check(b4.path == "gzserver:4" and b4.title == "Book 04" and b4.authors == four.authors and four.authors ~= "" and b4.status == "reading" and b4.gz_cover_key == "gzserver:4"
+        and b4.has_real_cover == false and b4.is_cover_pending == nil and b4.bookinfo.title == "Book 04" and b4.gz_shape == nil,
+        "a book that isn't here: its title and author (a cover with them, until Grimmory's is fetched)")
+    local cf = io.open(Covers.path(4), "wb"); cf:write("jpeg"); cf:close()
+    b4 = ZR.book(four, true)
+    check(b4.has_real_cover == true and b4.is_cover_pending == true, "…and Grimmory's cover once it's on the Kindle")
+    os.remove(Covers.path(4))
+    local bt = ZR.book(tape, true)
+    check(bt.gz_shape and bt.gz_shape[1] == 155 and bt.gz_shape[2] == 100 and bt.has_real_cover == true and bt.is_cover_pending == true
+        and bt.gz_cover_key == "gzserver:32", "an audiobook has a cassette's shape")
+    -- a tap: on the Kindle opens; not on the Kindle: its page (Download); an audiobook: its own question
+    local opened, paged, chosen
+    local was_open = rplugin.openBook
+    rplugin.openBook = function(_s, path) opened = path end
+    local Browser, Audiobook = require("gzreader_browser"), require("gzreader_audiobook")
+    local was_onbook, was_choose = Browser.onBook, Audiobook.choose
+    Browser.onBook = function(_s, book) paged = book end
+    Audiobook.choose = function(_p, book) chosen = book end
+    check(ZR.open("gzserver:3") == true and opened == rplugin:localPathFor(3) and paged == nil, "a tap on a book that's on this Kindle opens it")
+    check(ZR.open("gzserver:4") == true and paged and paged.id == 4 and paged.primaryFileType == "EPUB", "a tap on one that isn't shows its page, with Download")
+    check(ZR.open("gzserver:32") == true and chosen and chosen.id == 32, "a tap on an audiobook asks to download it (or plays it)")
+    check(ZR.open("gzserver:999") == false, "a key that's no longer on the list does nothing")
+    rplugin.openBook, Browser.onBook, Audiobook.choose = was_open, was_onbook, was_choose
+    -- Grimmory doesn't answer: the list stays, and it isn't asked at every redraw
+    local was_fetch, had = Recent.fetchFor, #rplugin.store.server_recent.items
+    Recent.fetchFor = function() return { error = "http_500" } end
+    Recent.stale(rplugin)
+    Recent.refresh(rplugin)
+    check(rplugin.store.server_recent.error == "http_500" and #rplugin.store.server_recent.items == had and rplugin.store.server_recent.at > 0
+        and #Recent.entries(rplugin) == had, "Grimmory doesn't answer: the list kept stays, and it's asked again later, not at every redraw")
+    Recent.fetchFor = was_fetch
+    rawset(_G, "__GZ_SERVER_RECENT", was_hook)
+    ctl("/lastread?clear=1")
+    G_reader_settings:delSetting(Recent.SETTING)
+    check(#Recent.entries(rplugin) == 0, "off again: Home's history is the Kindle's own")
+    rplugin.store.server_recent = nil
+    rplugin.localPathFor = was_local
+end
+
 print("Ratings (Grimmory's personal rating)")
 do
     local R = require("gzreader_ratings")
@@ -15999,6 +16116,49 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
             end
         end
         check(#left == 0, "the Catalog's screens have no text naming Grimmory that doesn't follow the server " .. table.concat(left, " "))
+    end
+    -- Home's recently read from BookOrbit: its books in progress and, with the key, its audiobooks
+    do
+        local Recent = require("gzreader_serverrecent")
+        plugin.api:putProgress("a201", { fileProgress = { bookFileId = 6201, positionData = "20000", positionHref = "0" } })
+        -- (a book read on another device: its progress as BookOrbit keeps it)
+        local was_progress = bctl("/_mock/state").progress
+        local hash = plugin.api:getBook(102).primaryFile.fileHash
+        bctl("/_mock/set", '{"progress": {"' .. hash .. '": {"percentage": 0.4, "progress": "/body/DocFragment[4]/body/p[1]/text().0", "device": "Phone",'
+            .. ' "device_id": "phone-1", "timestamp": 1795300000, "updatedAt": "2026-11-21T10:00:00.000Z"}}}')
+        local n_seen = #bctl("/_mock/state").seen
+        local res = Recent.fetchFor(plugin.api)
+        local audio, book
+        for _i, it in ipairs(res.items or {}) do
+            if it.id == "a201" then audio = it elseif not it.audio and not book then book = it end
+        end
+        check(audio and audio.audio == true and audio.title == "The Long Way Round" and audio.pct and audio.pct > 0 and audio.pct < 100
+            and audio.at and math.abs(audio.at - os.time()) < 86400 * 2,
+            "BookOrbit's audiobooks in progress, each with when it was last listened to (its saved position's time)")
+        check(book and book.id == "102" and book.at == Recent.epoch("2026-11-21T10:00:00Z") and book.pct == 40 and book.book.primaryFileName ~= nil,
+            "…and its books in progress, with when they were read")
+        local asked = false
+        local seen = bctl("/_mock/state").seen
+        for i = n_seen + 1, #seen do if seen[i][2] == "dashboard/scrollers/continue-listening" then asked = true end end
+        check(asked, "asked of BookOrbit's Continue listening shelf")
+        local key = plugin.store.bookorbit.api_key
+        plugin.store.bookorbit.api_key = nil
+        local none = plugin.api:continueListening(6)
+        res = Recent.fetchFor(plugin.api)
+        local any_audio = false
+        for _i, it in ipairs(res.items or {}) do if it.audio then any_audio = true end end
+        check(type(none) == "table" and #none == 0 and not any_audio and #res.items >= 1, "without an API key: the books only")
+        plugin.store.bookorbit.api_key = key
+        G_reader_settings:makeTrue(Recent.SETTING)
+        plugin.store.server_recent = nil
+        Recent.refresh(plugin, true)
+        runLoop(function() return plugin.store.server_recent ~= nil and not Recent.busy end, 20)
+        local kept = Recent.kept(plugin)
+        check(kept and kept.who:find("bookorbit|", 1, true) == 1 and #kept.items >= 2 and Recent.entries(plugin)[1].key:find("gzserver:", 1, true) == 1,
+            "kept as BookOrbit's list for this user")
+        G_reader_settings:delSetting(Recent.SETTING)
+        plugin.store.server_recent = nil
+        bctl("/_mock/set", next(was_progress or {}) and ('{"progress": ' .. require("gzreader_json").encode(was_progress) .. '}') or '{"progress": {}}')
     end
     -- signing in again as the same user keeps the key; another user doesn't get it
     plugin:connect(BO, "will-kindle", "hunter22", "bookorbit")

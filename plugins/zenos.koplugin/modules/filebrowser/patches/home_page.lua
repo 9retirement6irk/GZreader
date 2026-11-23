@@ -24,6 +24,7 @@ local WidgetResources = require("common/widget_resources")
 local UIManager = require("ui/uimanager")
 local _ = require("gettext")
 local now = require("common/zen_logger").now
+local GzServerRecent = require("common/gz_server_recent") -- GZreader
 local RAKUYOMI_PROVIDER = "modules/filebrowser/patches/rakuyomi"
 local KINDLE_PROVIDER = "modules/filebrowser/patches/kindle_virtual_library"
 
@@ -1122,6 +1123,16 @@ local function build_data_provider(cfg, dcfg, strip_page_state)
         dataset.rakuyomi_recent = nil
         clear_home_dataset_derived(dataset)
     end
+    -- GZreader: recently read with the book server's books in progress, when that
+    -- option is on (common/gz_server_recent): put together again when its list changed
+    local server_recent_stamp = GzServerRecent.stamp()
+    if dataset.gz_server_recent_stamp ~= server_recent_stamp then
+        dataset.gz_server_recent_stamp = server_recent_stamp
+        dataset.history = nil
+        dataset.gz_not_here = nil
+        dataset.gz_tapes = nil
+        clear_home_dataset_derived(dataset)
+    end
     local cover_badges = type(cfg) == "table" and type(cfg.browser_cover_badges) == "table"
         and cfg.browser_cover_badges or {}
     local wants_favorite_badge = cover_badges.show_favorite_badge == true
@@ -1234,6 +1245,7 @@ local function build_data_provider(cfg, dcfg, strip_page_state)
         dataset.rakuyomi_recent = {}
         for _i, series in ipairs(recent) do dataset.rakuyomi_recent[series.file] = series end
         local recent_index = 1
+        local times = {} -- GZreader: when each was read (for the server's list, below)
         local lfs = require("libs/libkoreader-lfs")
         local function is_rakuyomi_history_path(path)
             if path:lower():sub(-4) ~= ".cbz" then return false end
@@ -1251,6 +1263,7 @@ local function build_data_provider(cfg, dcfg, strip_page_state)
             local path = type(raw_path) == "string" and LibraryPaths.normPath(raw_path) or nil
             while recent[recent_index] and (entry.time or 0) <= recent[recent_index].time do
                 table.insert(dataset.history, recent[recent_index].file)
+                times[recent[recent_index].file] = recent[recent_index].time
                 recent_index = recent_index + 1
                 if #dataset.history >= HOME_STRIP_MAX_BOOKS then break end
             end
@@ -1269,12 +1282,23 @@ local function build_data_provider(cfg, dcfg, strip_page_state)
                 and not dataset.rakuyomi_recent[path]
                 and not ((#recent > 0 or exclude_rakuyomi) and is_rakuyomi) then
                 table.insert(dataset.history, path)
+                times[path] = entry.time
                 if #dataset.history >= HOME_STRIP_MAX_BOOKS then break end
             end
         end
         while recent[recent_index] and #dataset.history < HOME_STRIP_MAX_BOOKS do
             table.insert(dataset.history, recent[recent_index].file)
+            times[recent[recent_index].file] = recent[recent_index].time
             recent_index = recent_index + 1
+        end
+
+        -- GZreader: with the book server's books in progress (also the ones that
+        -- aren't on this Kindle: a key in place of a path), newest first
+        dataset.gz_not_here = nil
+        local server_entries = GzServerRecent.entries()
+        if #server_entries > 0 then
+            dataset.history, dataset.gz_not_here = GzServerRecent.merge(
+                dataset.history, times, server_entries, HOME_STRIP_MAX_BOOKS)
         end
 
         return dataset.history
@@ -1370,13 +1394,32 @@ local function build_data_provider(cfg, dcfg, strip_page_state)
     end
 
     -- cover_dims ({ w, h }): final cover size; skips decoding a cover RenderCache already holds.
-    local function get_book(path, need_time_left, metadata_only, cover_dims)
+    local get_book
+    local get_book_plain = false -- (GZreader: the record under a cassette is being made)
+    get_book = function(path, need_time_left, metadata_only, cover_dims)
         if dataset.rakuyomi_recent and dataset.rakuyomi_recent[path] then
             local book = OptionalProvider.call(RAKUYOMI_PROVIDER,
                 "getRecentBook", dataset.rakuyomi_recent[path], metadata_only)
             if type(book) == "table" then return book end
         end
+        -- GZreader: a book the server has in progress that isn't on this Kindle
+        if dataset.gz_not_here and dataset.gz_not_here[path] then
+            return GzServerRecent.book(dataset.gz_not_here[path], metadata_only, cover_dims)
+        end
+        if GzServerRecent.isKey(path) then return nil end
         if not path or is_tmpfs_chapter(path) then return nil end
+        -- GZreader: an audiobook on the Kindle as a cassette (when that option is on)
+        dataset.gz_tapes = dataset.gz_tapes or {}
+        if dataset.gz_tapes[path] == nil then
+            dataset.gz_tapes[path] = GzServerRecent.standIn(path) or false
+        end
+        if dataset.gz_tapes[path] and not get_book_plain then
+            get_book_plain = true
+            local ok_tape, tape = pcall(get_book, path, need_time_left, true, cover_dims)
+            get_book_plain = false
+            if ok_tape and tape then return GzServerRecent.asTape(tape, metadata_only, cover_dims) end
+            return nil
+        end
         local started_at = os.clock()
         local load_cover = not metadata_only
         if load_cover and type(cover_dims) == "table" and type(RenderCache.hasReusable) == "function"
@@ -1691,6 +1734,7 @@ local function build_data_provider(cfg, dcfg, strip_page_state)
 
     local function get_effective_status(path)
         if dataset.rakuyomi_recent and dataset.rakuyomi_recent[path] then return "reading" end
+        if GzServerRecent.isKey(path) then return "reading" end -- GZreader: in progress on the server
         local cached = dataset.effective_status[path]
         if cached then return cached end
         local loaded_status = type(book_status.getFileStatusData) == "function"
@@ -2501,6 +2545,10 @@ local function build_data_provider(cfg, dcfg, strip_page_state)
         if type(path) ~= "string" or path == "" or not width or width < 1
                 or not height or height < 1 then
             return "failed"
+        end
+        -- GZreader: a picture of GZreader's own (a book that isn't here, a cassette)
+        if type(book.gz_cover_key) == "string" then
+            return GzServerRecent.warm(book, width, height, RenderCache)
         end
         if type(RenderCache.hasReusable) == "function"
                 and RenderCache:hasReusable(path, width, height) then
@@ -3416,6 +3464,8 @@ local function build_home_content(menu, zen_config, dcfg, rows, data_provider)
 
     local function open_book(path)
         if not path then return end
+        -- GZreader: not on this Kindle: its page (Download), or the audiobook's question
+        if GzServerRecent.isKey(path) then return GzServerRecent.open(path) end
         _G.__ZEN_UI_LIBRARY_SOURCE_TAB = "home"
         if OptionalProvider.call(RAKUYOMI_PROVIDER, "resumeRecentSeries", path) then return end
         local fm = FileManager.instance
@@ -3588,6 +3638,8 @@ local function build_home_content(menu, zen_config, dcfg, rows, data_provider)
             data = data_provider,
             openBook = open_book,
             showBookMenu = function(path, source)
+                -- GZreader: a book that isn't on this Kindle has no file menu: as a tap
+                if GzServerRecent.isKey(path) then return GzServerRecent.open(path) end
                 -- GZreader: Manage (Open, Delete, then this menu)
                 local manage = rawget(_G, "__GZ_MANAGE_BOOK")
                 if type(manage) == "function" then

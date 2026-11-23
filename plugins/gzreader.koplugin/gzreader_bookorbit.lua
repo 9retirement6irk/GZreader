@@ -862,6 +862,17 @@ function BookOrbit:setApiKey(key)
     return false, code == 401 and "bookorbit_api_key_refused" or (code and ("http_" .. code) or "unreachable")
 end
 
+--- One of the main API's book cards as an audiobook in the Catalog's lists, or nil.
+local function audioCard(card)
+    if type(card) ~= "table" or not n(card.id) then return nil end
+    return {
+        id = BookOrbit.AUDIO_PREFIX .. tostring(card.id), title = s(card.title) or ("Audiobook " .. tostring(card.id)),
+        authors = names(card.authors), narrators = names(card.narrators), primaryFileType = "AUDIOBOOK",
+        seriesName = s(card.seriesName), seriesNumber = n(card.seriesIndex), readProgress = n(card.readingProgress),
+        hasCover = card.hasCover == true,
+    }
+end
+
 --- A page of audiobooks (the main API's book query), as the Catalog reads one.
 function BookOrbit:listAudiobooks(params)
     local page, size = tonumber(params.page) or 0, math.min(tonumber(params.size) or 20, BookOrbit.PAGE_MAX)
@@ -880,16 +891,7 @@ function BookOrbit:listAudiobooks(params)
     local code, data, err = self:keyCall("POST", "/api/v1/books/query", { body = body, timeouts = { 15, 45 } })
     if not ((code == 200 or code == 201) and type(data) == "table") then return nil, err or ("http_" .. tostring(code)) end
     local content = {}
-    for _i, card in ipairs(list(data.items)) do
-        if type(card) == "table" and n(card.id) then
-            content[#content + 1] = {
-                id = BookOrbit.AUDIO_PREFIX .. tostring(card.id), title = s(card.title) or ("Audiobook " .. tostring(card.id)),
-                authors = names(card.authors), narrators = names(card.narrators), primaryFileType = "AUDIOBOOK",
-                seriesName = s(card.seriesName), seriesNumber = n(card.seriesIndex), readProgress = n(card.readingProgress),
-                hasCover = card.hasCover == true,
-            }
-        end
-    end
+    for _i, card in ipairs(list(data.items)) do content[#content + 1] = audioCard(card) end
     local total = n(data.total) or #content
     return { content = content, page = page, size = size, totalElements = total, totalPages = math.ceil(total / size),
         hasNext = (page + 1) * size < total, hasPrevious = page > 0 }
@@ -977,6 +979,30 @@ local function playbackState(self, book_id)
     local code, data, err = self:keyCall("GET", "/api/v1/audiobooks/" .. tostring(audioId(book_id)) .. "/playback-state", { timeouts = { 8, 15 } })
     if code == 200 then return type(data) == "table" and n(data.positionMs) and data or false end -- (false: none stored)
     return nil, err or ("http_" .. tostring(code)), code
+end
+
+--- Audiobooks in progress, most recently listened to first (Home's recently read
+--- from the server). BookOrbit's "Continue listening" shelf gives the order but no
+--- times, so each one's saved position is asked for when it was last captured: a
+--- few books only (`limit`). Without an API key: none.
+function BookOrbit:continueListening(limit)
+    if not self:hasApiKey() then return {} end
+    limit = math.max(1, math.min(tonumber(limit) or 6, 12))
+    local code, data, err = self:keyCall("GET", "/api/v1/dashboard/scrollers/continue-listening?limit=" .. limit, { timeouts = { 10, 30 } })
+    if not (code == 200 and type(data) == "table") then return nil, err or ("http_" .. tostring(code)) end
+    local out = {}
+    for _i, card in ipairs(list(data.books)) do
+        local book = audioCard(card)
+        if book and #out < limit then
+            local state = playbackState(self, book.id)
+            if state then
+                book.lastReadTime = s(state.capturedAt)
+                book.readProgress = n(state.percentage) or book.readProgress
+            end
+            out[#out + 1] = book
+        end
+    end
+    return out
 end
 
 --- Where an audiobook was left, as Grimmory's record gives it (audiobookProgress:

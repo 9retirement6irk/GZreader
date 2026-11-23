@@ -752,6 +752,15 @@ function Api:continueReading(limit)
     return out
 end
 
+--- Audiobooks in progress, most recently listened to first (Home's recently
+--- read from the server: gzreader_serverrecent.lua).
+function Api:continueListening(limit)
+    local page, err = self:listBooks{ page = 0, size = limit or 10, status = Api.IN_PROGRESS,
+        sort = "lastReadTime", dir = "desc", fileType = { "AUDIOBOOK" } }
+    if type(page) ~= "table" or type(page.content) ~= "table" then return nil, err end
+    return page.content
+end
+
 --- Grimmory's cover thumbnail for a book, saved to `path`: 250 x 350 JPEG, or
 --- with kind = "audiobook" the square audiobook cover (250 x 250). Grimmory
 --- has no smaller size; GZreader keeps and shrinks them on the Kindle.

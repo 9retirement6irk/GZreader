@@ -119,6 +119,33 @@ the book once you open one.
 
 ![Downloads as bookshelves](https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/downloads-shelf.png)
 
+## Recently read on every device
+
+Home's current book and its Recent strip normally show what you've read on this
+Kindle. With **Recently read on every device** turned on, they also show the
+books and audiobooks you're in the middle of on your other devices, from
+Grimmory or BookOrbit, newest first: also the ones that aren't on this Kindle.
+
+- **Turn it on:** Settings → Home and tabs → Home → Widgets → Featured book (or
+  Book strip) → *Recently read on every device*. It's one setting for both,
+  and it's off until you choose it. It's listed when that widget's content is
+  *Recently read*.
+- **A book that isn't on this Kindle** has a small arrow in the corner of its
+  cover. A tap shows its page, with *Download* and *Download & open*.
+- **Audiobooks show as cassettes**, the ones on the Kindle too. On the
+  bookshelf a cassette stands on its side among the books; picked, it turns to
+  face out, as a book shows its cover. One that isn't on the Kindle has the
+  arrow; a tap asks to download it.
+- **A book that is on this Kindle** keeps its place in the list, and moves up
+  when you read it later somewhere else.
+- **The current book** is the most recent of them all, so it can be one that
+  isn't here yet.
+- The list is what the server calls in progress: started and not finished.
+  It's fetched when Wi-Fi is already on (Wi-Fi isn't turned on for it), at most
+  every ten minutes, and kept, so Home shows the last list when you're offline.
+- **BookOrbit:** books come with the e-reader sign-in; audiobooks need the
+  [API key](BookOrbit#the-api-key-what-to-tick).
+
 ## Reading stats on Home
 
 Home shows **Reading stats (every device)** by default: three numbers on a notebook

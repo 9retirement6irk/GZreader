@@ -258,6 +258,8 @@ function Grimmory:init()
         -- (which server they're from, for the widget's choices; and the page a tap on it opens)
         rawset(_G, "__GZ_BOOK_SERVER", function() return plugin_ref:backend() end)
         rawset(_G, "__GZ_SERVER_STATS_PAGE", function() return require("gzreader_statspage").show(plugin_ref) end)
+        -- Home's recently read with the server's books in progress (an option of the Recent strip)
+        rawset(_G, "__GZ_SERVER_RECENT", require("gzreader_serverrecent").hook(plugin_ref))
         -- Downloads and the other book folders as bookshelves (the View)
         -- (after every plugin has patched the file browser)
         UIManager:nextTick(function() pcall(function()
@@ -1880,7 +1882,10 @@ function Grimmory:flushPending()
         for _i = 1, tonumber(res.sessions) or 0 do
             if pending.sessions[1] == sessions[_i] then table.remove(pending.sessions, 1) end
         end
-        if (tonumber(res.sessions) or 0) > 0 then require("gzreader_grimstats").stale(self) end
+        if (tonumber(res.sessions) or 0) > 0 then
+            require("gzreader_grimstats").stale(self)
+            require("gzreader_serverrecent").stale(self) -- (Home's recently read on every device)
+        end
         for book_id, how in pairs(res.rated or {}) do
             -- only cleared if not changed again meanwhile
             if pending.ratings[book_id] == ratings[book_id] then pending.ratings[book_id] = nil end
