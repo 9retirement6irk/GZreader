@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "BookOrbit: Settings and Audiobooks from say BookOrbit", text = "Signed in to BookOrbit, Settings → Accounts and services now shows BookOrbit beside Books and Audiobooks, and the Catalog's Audiobooks from window offers BookOrbit (with your Plex libraries) instead of Grimmory." },
+        },
+    },
+    {
         version = "2026.11.22",
         changes = {
             { short = "Colour Kindles: Immich photos in colour", text = "On a Kindle Colorsoft or Scribe Colorsoft, the pictures from your Immich album (the sleep screen and the Home wallpaper) are kept in colour instead of being made grey. Pictures already on the Kindle stay grey until they are swapped for others from the album (about half each time GZreader gets new pictures)." },

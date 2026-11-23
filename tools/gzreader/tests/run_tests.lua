@@ -12553,6 +12553,18 @@ print("Music (Plex): the server, downloads, the player")
         for _i, row in ipairs(dlg and dlg.buttons or {}) do labels[#labels + 1] = row[1].text end
         check(table.concat(labels, ",") == "\u{2713} Grimmory,Plex: Music,Plex: Concerts,Plex: Audiobooks",
             "Plex audiobooks: Audiobooks from offers Grimmory and the server's music libraries " .. table.concat(labels, ","))
+        -- signed in to BookOrbit: the window and the value name BookOrbit
+        local was_server = rawget(_G, "__GZ_BOOK_SERVER")
+        rawset(_G, "__GZ_BOOK_SERVER", function() return "bookorbit" end)
+        local bo_dlg
+        package.loaded["ui/widget/buttondialog"] = { new = function(_self, o) bo_dlg = o; return o end }
+        MusicTab.chooseAudiobooks(plugin)
+        runLoop(function() return bo_dlg ~= nil end, 15)
+        check(bo_dlg and bo_dlg.buttons[1][1].text == "\u{2713} BookOrbit" and MusicTab.audiobooksValue(plugin) == "BookOrbit"
+            and MusicTab.audiobooksText(plugin) == "Audiobooks: from BookOrbit",
+            "signed in to BookOrbit: Audiobooks from offers BookOrbit, not Grimmory, and says so " .. tostring(bo_dlg and bo_dlg.buttons[1][1].text))
+        rawset(_G, "__GZ_BOOK_SERVER", was_server)
+        package.loaded["ui/widget/buttondialog"] = { new = function(_self, o) dlg = o; return o end }
         if dlg then dlg.buttons[4][1].callback() end
         require("gzreader_net").run, package.loaded["ui/widget/buttondialog"] = saved_net, saved_bd
         local sec = PA.section(plugin)

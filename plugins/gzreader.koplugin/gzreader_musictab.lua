@@ -546,10 +546,10 @@ end
 function Tab.audiobooksValue(plugin)
     local sec = require("gzreader_plex").audiobookSection(plugin.store.plex)
     if sec then return T(_("Plex: %1"), sec.title or "?") end
-    return _("Grimmory")
+    return require("gzreader_servername").get() -- (Grimmory or BookOrbit)
 end
 
---- Pick where the Catalog's audiobooks come from: Grimmory, or one of the
+--- Pick where the Catalog's audiobooks come from: the book server, or one of the
 --- Plex server's music libraries (Plex keeps audiobooks in a music library:
 --- an album per book, the author as its artist). after(): once picked.
 function Tab.chooseAudiobooks(plugin, after)
@@ -567,7 +567,8 @@ function Tab.chooseAudiobooks(plugin, after)
                 Tab.setAudiobooks(plugin, sec)
                 if after then after() end
             end
-            local buttons = { { { text = (cur and "" or "\u{2713} ") .. _("Grimmory"), callback = function() pick(nil) end } } }
+            -- (the book server signed in to: Grimmory or BookOrbit)
+            local buttons = { { { text = (cur and "" or "\u{2713} ") .. require("gzreader_servername").get(), callback = function() pick(nil) end } } }
             for _i, sec in ipairs(list) do
                 buttons[#buttons + 1] = { { text = ((cur and cur.key == sec.key) and "\u{2713} " or "") .. T(_("Plex: %1"), sec.title),
                     callback = function() pick(sec) end } }
