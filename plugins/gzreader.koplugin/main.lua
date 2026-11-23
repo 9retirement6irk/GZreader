@@ -681,14 +681,14 @@ function Grimmory:menuItems()
                 return self.api.hasApiKey and self.api:hasApiKey() and _("BookOrbit API key: set") or _("BookOrbit API key")
             end,
             enabled_func = function() return self:backend() == "bookorbit" and self.api:isPaired() end,
-            help_text = _("BookOrbit's audiobooks (listing, downloading, and where you stopped listening), changing collections and requesting books need an API key as well as the sign-in. Make one in BookOrbit: Settings → API keys, with read and write access (and “Request books” ticked, to request books). Leave the box empty to remove the key."),
+            help_text = _("BookOrbit's audiobooks (listing, downloading, and where you stopped listening), changing collections and requesting books need an API key as well as the sign-in. Make one in BookOrbit: Settings → You → API keys. Access: Read and write. Extra permissions: “KOReader sync” (to sign in with the key) and “Request books” (to request books); nothing else, and not Administrator access. Leave the box empty to remove the key."),
             keep_menu_open = true,
             callback = function(touchmenu) self:askBookOrbitApiKey(touchmenu) end,
         },
         {
             text = _("Connect to BookOrbit by typing"),
             help_text_func = function()
-                return T(_("BookOrbit instead of Grimmory as this Kindle's book server. It asks for BookOrbit's address and the %1 sync user name and password (BookOrbit: Settings → %1)."), "KOReader")
+                return T(_("BookOrbit instead of Grimmory as this Kindle's book server. It asks for BookOrbit's address and the %1 sync user name and password (BookOrbit: Settings → Devices → %1)."), "KOReader")
                     .. " " .. require("gzreader_bookorbit").note()
             end,
             callback = function() self:keyboardLogin(nil, "bookorbit") end,
@@ -900,18 +900,19 @@ local ERRORS = {
     rate_limited = _("Too many attempts. Wait a minute and try again."),
     usb = _("This Kindle syncs with Grimmory through a computer: Menu → Sync with computer."),
     -- (the name goes in as an argument: gettext.lua turns "KOReader" in a message into "GZreader")
-    bookorbit_credentials = T(_("Wrong user name or password. BookOrbit wants the %1 sync user name and password (BookOrbit: Settings → %1), not the ones you sign in to its website with. Also check that the address is BookOrbit's."), "KOReader"),
-    bookorbit_sync_off = T(_("BookOrbit has sync switched off for this %1 user. Switch it on in BookOrbit: Settings → %1."), "KOReader"),
+    bookorbit_credentials = T(_("Wrong user name or password. BookOrbit wants the %1 sync user name and password (BookOrbit: Settings → Devices → %1), not the ones you sign in to its website with. Also check that the address is BookOrbit's."), "KOReader"),
+    bookorbit_sync_off = T(_("BookOrbit has sync switched off for this %1 user. Switch “Progress sync” on in BookOrbit: Settings → Devices → %1."), "KOReader"),
     bookorbit_refused = T(_("BookOrbit didn't accept this Kindle's sign-in. If you changed the %1 sync password in BookOrbit, connect again."), "KOReader"),
     bookorbit_not_found = _("That address answered, but not as BookOrbit (or its BookOrbit is too old for e-readers). Check the address."),
     bookorbit_no_file = _("BookOrbit has no file for this book that this Kindle can open."),
-    bookorbit_no_api_key = _("BookOrbit's audiobooks need an API key: make one in BookOrbit (Settings → API keys, with read and write access), then enter it in Settings → Accounts and services → Books → BookOrbit API key."),
-    bookorbit_api_key_refused = _("BookOrbit didn't accept the API key. It may have expired or been deleted: make a new one in BookOrbit (Settings → API keys) and enter it again."),
+    bookorbit_no_api_key = _("BookOrbit's audiobooks need an API key: make one in BookOrbit (Settings → You → API keys, with Read and write access), then enter it in Settings → Accounts and services → Books → BookOrbit API key."),
+    bookorbit_api_key_refused = _("BookOrbit didn't accept the API key. It may have expired or been deleted: make a new one in BookOrbit (Settings → You → API keys) and enter it again."),
     bookorbit_api_key_read_only = _("This BookOrbit API key is read-only, so nothing can be saved to BookOrbit with it (where you stopped listening, collections, book requests). Make one with read and write access."),
-    bookorbit_key_no_kosync = T(_("BookOrbit didn't let this API key see the %1 sync sign-in. Make a key with “%1 sync” ticked (BookOrbit: Settings → API keys), or sign in with the %1 sync user name and password instead."), "KOReader"),
-    bookorbit_key_cannot_create = T(_("Your BookOrbit account has no %1 sync sign-in yet, and this API key is read-only, so one can't be made with it. Make the sign-in in BookOrbit (Settings → %1) or use a key with read and write access."), "KOReader"),
-    bookorbit_key_old_signin = T(_("BookOrbit can't hand over this account's %1 sync sign-in until its password has been saved once more: in BookOrbit, Settings → %1, set the sync password again (the same one is fine), then try again. Or sign in here with the %1 sync user name and password."), "KOReader"),
-    bookorbit_key_no_signin = T(_("BookOrbit accepted the API key but didn't hand over the %1 sync sign-in. Sign in with the %1 sync user name and password instead (BookOrbit: Settings → %1)."), "KOReader"),
+    bookorbit_key_no_kosync = T(_("BookOrbit didn't let this API key see the %1 sync sign-in. Make a key with “%1 sync” ticked under Extra permissions (BookOrbit: Settings → You → API keys), or sign in with the %1 sync user name and password instead."), "KOReader"),
+    bookorbit_key_cannot_create = T(_("Your BookOrbit account has no %1 sync sign-in yet, and this API key is read-only, so one can't be made with it. Make the sign-in in BookOrbit (Settings → Devices → %1) or use a key with read and write access."), "KOReader"),
+    bookorbit_key_old_signin = T(_("BookOrbit can't hand over this account's %1 sync sign-in until its password has been saved once more: in BookOrbit, Settings → Devices → %1, set the sync password again (the same one is fine), then try again. Or sign in here with the %1 sync user name and password."), "KOReader"),
+    bookorbit_key_no_signin = T(_("BookOrbit accepted the API key but didn't hand over the %1 sync sign-in. Sign in with the %1 sync user name and password instead (BookOrbit: Settings → Devices → %1)."), "KOReader"),
+    bookorbit_delivery_original = T(_("BookOrbit is set to send this sign-in's read-aloud EPUBs with their narration. A Kindle can't play it and the files are much bigger. In BookOrbit: Settings → Devices → %1 → Read-aloud EPUB delivery → Automatic."), "KOReader"),
     bookorbit_requests_refused = _("BookOrbit didn't allow that. The API key needs “Request books” ticked when you make it, and your BookOrbit account has to be allowed to request books."),
     unsupported = _("That isn't available with BookOrbit yet."),
     no_https = require("gzreader_lan").noHttpsText(),
@@ -1387,7 +1388,7 @@ function Grimmory:askBookOrbitApiKey(touchmenu)
         input = "",
         input_hint = "bok_…",
         text_type = "password",
-        description = _("From BookOrbit: Settings → API keys. Empty removes the key kept here."),
+        description = _("From BookOrbit: Settings → You → API keys. Empty removes the key kept here."),
         buttons = { {
             { text = _("Cancel"), id = "close", callback = function() UIManager:close(dialog) end },
             { text = _("Save"), is_enter_default = true, callback = function()
@@ -1744,7 +1745,7 @@ function Grimmory:keyboardLogin(prefill, backend)
         fields = {
             { text = prefill.server or (same and self.store.server) or "", hint = _("Server, e.g. https://books.example.com") },
             { text = prefill.username or (same and self.store.username) or "",
-              hint = backend == "bookorbit" and T(_("%1 sync user name (BookOrbit: Settings → %1)"), "KOReader") or _("Username") },
+              hint = backend == "bookorbit" and T(_("%1 sync user name (BookOrbit: Settings → Devices → %1)"), "KOReader") or _("Username") },
             { text = "", hint = backend == "bookorbit" and T(_("%1 sync password"), "KOReader") or _("Password"), text_type = "password" },
         },
         buttons = {{

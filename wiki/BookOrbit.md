@@ -23,13 +23,13 @@ What works with BookOrbit today:
 | Home's reading stats widget and the reading stats page, from BookOrbit's numbers ([Home and bookshelves](Home-and-Bookshelves#reading-stats-on-home)) | yes |
 | Kindles without Wi-Fi (the sync page) | not yet; the server side can be set up now, see [below](#kindles-without-wi-fi-letting-the-sync-page-in) |
 
-Only the "yes" rows send anything to BookOrbit. The Kindle shows up in BookOrbit's Settings → KOReader → Devices as "GZreader" and its model.
+Only the "yes" rows send anything to BookOrbit. The Kindle shows up in BookOrbit's Settings → Devices → KOReader → Devices as "GZreader" and its model.
 
 ## What you need in BookOrbit
 
 BookOrbit gives e-readers their own sign-in, separate from the one for its website:
 
-1. In BookOrbit, open **Settings → KOReader**.
+1. In BookOrbit, open **Settings → Devices → KOReader**.
 2. Make a KOReader sync user name and password, and leave sync switched on.
 
 That user name and password are what GZreader asks for. Your website user name, password or single sign-on won't work here.
@@ -83,11 +83,50 @@ Signing in to BookOrbit signs this Kindle out of Grimmory (and the other way rou
 - **Ratings:** the stars you give a book on the Kindle are set in BookOrbit; a rating made in BookOrbit is taken on the Kindle when you haven't rated the book here.
 - The Home screen's Grimmory statistics widget stays empty with BookOrbit: it reads Grimmory's own numbers.
 
+## The API key: what to tick
+
+One key covers everything GZreader uses a key for. In BookOrbit: **Settings → You → API keys → Create API key**.
+
+| On BookOrbit's page | Choose | Why |
+|---|---|---|
+| Name | anything that says where it's used, such as "Kindle" | so you know which key to delete if the Kindle is lost |
+| Expires after | your choice. With **Never** there's nothing to redo; with a date, audiobooks, collections and requests stop on that day until you enter a new key (books and their syncing carry on) | |
+| Access | **Read and write** | saving where you stopped listening, changing collections, requesting books, and making a sync sign-in all change something. **Read only** is enough just to list and download audiobooks |
+| Libraries | **All my libraries**, or at least the ones with your audiobooks | the key sees only the libraries it's given |
+| Administrator access | **off** | GZreader never needs it |
+| Extra permissions → Devices & Access → **KOReader sync** | tick it to [sign in with just the key](#signing-in-with-just-an-api-key) | lets the key read (or make) your KOReader sync sign-in |
+| Extra permissions → Book Requests → **Request books** | tick it to [request books](#book-requests) from the Kindle | |
+| Every other extra permission | leave unticked | GZreader doesn't use them. Audiobook files download without **Download books**; **Auto-approve requests**, **Download books directly** and **Manage book requests** change what your requests may do in BookOrbit, not what the Kindle can ask |
+
+Which feature needs what:
+
+| On the Kindle | Access | Extra permission |
+|---|---|---|
+| Audiobooks: listing and downloading | Read only | none |
+| Audiobooks: where you stopped listening | Read and write | none |
+| Adding books to collections and taking them off | Read and write | none |
+| Requesting books, My book requests | Read and write | Request books |
+| Signing in with just the key | Read only when you already have a sync sign-in; Read and write to have one made | KOReader sync |
+
+A key never gets more than your own account has: if your account can't request books, ticking the box doesn't change that. This is from BookOrbit 3.9's source; if a later BookOrbit refuses something, the Kindle's message says which.
+
+## BookOrbit's KOReader settings
+
+In BookOrbit's **Settings → Devices → KOReader**, for the sync sign-in the Kindle uses:
+
+| Setting | For GZreader | Why |
+|---|---|---|
+| **Progress sync** | **on** | off, the Kindle can't sign in at all |
+| **Hide audiobook-only books** | either | GZreader leaves audiobook-only books out of its book lists anyway and lists audiobooks through the API key. On (BookOrbit's default) makes the book lists a little quicker to fetch |
+| **Read-aloud EPUB delivery** | **Automatic** (BookOrbit's default) or **Text-only EPUB** | a Kindle can't play an EPUB's narration, and the original files with narration are much bigger. Automatic sends the text-only copy when it can and the original otherwise; Text-only refuses a book it can't make a safe copy of. With **Original EPUB with narration** every such book arrives at full size |
+
+When the Kindle makes the sync sign-in itself (signing in with just an API key, on an account with none), it sends only a user name and a password, so these stay on BookOrbit's defaults: Progress sync on, audiobook-only books hidden, delivery Automatic. It never changes a sign-in that exists: those settings are shared with your other e-readers. If the key can see the sign-in and delivery is set to Original, the setup page says so and where to change it.
+
 ## Signing in with just an API key
 
 Instead of the KOReader sync user name and password, the Kindle can be given only BookOrbit's address and an **API key**:
 
-1. In BookOrbit: **Settings → API keys**, make a key with **read and write** access and **KOReader sync** ticked (tick **Request books** too if you want to request books from the Kindle). BookOrbit shows it once.
+1. In BookOrbit: **Settings → You → API keys → Create API key**, filled in as in [The API key](#the-api-key-what-to-tick) below (it needs **KOReader sync** ticked). BookOrbit shows it once.
 2. On the Kindle, open the setup page (Settings → Accounts and services → Books → Connect with QR code) and scan the code with your phone.
 3. Choose **BookOrbit** as the book server, enter its address, open **BookOrbit: sign in with an API key instead**, paste the key and press **Connect with the API key**.
 
@@ -103,7 +142,7 @@ If BookOrbit says the key can't see the sync sign-in, the key was made without *
 
 BookOrbit keeps its audiobook routes apart from the e-reader sign-in, so audiobooks need a second credential: an **API key**.
 
-1. In BookOrbit: **Settings → API keys**, make a key with **read and write** access. BookOrbit shows it once (it starts with `bok_`).
+1. In BookOrbit: **Settings → You → API keys → Create API key**, filled in as in [The API key](#the-api-key-what-to-tick) below. BookOrbit shows it once (it starts with `bok_`).
 2. Give it to the Kindle, either on the setup page (under the BookOrbit connection: *API key (audiobooks, collections, book requests)*) or on the Kindle: Settings → Accounts and services → Books → **BookOrbit API key**.
 
 Then the Catalog's Audiobooks page lists BookOrbit's audiobooks. Downloading, chapters and playing work as with Grimmory's; an interrupted download continues where it stopped. Where you stopped listening is sent to BookOrbit and, when you start an audiobook, taken from it if BookOrbit's place is more than a minute from the Kindle's.
@@ -247,6 +286,6 @@ BookOrbit is its own project, under the GNU AGPL version 3 with additional terms
 ## If it doesn't connect
 
 - **"Wrong user name or password…"**: it wants the KOReader sync ones (above). The same message appears if the address is another server's, such as Grimmory's.
-- **"BookOrbit has sync switched off…"**: switch sync on for that user in BookOrbit's Settings → KOReader.
+- **"BookOrbit has sync switched off…"**: switch **Progress sync** on in BookOrbit's Settings → Devices → KOReader.
 - **"That address answered, but not as BookOrbit"**: check the address; an old BookOrbit may not have the e-reader catalog.
 - Send the diagnostic log (Settings → Privacy and diagnostics) if it's something else: look for lines starting `BookOrbit`.

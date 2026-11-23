@@ -16838,6 +16838,51 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
         check(top and msrc:find('require(self.api.koreader_positions and "gzreader_bo_bookmarks" or "gzreader_bookmarks")', 1, true) ~= nil,
             "Grimmory's bookmark, highlight and position modules are loaded only when Grimmory is the server")
     end
+    -- what the API key needs, and BookOrbit's settings for the sync sign-in
+    do
+        local BookOrbit = require("gzreader_bookorbit")
+        check(BookOrbit.KEY_NEEDS:find("Access: Read and write", 1, true) and BookOrbit.KEY_NEEDS:find("“KOReader sync” to sign in with the key", 1, true)
+            and BookOrbit.KEY_NEEDS:find("“Request books” to request books", 1, true) and BookOrbit.KEY_NEEDS:find("not Administrator access", 1, true),
+            "the key's needs are named as BookOrbit's page names them")
+        check(plugin:describeError("bookorbit_sync_off"):find("Switch “Progress sync” on in BookOrbit: Settings → Devices → KOReader", 1, true) ~= nil
+            and plugin:describeError("bookorbit_no_api_key"):find("Settings → You → API keys, with Read and write access", 1, true) ~= nil
+            and plugin:describeError("bookorbit_key_no_kosync"):find("ticked under Extra permissions (BookOrbit: Settings → You → API keys)", 1, true) ~= nil,
+            "messages point at BookOrbit's settings where they are " .. plugin:describeError("bookorbit_sync_off"))
+        -- a sign-in the Kindle makes is left on BookOrbit's defaults (Automatic delivery)
+        plugin.api:clearTokens()
+        plugin.store.bookorbit, plugin.store.username = nil, nil
+        bctl("/_mock/reset")
+        bctl("/_mock/set", '{"ko_credentials": false, "ko_delivery": "original"}')
+        check(plugin:connectWithApiKey(BO, KEY) == true and bctl("/_mock/state").ko_delivery == nil and plugin.store.bookorbit.delivery == "automatic"
+            and plugin.api:settingsAdvice() == nil, "a sign-in made by the Kindle: only a name and password sent, so delivery is BookOrbit's default, Automatic")
+        -- an existing one set to send narration: said so, not changed
+        plugin.api:clearTokens()
+        plugin.store.bookorbit, plugin.store.username = nil, nil
+        bctl("/_mock/reset")
+        bctl("/_mock/set", '{"ko_delivery": "original"}')
+        check(plugin:connectWithApiKey(BO, KEY) == true and plugin.store.bookorbit.delivery == "original" and plugin.api:settingsAdvice() == "delivery_original"
+            and bctl("/_mock/state").ko_delivery == "original", "an existing sign-in set to send narration: noticed, and left as it is")
+        PS.new = function(self, o) screen = o; return o end
+        plugin:startQrPairing()
+        local purl = screen.url:gsub("#.*$", "")
+        local _c, pbody = phone("'" .. purl .. "'")
+        check(pbody:find("read-aloud EPUBs with their narration", 1, true) and pbody:find("Read-aloud EPUB delivery → Automatic", 1, true)
+            and pbody:find("Settings → You → API keys → Create API key. Access: Read and write.", 1, true),
+            "the setup page says what to change in BookOrbit, and what the key needs")
+        -- the same sign-in by name and password, the key saved after: read then too
+        bctl("/_mock/set", '{"ko_delivery": "audioless_epub"}')
+        check(plugin:setBookOrbitApiKey(KEY) == true and plugin.store.bookorbit.delivery == "audioless_epub" and plugin.api:settingsAdvice() == nil,
+            "saving the key reads the setting again: text-only is fine")
+        bctl("/_mock/set", '{"key_ko_permission": false}')
+        check(plugin:setBookOrbitApiKey(KEY) == true and plugin.store.bookorbit.delivery == false and plugin.api:settingsAdvice() == nil and plugin.api:hasApiKey(),
+            "a key that can't see the sync sign-in is still saved; nothing is claimed about the setting")
+        _c, pbody = phone("'" .. purl .. "'")
+        check(not pbody:find("with their narration", 1, true), "…and the setup page has no advice then")
+        screen.on_cancel()
+        bctl("/_mock/set", '{"key_ko_permission": true, "ko_delivery": null}')
+        plugin:setBookOrbitApiKey(KEY)
+        check(plugin.store.bookorbit.delivery == "automatic" and plugin.store.username == "will-kindle", "Automatic: nothing to say")
+    end
     -- signing in again as the same user keeps the key; another user doesn't get it
     plugin:connect(BO, "will-kindle", "hunter22", "bookorbit")
     check(plugin.api:hasApiKey(), "signing in again to the same server and user keeps the API key")

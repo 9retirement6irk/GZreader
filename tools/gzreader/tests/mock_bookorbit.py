@@ -103,6 +103,7 @@ def fresh():
         "ko_made": None,          # {username, md5}: the sign-in made through POST koreader/credentials
         "ko_md5_known": True,     # False: an old sign-in whose key the server can't hand over (plugin-package answers 400)
         "key_ko_permission": True,  # the API key's "KOReader sync" permission
+        "ko_delivery": None,      # the sync sign-in's read-aloud EPUB delivery: None (Automatic), "audioless_epub", "original"
         "ko_names_taken": [],     # sync user names other accounts have
         "goal_books": 30,         # the year's reading goal (None: no goal set)
         "achievements": True,     # False: the reader switched badges off (the dashboard sends null)
@@ -691,7 +692,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not has:
                     return self.send(200, b"", "application/json")
                 return self.send(200, {"username": name, "syncEnabled": STATE["sync_enabled"], "hideAudioOnlyBooks": True,
-                                       "createdAt": "2026-10-01T08:00:00.000Z", "readAloudDelivery": None})
+                                       "createdAt": "2026-10-01T08:00:00.000Z", "readAloudDelivery": STATE["ko_delivery"]})
             if p == "koreader/credentials" and method == "POST":
                 d = self.body()
                 if (not isinstance(d, dict) or set(d) - {"username", "password", "readAloudDelivery"} or not isinstance(d.get("username"), str)
@@ -701,6 +702,9 @@ class Handler(BaseHTTPRequestHandler):
                     return self.error(409, "KOReader credentials already exist")
                 if d["username"] in STATE["ko_names_taken"]:
                     return self.error(409, "Username already taken")
+                if d.get("readAloudDelivery") not in (None, "original", "audioless_epub"):
+                    return self.error(400, "Bad Request")
+                STATE["ko_delivery"] = d.get("readAloudDelivery")  # (none sent: the default, Automatic)
                 STATE["ko_made"] = {"username": d["username"], "md5": hashlib.md5(d["password"].encode()).hexdigest()}
                 return self.send(201, {"success": True})
             if p == "koreader/plugin-package" and method == "GET":

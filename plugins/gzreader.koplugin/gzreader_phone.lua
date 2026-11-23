@@ -111,6 +111,9 @@ local function state(S, flash)
     local g = { connected = plugin.api and plugin.api:isPaired() or false, username = store.username, backend = plugin:backend(),
         bookorbit_note = require("gzreader_bookorbit").note(),
         bookorbit_api_key = plugin.api.hasApiKey ~= nil and plugin.api:hasApiKey() or false,
+        bookorbit_key_needs = require("gzreader_bookorbit").KEY_NEEDS,
+        -- (a BookOrbit setting that works against the Kindle, said in words)
+        bookorbit_advice = plugin.api.settingsAdvice ~= nil and plugin.api:settingsAdvice() and plugin:describeError("bookorbit_" .. plugin.api:settingsAdvice()) or nil,
         host = host(store.server) }
     g.redirect_uri, g.sso_relay = Phone.ssoRedirect(plugin, S.origin)
     g.form = sec == "grimmory" and flash.form
