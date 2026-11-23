@@ -133,6 +133,11 @@ What a sync does:
 
 What's already on the Kindle is never brought again: the page shows it as **On the Kindle**, and a pick that reached the Kindle another way (a sync from another computer, a download over Wi‑Fi) comes off the page's list, so it doesn't come back after you delete it from the Kindle.
 
+The small covers the page brings are grey for a grey Kindle (smaller files)
+and in colour for a colour one (Colorsoft, Scribe Colorsoft, with KOReader's
+colour rendering on). Covers already on the Kindle stay as they are until the
+book's cover changes.
+
 The Catalog tab works from the copy: browse, search, Libraries, Shelves,
 Authors and Series, a book's page with its description. Download puts the
 book in the sync queue (a book's page says "Add to sync queue"; selecting a
