@@ -50,9 +50,8 @@ function Zip.read(data, name)
             if #body ~= csize then return nil, "bad zip entry" end
             if method == 0 then return body end
             if method ~= 8 then return nil, "unsupported compression" end
-            local out, err = require("gzreader_gzip").inflate(body, true)
+            local out, err = require("gzreader_gzip").inflateRaw(body, Zip.MAX)
             if not out then return nil, err end
-            if #out > Zip.MAX then return nil, "too big" end
             return out
         end
         p = p + 46 + nlen + xlen + clen
