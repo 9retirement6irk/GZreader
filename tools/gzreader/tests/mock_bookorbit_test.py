@@ -5,7 +5,7 @@ field names, refusals), so the tests built on it mean something.
 
 Run by the plugin suite (run_tests.lua), which checks its last line.
 """
-import hashlib, json, os, subprocess, sys, time, urllib.request, urllib.error
+import hashlib, json, os, re, subprocess, sys, time, urllib.request, urllib.error
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 18196
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -407,6 +407,23 @@ try:
     code, raw, hdr = call("OPTIONS", "/api/v1/koreader/users/auth", dict(pre, Origin="https://other.example.com"), raw=True)
     check(code == 404 and hdr.get("Access-Control-Allow-Origin") is None, "…and for no other site")
     call("POST", "/_mock/set", body={"cors_origin": None})
+
+    # --- the reader's dashboard (stats over every device)
+    code, j = call("GET", "/api/v1/koreader/plugin/catalog/dashboard", KO)
+    ry = j.get("readingYear") or {}
+    check(code == 200 and len(ry.get("minutes", [])) == 371 and ry["minutes"][-1] == 25 and ry["minutes"][-2] == 0 and re.match(r"^\d{4}-\d\d-\d\d$", ry["startDate"])
+          and j["readingStreak"] == {"currentStreak": 1, "longestStreak": 21, "lastSevenDays": [m > 0 for m in ry["minutes"][-7:]]}
+          and j["readingGoal"]["goalBooks"] == 30 and j["readingGoal"]["completedBooks"] == 12 and j["totalBooks"] >= 3
+          and j["achievements"]["next"]["threshold"] == 50 and j["yearAgo"]["days"] == 9 and len(j["finishedThisYear"]) == 3
+          and j["highlightOfTheDay"]["chapterTitle"] == "Chapter 3" and j["browseCounts"]["inProgress"] == 2,
+          "the dashboard: streak, goal, a year of minutes per day, badges, a year ago, finished books, a highlight")
+    check(call("GET", "/api/v1/koreader/plugin/catalog/dashboard", API)[0] == 401
+          and call("GET", "/api/v1/koreader/plugin/catalog/dashboard?section=nope", KO)[0] == 400, "…with the e-reader sign-in only; an unknown section refused")
+    call("POST", "/_mock/set", body={"goal_books": None, "achievements": False, "reading_year": False})
+    code, j = call("GET", "/api/v1/koreader/plugin/catalog/dashboard", KO)
+    check(code == 200 and j["readingGoal"]["goalBooks"] is None and j["achievements"] is None and "readingYear" not in j,
+          "no goal, badges off, an older server: the dashboard says so")
+    call("POST", "/_mock/set", body={"goal_books": 30, "achievements": True, "reading_year": True})
 
     # --- the server away
     call("POST", "/_mock/set", body={"offline": True})

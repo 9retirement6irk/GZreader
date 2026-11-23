@@ -407,6 +407,16 @@ function BookOrbit:putRating(book_id, value)
     return false, err or ("http_" .. tostring(code)), code
 end
 
+--- The reader's numbers as BookOrbit keeps them, over every device (gzreader_grimstats.lua):
+--- GET catalog/dashboard has the streak, the year's goal, minutes read per day for the past
+--- year, badges, the book read most a year ago, this year's finished books and a highlight.
+--- Returns the reply, or nil, err.
+function BookOrbit:readingDashboard()
+    local code, data, err = self:call("GET", BookOrbit.CATALOG .. "/dashboard", { timeouts = { 10, 30 } })
+    if code == 200 and type(data) == "table" then return data end
+    return nil, err or ("http_" .. tostring(code)), code
+end
+
 --- Reading time: pages read, by book (gzreader_bo_stats.lua). books = { { hash, bookFileId,
 --- events = { { page, startTime, durationSeconds, totalPages }… } }… }.
 --- Returns { unmatched = { hash… } }, or nil, err.

@@ -327,6 +327,10 @@ function Browser.grimmoryItems(self)
             add(_("Connect to BookOrbit by typing"), "keyboard", function() plugin:keyboardLogin(nil, "bookorbit") end)
         end
     end
+    if Browser.signedIn(self) then
+        -- (every device's reading, as the server counts it: gzreader_statspage.lua)
+        add(_("Reading stats"), "details", function() require("gzreader_statspage").show(plugin) end)
+    end
     if orbit and Browser.signedIn(self) and not usb and type(self.push) == "function" then
         -- (asking BookOrbit for a book it doesn't have: gzreader_bo_requests.lua)
         local Requests = require("gzreader_bo_requests")
@@ -334,7 +338,7 @@ function Browser.grimmoryItems(self)
         add(_("My book requests"), "details", function() Requests.open(self) end)
     end
     if orbit then
-        items[#items + 1] = Rows.about(_("About BookOrbit"), T(_("BookOrbit is your book server: the Catalog's books come from it.") .. " " .. require("gzreader_bookorbit").note() .. _("\n\nSign in with the %1 sync user name and password you made in BookOrbit (Settings → %1), not your website sign-in.\n\nRebuild library: BookOrbit's list of books fetched again, when the Catalog is missing books or shows old ones."), "KOReader"))
+        items[#items + 1] = Rows.about(_("About BookOrbit"), T(_("BookOrbit is your book server: the Catalog's books come from it.") .. " " .. require("gzreader_bookorbit").note() .. _("\n\nSign in with the %1 sync user name and password you made in BookOrbit (Settings → %1), not your website sign-in.\n\nRebuild library: BookOrbit's list of books fetched again, when the Catalog is missing books or shows old ones.\n\nBookOrbit is its own project (github.com/bookorbit/bookorbit), under the GNU AGPL version 3 with additional terms. GZreader isn't part of it or endorsed by it: it only talks to your BookOrbit server, and has none of BookOrbit's code in it."), "KOReader"))
         return Rows.mark(items)
     end
     items[#items + 1] = Rows.about(_("About Grimmory"), usb

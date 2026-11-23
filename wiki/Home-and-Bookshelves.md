@@ -121,17 +121,39 @@ the book once you open one.
 
 ## Reading stats on Home
 
-Home shows **Grimmory reading stats** by default: three numbers on a notebook
-page, counted over every device that reads with your Grimmory account
-(GZreader on each Kindle and Grimmory's web reader send their reading
-sessions; Grimmory adds them up). Choose the three in Settings → Home and tabs → Home →
-Widgets → Grimmory reading stats → Stat slot 1–3:
+Home shows **Reading stats (every device)** by default: three numbers on a notebook
+page, counted by your book server over every device that reads with your account
+(each Kindle and the server's web reader send their reading; the server adds
+it up). The numbers come from Grimmory or from BookOrbit, whichever this Kindle
+is signed in to. Choose the three in Settings → Home and tabs → Home →
+Widgets → Reading stats (every device) → Stat slot 1–3.
+
+With Grimmory:
 
 - Read this week (time), Books this week
 - Day streak (as tally marks up to 10), Longest streak, Days read
 - Sessions this month, Finished this year
 
-They're fetched from Grimmory when Home shows them and they're over 15
+With BookOrbit:
+
+- Read today, Read this week, Read this month, Read this year (time)
+- Day streak, Longest streak, Days read this year
+- Finished this year, Reading goal (books finished of your goal), Badges (earned of all)
+- Books in the library, Reading now
+
+A slot set to a number the other server doesn't have shows Read this week
+after you switch servers.
+
+**Tap the widget** for the reading stats page (on a Kindle with keys: Catalog →
+the Grimmory or BookOrbit card → Reading stats). With BookOrbit it shows the
+last seven days as bars, the past year as a grid of days (darker for more
+reading), your reading goal and next badge as progress bars, the book you were
+reading a year ago, this year's finished books and the highlight of the day.
+With Grimmory: this week's books as bars, the month as a calendar of days read,
+and books finished by month. As much as fits the screen is shown. Tap or
+press a key to close.
+
+They're fetched from the server when Home shows them and they're over 15
 minutes old (only while Wi‑Fi is on), and again after this Kindle's reading
 sessions reach Grimmory; the last ones stay for when it's offline. Your
 Grimmory user needs permission to see statistics (Grimmory → user settings →
