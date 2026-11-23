@@ -13610,6 +13610,85 @@ print("Quick panel's light: the swipe that opens it doesn't move the light")
     Screen.scaleBySize = was_scale
 end)()
 
+print("Quick panel: a 5-way step redraws only the two tiles that change")
+;(function()
+    local Panel = require("gzreader_panel")
+    local PW = Panel._Widget
+    local UIMf = require("ui/uimanager")
+    local Device = require("device")
+    local Log = require("gzreader_log")
+    local Screen = Device.screen
+    local was_scale = rawget(Screen, "scaleBySize")
+    Screen.scaleBySize = function(_s, px) return px end
+    local function swap(fn, name, value)
+        for i = 1, 80 do
+            local upname, v = debug.getupvalue(fn, i)
+            if not upname then return nil end
+            if upname == name then debug.setupvalue(fn, i, value); return v end
+        end
+    end
+    -- KOReader's FocusManager stood in: a step, then its own refresh (the whole screen)
+    local fake_fm = { onFocusMove = function(self, args)
+        local dx, dy = args[1], args[2]
+        local row = self.layout[self.selected.y + dy]
+        if not (row and row[self.selected.x + dx]) then return true end
+        self.selected = { x = self.selected.x + dx, y = self.selected.y + dy }
+        UIMf:setDirty(self, "fast")
+        return true
+    end }
+    local was_fm = swap(PW.onFocusMove, "FocusManager", fake_fm)
+    local was_geom = swap(PW.focusRect, "Geom", { new = function(_c, o) return o end })
+    local dirty = {}
+    local was_dirty = UIMf.setDirty
+    local function record(_um, w, how, region)
+        local mode, rect = how, region
+        if type(how) == "function" then mode, rect = how() end
+        dirty[#dirty + 1] = { w = w, mode = mode, rect = rect }
+    end
+    UIMf.setDirty = record
+    local logged = {}
+    local was_info = Log.info
+    Log.info = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    local function tile(x, y) return { dimen = { x = x, y = y, w = 100, h = 100 }, gz_painted = true } end
+    local t11, t12, t21 = tile(16, 100), tile(126, 100), tile(16, 210)
+    local w = setmetatable({ layout = { { t11, t12 }, { t21 } }, selected = { x = 1, y = 1 },
+        dimen = { x = 0, y = 0, w = 600, h = 500 } }, { __index = PW })
+    local function same(r, x, y, rw, rh) return r and r.x == x and r.y == y and r.w == rw and r.h == rh end
+    -- a step right: the tile left and the tile reached, each with its ring, "ui" as before
+    w:onFocusMove({ 1, 0 })
+    check(#dirty == 2 and dirty[1].w == w and dirty[2].w == w and dirty[1].mode == "ui" and dirty[2].mode == "ui"
+            and same(dirty[1].rect, 11, 95, 110, 110) and same(dirty[2].rect, 121, 95, 110, 110),
+        "a 5-way step refreshes only the tile it leaves and the one it reaches (" .. #dirty .. " refreshes)")
+    check(UIMf.setDirty == record and logged[1] and logged[1]:find("two tiles", 1, true),
+        "…KOReader's whole-screen refresh held back (setDirty put back), the log says two tiles")
+    -- a step that goes nowhere (the edge): nothing to redraw
+    dirty = {}
+    w:onFocusMove({ 1, 0 })
+    check(#dirty == 0 and w.selected.x == 2, "a step past the edge (the focus stays): no refresh")
+    -- a tile not drawn yet: the whole panel
+    t21.gz_painted = nil
+    w:onFocusMove({ -1, 1 })
+    check(#dirty == 1 and dirty[1].mode == "ui" and dirty[1].rect == w.dimen and w.selected.y == 2,
+        "a tile whose place isn't known yet: the whole panel is refreshed")
+    check(logged[2] and logged[2]:find("whole panel", 1, true), "…and the log says so")
+    -- the first show: the whole panel
+    local was_dpad = Device.hasDPad
+    Device.hasDPad = function() return false end
+    dirty = {}
+    w:onShow()
+    check(#dirty == 1 and dirty[1].mode == "ui" and dirty[1].rect == w.dimen, "the panel shown: the whole panel refreshed")
+    Device.hasDPad = was_dpad
+    -- an error inside the step still puts setDirty back
+    swap(PW.onFocusMove, "FocusManager", { onFocusMove = function() error("boom") end })
+    local ok = pcall(w.onFocusMove, w, { 0, -1 })
+    check(not ok and UIMf.setDirty == record, "an error while moving: UIManager's setDirty is put back")
+    swap(PW.onFocusMove, "FocusManager", was_fm)
+    swap(PW.focusRect, "Geom", was_geom)
+    UIMf.setDirty = was_dirty
+    Log.info = was_info
+    Screen.scaleBySize = was_scale
+end)()
+
 print("Quick panel: a volume slider on touch Kindles with sound")
 ;(function()
     local Panel = require("gzreader_panel")

@@ -119,6 +119,7 @@ function Tile:getSize() return Geom:new{ w = self.w, h = self.h } end
 
 function Tile:paintTo(bb, x, y)
     self.dimen.x, self.dimen.y = x, y
+    self.gz_painted = true -- (its place on screen is known: the 5-way refreshes just it)
     local w, h = self.w, self.h
     local r = S(10)
     bb:paintRoundedRect(x, y, w, h, Blitbuffer.COLOR_WHITE, r)
@@ -1029,9 +1030,48 @@ end
 function PanelWidget:onClose() UIManager:close(self); return true end
 function PanelWidget:onCloseBack() UIManager:close(self); return true end
 
+--- Where a tile and its focus ring (just outside it) are on screen; nil
+--- before the tile has been drawn.
+function PanelWidget:focusRect(tile)
+    local d = tile and tile.gz_painted and tile.dimen
+    if not (d and d.w and d.w > 0 and d.h and d.h > 0) then return nil end
+    local m = S(5) -- (the ring is S(4) outside the tile)
+    return Geom:new{ x = d.x - m, y = d.y - m, w = d.w + 2 * m, h = d.h + 2 * m }
+end
+
+local function focusedTile(self)
+    local row = self.layout and self.selected and self.layout[self.selected.y]
+    return row and row[self.selected.x]
+end
+
+--- The 5-way moves the focus: only the tile it leaves and the one it reaches
+--- are refreshed (FocusManager's own refresh, the whole screen, is held back);
+--- the whole panel if either hasn't been drawn yet.
 function PanelWidget:onFocusMove(args)
-    local r = FocusManager.onFocusMove(self, args)
-    UIManager:setDirty(self, "ui")
+    local before = focusedTile(self)
+    local moved = false
+    local real = UIManager.setDirty
+    UIManager.setDirty = function(um, widget, how, ...)
+        if widget == self and how == "fast" then moved = true; return end
+        return real(um, widget, how, ...)
+    end
+    local ok, r = pcall(FocusManager.onFocusMove, self, args)
+    UIManager.setDirty = real
+    if not ok then error(r, 0) end
+    if not moved then return r end -- (nothing moved: nothing to redraw)
+    local after = focusedTile(self)
+    local a, b = self:focusRect(before), self:focusRect(after)
+    local how = (a and b) and "tiles" or "panel"
+    if how == "tiles" then
+        UIManager:setDirty(self, function() return "ui", a end)
+        if after ~= before then UIManager:setDirty(self, function() return "ui", b end) end
+    else
+        UIManager:setDirty(self, function() return "ui", self.dimen end)
+    end
+    if self.gz_focus_logged ~= how then
+        self.gz_focus_logged = how
+        require("gzreader_log").info("quick panel: 5-way step refreshes the", how == "tiles" and "two tiles" or "whole panel")
+    end
     return r
 end
 
