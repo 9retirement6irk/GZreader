@@ -95,6 +95,8 @@ def fresh():
         "devices": {},            # deviceId -> deviceModel
         "annotations": {},        # book id -> [server highlights: serverId, version, key, datetime, ..., deleted]
         "anno_devices": {},       # "<deviceId>:<bookId>" -> {serverId (as text): the version that device has}
+        "bookmarks": {},          # book id -> [server bookmarks: serverId, pos, pageno, title, deleted]
+        "mark_devices": {},       # "<deviceId>:<bookId>" -> {serverId (as text): that device's key for it}
         "next_id": 1,
     }
 
@@ -298,6 +300,117 @@ def web_highlight(w):
     return a
 
 
+# ---------------------------------------------------------------- bookmarks (the exchange)
+def check_mark_book(book):
+    if not isinstance(book, dict) or not isinstance(book.get("hash"), str) or not MD5.match(book["hash"]):
+        return "hash must be an MD5 hex string"
+    keys = book.get("keys")
+    if not isinstance(keys, list) or len(keys) > 2000:
+        return "keys must be an array of at most 2000"
+    for k in keys:
+        if not isinstance(k, dict) or not isinstance(k.get("k"), str) or not MD5.match(k["k"]) \
+                or not isinstance(k.get("dt"), str) or not DEVICE_TIME.match(k["dt"]):
+            return "each key needs k (MD5 hex) and dt (YYYY-MM-DD HH:MM:SS)"
+    if not isinstance(book.get("keysComplete"), bool):
+        return "keysComplete must be a boolean"
+    if "sidecarState" in book and book["sidecarState"] not in ("known", "new"):
+        return "sidecarState must be known or new"
+    changes = book.get("changes")
+    if not isinstance(changes, list) or len(changes) > 50:
+        return "changes must be an array of at most 50"
+    for c in changes:
+        if not isinstance(c, dict) or not isinstance(c.get("datetime"), str) or not DEVICE_TIME.match(c["datetime"]):
+            return "datetime must be YYYY-MM-DD HH:MM:SS"
+        if not isinstance(c.get("pos"), str) or not c["pos"] or len(c["pos"]) > 4000:
+            return "pos must be a string"
+        for name in ("chapter", "note"):
+            if name in c and not (isinstance(c[name], str) and len(c[name]) <= 500):
+                return "%s must be a string of at most 500 characters" % name
+        if "pageno" in c and not (isinstance(c["pageno"], int) and not isinstance(c["pageno"], bool) and c["pageno"] >= 0):
+            return "pageno must be a whole number"
+        extra = set(c) - {"datetime", "datetimeUpdated", "pos", "pageno", "chapter", "note"}
+        if extra:
+            return "property %s should not exist" % sorted(extra)[0]
+    return None
+
+
+def check_mark_ack(book):
+    if not isinstance(book, dict) or not isinstance(book.get("hash"), str) or not MD5.match(book["hash"]):
+        return "hash must be an MD5 hex string"
+    for name in ("applied", "deleted"):
+        rows = book.get(name)
+        if not isinstance(rows, list) or len(rows) > 200:
+            return "%s must be an array of at most 200" % name
+        for r in rows:
+            if not isinstance(r, dict) or not isinstance(r.get("serverId"), int) or r["serverId"] < 1 or r.get("status") not in ("applied", "failed"):
+                return "%s entries need serverId and status (applied or failed)" % name
+            if "key" in r and not (isinstance(r["key"], str) and MD5.match(r["key"])):
+                return "key must be an MD5 hex string"
+    return None
+
+
+def mark_exchange(device_id, b, book):
+    marks = STATE["bookmarks"].setdefault(str(b["id"]), [])
+    dev_key = "%s:%d" % (device_id, b["id"])
+    if book.get("sidecarState") == "new":
+        STATE["mark_devices"][dev_key] = {}
+    links = STATE["mark_devices"].setdefault(dev_key, {})
+    accepted = duplicates = device_deleted = 0
+    for c in book["changes"]:
+        key = anno_key(c["datetime"], c["pos"])
+        m = next((m for m in marks if m["pos"] == c["pos"] and not m["deleted"]), None)
+        if m is None:
+            m = {"serverId": STATE["next_id"], "pos": c["pos"], "pageno": c.get("pageno"), "title": c.get("note") or c.get("chapter") or "",
+                 "datetime": c["datetime"], "deleted": False}
+            STATE["next_id"] += 1
+            marks.append(m)
+            accepted += 1
+        else:
+            duplicates += 1
+        links[str(m["serverId"])] = key
+    if book["keysComplete"] and book.get("sidecarState") != "new":
+        present = {k["k"] for k in book["keys"]}
+        for m in marks:
+            sid = str(m["serverId"])
+            if not m["deleted"] and sid in links and links[sid] not in present:
+                m["deleted"] = True
+                links.pop(sid, None)
+                device_deleted += 1
+    add = [{"serverId": m["serverId"], "pos": m["pos"], "pageno": m["pageno"], "title": m["title"]}
+           for m in marks if not m["deleted"] and str(m["serverId"]) not in links]
+    delete = [{"serverId": m["serverId"], "key": links[str(m["serverId"])], "datetime": m.get("datetime")}
+              for m in marks if m["deleted"] and str(m["serverId"]) in links]
+    return {"hash": b["hash"], "bookId": b["id"], "accepted": accepted, "duplicates": duplicates, "rejected": 0,
+            "deviceDeleted": device_deleted, "toApply": {"add": add, "delete": delete}, "more": False, "skippedConversion": 0}
+
+
+def mark_ack(device_id, b, book):
+    links = STATE["mark_devices"].setdefault("%s:%d" % (device_id, b["id"]), {})
+    acked = 0
+    for r in book["applied"]:
+        if r["status"] == "applied" and r.get("key"):
+            links[str(r["serverId"])] = r["key"]
+            acked += 1
+    for r in book["deleted"]:
+        if r["status"] == "applied":
+            links.pop(str(r["serverId"]), None)
+            acked += 1
+    return {"hash": b["hash"], "acked": acked}
+
+
+def web_bookmark(w):
+    """What another device or the web would do: {"book": id, "op": "add"|"delete", ...}."""
+    marks = STATE["bookmarks"].setdefault(str(w["book"]), [])
+    if w["op"] == "add":
+        m = {"serverId": STATE["next_id"], "pos": w["pos"], "pageno": w.get("pageno"), "title": w.get("title", ""), "datetime": None, "deleted": False}
+        STATE["next_id"] += 1
+        marks.append(m)
+        return m
+    m = next(m for m in marks if m["serverId"] == w["serverId"])
+    m["deleted"] = True
+    return m
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -410,6 +523,9 @@ class Handler(BaseHTTPRequestHandler):
             changes = self.body() or {}
             # "book_hashes": {"101": "<32 hex>"}: a book's file is the one with that fingerprint
             # (for a test that puts a real book on the device)
+            mark = changes.pop("web_bookmark", None)
+            if mark:
+                return self.send(200, web_bookmark(mark))
             web = changes.pop("web_highlight", None)
             if web:
                 return self.send(200, web_highlight(web))
@@ -531,6 +647,25 @@ class Handler(BaseHTTPRequestHandler):
                     unmatched.append(book["hash"].lower())
                     continue
                 results.append((ack_book if ack else exchange_book)(d["deviceId"], b, book))
+            return self.send(201, {"results": results, "unmatched": unmatched, "positionIncompatible": []})
+        if p in ("plugin/bookmarks/exchange", "plugin/bookmarks/exchange-ack") and method == "POST":
+            d = self.body()
+            if not self.device(d):
+                return
+            books = d.get("books")
+            if not isinstance(books, list) or not 1 <= len(books) <= 20:
+                return self.error(400, "books must hold 1 to 20 books")
+            ack = p.endswith("-ack")
+            results, unmatched = [], []
+            for book in books:
+                bad = check_mark_ack(book) if ack else check_mark_book(book)
+                if bad:
+                    return self.error(400, bad)
+                b = next((b for b in BOOKS if b["hash"] == book["hash"].lower()), None)
+                if not b:
+                    unmatched.append(book["hash"].lower())
+                    continue
+                results.append((mark_ack if ack else mark_exchange)(d["deviceId"], b, book))
             return self.send(201, {"results": results, "unmatched": unmatched, "positionIncompatible": []})
         if p.startswith("plugin/catalog/") and method == "GET":
             return self.catalog(p[len("plugin/catalog/"):], q)

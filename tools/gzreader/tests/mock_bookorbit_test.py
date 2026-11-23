@@ -186,6 +186,34 @@ try:
     check(call("POST", X, KO, dict(DEV, books=[dict(bk, keys=[{"k": "nope", "dt": hl["datetime"]}])]))[0] == 400, "the exchange refuses a bad key")
     check(call("POST", X, KO, dict(DEV, books=[]))[0] == 400 and call("POST", X, KO, {"books": [bk]})[0] == 400, "the exchange needs books and the device fields")
 
+    # --- bookmarks: the exchange
+    B = "/api/v1/koreader/plugin/bookmarks/exchange"
+    bm = {"datetime": "2026-11-22 09:30:00", "pos": "/body/DocFragment[2]/body/p[4]/text().0", "pageno": 4, "chapter": "One", "note": "come back here"}
+    bk1 = hashlib.md5(("%s|%s" % (bm["datetime"], bm["pos"])).encode()).hexdigest()
+    mb = {"hash": h, "keys": [{"k": bk1, "dt": bm["datetime"]}], "keysComplete": True, "sidecarState": "new", "changes": [bm]}
+    code, j = call("POST", B, KO, dict(DEV, books=[mb]))
+    r = j["results"][0]
+    check(code == 201 and r["accepted"] == 1 and r["toApply"] == {"add": [], "delete": []}, "a bookmark from the device is taken")
+    check(call("POST", B, KO, dict(DEV, books=[dict(mb, sidecarState="known")]))[1]["results"][0]["duplicates"] == 1, "the same one again is a duplicate")
+    wm = call("POST", "/_mock/set", body={"web_bookmark": {"book": 101, "op": "add", "pos": "/body/DocFragment[5]/body/p[1]/text().0", "pageno": 30, "title": "Five"}})[1]
+    mb2 = dict(mb, sidecarState="known", changes=[])
+    r = call("POST", B, KO, dict(DEV, books=[mb2]))[1]["results"][0]
+    check(r["toApply"]["add"] == [{"serverId": wm["serverId"], "pos": wm["pos"], "pageno": 30, "title": "Five"}], "a bookmark made elsewhere is offered (no date: the device dates it)")
+    wk = hashlib.md5(("2026-11-22 14:00:00|%s" % wm["pos"]).encode()).hexdigest()
+    code, j = call("POST", B + "-ack", KO, dict(DEV, books=[{"hash": h, "applied": [{"serverId": wm["serverId"], "status": "applied", "key": wk,
+                                                                                  "datetime": "2026-11-22 14:00:00", "pos": wm["pos"]}], "deleted": []}]))
+    check(code == 201 and j["results"] == [{"hash": h, "acked": 1}], "the device says which key it has it under")
+    mb3 = dict(mb2, keys=[{"k": bk1, "dt": bm["datetime"]}, {"k": wk, "dt": "2026-11-22 14:00:00"}])
+    check(call("POST", B, KO, dict(DEV, books=[mb3]))[1]["results"][0]["toApply"]["add"] == [], "…and it isn't offered again")
+    r = call("POST", B, KO, dict(DEV, books=[dict(mb3, keys=[{"k": bk1, "dt": bm["datetime"]}])]))[1]["results"][0]
+    check(r["deviceDeleted"] == 1, "a bookmark gone from the device's list is deleted on the server")
+    first_mark = call("GET", "/_mock/state")[1]["bookmarks"]["101"][0]
+    call("POST", "/_mock/set", body={"web_bookmark": {"book": 101, "op": "delete", "serverId": first_mark["serverId"]}})
+    r = call("POST", B, KO, dict(DEV, books=[dict(mb3, keys=[{"k": bk1, "dt": bm["datetime"]}])]))[1]["results"][0]
+    check(r["toApply"]["delete"] == [{"serverId": first_mark["serverId"], "key": bk1, "datetime": bm["datetime"]}], "a delete elsewhere comes by the device's key")
+    check(call("POST", B, KO, dict(DEV, books=[dict(mb, changes=[dict(bm, extra=1)])]))[0] == 400
+          and call("POST", B, KO, dict(DEV, books=[dict(mb, changes=[{"datetime": bm["datetime"]}])]))[0] == 400, "the bookmark exchange refuses an unknown field and no place")
+
     # --- the main API: key, audiobooks
     code, j = call("GET", "/api/v1/auth/me", API)
     check(code == 200 and j["authenticationMethod"] == "api_key", "API key as Bearer")
