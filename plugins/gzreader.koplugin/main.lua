@@ -253,7 +253,7 @@ function Grimmory:init()
         -- Home's "Daily paper" widget (ZenOS registers Home's widgets when it
         -- starts, after GZreader: a tick later)
         UIManager:nextTick(function() pcall(function() require("gzreader_dailyscreen").install(self) end) end)
-        -- Home's reading stats from the book server (every device's reading)
+        -- Home's "Grimmory reading stats" (every device's reading, from Grimmory)
         local plugin_ref = self
         rawset(_G, "__GZ_GRIMMORY_STATS", function() return require("gzreader_grimstats").values(plugin_ref) end)
         -- (which server they're from, for the widget's choices; and the page a tap on it opens)
