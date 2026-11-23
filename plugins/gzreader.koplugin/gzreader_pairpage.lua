@@ -505,7 +505,7 @@ local function sleepSection(st, base)
     local sc = sl.screen or { w = 600, h = 800 }
     local parts = { '<section id="sleep" class="tab"><h2>Sleep screen</h2>',
         '<p class="what">Your own pictures for the sleep screen: made in this browser to fit the Kindle\'s screen (',
-        esc(sc.w), " × ", esc(sc.h), ', in grey) and put in its <code>screensavers</code> folder. Nothing is sent anywhere else.</p>' }
+        esc(sc.w), " × ", esc(sc.h), sl.colour and ', in colour' or ', in grey', ') and put in its <code>screensavers</code> folder. Nothing is sent anywhere else.</p>' }
     if sl.error then parts[#parts + 1] = '<p class="err">' .. esc(sl.error) .. "</p>" end
     -- which sleep screen
     local mode = sl.mode == "random_image" and "always" or sl.mode
@@ -518,7 +518,7 @@ local function sleepSection(st, base)
         radios[#radios + 1] = '<p class="note" style="margin:0 0 12px">Now: another sleep screen, chosen on the Kindle (Settings → Sleep and wallpaper → Sleep → Wallpaper).</p>'
     end
     parts[#parts + 1] = form(base .. "/sleep/mode", table.concat(radios) .. '<button class="alt small" type="submit">Use this sleep screen</button>', "Saving…")
-    -- adding pictures (made here: the Kindle's size, grey, PNG)
+    -- adding pictures (made here: the Kindle's size, grey (in colour for a colour screen), PNG)
     local received = {}
     for _i, name in ipairs(sl.received or {}) do received[#received + 1] = '<p class="ok">✓ ' .. esc(name) .. "</p>" end
     parts[#parts + 1] = table.concat({
@@ -528,12 +528,12 @@ local function sleepSection(st, base)
         '<label for="ss_fit">How they fit the screen</label><select id="ss_fit" class="sel"><option value="cover">Fill the screen (edges cropped)</option><option value="contain">Whole picture (white edges)</option></select>',
         '<button id="ss_send" type="button">Send to Kindle</button>',
         '<div id="ss_up">', table.concat(received), '</div>',
-        '<script>(function(){var BASE=', string.format("%q", base), ',W=', tonumber(sc.w) or 600, ',H=', tonumber(sc.h) or 800, ';',
+        '<script>(function(){var BASE=', string.format("%q", base), ',W=', tonumber(sc.w) or 600, ',H=', tonumber(sc.h) or 800, ',C=', sl.colour and "true" or "false", ';',
         'var f=document.getElementById("ss_files"),b=document.getElementById("ss_send"),out=document.getElementById("ss_up");',
         'function say(t,c){var p=document.createElement("p");p.textContent=t;if(c)p.className=c;out.appendChild(p);return p}',
         'function make(file,fit){return createImageBitmap(file).then(function(img){var c=document.createElement("canvas");c.width=W;c.height=H;var g=c.getContext("2d");g.fillStyle="#fff";g.fillRect(0,0,W,H);',
         'var k=fit=="contain"?Math.min(W/img.width,H/img.height):Math.max(W/img.width,H/img.height),w=img.width*k,h=img.height*k;g.imageSmoothingQuality="high";g.drawImage(img,(W-w)/2,(H-h)/2,w,h);if(img.close)img.close();',
-        'var d=g.getImageData(0,0,W,H),px=d.data;for(var i=0;i<px.length;i+=4){var y=Math.round(.299*px[i]+.587*px[i+1]+.114*px[i+2]);px[i]=px[i+1]=px[i+2]=y;px[i+3]=255}g.putImageData(d,0,0);',
+        'if(!C){var d=g.getImageData(0,0,W,H),px=d.data;for(var i=0;i<px.length;i+=4){var y=Math.round(.299*px[i]+.587*px[i+1]+.114*px[i+2]);px[i]=px[i+1]=px[i+2]=y;px[i+3]=255}g.putImageData(d,0,0)}',
         'return new Promise(function(ok,bad){c.toBlob(function(x){x?ok(x):bad(new Error("couldn\'t make the picture"))},"image/png")})})}',
         'b.onclick=function(){var list=[].slice.call(f.files);if(!list.length){say("Choose one or more pictures first.","err");return}var fit=document.getElementById("ss_fit").value,sent=0;',
         'b.disabled=true;b.textContent="Sending…";next();',

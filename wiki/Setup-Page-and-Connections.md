@@ -42,7 +42,8 @@ you came from; without JavaScript they're one under the other):
   space.
 - **Sleep screen**: your own pictures for the sleep screen. Pick photos in
   the browser; they're made there to fit the Kindle's screen (filling it, or
-  whole with white edges), in grey, and go into the `screensavers` folder.
+  whole with white edges), in grey (in colour on a colour Kindle), and go
+  into the `screensavers` folder.
   The pictures already there are listed (*Take off* removes one), and you
   choose which sleep screen: the book's cover while reading and a picture
   elsewhere, a picture always, or the same with Immich's pictures. An iPhone
