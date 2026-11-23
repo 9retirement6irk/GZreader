@@ -1,4 +1,4 @@
-What GZreader does, in short, with where to read more. It runs on e-readers from the Kindle 2 and Nook 1 to the Kindle Scribe, and on Kobos (test build). Not every feature is on every device: see [Device compatibility](Device-Compatibility).
+What GZreader does, in short, with where to read more. It connects an e-reader to the servers you host yourself (Grimmory for books, Memos, Plex, Immich, your calendars, Home Assistant); each is optional, and the parts below say which one they use. It runs on e-readers from the Kindle 2 and Nook 1 to the Kindle Scribe, and on Kobos (test build). Not every feature is on every device: see [Device compatibility](Device-Compatibility).
 
 ## Reading and your library
 

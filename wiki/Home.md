@@ -1,16 +1,25 @@
 <p align="center"><img src="https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/gzreader-logo.svg" alt="GZreader logo" width="96"></p>
 
-**GZreader** is [KOReader](https://github.com/koreader/koreader) trimmed down to
-reading, with the [ZenOS](https://github.com/xZenLabs/zen-os) interface and a
-built-in connection to your self-hosted [Grimmory](https://grimmory.org) book
-server, packaged for e-readers from the Kindle 2 and Nook 1 to the Scribe:
-Kindle 2, Keyboard, DX, 4, Touch, Paperwhite 3, Scribe and the other touch
-Kindles, and, as test builds, Kobos, the Nook 1st Edition and Nook Simple Touch.
+**Your self-hosted library on a Kindle.** GZreader is
+[KOReader](https://github.com/koreader/koreader) trimmed down to reading, with
+the [ZenOS](https://github.com/xZenLabs/zen-os) interface and built-in
+connections to the servers a self-hoster already runs, packaged for e-readers
+from the Kindle 2 and Nook 1 to the Scribe: Kindle 2, Keyboard, DX, 4, Touch,
+Paperwhite 3, Scribe and the other touch Kindles, and, as test builds, Kobos,
+the Nook 1st Edition and Nook Simple Touch.
 
-Read, and keep your place, bookmarks, highlights and notes in sync with
-Grimmory; send books from your browser; listen to audiobooks and Plex music;
-write Memos notes in a rich text editor and draw in them with a finger or the
-Scribe's pen; see your calendars; switch your Home Assistant lights.
+| Your server | What the e-reader does with it |
+|---|---|
+| [Grimmory](https://grimmory.org) (books; [BookOrbit](https://github.com/bookorbit/bookorbit) is in testing) | browse and download your books and audiobooks; keep your place, bookmarks, highlights and notes in sync |
+| [Memos](https://usememos.com) | sticky notes, a rich text editor, drawings, a journal |
+| [Plex](https://www.plex.tv) | music, and audiobooks from a Plex library |
+| [Immich](https://immich.app) | your photos as the sleep screen and wallpaper, and in notes |
+| CalDAV and calendar links (Nextcloud, Radicale, Baïkal, any `.ics` link) | your calendars |
+| [Home Assistant](https://www.home-assistant.io) | lights, switches and the weather on the House tab |
+
+Every connection is optional: without any server it's still a reader you can
+send books to from your browser, and each one you connect adds its part. The
+name is where it started: Grimmory + ZenOS + KOReader.
 
 ## Start here
 
