@@ -9,7 +9,7 @@ is a BookOrbit one (`store.backend == "bookorbit"`, Grimmory:useBackend).
 
 BookOrbit's KOReader API (/api/v1/koreader/…) is what it offers e-readers:
   * sign-in: the KOReader sync user name and password from BookOrbit's
-    Settings → KOReader, sent on every request as x-auth-user and x-auth-key
+    Settings → Devices → KOReader, sent on every request as x-auth-user and x-auth-key
     (the password's MD5, as KOReader's own sync does). Only that MD5 is kept
     (store.bookorbit.key; off the USB drive, gzreader_secrets.lua): the
     password itself is never stored.
@@ -183,7 +183,7 @@ function BookOrbit:signInWith(base, username, key, api_key)
         local same = type(old) == "table" and self.store.server == base and self.store.username == username
         self.store.server = base
         self.store.username = username
-        self.store.bookorbit = { key = key, api_key = api_key or (same and old.api_key) or nil }
+        self.store.bookorbit = { key = key, api_key = api_key or (same and old.api_key) or nil, delivery = same and old.delivery or nil }
         self:deviceId()
         self.store.access_token, self.store.refresh_token, self.store.access_expires_at = nil, nil, nil
         self:readVersion()
@@ -280,6 +280,8 @@ function BookOrbit:loginWithApiKey(server, api_key)
         local password = newPassword()
         local made
         for try = 1, 2 do
+            -- (only a name and a password: BookOrbit's own defaults for the rest are the ones a Kindle
+            -- wants: progress sync on, audiobook-only books hidden, read-aloud EPUBs text-only when it can)
             local pcode, pdata = Api.rawRequest("POST", base .. "/api/v1/koreader/credentials", {
                 headers = auth, body = { username = name:sub(1, 100), password = password }, timeouts = { 10, 30 } })
             if pcode == 200 or pcode == 201 then made = true break end
@@ -296,6 +298,8 @@ function BookOrbit:loginWithApiKey(server, api_key)
     end
     local ok, err = self:signInWith(base, username, key, api_key)
     if not ok then return false, err end
+    self:readSyncSettings(base, api_key)
+    self.on_change()
     return true
 end
 
@@ -751,7 +755,7 @@ end
 
 -- BookOrbit's e-reader sign-in doesn't reach its audiobook routes (the manifest, the
 -- audio files with resume, the listening position): those take an API key the user
--- makes in BookOrbit (Settings → API keys), kept as store.bookorbit.api_key with the
+-- makes in BookOrbit (Settings → You → API keys), kept as store.bookorbit.api_key with the
 -- other secrets. Without one there are no BookOrbit audiobooks here.
 --
 -- A BookOrbit book can be an ebook and an audiobook at once, under one id. GZreader
@@ -787,6 +791,45 @@ function BookOrbit:keyCall(method, path, opts)
 end
 
 --- Check an API key against the signed-in server and keep it. Returns true, or false, err.
+--- What the key has to be allowed, as BookOrbit's "Create API key" page names things
+--- (checked against its source, v3.9.0; the wiki's BookOrbit page has the table):
+---   Access "Read and write"   the listening position, collections, requests, making a sync sign-in
+---                             ("Read only" is enough to list and download audiobooks)
+---   Libraries                 the ones with your books and audiobooks
+---   "KOReader sync"           signing in with only the key
+---   "Request books"           requesting books
+--- Nothing else: not "Download books" (audiobook files need no extra permission) and not
+--- "Administrator access".
+BookOrbit.KEY_NEEDS = "Access: Read and write. Libraries: all (or the ones with your books). Extra permissions: “KOReader sync” to sign in with the key, “Request books” to request books. Nothing else, and not Administrator access."
+
+--- How BookOrbit is set to deliver this sync sign-in's read-aloud EPUBs (nil: Automatic,
+--- text-only when it can; "audioless_epub"; "original": with the narration, which a
+--- Kindle can't play and which makes the files much bigger). Read with the API key when
+--- it may see the sync sign-in (its "KOReader sync" permission); kept as
+--- store.bookorbit.delivery, false when it couldn't be read. A sign-in GZreader makes
+--- itself is left on BookOrbit's defaults: progress sync on, audiobook-only books hidden
+--- from the e-reader lists, delivery Automatic.
+function BookOrbit:readSyncSettings(base, api_key)
+    if type(self.store.bookorbit) ~= "table" then return nil end
+    local code, creds = Api.rawRequest("GET", (base or self.store.server) .. "/api/v1/koreader/credentials",
+        { headers = { ["Authorization"] = "Bearer " .. (api_key or self.store.bookorbit.api_key or "") }, timeouts = { 8, 15 } })
+    if code == 200 and type(creds) == "table" then
+        self.store.bookorbit.delivery = s(creds.readAloudDelivery) or "automatic"
+        Log.info("BookOrbit: this sync sign-in's read-aloud EPUBs are delivered:", self.store.bookorbit.delivery,
+            "| audiobook-only books hidden from the e-reader lists:", tostring(creds.hideAudioOnlyBooks))
+    else
+        self.store.bookorbit.delivery = false
+    end
+    return self.store.bookorbit.delivery
+end
+
+--- A line for the user when a BookOrbit setting works against the Kindle, or nil.
+function BookOrbit:settingsAdvice()
+    local b = self.store.bookorbit
+    if type(b) == "table" and b.delivery == "original" then return "delivery_original" end
+    return nil
+end
+
 function BookOrbit:setApiKey(key)
     if not self:isPaired() then return false, "not_paired" end
     key = type(key) == "string" and key:gsub("%s+", "") or ""
@@ -799,6 +842,7 @@ function BookOrbit:setApiKey(key)
         { headers = { ["Authorization"] = "Bearer " .. key }, timeouts = { 10, 20 } })
     if code == 200 then
         self.store.bookorbit.api_key = key
+        self:readSyncSettings()
         self.on_change()
         return true
     end
