@@ -118,8 +118,8 @@ as an extra redirect URI on Grimmory's client at your identity provider
 (Authentik, Pocket ID, Authelia, Keycloak…), next to Grimmory's own
 `…/oauth2-callback`. If `ALLOWED_ORIGINS` is set in Grimmory, add
 `https://9retirement6irk.github.io` there too. The address is also shown on the
-setup page and under **Settings → Accounts and services → Books → Single sign-on (SSO)
-→ How to set it up**.
+setup page and under **Settings → Accounts and services → Books → (the first row,
+Connected to Grimmory as … or Not connected) → Single sign-on (SSO) → How to set it up**.
 
 How it works: the identity provider sends the phone back to that page
 ([docs/oauth2-callback.html](https://github.com/9retirement6irk/GZreader/blob/main/docs/oauth2-callback.html), a few lines of

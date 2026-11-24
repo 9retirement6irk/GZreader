@@ -44,7 +44,7 @@ That user name and password are what GZreader asks for. Your website user name, 
 Any of these:
 
 - **The setup guide** (on the first start, or Settings → General → Setup Guide): answer **With BookOrbit, my book server** to *How will you use GZreader?*, then *Set up from a browser* or *Type my BookOrbit login here*.
-- **The setup page** (Settings → Accounts and services → Books → Connect from your browser, then scan the code): on its **Books** tab, under **Book server**, choose **BookOrbit** (the heading changes to BookOrbit and the form to BookOrbit's). Enter BookOrbit's address, then either paste an **API key** and press **Connect with the API key** (the easy way: see [Signing in with just an API key](#signing-in-with-just-an-api-key)), or open **Use the KOReader sync user name and password instead**. There is no single sign-on for BookOrbit: its e-reader sign-in doesn't have one.
+- **The setup page** (Settings → Accounts and services → Books → the first row → Connect from your browser, then scan the code): on its **Books** tab, under **Book server**, choose **BookOrbit** (the heading changes to BookOrbit and the form to BookOrbit's). Enter BookOrbit's address, then either paste an **API key** and press **Connect with the API key** (the easy way: see [Signing in with just an API key](#signing-in-with-just-an-api-key)), or open **Use the KOReader sync user name and password instead**. There is no single sign-on for BookOrbit: its e-reader sign-in doesn't have one.
 - **On the Kindle**: Settings → Accounts and services → Books → **Connect to BookOrbit by typing**.
 - **In the Catalog**, when you aren't signed in: the server tile at the bottom → **Connect to BookOrbit by typing**.
 
@@ -149,7 +149,7 @@ If BookOrbit says the key can't see the sync sign-in, the key was made without *
 BookOrbit keeps its audiobook routes apart from the e-reader sign-in, so audiobooks need a second credential: an **API key**.
 
 1. In BookOrbit: **Settings → You → API keys → Create API key**, filled in as in [The API key](#the-api-key-what-to-tick) below. BookOrbit shows it once (it starts with `bok_`).
-2. Give it to the Kindle, either on the setup page (under the BookOrbit connection: *API key (audiobooks, collections, book requests)*) or on the Kindle: Settings → Accounts and services → Books → **BookOrbit API key**.
+2. Give it to the Kindle, either on the setup page (under the BookOrbit connection: *API key (audiobooks, collections, book requests)*) or on the Kindle: Settings → Accounts and services → Books → **Connected to BookOrbit as …** → **BookOrbit API key**.
 
 Then the Catalog's Audiobooks page lists BookOrbit's audiobooks. Downloading, chapters and playing work as with Grimmory's; an interrupted download continues where it stopped. Where you stopped listening is sent to BookOrbit and, when you start an audiobook, taken from it if BookOrbit's place is more than a minute from the Kindle's.
 

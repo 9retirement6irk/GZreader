@@ -425,7 +425,7 @@ function Shelves.ready(plugin)
     local api = plugin.api
     Shelves.server = type(plugin.serverName) == "function" and plugin:serverName() or nil
     if type(api) == "table" and api:isPaired() and not editable(api) then
-        info(_("Changing BookOrbit's collections from here needs its API key: Settings → Accounts and services → Books → BookOrbit API key."), 6)
+        info(_("Changing BookOrbit's collections from here needs its API key: Settings → Accounts and services → Books → Connected to BookOrbit as … → BookOrbit API key."), 6)
         return false
     end
     if type(api) == "table" and api:isPaired() then return true end

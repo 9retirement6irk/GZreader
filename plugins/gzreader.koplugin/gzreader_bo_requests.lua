@@ -48,7 +48,7 @@ local function show(text, timeout)
 end
 
 local function needKey()
-    show(_("Requesting books needs BookOrbit's API key, with “Request books” ticked: Settings → Accounts and services → Books → BookOrbit API key."))
+    show(_("Requesting books needs BookOrbit's API key, with “Request books” ticked: Settings → Accounts and services → Books → Connected to BookOrbit as … → BookOrbit API key."))
 end
 
 --- A row's right-hand text and the line under a request's title.

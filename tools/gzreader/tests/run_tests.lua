@@ -3192,16 +3192,19 @@ do
         return "|" .. table.concat(t, "|") .. "|"
     end
     local g = texts(plugin:menuItems())
-    check(g:match("|Sync reading progress|") and not g:match("Audiobooks") and g:match("|Disconnect|")
+    local acct = texts(plugin:accountItems())
+    check(g:match("|Sync reading progress|") and not g:match("Audiobooks") and acct:match("|Disconnect|")
         and not g:match("Downloads") and not g:match("Browse library") and not g:match("updates")
         and not g:match("Diagnostic") and not g:match("Read aloud") and not g:match("Pre%-size")
         and not g:match("Wi%-Fi only"), "Grimmory section: connection and sync only " .. g)
-    check(g:match("|Sync highlights and notes|Reading stats|Magazines: off|Rebuild library|Reconnect") and not g:match("Request a book") and not g:match("Keep connections open")
-            and not g:match("Copy from another GZreader"),
-        "Books (Grimmory): the sync switches, then Rebuild library; Keep connections open in General → Performance, Copy in General → Transfer " .. g)
-    check(g:match("|Connect to Grimmory by typing|Connect to BookOrbit by typing|Single sign%-on %(SSO%)|Disconnect|About Grimmory|$")
-            and not g:match("Storage on this Kindle") and not g:match("API key") and not g:match("|Connect by typing|"),
-        "Books (Grimmory): each server's typing row named (Grimmory's first), single sign-on, Disconnect, then About Grimmory last; no Storage row (it's in General) and no BookOrbit key " .. g)
+    check(g:match("^|Connected to Grimmory as [^|]+|") and plugin:menuItems()[1].sub_item_table_func ~= nil,
+        "Books: the first row says who's signed in and opens the account's page (as Notes' Memos row) " .. g)
+    check(g:match("|Sync highlights and notes|Magazines: off|Rebuild library|$") and not g:match("Request a book") and not g:match("Keep connections open")
+            and not g:match("Copy from another GZreader") and not g:match("Reading stats") and not g:match("Reconnect") and not g:match("Disconnect"),
+        "Books (Grimmory): the sync switches, Magazines, Rebuild library; no Reading stats (Home's widget opens it), the account's rows on its page " .. g)
+    check(acct:match("^|Reconnect from your browser %(QR code%)|Connect to Grimmory by typing|Connect to BookOrbit by typing|Single sign%-on %(SSO%)|Disconnect|About Grimmory|$")
+            and not acct:match("Storage on this Kindle") and not acct:match("API key") and not acct:match("|Connect by typing|"),
+        "Books → the account (Grimmory): QR code, each server's typing row (Grimmory's first), single sign-on, Disconnect, About Grimmory; no BookOrbit key " .. acct)
     do -- Rebuild library: the index from Grimmory again, the saved lists forgotten, Wi-Fi on first
         local NetR = require("gzreader_net")
         local IndexR, LCR = require("gzreader_index"), require("gzreader_listcache")
@@ -17310,7 +17313,9 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
         plugin.store.bookorbit.api_key = key
         local rows = {}
         for _i, it in ipairs(plugin:menuItems()) do rows[it.text or (it.text_func and it.text_func()) or "?"] = it end
-        check(rows["Reading stats"] and rows["Request a book"] and rows["About BookOrbit"], "Settings → Books (BookOrbit): Reading stats, Request a book and About BookOrbit, from the Catalog's old card")
+        for _i, it in ipairs(plugin:accountItems()) do rows[it.text or (it.text_func and it.text_func()) or "?"] = it end
+        check(rows["Request a book"] and rows["About BookOrbit"] and not rows["Reading stats"],
+            "Settings → Books (BookOrbit): Request a book, and About BookOrbit on the account's page; no Reading stats (Home's widget opens it)")
         local label, body = require("gzreader_browser").aboutServer(plugin)
         check(label == "About BookOrbit" and body:find("AGPL", 1, true) and body:find("isn't part of it or endorsed by it", 1, true),
             "About BookOrbit: still says what BookOrbit is and that GZreader isn't part of it")
@@ -17384,6 +17389,7 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
         for _i, it in ipairs(items or {}) do
             if it.text == "Connect to BookOrbit by typing" then found = it end
             if type(it.sub_item_table) == "table" then walk(it.sub_item_table) end
+            if type(it.sub_item_table_func) == "function" and it.text_func then walk(it.sub_item_table_func()) end
         end
     end
     walk(plugin:menuItems())
@@ -17392,13 +17398,14 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
     check(plugin:menuItems()[1].text_func() == "Connected to BookOrbit as will-kindle", "the menu's first line names BookOrbit")
     do -- Books, signed in to BookOrbit: its rows first, Grimmory's to switch, no single sign-on, the help names BookOrbit
         local t, rows = {}, {}
-        for _i, it in ipairs(plugin:menuItems()) do
+        for _i, it in ipairs(plugin:accountItems()) do
             local name = it.text or (it.text_func and it.text_func()) or "?"
             t[#t + 1] = name
             rows[name] = it
         end
+        for _i, it in ipairs(plugin:menuItems()) do rows[it.text or (it.text_func and it.text_func()) or "?"] = it end
         local g = "|" .. table.concat(t, "|") .. "|"
-        check(g:match("|BookOrbit API key[^|]*|Connect to BookOrbit by typing|Connect to Grimmory by typing|Disconnect|About BookOrbit|$")
+        check(g:match("^|Reconnect from your browser %(QR code%)|BookOrbit API key[^|]*|Connect to BookOrbit by typing|Connect to Grimmory by typing|Disconnect|About BookOrbit|$")
                 and not g:match("Single sign%-on") and not g:match("Storage on this Kindle"),
             "Books (BookOrbit): the API key, then BookOrbit's typing row, Grimmory's to switch; no single sign-on (BookOrbit has none) " .. g)
         check(rows["Sync reading progress"].help_text:find("BookOrbit", 1, true) and not rows["Sync reading progress"].help_text:find("Grimmory", 1, true)
