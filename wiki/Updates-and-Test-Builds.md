@@ -79,3 +79,7 @@ anything fails, the previous files are put back. Then GZreader restarts.
 The Kindle doesn't go to sleep while an update downloads and installs
 (the download window takes every tap, so the Kindle would otherwise think
 nobody was there).
+While the update downloads, GZreader's other network work waits: syncs,
+shelves, Immich pictures, covers and book downloads pause and carry on once
+the update has downloaded (or after 10 minutes at most). Waking from a long
+sleep they all start at once, and the update had to share the Wi-Fi with them.

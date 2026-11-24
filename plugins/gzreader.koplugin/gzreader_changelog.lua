@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Updates download faster after a long sleep", text = "While GZreader's update downloads, its other network work waits: syncs, shelves, Immich pictures, covers and book downloads pause and carry on once the update has downloaded (10 minutes at most). Waking a Kindle from a long sleep starts all of these at once, and the update shared the Wi-Fi with them (slow on a Scribe)." },
+        },
+    },
+    {
         version = "2026.11.22",
         changes = {
             { short = "Colour Kindles: Immich photos in colour", text = "On a Kindle Colorsoft or Scribe Colorsoft, the pictures from your Immich album (the sleep screen and the Home wallpaper) are kept in colour instead of being made grey. Pictures already on the Kindle stay grey until they are swapped for others from the album (about half each time GZreader gets new pictures)." },

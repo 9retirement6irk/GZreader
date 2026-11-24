@@ -56,7 +56,7 @@ function Download.isQueued(book_id)
 end
 
 local function startNext()
-    if Download.active then return end
+    if Download.active or Download.held then return end
     pcall(function() require("gzreader_tasks").changed() end)
     local q = table.remove(Download.queue, 1)
     if not q then
@@ -277,7 +277,8 @@ function Download.start(plugin, book, dest_path, on_done, from_queue, token_read
         end
         if job.paused_at then
             -- waiting for another request (Download.yield): not stalled; on again after YIELD_MAX
-            if secs() - job.paused_at >= Download.YIELD_MAX then Download.unyield(true) end
+            -- (held for GZreader's update: until it's downloaded, Download.release)
+            if not Download.held and secs() - job.paused_at >= Download.YIELD_MAX then Download.unyield(true) end
             return UIManager:scheduleIn(POLL_SECONDS, job.poll)
         end
         if ffiutil.isSubProcessDone(job.pid) then
@@ -332,7 +333,7 @@ end
 --- The other requests are done (or it waited YIELD_MAX: `capped`): on again.
 function Download.unyield(capped)
     local job = Download.active
-    if not job then return end
+    if not job or Download.held then return end
     if not capped then job.yielded_enough = nil end
     if not job.paused_at then return end
     signal(job.pid, SIGCONT)
@@ -343,6 +344,30 @@ function Download.unyield(capped)
     if capped then
         job.yielded_enough = true
         Log.info("download: carried on after waiting", waited, "s for other requests")
+    end
+end
+
+--- GZreader's update downloads: the book downloading waits (however long
+--- that takes) and no queued one starts, until Download.release().
+function Download.hold(reason)
+    Download.held = reason or true
+    local job = Download.active
+    if job and not job.finished and not job.paused_at then
+        signal(job.pid, SIGSTOP)
+        job.paused_at = secs()
+        job.yields = job.yields + 1
+    end
+    Log.info("download: waiting while", tostring(Download.held))
+end
+
+--- …and carries on.
+function Download.release()
+    if not Download.held then return end
+    Download.held = nil
+    if Download.active then
+        Download.unyield()
+    else
+        UIManager:nextTick(startNext)
     end
 end
 
