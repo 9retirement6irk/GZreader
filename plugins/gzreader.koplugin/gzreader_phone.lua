@@ -610,7 +610,7 @@ function Phone.open(plugin, opts)
         local Hw = require("gzreader_handwriting")
         local s = Hw.settings(plugin)
         local function trim(v) return (tostring(v or ""):gsub("^%s+", ""):gsub("%s+$", "")) end
-        local function done(text)
+        local function saved(text)
             plugin:save()
             S.changes.handwriting = true
             Log.info("handwriting: set on the setup page: read", Hw.engine(plugin) == "kindle" and "on the Kindle" or ("with " .. Hw.engine(plugin)),
@@ -619,7 +619,7 @@ function Phone.open(plugin, opts)
         end
         if form.clear == "1" then
             s.claude.key, s.openai.key, s.engine = nil, nil, "kindle"
-            return done(_("The handwriting keys are removed: writing is read on the Kindle."))
+            return saved(_("The handwriting keys are removed: writing is read on the Kindle."))
         end
         local engine = form.engine == "claude" and "claude" or form.engine == "openai" and "openai" or "kindle"
         local ckey, cmodel = trim(form.claude_key), trim(form.claude_model)
@@ -638,7 +638,7 @@ function Phone.open(plugin, opts)
         if okey ~= "" then s.openai.key = okey end
         s.openai.model = omodel ~= "" and omodel or nil
         s.engine = engine
-        return done(engine == "claude" and _("Saved: your writing is read by Claude.")
+        return saved(engine == "claude" and _("Saved: your writing is read by Claude.")
             or engine == "openai" and _("Saved: your writing is read by the online service.")
             or _("Saved: your writing is read on the Kindle."))
     end
