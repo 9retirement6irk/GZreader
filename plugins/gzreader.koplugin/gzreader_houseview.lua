@@ -15,6 +15,8 @@ their fittings mounted on it.
 - a lock: a deadbolt, its thumb-turn level when locked; a garage door or
   gate: a panelled door, rolled up when open; blinds: a window with its
   slats;
+- a speaker: a speaker cabinet, sound coming from it while it plays; a TV:
+  a television, its screen lit when on;
 - scenes and scripts: keys on a keypad plate.
 
 Under each fitting its name and what the list's row says (On · 80%,
@@ -404,6 +406,42 @@ function Draw.contact(open)
     return wrap(s)
 end
 
+--- A speaker: `how` "playing" (sound coming from it), "on" (its lamp lit)
+--- or "off".
+function Draw.speaker(how)
+    local INK = View.INK
+    local on = how ~= "off"
+    local cone = on and "#c4c4c4" or "#e2e2e2"
+    local s = rect(62, 28, 120, 220, 10, View.SHADE) .. rect(54, 20, 120, 220, 10, "#f3f3f3", INK, 3)
+        .. circle(114, 72, 20, cone, INK, 2.5) .. circle(114, 72, 7, on and INK or "#9a9a9a")
+        .. circle(114, 158, 44, cone, INK, 3) .. circle(114, 158, 28, on and "#8a8a8a" or "#cfcfcf", INK, 2) .. circle(114, 158, 9, on and INK or "#9a9a9a")
+        .. circle(114, 222, 5, on and INK or "#f3f3f3", INK, 2)
+    if how == "playing" then
+        for _i, a in ipairs({ { 12, 22 }, { 22, 36 } }) do
+            -- arcs either side of the cabinet
+            s = s .. el("path", f('d="M%d %d A%d %d 0 0 1 %d %d" fill="none" stroke="%s" stroke-width="4" stroke-linecap="round"',
+                    178 + a[1], 130 - a[2], a[2] + 14, a[2] + 14, 178 + a[1], 130 + a[2], INK))
+                .. el("path", f('d="M%d %d A%d %d 0 0 0 %d %d" fill="none" stroke="%s" stroke-width="4" stroke-linecap="round"',
+                    50 - a[1], 130 - a[2], a[2] + 14, a[2] + 14, 50 - a[1], 130 + a[2], INK))
+        end
+    end
+    return wrap(s)
+end
+
+--- A television: its screen dark when off, lit when on, a play mark while it plays.
+function Draw.tv(how)
+    local INK = View.INK
+    local s = rect(26, 52, 192, 132, 8, View.SHADE) .. rect(18, 44, 192, 132, 8, "#f3f3f3", INK, 3)
+        .. rect(28, 54, 172, 112, 4, how == "off" and "#3a3a3a" or "#ffffff", INK, 2.5)
+        .. line(114, 176, 114, 204, INK, 6) .. rect(70, 204, 88, 10, 3, "#d0d0d0", INK, 2.5)
+    if how == "playing" then
+        s = s .. polygon("100,88 100,132 136,110", INK)
+    elseif how == "on" then
+        s = s .. line(44, 150, 184, 150, "#9a9a9a", 3, true) .. circle(52, 150, 5, INK)
+    end
+    return wrap(s)
+end
+
 View.Draw = Draw
 
 --- Which drawing a device gets: { key (its file's name: one per look),
@@ -433,6 +471,11 @@ function View.fitting(e, colour)
         local text = st == "off" and "–" or (e.target and (Ha.fmt(e.target) .. "°")) or (e.cur and (Ha.fmt(e.cur) .. "°")) or nil
         return { key = "thermostat-" .. (at and math.floor(at * 36 + 0.5) or "x") .. "-" .. (arc and hexkey(arc) or "none"),
             svg = function() return Draw.thermostat(at, arc) end, text = text }
+    end
+    if d == "media_player" then
+        local how = (st == "playing" or st == "buffering") and "playing" or ((st == "off" or st == "standby" or st == "unavailable" or st == "unknown") and "off" or "on")
+        if e.dc == "tv" or e.dc == "receiver" then return { key = "tv-" .. how, svg = function() return Draw.tv(how) end } end
+        return { key = "speaker-" .. how, svg = function() return Draw.speaker(how) end }
     end
     if d == "lock" or (d == "binary_sensor" and e.dc == "lock") then
         local how
@@ -674,7 +717,7 @@ View.Page = Page
 
 --- What's on page `n`: each place with its row of the list (entry), its
 --- device, its letter (the ones that do something, in order) and whether
---- it opens a window (a dimmer, a thermostat).
+--- it opens a window (a dimmer, a thermostat, a speaker).
 function View.fill(L, n, items, house, shortcuts)
     local Ha = HA()
     local out = {}
@@ -691,7 +734,7 @@ function View.fill(L, n, items, house, shortcuts)
                 p.letter = shortcuts and shortcuts[k] or nil
             end
             local what = p.device and Ha.action(p.device)
-            p.opens = what == "light" or what == "climate"
+            p.opens = what == "light" or what == "climate" or what == "media"
         end
         out[#out + 1] = p
     end

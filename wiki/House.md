@@ -1,6 +1,6 @@
 The **House** tab shows your [Home Assistant](https://www.home-assistant.io)
-rooms with their lights, switches, thermostats, locks, garage doors and
-scenes, so you can switch things from the Kindle. GZreader talks to Home
+rooms with their lights, switches, thermostats, locks, garage doors,
+speakers, TVs and scenes, so you can switch things from the Kindle. GZreader talks to Home
 Assistant directly over your Wi‑Fi (its REST API): there's no web page or
 browser involved, and nothing goes through anyone else's server.
 
@@ -55,6 +55,8 @@ room a stretch of it with its devices mounted there:
 - a **lock** is a deadbolt, its thumb-turn level when locked and upright
   when unlocked; a **garage door** or gate is a panelled door, rolled up
   when open; blinds are a window with its slats;
+- a **speaker** is a speaker cabinet, with sound coming from it while it
+  plays; a **TV** is a television, its screen lit when on;
 - **scenes** and scripts are keys on a keypad.
 
 Under each fitting are its name and what the list says about it
@@ -84,8 +86,8 @@ Each room (area) in Home Assistant's order, then **Other** (switchable things
 in no room) and **Scenes**. A device's name loses its room's name in front
 ("Living room Ceiling light" → "Ceiling light"). Shown: lights, switches,
 fans, helpers (input booleans), thermostats, locks, covers (garage doors,
-blinds), scripts and scenes, plus temperature and humidity sensors and
-door and window sensors. Devices hidden in Home Assistant aren't shown.
+blinds), media players (speakers, TVs), scripts and scenes, plus temperature
+and humidity sensors and door and window sensors. Devices hidden in Home Assistant aren't shown.
 
 What tapping (or the device's letter key) does:
 
@@ -101,6 +103,8 @@ What tapping (or the device's letter key) does:
 - **Lock**: unlocks (asks first) or locks.
 - **Garage door, gate**: opens (asks first) or closes; blinds open and close
   without asking.
+- **Speaker, TV** (a media player): its buttons, the ones it can do
+  (below).
 - **Scene, script**: runs it.
 - **Sensors**: show their value only.
 
@@ -109,6 +113,36 @@ bulb in its colour (warm yellow when it has none of its own), and a
 thermostat's icon is orange while it heats and blue while it cools.
 On the wall that's the dimmer's indicator lights or the toggle's pilot lamp
 and the thermostat's scale, and a thermometer's column is red.
+
+### Speakers and TVs
+
+<img src="https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/pw-house-speaker.png" alt="A speaker's buttons" width="300">
+
+A media player's row says what it's doing (`Playing · Blue in Green`,
+`Paused`, `Idle`, `Off`). Tapping it opens its buttons, with the song, the
+artist and the volume above them. Home Assistant says what each player can
+do, and only those buttons are there (a TV that can only be switched has
+just **Turn on** or **Turn off**):
+
+- **Previous**, **Play** or **Pause**, **Next**.
+- **− 5%** / **+ 5%**: the volume a step (the buttons stay open for another
+  step), **Mute** or **Unmute**, and **10% / 20% / 30% / 50%** (● marks the
+  one it's at). A player that only steps has **Quieter** and **Louder**.
+- **Shuffle: on/off** and **Repeat: off/all/one**: each press goes to the
+  next.
+- **Turn on** or **Turn off**.
+- **Choose music…** on a [Music Assistant](https://www.music-assistant.io)
+  player: **Playlists**, **Albums**, **Artists** and **Radio** list Music
+  Assistant's library by name (100 at a time, then **More…**), and
+  **Search…** looks through the library and its providers for what you
+  type. What you pick plays on that speaker, in place of its queue.
+
+Home Assistant answers before the player has changed, so the list shows
+what you asked for at once and what the player really does at the next
+refresh, a couple of seconds later.
+
+Choose music needs an **administrator's** token, the same one that brings
+the rooms: it is how the Kindle learns which Music Assistant to ask.
 
 **Refresh** (the first row) fetches everything again. The list also refreshes
 every 30 seconds while the tab is on the screen, and is only drawn again (a
@@ -136,7 +170,8 @@ Assistant can't be reached, the last list stays with a line saying why.
 
 The token is kept in GZreader's settings on the Kindle, like the Memos token,
 and never written to the log. The log names Home Assistant's address, what
-was switched (e.g. `light.turn_on light.porch`) and when, nothing else. The
+was switched (e.g. `light.turn_on light.porch`) and when, nothing else: not
+what you searched Music Assistant for, nor what you chose to play. The
 tab asks Home Assistant only for what it shows: one small request rendered by
 Home Assistant's templates (with a token that isn't an administrator's, Home
 Assistant's whole list of states, which is bigger).
