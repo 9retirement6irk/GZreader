@@ -785,6 +785,280 @@ print("Catalog tab: Books, Audiobooks and Music pages")
     require("gzreader_touch").audio = saved_audio
 end)()
 
+print("House tab in the Bookshelf view: the rooms as a wall (where things go, the drawings, pages, letters)")
+;(function()
+    local HA = require("gzreader_homeassistant")
+    local saved_w = {}
+    local widget_mods = { "ui/widget/container/inputcontainer", "ui/widget/container/widgetcontainer", "ui/gesturerange", "ui/font", "ffi/blitbuffer" }
+    for _i, wm in ipairs(widget_mods) do
+        saved_w[wm] = package.loaded[wm]
+        if type(saved_w[wm]) ~= "table" then package.loaded[wm] = setmetatable({ extend = function(_s, o) return o or {} end }, { __index = function() return function() end end }) end
+    end
+    local View = require("gzreader_houseview")
+    local Shop = require("gzreader_bookshop")
+    for _i, wm in ipairs(widget_mods) do package.loaded[wm] = saved_w[wm] end
+    local one = function(x) return x end
+    local function dev(id, state, more)
+        local e = { id = id, domain = id:match("^([%w_]+)%."), state = state, name = id }
+        for k, v in pairs(more or {}) do e[k] = v end
+        return e
+    end
+    local house = { rooms = {
+        { id = "living", name = "Living room", entities = {
+            dev("light.ceiling", "on", { dim = true, bri = 80 }), dev("light.lamp", "off"), dev("climate.t", "heat", { cur = 20.5, target = 21, min = 7, max = 35, action = "heating" }),
+            dev("sensor.temp", "20.5", { dc = "temperature", unit = "°C" }), dev("sensor.hum", "40", { dc = "humidity", unit = "%" }) } },
+        { id = "outside", name = "Outside", entities = {
+            dev("lock.front", "locked"), dev("cover.garage", "closed", { dc = "garage" }), dev("cover.blinds", "open", { dc = "blind" }),
+            dev("binary_sensor.back", "on", { dc = "door" }) } },
+        { id = "_scenes", name = "Scenes", entities = { dev("scene.night", "2026-01-01"), dev("script.away", "off") } },
+    } }
+    local function cb() end
+    local witems = { { text = "Refresh", mandatory = "updated just now", gz_house_refresh = true, callback = cb } }
+    for _i, r in ipairs(house.rooms) do
+        witems[#witems + 1] = { text = r.name, gz_house_room = r.id, select_enabled = false }
+        for _j, e in ipairs(r.entities) do
+            witems[#witems + 1] = { text = e.id, mandatory = HA.stateText(e), gz_house_id = e.id, callback = HA.action(e) and cb or nil }
+        end
+    end
+    witems[#witems + 1] = { text = "Couldn't reach Home Assistant", select_enabled = false, dim = true }
+    local kinds = View.kinds(witems, house)
+    check(table.concat(kinds, ",") == "refresh,room,fitting,fitting,fitting,fitting,fitting,room,fitting,fitting,fitting,fitting,room,key,key,note",
+        "the wall: what each row of the list is (Refresh, a room's tape, a fitting, a scene's key, a note) " .. table.concat(kinds, ","))
+
+    -- where things go: every row placed once, in order, inside the wall, nothing on top of another
+    local sizes = { { 600, 574 }, { 1072, 1078 }, { 758, 760 }, { 1860, 2200 }, { 600, 330 } }
+    local all_ok = true
+    for _i, size in ipairs(sizes) do
+        local L = View.layout(kinds, size[1], size[2], one)
+        local fine, seen, next_i = L.fits and #L.pages >= 1, 0, 1
+        for n, p in ipairs(L.pages) do
+            local boxes = {}
+            for _k, pl in ipairs(p.places) do
+                fine = fine and pl.x >= 0 and pl.x + pl.w <= size[1] and pl.y >= 0 and pl.y + pl.h <= L.base.y
+                if pl.i then
+                    fine = fine and pl.i == next_i and View.pageOf(L, pl.i) == n
+                    next_i = next_i + 1
+                    seen = seen + 1
+                    for _b, o in ipairs(boxes) do
+                        if pl.x < o.x + o.w and o.x < pl.x + pl.w and pl.y < o.y + o.h and o.y < pl.y + pl.h then fine = false end
+                    end
+                    boxes[#boxes + 1] = pl
+                end
+            end
+            -- a room's name is never the last thing on a page
+            local last = p.places[#p.places]
+            fine = fine and last.kind ~= "room" and p.first <= p.last
+        end
+        fine = fine and seen == #kinds
+        if not fine then all_ok = false; print("  (the wall doesn't work out at " .. size[1] .. "x" .. size[2] .. ")") end
+    end
+    check(all_ok, "the wall: every row has its place, in order, page after page, none over another, no room's name alone at the foot of a page")
+    local K3, PW = View.layout(kinds, 600, 574, one), View.layout(kinds, 1072, 1078, one)
+    check(K3.cols == 4 and PW.cols >= 4 and #K3.pages >= 2 and K3.pages[1].first == 1 and K3.pages[#K3.pages].last == #kinds,
+        "the wall on a Kindle 3: four fittings a row, as many pages as it takes (" .. K3.cols .. " a row, " .. #K3.pages .. " pages)")
+    check(View.layout(kinds, 600, 120, one).fits == false and View.layout({}, 600, 574, one).fits == false,
+        "the wall: too little room, or nothing to show: the list instead")
+    local fifth = View.layout({ "room", "fitting", "fitting", "fitting", "fitting", "fitting" }, 600, 574, one).pages[1].places
+    check(fifth[6].y > fifth[5].y and fifth[6].x == fifth[2].x and fifth[5].y == fifth[2].y, "the wall: a room's fifth device starts its next row")
+
+    -- which drawing each device gets
+    local function key(e, colour) return View.fitting(e, colour).key end
+    local E = {}
+    for _i, r in ipairs(house.rooms) do for _j, e in ipairs(r.entities) do E[e.id] = e end end
+    check(key(E["light.ceiling"]) == "dimmer-8-1a1a1a" and key(dev("light.x", "off", { dim = true, bri = 80 })) == "dimmer-0-1a1a1a"
+        and key(dev("light.x", "on", { dim = true, bri = 1 })) == "dimmer-1-1a1a1a" and key(dev("light.x", "on", { dim = true })) == "dimmer-10-1a1a1a",
+        "the wall: a dimmable light: a dimmer with as many of its ten indicators lit as its level (80% → 8; off → none)")
+    check(key(E["light.lamp"]) == "toggle-off-1a1a1a" and key(dev("switch.k", "on")) == "toggle-on-1a1a1a" and key(dev("fan.f", "on")) == "toggle-on-1a1a1a"
+        and key(dev("input_boolean.b", "off")) == "toggle-off-1a1a1a", "the wall: a plain light, a switch, a fan, a helper: a toggle, up or down")
+    local th = View.fitting(E["climate.t"])
+    check(th.key == "thermostat-18-none" and th.text == "21°" and View.fitting(dev("climate.o", "off", { cur = 19 })).text == "–"
+        and View.fitting(dev("climate.c", "cool", { cur = 19 })).text == "19°",
+        "the wall: a thermostat: its target on the dial and a pointer at it on the scale (now, when it has no target; – when off)")
+    check(key(E["lock.front"]) == "deadbolt-locked" and key(dev("lock.l", "unlocked")) == "deadbolt-unlocked" and key(dev("lock.l", "jammed")) == "deadbolt-other"
+        and key(dev("binary_sensor.l", "on", { dc = "lock" })) == "deadbolt-unlocked" and key(dev("binary_sensor.l", "off", { dc = "lock" })) == "deadbolt-locked",
+        "the wall: a lock: a deadbolt, level when locked, upright when unlocked")
+    check(key(E["cover.garage"]) == "garage-4" and key(dev("cover.g", "open", { dc = "garage" })) == "garage-0"
+        and key(dev("cover.g", "open", { dc = "garage", pos = 50 })) == "garage-2" and key(dev("cover.g", "open", { dc = "gate", pos = 99 })) == "garage-0"
+        and key(E["cover.blinds"]) == "blinds-1" and key(dev("cover.b", "closed", { dc = "blind" })) == "blinds-9"
+        and key(dev("cover.b", "open", { dc = "blind", pos = 2 })) == "blinds-8",
+        "the wall: a garage door's panels down when closed, a window's blinds; open never looks closed")
+    check(key(E["binary_sensor.back"]) == "contact-open" and key(dev("binary_sensor.w", "off", { dc = "window" })) == "contact-closed"
+        and key(E["sensor.temp"]) == "thermometer-12-1a1a1a" and key(dev("sensor.t", "68", { dc = "temperature", unit = "°F" })) == "thermometer-12-1a1a1a"
+        and key(dev("sensor.t", "unknown", { dc = "temperature" })) == "thermometer-0-1a1a1a" and key(E["sensor.hum"]) == "gauge-8",
+        "the wall: sensors: a contact apart when open, a thermometer (°F as °C), a gauge for humidity")
+    check(key(dev("media_player.s", "playing")) == "speaker-playing" and key(dev("media_player.s", "paused")) == "speaker-on" and key(dev("media_player.s", "off")) == "speaker-off"
+        and key(dev("media_player.t", "on", { dc = "tv" })) == "tv-on" and key(dev("media_player.t", "standby", { dc = "tv" })) == "tv-off"
+        and key(dev("media_player.t", "playing", { dc = "tv" })) == "tv-playing" and View.fitting(dev("media_player.s", "playing")).svg():match("^<%?xml")
+        and View.fitting(dev("media_player.t", "on", { dc = "tv" })).svg():match("^<%?xml"),
+        "the wall: a speaker (sound coming from it while it plays) and a TV (its screen lit when on)")
+    -- colour screens: a lit lamp in the bulb's colour, the thermostat's scale while it heats or cools, a red thermometer
+    check(key(E["light.ceiling"], true) == "dimmer-8-ffc94d" and key(dev("light.x", "on", { dim = true, bri = 50, rgb = "#0A84FF" }), true) == "dimmer-5-0a84ff"
+        and key(E["light.lamp"], true) == "toggle-off-1a1a1a" and key(dev("light.x", "on"), true) == "toggle-on-ffc94d"
+        and key(dev("switch.k", "on"), true) == "toggle-on-1a1a1a" and key(E["climate.t"], true) == "thermostat-18-e8590c"
+        and key(dev("climate.c", "cool", { target = 21, min = 7, max = 35, action = "cooling" }), true) == "thermostat-18-1971c2"
+        and key(dev("climate.c", "heat", { target = 21, min = 7, max = 35, action = "idle" }), true) == "thermostat-18-none"
+        and key(E["sensor.temp"], true) == "thermometer-12-c8322b" and key(E["lock.front"], true) == "deadbolt-locked",
+        "the wall on a colour screen: a lit lamp in its bulb's colour (warm when it has none; switches stay grey), the thermostat's scale orange heating and blue cooling, the thermometer red; grey screens as before")
+    local function has(s, sub) return s:find(sub, 1, true) ~= nil end
+    local lit, grey = View.fitting(E["light.ceiling"], true).svg(), View.fitting(E["light.ceiling"]).svg()
+    local function count(s, sub) local n = 0; for _ in s:gmatch(sub) do n = n + 1 end; return n end
+    check(lit:match("^<%?xml") and has(lit, 'viewBox="0 0 228 260"') and count(lit, 'fill="#ffc94d"') == 8 and count(grey, 'fill="#ffc94d"') == 0
+        and not has(lit, "<text") and has(View.fitting(E["climate.t"], true).svg(), 'stroke="#e8590c"') and not has(View.fitting(E["climate.t"]).svg(), "e8590c")
+        and has(View.fitting(dev("lock.l", "unlocked")).svg(), "rotate(90 114 126)") and has(View.fitting(E["lock.front"]).svg(), "rotate(0 114 126)"),
+        "the wall: the drawings themselves (eight indicators in the bulb's colour, none on a grey screen; no words in them; the deadbolt turned)")
+
+    -- a page: letters for what does something, in order; what opens a window
+    local L = View.layout(kinds, 1860, 2200, one)
+    local places = View.fill(L, 1, witems, house, { "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "A", "S" })
+    local by = {}
+    for _i, pl in ipairs(places) do if pl.entry then by[pl.entry.text] = pl end end
+    check(#L.pages == 1 and by["Refresh"].letter == "Q" and by["light.ceiling"].letter == "W" and by["light.lamp"].letter == "E" and by["climate.t"].letter == "R"
+        and by["sensor.temp"].letter == nil and by["sensor.temp"].acts == false and by["Living room"].letter == nil
+        and by["lock.front"].letter == "T" and by["binary_sensor.back"].letter == nil and by["scene.night"].letter == "I" and by["script.away"].letter == "O"
+        and by["light.ceiling"].opens and by["climate.t"].opens and not by["light.lamp"].opens and by["light.ceiling"].device == E["light.ceiling"],
+        "the wall: letters go to what does something, in order (not to sensors or a room's name); a dimmer and a thermostat open a window")
+    check(View.fill(L, 1, witems, house, nil)[1].letter == nil, "the wall: no letters without a keyboard")
+
+    -- when: the Bookshelf view, connected, with devices
+    local was_shelf = Shop.bookshelf
+    local shelf = true
+    Shop.bookshelf = function() return shelf end
+    -- (the one wall: a house whose list is by kind, without rooms)
+    local flat = { rooms = house.rooms, by_kind = true }
+    local tab = { house = flat }
+    check(View.applies({ item_table = witems }, tab) == true and View.applies({ item_table = { witems[1] } }, tab) == false
+        and View.applies({ item_table = witems }, { house = nil }) == false, "the wall: when there are devices to show (not the ways to connect, or Loading…)")
+    shelf = false
+    check(View.applies({ item_table = witems }, tab) == false, "the wall: only in the Bookshelf view; the other views keep the list")
+    shelf = true
+
+    -- the hallway (two rooms or more): the home's own things, a plate a room, the scenes; a room behind each plate
+    ;(function()
+        local function texts(list) local t = {} for _i, it in ipairs(list) do t[#t + 1] = it.text end return table.concat(t, "|") end
+        check(View.hallway(witems, house) == true and View.hallway(witems, flat) == false
+            and View.hallway({ witems[1], witems[2], witems[3] }, house) == false and View.hallway(witems, nil) == false,
+            "the hallway: with two rooms or more (one room, or a list by kind: everything on the one wall)")
+        local did = {}
+        local act = { open = function(id) did.open = id end, home = function() did.home = true end, all = function(id, on) did.all = { id, on } end }
+        local hall = View.scene(witems, house, nil, act)
+        check(texts(hall) == "Refresh|Home|climate.t|lock.front|cover.garage|Rooms|Living room|Outside|Scenes|scene.night|script.away|Couldn't reach Home Assistant"
+            and table.concat(View.kinds(hall, house), ",") == "refresh,room,fitting,fitting,fitting,room,roomplate,roomplate,room,key,key,note",
+            "the hallway: Refresh, the home's thermostat, lock and garage door, a plate for each room, the scenes' keys, then any message (" .. texts(hall) .. ")")
+        local living, outside = hall[7], hall[8]
+        check(living.gz_wall_plate.lights == 2 and living.gz_wall_plate.on == 1 and living.gz_wall_plate.temp == "20.5°" and living.gz_wall_plate.humidity == "40%"
+            and table.concat(View.plateLines(living.gz_wall_plate), "|") == "1 of 2 lights on|20.5° · 40%"
+            and table.concat(View.plateLines(outside.gz_wall_plate), "|") == "4 here"
+            and table.concat(View.plateLines({ lights = 3, on = 0, count = 3, playing = "A song" }), "|") == "Lights off|Playing · A song",
+            "a room's plate: how many of its lights are on, its temperature and humidity, what plays there (a room without lights: how many things)")
+        living.callback()
+        check(did.open == "living", "a room's plate opens that room")
+        local room = View.scene(witems, house, "living", act)
+        check(texts(room) == "Home|Refresh|Living room|All lights|light.ceiling|light.lamp|climate.t|sensor.temp|sensor.hum|Couldn't reach Home Assistant"
+            and table.concat(View.kinds(room, house), ",") == "back,refresh,room,fitting,fitting,fitting,fitting,fitting,fitting,note"
+            and room[4].mandatory == "1 of 2 on", "a room: the Home sign, Refresh, its name, All lights (it has several), then its fittings (" .. texts(room) .. ")")
+        room[4].callback()
+        room[1].callback()
+        check(did.all[1] == "living" and did.all[2] == false and did.home == true, "a room: All lights turns them off when any is on; the Home sign goes back")
+        check(texts(View.scene(witems, house, "outside", act)) == "Home|Refresh|Outside|lock.front|cover.garage|cover.blinds|binary_sensor.back|Couldn't reach Home Assistant"
+            and View.scene(witems, house, "gone", act)[2].gz_wall_head, "a room without lights has no All lights; a room that's gone: the hallway")
+        local Lr = View.layout(View.kinds(room, house), 600, 574, one)
+        local pr = Lr.pages[1].places
+        check(pr[1].kind == "back" and pr[2].kind == "refresh" and pr[1].y == pr[2].y and pr[2].x >= pr[1].x + pr[1].w and pr[3].y > pr[1].y,
+            "a room: the Home sign and Refresh side by side, the room's name under them")
+        local Lh = View.layout(View.kinds(hall, house), 600, 574, one)
+        local ph, plates = Lh.pages[1].places, {}
+        for _i, pl in ipairs(ph) do if pl.kind == "roomplate" then plates[#plates + 1] = pl end end
+        check(Lh.pcols == 3 and #plates == 2 and plates[1].y == plates[2].y and plates[2].x >= plates[1].x + plates[1].w,
+            "the hallway on a Kindle 3: three plates a row")
+        local filled = View.fill(Lr, 1, room, house, { "Q", "W", "E", "R", "T" })
+        check(filled[1].letter == "Q" and filled[2].letter == "W" and filled[4].letter == "E" and View.fitting(filled[4].device).key == "toggle-on-1a1a1a",
+            "a room: letters for Home, Refresh, All lights…; All lights is a switch, on when any light is")
+        check(View.homeLevel(E["climate.t"]) and View.homeLevel(E["lock.front"]) and View.homeLevel(E["cover.garage"])
+            and not View.homeLevel(E["cover.blinds"]) and not View.homeLevel(E["light.lamp"]) and View.Draw.lever(true):match("^<%?xml"),
+            "the hallway's own things: thermostats, locks, what opens into the house (not blinds or lights)")
+    end)()
+
+    -- taking the list over: its own pages and letters; the list again when it can't be drawn
+    local drawn, picked = {}, nil
+    local m = { item_table = witems, page = 1, page_num = 9, is_enable_shortcut = true, item_shortcuts = { "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P" },
+        item_dimen = { w = 600 }, available_height = 574, layout = {}, item_group = { clear = function() end },
+        page_info = { resetLayout = function() end }, return_button = { resetLayout = function() end }, content_group = { resetLayout = function() end },
+        _recalculateDimen = function(self) self.page_num = 2; if self.page > 2 then self.page = 2 end end,
+        updatePageInfo = function() end, mergeTitleBarIntoLayout = function() end, moveFocusTo = function() end,
+        updateItems = function() drawn[#drawn + 1] = "list" end,
+        onSelectByShortCut = function() drawn[#drawn + 1] = "list key" end,
+        onMenuSelect = function(_m, item) picked = item end,
+        onCloseWidget = function() drawn[#drawn + 1] = "closed" end }
+    tab.menu = m
+    local saved = { Hot = Shop.Hot, Page_new = View.Page.new, dirty = UI.setDirty }
+    Shop.Hot = { new = function(_s, o) return o end }
+    View.Page.new = function(_s, o) return o end
+    UI.setDirty = function() end
+    local expect_pages = #View.layout(kinds, 600, 574, one).pages
+    -- (the device screen here scales by nothing: the same layout)
+    local Screen = require("device").screen
+    local was_scale = Screen.scaleBySize
+    Screen.scaleBySize = function(_s, px) return px end
+    View.apply(tab)
+    check(m._gz_wall ~= nil and #drawn == 0 and m.page_num == expect_pages and m.page == 1 and #m.layout >= 2 and m.layout[1][1].entry == witems[1],
+        "the wall takes the list's place: its own page count (" .. tostring(m.page_num) .. "), the 5-way's rows from what's on the page")
+    m:onSelectByShortCut(nil, { key = "E" })
+    check(picked == witems[4] and m._gz_wall_last == witems[4], "the wall: a letter picks what has it on the wall (E: the lamp), and the focus stays there")
+    picked = nil
+    m:onSelectByShortCut(nil, { key = "M" })
+    check(picked == nil and #drawn == 0, "the wall: a letter nothing has does nothing")
+    m.page = 7
+    m:updateItems()
+    check(m.page == expect_pages and m._gz_wall.places[1].i == View.layout(kinds, 600, 574, one).pages[expect_pages].first,
+        "the wall: its last page is its own (not the list's page count)")
+    shelf = false
+    m:updateItems()
+    m:onSelectByShortCut(nil, { key = "E" })
+    check(m._gz_wall == nil and drawn[1] == "list" and drawn[2] == "list key", "another view: the list, with its own letters")
+    shelf = true
+    drawn = {}
+    local was_layout = View.layout
+    View.layout = function() error("boom") end
+    m:updateItems()
+    View.layout = was_layout
+    m:updateItems()
+    check(drawn[1] == "list" and drawn[2] == "list" and m._gz_wall_failed == true, "the wall can't be drawn: the list, from then on")
+    m:onCloseWidget()
+    check(drawn[#drawn] == "closed", "the wall: closing the tab still closes it")
+    -- the hallway on the screen: a plate opens its room, Back returns, All lights asks the tab
+    ;(function()
+        m._gz_wall_failed, m.page = nil, 1
+        m.onClose = nil
+        local backs, asked = 0, nil
+        local tab2 = { house = house, menu = m, allLights = function(_t, id, on) asked = { id, on } end }
+        local m2 = {}
+        for k, v in pairs(m) do m2[k] = v end
+        m2._gz_wall_applied, m2._gz_wall, m2._gz_wall_last = nil, nil, nil
+        m2.updateItems = function() drawn[#drawn + 1] = "list" end
+        m2.onMenuSelect = function(_m, item) if item.callback then item.callback() end end
+        m2.onClose = function() backs = backs + 1; return true end
+        tab2.menu = m2
+        View.apply(tab2)
+        local function kindsNow() local t = {} for _i, pl in ipairs(m2._gz_wall.places) do t[#t + 1] = pl.kind end return table.concat(t, ",") end
+        local function letterOf(text) for _i, pl in ipairs(m2._gz_wall.places) do if pl.entry and pl.entry.text == text then return pl.letter end end end
+        check(m2._gz_wall and kindsNow():match("^refresh,room,fitting,fitting,fitting,room,roomplate,roomplate") and tab2.wall_room == nil,
+            "the hallway is what the wall opens with (" .. kindsNow() .. ")")
+        m2:onSelectByShortCut(nil, { key = letterOf("Living room") })
+        check(tab2.wall_room == "living" and m2.page == 1 and kindsNow():match("^back,refresh,room,fitting"), "a plate's letter opens its room (" .. kindsNow() .. ")")
+        m2:onSelectByShortCut(nil, { key = letterOf("All lights") })
+        check(asked and asked[1] == "living" and asked[2] == false, "All lights asks the tab to switch the room's lights")
+        check(m2:onClose() == true and tab2.wall_room == nil and backs == 0 and kindsNow():match("^refresh,room"), "Back in a room: the hallway, not out of the tab")
+        m2:onClose()
+        check(backs == 1, "Back in the hallway: as before")
+        tab2.wall_room = "gone"
+        m2:updateItems()
+        check(tab2.wall_room == nil and kindsNow():match("^refresh,room"), "a room that's gone (hidden in Settings): the hallway")
+    end)()
+    Screen.scaleBySize = was_scale
+    Shop.Hot, View.Page.new, UI.setDirty = saved.Hot, saved.Page_new, saved.dirty
+    Shop.bookshelf = was_shelf
+end)()
+
 print("House tab (Home Assistant): connecting, rooms, switching, Settings, the phone page")
 ;(function()
     local HA = require("gzreader_homeassistant")
@@ -1278,280 +1552,6 @@ print("House tab (Home Assistant): connecting, rooms, switching, Settings, the p
     plugin.store.homeassistant = nil
     HA.clearCache()
     AsyncMod.sync, NetM.usb, plugin.save = T0.sync, T0.usb, T0.save
-end)()
-
-print("House tab in the Bookshelf view: the rooms as a wall (where things go, the drawings, pages, letters)")
-;(function()
-    local HA = require("gzreader_homeassistant")
-    local saved_w = {}
-    local widget_mods = { "ui/widget/container/inputcontainer", "ui/widget/container/widgetcontainer", "ui/gesturerange", "ui/font", "ffi/blitbuffer" }
-    for _i, wm in ipairs(widget_mods) do
-        saved_w[wm] = package.loaded[wm]
-        if type(saved_w[wm]) ~= "table" then package.loaded[wm] = setmetatable({ extend = function(_s, o) return o or {} end }, { __index = function() return function() end end }) end
-    end
-    local View = require("gzreader_houseview")
-    local Shop = require("gzreader_bookshop")
-    for _i, wm in ipairs(widget_mods) do package.loaded[wm] = saved_w[wm] end
-    local one = function(x) return x end
-    local function dev(id, state, more)
-        local e = { id = id, domain = id:match("^([%w_]+)%."), state = state, name = id }
-        for k, v in pairs(more or {}) do e[k] = v end
-        return e
-    end
-    local house = { rooms = {
-        { id = "living", name = "Living room", entities = {
-            dev("light.ceiling", "on", { dim = true, bri = 80 }), dev("light.lamp", "off"), dev("climate.t", "heat", { cur = 20.5, target = 21, min = 7, max = 35, action = "heating" }),
-            dev("sensor.temp", "20.5", { dc = "temperature", unit = "°C" }), dev("sensor.hum", "40", { dc = "humidity", unit = "%" }) } },
-        { id = "outside", name = "Outside", entities = {
-            dev("lock.front", "locked"), dev("cover.garage", "closed", { dc = "garage" }), dev("cover.blinds", "open", { dc = "blind" }),
-            dev("binary_sensor.back", "on", { dc = "door" }) } },
-        { id = "_scenes", name = "Scenes", entities = { dev("scene.night", "2026-01-01"), dev("script.away", "off") } },
-    } }
-    local function cb() end
-    local witems = { { text = "Refresh", mandatory = "updated just now", gz_house_refresh = true, callback = cb } }
-    for _i, r in ipairs(house.rooms) do
-        witems[#witems + 1] = { text = r.name, gz_house_room = r.id, select_enabled = false }
-        for _j, e in ipairs(r.entities) do
-            witems[#witems + 1] = { text = e.id, mandatory = HA.stateText(e), gz_house_id = e.id, callback = HA.action(e) and cb or nil }
-        end
-    end
-    witems[#witems + 1] = { text = "Couldn't reach Home Assistant", select_enabled = false, dim = true }
-    local kinds = View.kinds(witems, house)
-    check(table.concat(kinds, ",") == "refresh,room,fitting,fitting,fitting,fitting,fitting,room,fitting,fitting,fitting,fitting,room,key,key,note",
-        "the wall: what each row of the list is (Refresh, a room's tape, a fitting, a scene's key, a note) " .. table.concat(kinds, ","))
-
-    -- where things go: every row placed once, in order, inside the wall, nothing on top of another
-    local sizes = { { 600, 574 }, { 1072, 1078 }, { 758, 760 }, { 1860, 2200 }, { 600, 330 } }
-    local all_ok = true
-    for _i, size in ipairs(sizes) do
-        local L = View.layout(kinds, size[1], size[2], one)
-        local fine, seen, next_i = L.fits and #L.pages >= 1, 0, 1
-        for n, p in ipairs(L.pages) do
-            local boxes = {}
-            for _k, pl in ipairs(p.places) do
-                fine = fine and pl.x >= 0 and pl.x + pl.w <= size[1] and pl.y >= 0 and pl.y + pl.h <= L.base.y
-                if pl.i then
-                    fine = fine and pl.i == next_i and View.pageOf(L, pl.i) == n
-                    next_i = next_i + 1
-                    seen = seen + 1
-                    for _b, o in ipairs(boxes) do
-                        if pl.x < o.x + o.w and o.x < pl.x + pl.w and pl.y < o.y + o.h and o.y < pl.y + pl.h then fine = false end
-                    end
-                    boxes[#boxes + 1] = pl
-                end
-            end
-            -- a room's name is never the last thing on a page
-            local last = p.places[#p.places]
-            fine = fine and last.kind ~= "room" and p.first <= p.last
-        end
-        fine = fine and seen == #kinds
-        if not fine then all_ok = false; print("  (the wall doesn't work out at " .. size[1] .. "x" .. size[2] .. ")") end
-    end
-    check(all_ok, "the wall: every row has its place, in order, page after page, none over another, no room's name alone at the foot of a page")
-    local K3, PW = View.layout(kinds, 600, 574, one), View.layout(kinds, 1072, 1078, one)
-    check(K3.cols == 4 and PW.cols >= 4 and #K3.pages >= 2 and K3.pages[1].first == 1 and K3.pages[#K3.pages].last == #kinds,
-        "the wall on a Kindle 3: four fittings a row, as many pages as it takes (" .. K3.cols .. " a row, " .. #K3.pages .. " pages)")
-    check(View.layout(kinds, 600, 120, one).fits == false and View.layout({}, 600, 574, one).fits == false,
-        "the wall: too little room, or nothing to show: the list instead")
-    local fifth = View.layout({ "room", "fitting", "fitting", "fitting", "fitting", "fitting" }, 600, 574, one).pages[1].places
-    check(fifth[6].y > fifth[5].y and fifth[6].x == fifth[2].x and fifth[5].y == fifth[2].y, "the wall: a room's fifth device starts its next row")
-
-    -- which drawing each device gets
-    local function key(e, colour) return View.fitting(e, colour).key end
-    local E = {}
-    for _i, r in ipairs(house.rooms) do for _j, e in ipairs(r.entities) do E[e.id] = e end end
-    check(key(E["light.ceiling"]) == "dimmer-8-1a1a1a" and key(dev("light.x", "off", { dim = true, bri = 80 })) == "dimmer-0-1a1a1a"
-        and key(dev("light.x", "on", { dim = true, bri = 1 })) == "dimmer-1-1a1a1a" and key(dev("light.x", "on", { dim = true })) == "dimmer-10-1a1a1a",
-        "the wall: a dimmable light: a dimmer with as many of its ten indicators lit as its level (80% → 8; off → none)")
-    check(key(E["light.lamp"]) == "toggle-off-1a1a1a" and key(dev("switch.k", "on")) == "toggle-on-1a1a1a" and key(dev("fan.f", "on")) == "toggle-on-1a1a1a"
-        and key(dev("input_boolean.b", "off")) == "toggle-off-1a1a1a", "the wall: a plain light, a switch, a fan, a helper: a toggle, up or down")
-    local th = View.fitting(E["climate.t"])
-    check(th.key == "thermostat-18-none" and th.text == "21°" and View.fitting(dev("climate.o", "off", { cur = 19 })).text == "–"
-        and View.fitting(dev("climate.c", "cool", { cur = 19 })).text == "19°",
-        "the wall: a thermostat: its target on the dial and a pointer at it on the scale (now, when it has no target; – when off)")
-    check(key(E["lock.front"]) == "deadbolt-locked" and key(dev("lock.l", "unlocked")) == "deadbolt-unlocked" and key(dev("lock.l", "jammed")) == "deadbolt-other"
-        and key(dev("binary_sensor.l", "on", { dc = "lock" })) == "deadbolt-unlocked" and key(dev("binary_sensor.l", "off", { dc = "lock" })) == "deadbolt-locked",
-        "the wall: a lock: a deadbolt, level when locked, upright when unlocked")
-    check(key(E["cover.garage"]) == "garage-4" and key(dev("cover.g", "open", { dc = "garage" })) == "garage-0"
-        and key(dev("cover.g", "open", { dc = "garage", pos = 50 })) == "garage-2" and key(dev("cover.g", "open", { dc = "gate", pos = 99 })) == "garage-0"
-        and key(E["cover.blinds"]) == "blinds-1" and key(dev("cover.b", "closed", { dc = "blind" })) == "blinds-9"
-        and key(dev("cover.b", "open", { dc = "blind", pos = 2 })) == "blinds-8",
-        "the wall: a garage door's panels down when closed, a window's blinds; open never looks closed")
-    check(key(E["binary_sensor.back"]) == "contact-open" and key(dev("binary_sensor.w", "off", { dc = "window" })) == "contact-closed"
-        and key(E["sensor.temp"]) == "thermometer-12-1a1a1a" and key(dev("sensor.t", "68", { dc = "temperature", unit = "°F" })) == "thermometer-12-1a1a1a"
-        and key(dev("sensor.t", "unknown", { dc = "temperature" })) == "thermometer-0-1a1a1a" and key(E["sensor.hum"]) == "gauge-8",
-        "the wall: sensors: a contact apart when open, a thermometer (°F as °C), a gauge for humidity")
-    check(key(dev("media_player.s", "playing")) == "speaker-playing" and key(dev("media_player.s", "paused")) == "speaker-on" and key(dev("media_player.s", "off")) == "speaker-off"
-        and key(dev("media_player.t", "on", { dc = "tv" })) == "tv-on" and key(dev("media_player.t", "standby", { dc = "tv" })) == "tv-off"
-        and key(dev("media_player.t", "playing", { dc = "tv" })) == "tv-playing" and View.fitting(dev("media_player.s", "playing")).svg():match("^<%?xml")
-        and View.fitting(dev("media_player.t", "on", { dc = "tv" })).svg():match("^<%?xml"),
-        "the wall: a speaker (sound coming from it while it plays) and a TV (its screen lit when on)")
-    -- colour screens: a lit lamp in the bulb's colour, the thermostat's scale while it heats or cools, a red thermometer
-    check(key(E["light.ceiling"], true) == "dimmer-8-ffc94d" and key(dev("light.x", "on", { dim = true, bri = 50, rgb = "#0A84FF" }), true) == "dimmer-5-0a84ff"
-        and key(E["light.lamp"], true) == "toggle-off-1a1a1a" and key(dev("light.x", "on"), true) == "toggle-on-ffc94d"
-        and key(dev("switch.k", "on"), true) == "toggle-on-1a1a1a" and key(E["climate.t"], true) == "thermostat-18-e8590c"
-        and key(dev("climate.c", "cool", { target = 21, min = 7, max = 35, action = "cooling" }), true) == "thermostat-18-1971c2"
-        and key(dev("climate.c", "heat", { target = 21, min = 7, max = 35, action = "idle" }), true) == "thermostat-18-none"
-        and key(E["sensor.temp"], true) == "thermometer-12-c8322b" and key(E["lock.front"], true) == "deadbolt-locked",
-        "the wall on a colour screen: a lit lamp in its bulb's colour (warm when it has none; switches stay grey), the thermostat's scale orange heating and blue cooling, the thermometer red; grey screens as before")
-    local function has(s, sub) return s:find(sub, 1, true) ~= nil end
-    local lit, grey = View.fitting(E["light.ceiling"], true).svg(), View.fitting(E["light.ceiling"]).svg()
-    local function count(s, sub) local n = 0; for _ in s:gmatch(sub) do n = n + 1 end; return n end
-    check(lit:match("^<%?xml") and has(lit, 'viewBox="0 0 228 260"') and count(lit, 'fill="#ffc94d"') == 8 and count(grey, 'fill="#ffc94d"') == 0
-        and not has(lit, "<text") and has(View.fitting(E["climate.t"], true).svg(), 'stroke="#e8590c"') and not has(View.fitting(E["climate.t"]).svg(), "e8590c")
-        and has(View.fitting(dev("lock.l", "unlocked")).svg(), "rotate(90 114 126)") and has(View.fitting(E["lock.front"]).svg(), "rotate(0 114 126)"),
-        "the wall: the drawings themselves (eight indicators in the bulb's colour, none on a grey screen; no words in them; the deadbolt turned)")
-
-    -- a page: letters for what does something, in order; what opens a window
-    local L = View.layout(kinds, 1860, 2200, one)
-    local places = View.fill(L, 1, witems, house, { "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "A", "S" })
-    local by = {}
-    for _i, pl in ipairs(places) do if pl.entry then by[pl.entry.text] = pl end end
-    check(#L.pages == 1 and by["Refresh"].letter == "Q" and by["light.ceiling"].letter == "W" and by["light.lamp"].letter == "E" and by["climate.t"].letter == "R"
-        and by["sensor.temp"].letter == nil and by["sensor.temp"].acts == false and by["Living room"].letter == nil
-        and by["lock.front"].letter == "T" and by["binary_sensor.back"].letter == nil and by["scene.night"].letter == "I" and by["script.away"].letter == "O"
-        and by["light.ceiling"].opens and by["climate.t"].opens and not by["light.lamp"].opens and by["light.ceiling"].device == E["light.ceiling"],
-        "the wall: letters go to what does something, in order (not to sensors or a room's name); a dimmer and a thermostat open a window")
-    check(View.fill(L, 1, witems, house, nil)[1].letter == nil, "the wall: no letters without a keyboard")
-
-    -- when: the Bookshelf view, connected, with devices
-    local was_shelf = Shop.bookshelf
-    local shelf = true
-    Shop.bookshelf = function() return shelf end
-    -- (the one wall: a house whose list is by kind, without rooms)
-    local flat = { rooms = house.rooms, by_kind = true }
-    local tab = { house = flat }
-    check(View.applies({ item_table = witems }, tab) == true and View.applies({ item_table = { witems[1] } }, tab) == false
-        and View.applies({ item_table = witems }, { house = nil }) == false, "the wall: when there are devices to show (not the ways to connect, or Loading…)")
-    shelf = false
-    check(View.applies({ item_table = witems }, tab) == false, "the wall: only in the Bookshelf view; the other views keep the list")
-    shelf = true
-
-    -- the hallway (two rooms or more): the home's own things, a plate a room, the scenes; a room behind each plate
-    ;(function()
-        local function texts(list) local t = {} for _i, it in ipairs(list) do t[#t + 1] = it.text end return table.concat(t, "|") end
-        check(View.hallway(witems, house) == true and View.hallway(witems, flat) == false
-            and View.hallway({ witems[1], witems[2], witems[3] }, house) == false and View.hallway(witems, nil) == false,
-            "the hallway: with two rooms or more (one room, or a list by kind: everything on the one wall)")
-        local did = {}
-        local act = { open = function(id) did.open = id end, home = function() did.home = true end, all = function(id, on) did.all = { id, on } end }
-        local hall = View.scene(witems, house, nil, act)
-        check(texts(hall) == "Refresh|Home|climate.t|lock.front|cover.garage|Rooms|Living room|Outside|Scenes|scene.night|script.away|Couldn't reach Home Assistant"
-            and table.concat(View.kinds(hall, house), ",") == "refresh,room,fitting,fitting,fitting,room,roomplate,roomplate,room,key,key,note",
-            "the hallway: Refresh, the home's thermostat, lock and garage door, a plate for each room, the scenes' keys, then any message (" .. texts(hall) .. ")")
-        local living, outside = hall[7], hall[8]
-        check(living.gz_wall_plate.lights == 2 and living.gz_wall_plate.on == 1 and living.gz_wall_plate.temp == "20.5°" and living.gz_wall_plate.humidity == "40%"
-            and table.concat(View.plateLines(living.gz_wall_plate), "|") == "1 of 2 lights on|20.5° · 40%"
-            and table.concat(View.plateLines(outside.gz_wall_plate), "|") == "4 here"
-            and table.concat(View.plateLines({ lights = 3, on = 0, count = 3, playing = "A song" }), "|") == "Lights off|Playing · A song",
-            "a room's plate: how many of its lights are on, its temperature and humidity, what plays there (a room without lights: how many things)")
-        living.callback()
-        check(did.open == "living", "a room's plate opens that room")
-        local room = View.scene(witems, house, "living", act)
-        check(texts(room) == "Home|Refresh|Living room|All lights|light.ceiling|light.lamp|climate.t|sensor.temp|sensor.hum|Couldn't reach Home Assistant"
-            and table.concat(View.kinds(room, house), ",") == "back,refresh,room,fitting,fitting,fitting,fitting,fitting,fitting,note"
-            and room[4].mandatory == "1 of 2 on", "a room: the Home sign, Refresh, its name, All lights (it has several), then its fittings (" .. texts(room) .. ")")
-        room[4].callback()
-        room[1].callback()
-        check(did.all[1] == "living" and did.all[2] == false and did.home == true, "a room: All lights turns them off when any is on; the Home sign goes back")
-        check(texts(View.scene(witems, house, "outside", act)) == "Home|Refresh|Outside|lock.front|cover.garage|cover.blinds|binary_sensor.back|Couldn't reach Home Assistant"
-            and View.scene(witems, house, "gone", act)[2].gz_wall_head, "a room without lights has no All lights; a room that's gone: the hallway")
-        local Lr = View.layout(View.kinds(room, house), 600, 574, one)
-        local pr = Lr.pages[1].places
-        check(pr[1].kind == "back" and pr[2].kind == "refresh" and pr[1].y == pr[2].y and pr[2].x >= pr[1].x + pr[1].w and pr[3].y > pr[1].y,
-            "a room: the Home sign and Refresh side by side, the room's name under them")
-        local Lh = View.layout(View.kinds(hall, house), 600, 574, one)
-        local ph, plates = Lh.pages[1].places, {}
-        for _i, pl in ipairs(ph) do if pl.kind == "roomplate" then plates[#plates + 1] = pl end end
-        check(Lh.pcols == 3 and #plates == 2 and plates[1].y == plates[2].y and plates[2].x >= plates[1].x + plates[1].w,
-            "the hallway on a Kindle 3: three plates a row")
-        local filled = View.fill(Lr, 1, room, house, { "Q", "W", "E", "R", "T" })
-        check(filled[1].letter == "Q" and filled[2].letter == "W" and filled[4].letter == "E" and View.fitting(filled[4].device).key == "toggle-on-1a1a1a",
-            "a room: letters for Home, Refresh, All lights…; All lights is a switch, on when any light is")
-        check(View.homeLevel(E["climate.t"]) and View.homeLevel(E["lock.front"]) and View.homeLevel(E["cover.garage"])
-            and not View.homeLevel(E["cover.blinds"]) and not View.homeLevel(E["light.lamp"]) and View.Draw.lever(true):match("^<%?xml"),
-            "the hallway's own things: thermostats, locks, what opens into the house (not blinds or lights)")
-    end)()
-
-    -- taking the list over: its own pages and letters; the list again when it can't be drawn
-    local drawn, picked = {}, nil
-    local m = { item_table = witems, page = 1, page_num = 9, is_enable_shortcut = true, item_shortcuts = { "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P" },
-        item_dimen = { w = 600 }, available_height = 574, layout = {}, item_group = { clear = function() end },
-        page_info = { resetLayout = function() end }, return_button = { resetLayout = function() end }, content_group = { resetLayout = function() end },
-        _recalculateDimen = function(self) self.page_num = 2; if self.page > 2 then self.page = 2 end end,
-        updatePageInfo = function() end, mergeTitleBarIntoLayout = function() end, moveFocusTo = function() end,
-        updateItems = function() drawn[#drawn + 1] = "list" end,
-        onSelectByShortCut = function() drawn[#drawn + 1] = "list key" end,
-        onMenuSelect = function(_m, item) picked = item end,
-        onCloseWidget = function() drawn[#drawn + 1] = "closed" end }
-    tab.menu = m
-    local saved = { Hot = Shop.Hot, Page_new = View.Page.new, dirty = UI.setDirty }
-    Shop.Hot = { new = function(_s, o) return o end }
-    View.Page.new = function(_s, o) return o end
-    UI.setDirty = function() end
-    local expect_pages = #View.layout(kinds, 600, 574, one).pages
-    -- (the device screen here scales by nothing: the same layout)
-    local Screen = require("device").screen
-    local was_scale = Screen.scaleBySize
-    Screen.scaleBySize = function(_s, px) return px end
-    View.apply(tab)
-    check(m._gz_wall ~= nil and #drawn == 0 and m.page_num == expect_pages and m.page == 1 and #m.layout >= 2 and m.layout[1][1].entry == witems[1],
-        "the wall takes the list's place: its own page count (" .. tostring(m.page_num) .. "), the 5-way's rows from what's on the page")
-    m:onSelectByShortCut(nil, { key = "E" })
-    check(picked == witems[4] and m._gz_wall_last == witems[4], "the wall: a letter picks what has it on the wall (E: the lamp), and the focus stays there")
-    picked = nil
-    m:onSelectByShortCut(nil, { key = "M" })
-    check(picked == nil and #drawn == 0, "the wall: a letter nothing has does nothing")
-    m.page = 7
-    m:updateItems()
-    check(m.page == expect_pages and m._gz_wall.places[1].i == View.layout(kinds, 600, 574, one).pages[expect_pages].first,
-        "the wall: its last page is its own (not the list's page count)")
-    shelf = false
-    m:updateItems()
-    m:onSelectByShortCut(nil, { key = "E" })
-    check(m._gz_wall == nil and drawn[1] == "list" and drawn[2] == "list key", "another view: the list, with its own letters")
-    shelf = true
-    drawn = {}
-    local was_layout = View.layout
-    View.layout = function() error("boom") end
-    m:updateItems()
-    View.layout = was_layout
-    m:updateItems()
-    check(drawn[1] == "list" and drawn[2] == "list" and m._gz_wall_failed == true, "the wall can't be drawn: the list, from then on")
-    m:onCloseWidget()
-    check(drawn[#drawn] == "closed", "the wall: closing the tab still closes it")
-    -- the hallway on the screen: a plate opens its room, Back returns, All lights asks the tab
-    ;(function()
-        m._gz_wall_failed, m.page = nil, 1
-        m.onClose = nil
-        local backs, asked = 0, nil
-        local tab2 = { house = house, menu = m, allLights = function(_t, id, on) asked = { id, on } end }
-        local m2 = {}
-        for k, v in pairs(m) do m2[k] = v end
-        m2._gz_wall_applied, m2._gz_wall, m2._gz_wall_last = nil, nil, nil
-        m2.updateItems = function() drawn[#drawn + 1] = "list" end
-        m2.onMenuSelect = function(_m, item) if item.callback then item.callback() end end
-        m2.onClose = function() backs = backs + 1; return true end
-        tab2.menu = m2
-        View.apply(tab2)
-        local function kindsNow() local t = {} for _i, pl in ipairs(m2._gz_wall.places) do t[#t + 1] = pl.kind end return table.concat(t, ",") end
-        local function letterOf(text) for _i, pl in ipairs(m2._gz_wall.places) do if pl.entry and pl.entry.text == text then return pl.letter end end end
-        check(m2._gz_wall and kindsNow():match("^refresh,room,fitting,fitting,fitting,room,roomplate,roomplate") and tab2.wall_room == nil,
-            "the hallway is what the wall opens with (" .. kindsNow() .. ")")
-        m2:onSelectByShortCut(nil, { key = letterOf("Living room") })
-        check(tab2.wall_room == "living" and m2.page == 1 and kindsNow():match("^back,refresh,room,fitting"), "a plate's letter opens its room (" .. kindsNow() .. ")")
-        m2:onSelectByShortCut(nil, { key = letterOf("All lights") })
-        check(asked and asked[1] == "living" and asked[2] == false, "All lights asks the tab to switch the room's lights")
-        check(m2:onClose() == true and tab2.wall_room == nil and backs == 0 and kindsNow():match("^refresh,room"), "Back in a room: the hallway, not out of the tab")
-        m2:onClose()
-        check(backs == 1, "Back in the hallway: as before")
-        tab2.wall_room = "gone"
-        m2:updateItems()
-        check(tab2.wall_room == nil and kindsNow():match("^refresh,room"), "a room that's gone (hidden in Settings): the hallway")
-    end)()
-    Screen.scaleBySize = was_scale
-    Shop.Hot, View.Page.new, UI.setDirty = saved.Hot, saved.Page_new, saved.dirty
-    Shop.bookshelf = was_shelf
 end)()
 
 print("Catalog: the Audiobooks page (search, All audiobooks, Authors, Shelves, Series)")
