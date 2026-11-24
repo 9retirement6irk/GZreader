@@ -916,6 +916,14 @@ local function pageClass()
         local aa = TextWidget:new{ text = "Aa", face = Font:getFace("smallinfofontbold", 10) }
         self.widgets[#self.widgets + 1] = aa
         self.foot.type = { widget = aa, x = self.foot.fetch.x + self.foot.fetch.w + S(14), y = foot_y + S(5), w = aa:getSize().w + S(28) }
+        -- the day's puzzles (gzreader_puzzles.lua), with how many are done
+        self.foot.puzzles = nil
+        local pz_label = Paper.puzzlesLabel(self.plugin)
+        if pz_label then
+            local pzw = TextWidget:new{ text = pz_label, face = Font:getFace("smallinfofontbold", 10) }
+            self.widgets[#self.widgets + 1] = pzw
+            self.foot.puzzles = { widget = pzw, x = self.foot.type.x + self.foot.type.w, y = foot_y + S(5), w = pzw:getSize().w + S(20) }
+        end
         self.close_w = Device:isTouchDevice() and S(48) or 0
 
         self.blocks, self.col_rules = {}, {}
@@ -967,7 +975,7 @@ local function pageClass()
             text = (self.page > 1 and "\u{2039}  " or "") .. T(_("Page %1"), self.page) .. (self.has_next and "  \u{203A}" or "") }
         self.widgets[#self.widgets + 1] = label
         self.foot.label = { widget = label, x = margin + inner_w - label:getSize().w, y = foot_y + S(5) }
-        if self.keys then self.focus = math.min(self.focus or 1, #self.blocks + 1) end
+        if self.keys then self.focus = math.min(self.focus or 1, #self.blocks + (self.foot.puzzles and 2 or 1)) end
     end
 
     function PaperPage:paintTo(bb, x, y)
@@ -1037,6 +1045,12 @@ local function pageClass()
         if self.keys and self.focus == #self.blocks + 1 then
             bb:paintBorder(x + f.fetch.x - S(4), y + f.fetch.y - S(2), f.fetch.widget:getSize().w + S(8), f.fetch.widget:getSize().h + S(4), S(2), Blitbuffer.COLOR_BLACK)
         end
+        if f.puzzles then
+            local pw, ph = f.puzzles.widget:getSize().w, f.puzzles.widget:getSize().h
+            f.puzzles.widget:paintTo(bb, x + f.puzzles.x, y + f.puzzles.y)
+            bb:paintBorder(x + f.puzzles.x - S(6), y + f.puzzles.y - S(1), pw + S(12), ph + S(2), (self.keys and self.focus == #self.blocks + 2) and S(2) or 1,
+                (self.keys and self.focus == #self.blocks + 2) and Blitbuffer.COLOR_BLACK or Blitbuffer.COLOR_DARK_GRAY)
+        end
     end
 
     function PaperPage:redraw(full)
@@ -1064,6 +1078,7 @@ local function pageClass()
         local b = self.blocks[i]
         if b then return Paper.article(self.plugin, b.story.item) end
         if i == #self.blocks + 1 then return Paper.refresh(self.plugin, self) end
+        if i == #self.blocks + 2 and self.foot.puzzles then return Paper.puzzles(self.plugin) end
     end
 
     function PaperPage:onGzType() Paper.frontDialog(self.plugin); return true end
@@ -1073,7 +1088,7 @@ local function pageClass()
     function PaperPage:onGzPress() self:open(self.focus or 0); return true end
     function PaperPage:onGzFocusNext()
         if not self.keys then return self:turn(1) end
-        if self.focus < #self.blocks + 1 then self.focus = self.focus + 1; self:redraw() elseif self.has_next then self:turn(1) end
+        if self.focus < #self.blocks + (self.foot.puzzles and 2 or 1) then self.focus = self.focus + 1; self:redraw() elseif self.has_next then self:turn(1) end
         return true
     end
     function PaperPage:onGzFocusPrev()
@@ -1089,6 +1104,8 @@ local function pageClass()
         if py >= self.foot.y then
             if px <= self.foot.fetch.x + self.foot.fetch.w then return "fetch" end
             if px >= self.foot.type.x - S(14) and px <= self.foot.type.x + self.foot.type.w then return "type" end
+            local pz = self.foot.puzzles
+            if pz and px > pz.x - S(8) and px <= pz.x + pz.w then return "puzzles" end
             if px >= W * 0.75 then return "next" end
             if px >= W * 0.5 then return "prev" end
             return nil
@@ -1107,6 +1124,7 @@ local function pageClass()
         if what == "next" then return self:turn(1) end
         if what == "prev" then return self:turn(-1) end
         if what == "type" then Paper.frontDialog(self.plugin); return true end
+        if what == "puzzles" then Paper.puzzles(self.plugin); return true end
         if what == "diary" then
             -- (the Calendar tab, for the day's events in full)
             UIManager:close(self)
@@ -1178,6 +1196,24 @@ function Paper.articleText(item)
             or _("The story's own page: QR code shows its link for your phone.")
     end
     return table.concat(parts, "\n\n")
+end
+
+---------------------------------------------------------------- the day's puzzles
+
+--- The foot's "Puzzles" label with how many of the three are done; nil when
+--- they're switched off.
+function Paper.puzzlesLabel(plugin)
+    local ok, Pz = pcall(require, "gzreader_puzzles")
+    if not ok or not Pz.on(plugin) then return nil end
+    local n = select(2, Pz.finished(plugin))
+    if n == 0 then return _("Puzzles") end
+    return T(_("Puzzles %1/%2"), n, #Pz.KINDS)
+end
+
+--- Open the day's puzzles (gzreader_puzzlescreen.lua).
+function Paper.puzzles(plugin, kind)
+    require("gzreader_log").info("daily paper: the puzzles opened")
+    return require("gzreader_puzzlescreen").show(plugin, kind)
 end
 
 --- A swipe that opens the quick panel: down, starting near the top of the screen.
@@ -1892,6 +1928,17 @@ function Paper.settingsItems(plugin)
                 local st = D.store(plugin)
                 if st.calendar == false then st.calendar = nil else st.calendar = false end
                 plugin:save()
+            end,
+        },
+        {
+            text = _("Puzzles"),
+            help_text = _("A sudoku, a word search and a maze with each day's paper, to do on the Kindle: open the paper and choose Puzzles at its foot. They are made on this Kindle from the date, so they need no Wi-Fi, and what you've done is kept until the next day's paper."),
+            enabled_func = on,
+            checked_func = function() return on() and require("gzreader_puzzles").on(plugin) end,
+            callback = function()
+                local Pz = require("gzreader_puzzles")
+                Pz.setOn(plugin, not Pz.on(plugin))
+                if Paper.instance and not Paper.instance.closed then Paper.instance:reload() end
             end,
         },
         { text = _("Feeds"), enabled_func = on, sub_item_table_func = function() return Paper.feedItems(plugin) end },

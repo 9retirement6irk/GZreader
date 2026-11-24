@@ -1192,6 +1192,196 @@ check(sh:find("i == picked and slot.gz_paper", 1, true) and sh:find("slot.face:p
 check(read(REPO .. "/plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/strip_common.lua"):find("gz_home = true", 1, true), "Home's shelf says it's Home's")
 local src = read(PLUGIN .. "/gzreader_daily.lua") .. read(PLUGIN .. "/gzreader_dailyscreen.lua")
 check(not src:find("Log%.[a-z]+%([^\n]*%f[%w]url%f[%W][^\n]*%)") or not src:find("Log%.[a-z]+%([^\n]*[^%.]url[,%)]"), "no log line takes a feed's address")
+;(function()
+print("== the day's puzzles")
+local Pz = require("gzreader_puzzles")
+local Dz = require("gzreader_daily")
+local pz_saves, soon = 0, 0
+local pl = { store = { daily = { enabled = true } }, save = function() pz_saves = pz_saves + 1 end, saveSoon = function() soon = soon + 1 end }
+-- chance: the same day, the same run
+local r1, r2, r3 = Pz.rng("2030-01-02"), Pz.rng("2030-01-02"), Pz.rng("2030-01-03")
+local same, differs = true, false
+for _i = 1, 50 do
+    local a, b, c = r1.pick(1000), r2.pick(1000), r3.pick(1000)
+    if a ~= b then same = false end
+    if a ~= c then differs = true end
+    if a < 1 or a > 1000 then same = false end
+end
+check(same and differs, "the day's chance: the same date gives the same numbers, another date others")
+
+-- sudoku
+local s = Pz.sudoku("2030-01-02")
+local s_again, s_other = Pz.sudoku("2030-01-02"), Pz.sudoku("2030-01-03")
+check(s.given == s_again.given and s.answer == s_again.answer and s.given ~= s_other.given, "sudoku: the same on every Kindle that day, another the next day")
+local function valid(answer)
+    for i = 0, 8 do
+        local rw, col, box = {}, {}, {}
+        for j = 0, 8 do
+            rw[answer:sub(i * 9 + j + 1, i * 9 + j + 1)] = true
+            col[answer:sub(j * 9 + i + 1, j * 9 + i + 1)] = true
+            local r, c = math.floor(i / 3) * 3 + math.floor(j / 3), (i % 3) * 3 + j % 3
+            box[answer:sub(r * 9 + c + 1, r * 9 + c + 1)] = true
+        end
+        for d = 1, 9 do if not (rw[tostring(d)] and col[tostring(d)] and box[tostring(d)]) then return false end end
+    end
+    return true
+end
+local ok_all, fewest, most = true, 81, 0
+for d = 1, 12 do
+    local g = Pz.sudoku("2031-03-" .. d)
+    local grid_n, n = {}, 0
+    for i = 1, 81 do
+        grid_n[i] = tonumber(g.given:sub(i, i))
+        if grid_n[i] ~= 0 then
+            n = n + 1
+            if g.given:sub(i, i) ~= g.answer:sub(i, i) then ok_all = false end
+        end
+    end
+    fewest, most = math.min(fewest, n), math.max(most, n)
+    if not valid(g.answer) or Pz.sudokuCount(grid_n, 2) ~= 1 then ok_all = false end
+end
+check(ok_all, "sudoku: every answer is a proper grid, the printed numbers are from it, and there is exactly one answer (12 days)")
+check(fewest >= 28 and most <= 40, "sudoku: about 34 numbers printed (" .. fewest .. "–" .. most .. ")")
+local empty_g = {}
+for i = 1, 81 do empty_g[i] = 0 end
+check(Pz.sudokuCount(empty_g, 2) == 2, "the counter stops at the limit on an empty grid")
+empty_g[1], empty_g[2] = 5, 5
+check(Pz.sudokuCount(empty_g, 2) == 0, "…and says none for a grid that breaks the rules")
+
+-- the day's sudoku, written in
+local day = Dz.day()
+local dsu = Pz.daySudoku(pl)
+check(dsu.given == Pz.sudoku(day).given and dsu.fill == dsu.given and pl.store.daily.puzzles.day == day and soon == 1 and pz_saves == 0, "the day's sudoku: made once and kept, saved soon (not at once)")
+local first = dsu.fill:find("0", 1, true)
+local printed = dsu.given:find("[1-9]")
+local right = tonumber(dsu.answer:sub(first, first))
+check(Pz.sudokuSet(pl, first, right % 9 + 1) == true and Pz.daySudoku(pl).fill:sub(first, first) == tostring(right % 9 + 1), "a number written in an empty square")
+check(Pz.sudokuSet(pl, printed, 1) == false and Pz.sudokuSet(pl, first, right % 9 + 1) == false and Pz.sudokuSet(pl, 0, 1) == false and Pz.sudokuSet(pl, first, 10) == false,
+    "a printed number can't be changed; the same number again, a square or a number that doesn't exist: nothing")
+local wrong = Pz.sudokuWrong(Pz.daySudoku(pl))
+check(wrong[first] == true and next(wrong, first) == nil and next(wrong) == first, "Check: only the wrong square is marked")
+check(Pz.sudokuSet(pl, first, 0) == true and Pz.daySudoku(pl).fill == dsu.given, "0 rubs it out")
+check(select(2, Pz.finished(pl)) == 0 and not Pz.sudokuDone(Pz.daySudoku(pl)), "not solved yet")
+for i = 1, 81 do Pz.sudokuSet(pl, i, tonumber(dsu.answer:sub(i, i))) end
+local fin, fin_n = Pz.finished(pl)
+check(Pz.sudokuDone(Pz.daySudoku(pl)) and fin.sudoku == true and fin_n == 1, "every square right: solved, and counted")
+Pz.sudokuClear(pl)
+check(Pz.daySudoku(pl).fill == dsu.given and select(2, Pz.finished(pl)) == 0, "Start again: the printed numbers only")
+pl.store.daily.puzzles.sudoku.fill = "12"
+check(Pz.daySudoku(pl).fill == dsu.given, "a kept grid that makes no sense: the printed numbers")
+
+-- word search
+local ws = Pz.wordSearch("2030-01-02")
+local ws2 = Pz.wordSearch("2030-01-02")
+check(ws.grid == ws2.grid and #ws.grid == 100 and ws.size == 10 and #ws.words == 8 and not ws.grid:find("[^A-Z]"), "word search: 10 × 10 letters, eight words, the same that day")
+local in_grid, in_line, sorted, seen_w = true, true, true, {}
+for i, w in ipairs(ws.words) do
+    for k = 1, #w.word do
+        local x, y = w.x + w.dx * (k - 1), w.y + w.dy * (k - 1)
+        if x < 1 or x > 10 or y < 1 or y > 10 or ws.grid:sub((y - 1) * 10 + x, (y - 1) * 10 + x) ~= w.word:sub(k, k) then in_grid = false end
+    end
+    local ex, ey = w.x + w.dx * (#w.word - 1), w.y + w.dy * (#w.word - 1)
+    local line = Pz.line(w.x, w.y, ex, ey)
+    if not line or #line ~= #w.word or Pz.wordAt(ws, w.x, w.y, ex, ey) ~= i or Pz.wordAt(ws, ex, ey, w.x, w.y) ~= i then in_line = false end
+    if i > 1 and ws.words[i - 1].word >= w.word then sorted = false end
+    if seen_w[w.word] then sorted = false end
+    seen_w[w.word] = true
+end
+check(in_grid, "every word is in the letters where it says")
+check(in_line and sorted, "a word is found from its first letter to its last or the other way round; the list is in order, no word twice")
+check(Pz.line(1, 1, 3, 2) == nil and #Pz.line(2, 2, 2, 2) == 1 and #Pz.line(5, 1, 1, 5) == 5 and Pz.wordAt(ws, 1, 1, 1, 2) == nil, "letters not in a line, or not a word: nothing")
+local all_caps = true
+for _i, w in ipairs(Pz.WORD_LIST) do if not w:match("^[A-Z]+$") then all_caps = false end end
+check(all_caps and #Pz.WORD_LIST >= 150, "the words are plain capitals (" .. #Pz.WORD_LIST .. ")")
+local dw, fnd = Pz.dayWords(pl)
+check(dw.grid == Pz.wordSearch(day).grid and next(fnd) == nil, "the day's word search, nothing found yet")
+check(Pz.wordFound(pl, 3) == true and Pz.wordFound(pl, 3) == false and Pz.wordFound(pl, 99) == false, "a word marked found once; one that isn't there: nothing")
+fnd = select(2, Pz.dayWords(pl))
+check(fnd[3] == true and not fnd[1] and pl.store.daily.puzzles.words.found == "3" and not Pz.wordsDone(dw, fnd), "kept as its number")
+for n = 1, 8 do Pz.wordFound(pl, n) end
+fnd = select(2, Pz.dayWords(pl))
+check(Pz.wordsDone(dw, fnd) and Pz.finished(pl).words == true, "all eight: solved")
+
+-- maze
+local mz = Pz.maze("2030-01-02", 12, 14)
+local mz2 = Pz.maze("2030-01-02", 12, 14)
+local same_m = #mz.cells == 168
+for i = 1, #mz.cells do if mz.cells[i] ~= mz2.cells[i] then same_m = false end end
+check(same_m, "maze: the same that day at the same size")
+local opens, matched, reached = 0, true, { [1] = true }
+local queue, head = { 1 }, 1
+local step = { n = -12, s = 12, e = 1, w = -1 }
+local back = { n = "s", s = "n", e = "w", w = "e" }
+while queue[head] do
+    local here = queue[head]; head = head + 1
+    for side, d in pairs(step) do
+        if Pz.mazeOpen(mz, here, side) then
+            opens = opens + 1
+            local to = here + d
+            if to < 1 or to > 168 or not Pz.mazeOpen(mz, to, back[side]) then matched = false
+            elseif (side == "e" and here % 12 == 0) or (side == "w" and here % 12 == 1) then matched = false
+            elseif not reached[to] then reached[to] = true; queue[#queue + 1] = to end
+        end
+    end
+end
+check(matched and #queue == 168 and opens == 2 * 167, "every square can be reached, each opening has its other side, and there is one way between any two (no loops)")
+local side = Pz.mazeOpen(mz, 1, "e") and "e" or "s"
+local path = Pz.mazeWalk(mz, 1, side)
+local blocked = Pz.mazeOpen(mz, 1, "e") and "s" or "e"
+check(#path >= 1 and path[1] == 1 + step[side], "a walk goes on to a wall, a turning or a crossing (" .. #path .. " squares)")
+check(Pz.mazeOpen(mz, 1, blocked) or #Pz.mazeWalk(mz, 1, blocked) == 0, "into a wall: nowhere")
+check(#Pz.mazeWalk(mz, 1, "n") == 0 and #Pz.mazeWalk(mz, 1, "w") == 0, "the outer wall holds")
+local dm, here, seen_m = Pz.dayMaze(pl, 12, 14)
+check(here == 1 and seen_m[1] and #dm.cells == 168, "the day's maze: at the start")
+local dside = Pz.mazeOpen(dm, 1, "e") and "e" or "s"
+local moved = Pz.mazeMove(pl, 12, 14, dside)
+local at2, seen2 = select(2, Pz.dayMaze(pl, 12, 14))
+check(#moved >= 1 and at2 == moved[#moved] and seen2[1] and seen2[at2], "a move is kept, with where you've been")
+check(select(2, Pz.dayMaze(pl, 10, 10)) == 1, "another size of screen: from the start")
+pl.store.daily.puzzles.maze = { cols = 12, rows = 14, at = 168, seen = "1,168" }
+check(Pz.finished(pl).maze == true and #Pz.mazeMove(pl, 12, 14, "n") == 0 and select(2, Pz.finished(pl)) == 2, "at the way out: solved, and it stays there")
+Pz.mazeClear(pl)
+check(select(2, Pz.dayMaze(pl, 12, 14)) == 1, "Start again: back at the start")
+
+-- the next day: new puzzles, nothing carried over; the switch
+local st_p = Pz.state(pl, "2031-05-05")
+check(st_p.day == "2031-05-05" and st_p.sudoku == nil and st_p.words == nil and st_p.maze == nil and select(2, Pz.finished(pl, "2031-05-05")) == 0, "the next day's paper: new puzzles, nothing carried over")
+check(Pz.on(pl) == true and Pz.on({ store = {} }) == true, "puzzles are on as it comes")
+pz_saves = 0
+Pz.setOn(pl, false)
+check(Pz.on(pl) == false and pz_saves == 1, "switched off: kept")
+check(Paper.puzzlesLabel(pl) == nil, "…and the paper's foot has no Puzzles")
+Pz.setOn(pl, true)
+check(Paper.puzzlesLabel(pl) == "Puzzles", "on: Puzzles at the paper's foot")
+pl.store.daily.puzzles.maze = { cols = 12, rows = 14, at = 168, seen = "1,168" }
+check(Paper.puzzlesLabel(pl) == "Puzzles 1/3", "…with how many are done")
+local prow
+for _i, r in ipairs(Paper.settingsItems(pl)) do if r.text == "Puzzles" then prow = r end end
+check(prow and prow.checked_func() == true, "Settings → Daily paper → Puzzles, ticked")
+prow.callback()
+check(Pz.on(pl) == false and prow.checked_func() == false, "unticked there")
+prow.callback()
+
+-- the screen's words and sizes
+local Scr = require("gzreader_puzzlescreen")
+local c1, r1_ = Scr.mazeSize(576, 560, 30)
+local c2, r2_ = Scr.mazeSize(1048, 1000, 80)
+local c3, r3_ = Scr.mazeSize(100, 3000, 40)
+check(c1 == 19 and r1_ == 18 and c2 == 13 and r2_ == 12 and c3 == 6 and r3_ == 26, "the maze's size follows the screen, within limits")
+check(Scr.statusText("sudoku", { left = 47 }) == "47 squares to go." and Scr.statusText("sudoku", { left = 40, wrong = 1 }) == "1 square isn't right (marked)."
+    and Scr.statusText("sudoku", { left = 40, wrong = 3 }) == "3 squares aren't right (marked)." and Scr.statusText("sudoku", { left = 40, wrong = 0, checked = true }) == "Right so far."
+    and Scr.statusText("words", { found = 2, of = 8 }) == "2 of 8 found." and Scr.statusText("maze", { done = true }):find("Solved", 1, true), "the line under each puzzle")
+check(Scr.helpText("sudoku", true):find("Tap a square", 1, true) and Scr.helpText("sudoku", false, true):find("Q–O", 1, true) and Scr.helpText("sudoku", false, false):find("Press: the next number", 1, true)
+    and Scr.helpText("words", false, true):find("Press on a word's first letter", 1, true) and Scr.helpText("maze", true):find("swipe", 1, true), "how to play, for touch, a keyboard and the 5-way alone")
+check(Scr.tabLabel("sudoku") == "Sudoku" and Scr.tabLabel("words") == "Word search" and Scr.tabLabel("maze") == "Maze", "the three tabs")
+local psrc, ssrc = read(PLUGIN .. "/gzreader_puzzles.lua"), read(PLUGIN .. "/gzreader_puzzlescreen.lua")
+check(not psrc:find("math.random", 1, true) and not psrc:find("socket", 1, true) and not psrc:find("Api", 1, true), "made on the Kindle from the date: no network, not the Kindle's own random numbers")
+check(ssrc:find('PzPanel = { { "Menu" } }', 1, true) and ssrc:find("Paper.pulledDown(ges)", 1, true), "Menu and a swipe from the top are the quick panel there too")
+local dsrc2 = read(PLUGIN .. "/gzreader_dailyscreen.lua")
+check(dsrc2:find('if what == "puzzles" then Paper.puzzles(self.plugin); return true end', 1, true) and dsrc2:find("if i == #self.blocks + 2 and self.foot.puzzles then return Paper.puzzles(self.plugin) end", 1, true),
+    "the paper opens them: a tap on Puzzles, or the 5-way to it and Press")
+end)()
+
 local cl = read(PLUGIN .. "/gzreader_changelog.lua")
 check(cl:find("Daily paper", 1, true) or cl:find("daily paper", 1, true), "the changelog tells about it")
 
