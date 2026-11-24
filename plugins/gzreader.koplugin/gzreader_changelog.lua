@@ -10,6 +10,7 @@ return {
         version = "next",
         changes = {
             { short = "Daily paper: a sudoku, a word search and a maze each day, to do on the Kindle", text = "The daily paper now comes with three puzzles a day that you do on the Kindle: a sudoku, a word search and a maze. Open the paper and choose Puzzles at its foot. Touch: tap a square and a number, a word's first and last letter, or the way to go in the maze. Keys: the 5-way and Press, with the letter keys under 1–9 for numbers on a keyboard. They are made on the Kindle from the date (no Wi-Fi needed), what you've done is kept until the next day's paper, and the paper's foot shows how many you've finished. Settings → Accounts and services → Daily paper → Puzzles turns them off." },
+            { short = "Daily paper: the Aa key opens the type box, Menu the quick panel", text = "On a Kindle with a keyboard (Kindle 2, Keyboard, DX), the Aa key now opens the type box on the daily paper's pages and in an opened story, and Menu opens the quick panel there, as it does in a book and at Home. Menu used to open the type box. A Kindle 4 has no Aa key, so Menu still opens the type box there." },
         },
     },
     {
