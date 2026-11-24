@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Recipes: an optional tab for your Mealie recipes", text = "A new optional tab, Recipes, shows the recipes of your Mealie (mealie.io): search them with Mealie's own search, pick a category, order them A to Z or newest first, and open one as a page with its ingredients, numbered steps and notes. Connect in Settings → Accounts and services → Recipes with Mealie's address and an API token (your profile → API tokens in Mealie), typed on the Kindle or pasted on the setup page; or, for a Mealie that signs you in through an identity provider, with Sign in with single sign-on on the setup page: you sign in at your provider in the browser, and GZreader then asks Mealie for an API token of its own (named GZreader in your Mealie profile) and keeps only that. Single sign-on needs a Mealie new enough to sign apps in, and GZreader's hand-off page allowed as a redirect for Mealie at your provider (the page shows the address). Then tick Recipes tab there. The list and every recipe you've opened are kept on the Kindle, so they open at once and can be read with Wi-Fi off; Disconnect removes them with the token. Not on the Kindles without Wi-Fi (2, DX). The wiki's Recipes page has the details." },
+        },
+    },
+    {
         version = "2026.11.22",
         changes = {
             { short = "Colour Kindles: Immich photos in colour", text = "On a Kindle Colorsoft or Scribe Colorsoft, the pictures from your Immich album (the sleep screen and the Home wallpaper) are kept in colour instead of being made grey. Pictures already on the Kindle stay grey until they are swapped for others from the album (about half each time GZreader gets new pictures)." },

@@ -565,6 +565,10 @@ function Grimmory:onDispatcherRegisterActions()
         category = "none", event = "ShowGzHouse", title = _("House (Home Assistant)"),
         general = true,
     })
+    Dispatcher:registerAction("gzreader_recipes", {
+        category = "none", event = "ShowGzRecipes", title = _("Recipes (Mealie)"),
+        general = true,
+    })
     Dispatcher:registerAction("grimmory_pair", {
         category = "none", event = "GrimmoryPair", title = _("Grimmory: connect with QR code"),
         general = true,
@@ -1609,6 +1613,13 @@ function Grimmory:onShowGzHouse()
     return true
 end
 
+--- The Recipes tab: Mealie (ZenOS's tab bar; gzreader_recipes.lua).
+function Grimmory:onShowGzRecipes()
+    if self.ui and self.ui.document then return end -- (file manager's instance)
+    require("gzreader_recipes").show(self)
+    return true
+end
+
 --- The daily paper (Home's widget opens it; gzreader_dailyscreen.lua).
 function Grimmory:onShowGzDailyPaper()
     require("gzreader_dailyscreen").show(self)
@@ -1618,6 +1629,11 @@ end
 --- Settings → Accounts and services → House (the House tab).
 function Grimmory:houseSettingsItems()
     return require("gzreader_house").settingsItems(self)
+end
+
+--- Settings → Accounts and services → Recipes (the Recipes tab).
+function Grimmory:recipesSettingsItems()
+    return require("gzreader_recipes").settingsItems(self)
 end
 
 function Grimmory:onGzLauncherContinue() dispatch("open_previous_document") end

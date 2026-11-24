@@ -35,6 +35,7 @@ books since:
 | [Immich](https://immich.app) | your photos as the sleep screen and wallpaper, and in notes |
 | CalDAV and calendar links (Nextcloud, Radicale, Baïkal, any `.ics` link) | your calendars |
 | [Home Assistant](https://www.home-assistant.io) | lights, switches and the weather on the House tab |
+| [Mealie](https://mealie.io) | your recipes on the Recipes tab |
 
 None of them is required. Without any server it's still a reader you can send
 books to from your browser; each one you connect adds its part.
@@ -111,6 +112,9 @@ and the Nook Simple Touch: which ones have been tried is in
 - 🏠 **House:** your [Home Assistant](https://www.home-assistant.io) rooms on a
   tab: switch lights (and dim them), switches, thermostats, locks, garage doors and
   scenes, straight over your Wi‑Fi.
+- 🍳 **Recipes:** your [Mealie](https://mealie.io) recipes on an optional tab:
+  search, categories, and a recipe's ingredients and steps to read while you cook.
+  Sign in with an API token or Mealie's single sign-on.
 - 🔊 **Read aloud** *(Kindle 2, 3, DX, Touch; Bluetooth Kindles)*: any EPUB, MOBI,
   AZW3, FB2 or TXT read to you in the Kindle's own voice, the sentence being spoken
   highlighted and the pages turning by themselves. Shift + Sym plays and stops, like

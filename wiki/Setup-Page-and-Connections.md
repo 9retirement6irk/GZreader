@@ -29,6 +29,9 @@ you came from; without JavaScript they're one under the other):
   CalDAV account.
 - **House** (Kindles with Wi‑Fi): your Home Assistant address and a
   long-lived access token, or disconnect ([House](House)).
+- **Recipes** (Kindles with Wi‑Fi): your Mealie address with an API token, or
+  *Sign in with single sign-on* for a Mealie that uses an identity provider,
+  or disconnect ([Recipes](Recipes)).
 - **Music** (Kindles with audio): *Sign in with Plex* (Plex's own sign-in
   page, which comes back to the setup page), the Plex server to use, sign out.
 - **Immich**: your Immich address and an API key, the album, whether its

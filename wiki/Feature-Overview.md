@@ -33,6 +33,7 @@ What GZreader does, in short, with where to read more. It connects an e-reader t
 - **Read aloud** — any EPUB, MOBI, AZW3, FB2 or TXT in the Kindle's own voice, the sentence highlighted and pages turning by themselves (Kindle 2, 3, DX, Touch; on Bluetooth Kindles in Amazon's voice). → [Audiobooks and read aloud](Audiobooks-and-Read-Aloud#read-aloud-kindle-2-3-dx-text-to-speech)
 - **Bluetooth** — pair and connect headphones or a speaker from Settings on the Kindles that have Bluetooth (Scribe, Paperwhite 5 and newer…). → [Bluetooth](Bluetooth)
 - **House** — your [Home Assistant](https://www.home-assistant.io) rooms: lights, switches, thermostats, locks, garage doors and scenes to switch from the Kindle, straight over your Wi‑Fi (Kindles with Wi‑Fi). → [House](House)
+- **Recipes** — an optional tab with the recipes of your [Mealie](https://mealie.io): search, categories, and a recipe's ingredients and steps to read while you cook; opened recipes stay readable without Wi‑Fi. Sign in with an API token or Mealie's single sign-on (Kindles with Wi‑Fi). → [Recipes](Recipes)
 
 ## Using it
 

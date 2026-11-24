@@ -1346,6 +1346,366 @@ print("Catalog: not signed in to Grimmory (it opens all the same)")
     require("gzreader_touch").audio = saved_audio
 end)()
 
+print("Recipes tab (Mealie): connecting, the list, a recipe, Settings, the phone page, single sign-on")
+;(function()
+    local Mealie = require("gzreader_mealie")
+    local Recipes = require("gzreader_recipes")
+    local NetM = require("gzreader_net")
+    local T0 = { sync = AsyncMod.sync, usb = NetM.usb, zen = rawget(_G, "__ZEN_UI_PLUGIN"), save = plugin.save,
+        viewer = package.loaded["ui/widget/textviewer"], input = package.loaded["ui/widget/inputdialog"],
+        multi = package.loaded["ui/widget/multiinputdialog"], sso = gsettings.gzreader_sso_redirect }
+    AsyncMod.sync = true
+    NetM.usb = nil
+    plugin.save = function() end
+    gsettings.gzreader_sso_redirect = nil
+    local viewer
+    package.loaded["ui/widget/textviewer"] = { new = function(_s, o) viewer = o; return o end }
+    local MP, MP2, MP3 = PORT + 32, PORT + 33, PORT + 34
+    local mock = PLUGIN .. "/../../tools/gzreader/emulator/demo/mock_mealie.py"
+    os.execute("python3 -I " .. mock .. " " .. MP .. " > " .. WORK .. "/mealie.log 2>&1 & echo $! > " .. WORK .. "/mealie.pid")
+    os.execute("python3 -I " .. mock .. " " .. MP2 .. " --old > " .. WORK .. "/mealie2.log 2>&1 & echo $! > " .. WORK .. "/mealie2.pid")
+    os.execute("python3 -I " .. mock .. " " .. MP3 .. " --no-oidc > " .. WORK .. "/mealie3.log 2>&1 & echo $! > " .. WORK .. "/mealie3.pid")
+    local function mctl(port, method, path)
+        local p = io.popen("curl -s -X " .. method .. " 'http://127.0.0.1:" .. port .. path .. "'"); local o = p:read("*a"); p:close(); return o
+    end
+    local function mstate() return json.decode(mctl(MP, "GET", "/__state")) or {} end
+    runLoop(function()
+        return mctl(MP, "GET", "/__state"):match("recipes") ~= nil and mctl(MP2, "GET", "/__state"):match("recipes") ~= nil
+            and mctl(MP3, "GET", "/__state"):match("recipes") ~= nil
+    end, 10)
+
+    -- addresses as typed or pasted
+    local c1, bare1 = Mealie.candidates("mealie.example.com/g/home")
+    local c2, bare2 = Mealie.candidates(" 192.168.1.30:9925/login ")
+    local c3, bare3 = Mealie.candidates("http://mealie.example.com:9000/api")
+    check(Mealie.normalizeServer("https://mealie.example.com/g/home/r/chili") == "https://mealie.example.com"
+        and Mealie.normalizeServer("ftp://mealie.example.com") == nil and Mealie.normalizeServer("") == nil
+        and Mealie.normalizeServer("sam@mealie.example.com") == nil
+        and #c1 == 1 and c1[1] == "https://mealie.example.com" and bare1 == true
+        and #c2 == 2 and c2[1] == "http://192.168.1.30:9925" and c2[2] == "https://192.168.1.30:9925" and bare2 == true
+        and #c3 == 1 and c3[1] == "http://mealie.example.com:9000" and bare3 == false and Mealie.candidates("") == nil,
+        "Recipes: the address typed (the page's path dropped; no scheme: HTTPS only on the internet, HTTP then HTTPS at home)")
+
+    -- what a recipe's lines say
+    check(Mealie.plain("Rub the **butter** into the __flour__.\n\n\n## Then\n<b>rest</b> it &amp; wait, see [the notes](https://example.com/n)")
+            == "Rub the butter into the flour.\n\nThen\nrest it & wait, see the notes"
+        and Mealie.plain("<sup>3</sup>⁄<sub>4</sub> cup sugar") == "3/4 cup sugar" and Mealie.plain("  ") == nil and Mealie.plain(nil) == nil,
+        "Recipes: Markdown marks and HTML taken out of a line, Mealie's fractions kept readable")
+    check(Mealie.ingredientText({ display = "2 ½ cups flour, sifted", quantity = 2.5 }) == "2 ½ cups flour, sifted"
+        and Mealie.ingredientText({ quantity = 6, food = { name = "apple", pluralName = "apples" }, note = "peeled", display = "" }) == "6 apples, peeled"
+        and Mealie.ingredientText({ quantity = 2, unit = { name = "teaspoon", pluralName = "teaspoons", abbreviation = "tsp", useAbbreviation = true }, food = { name = "cinnamon" } }) == "2 tsp cinnamon"
+        and Mealie.ingredientText({ quantity = 2.5, unit = { name = "cup", pluralName = "cups" }, food = { name = "flour", pluralName = "flours" } }) == "2.5 cups flour"
+        and Mealie.ingredientText({ quantity = 0, note = "a pinch of salt" }) == "a pinch of salt"
+        and Mealie.ingredientText({ quantity = 0, originalText = "salt to taste" }) == "salt to taste" and Mealie.ingredientText({}) == nil,
+        "Recipes: an ingredient's line: Mealie's own, else its amount, unit (short or plural), food and note")
+    check(Mealie.timeText("PT1H5M") == "1 h 5 min" and Mealie.timeText("PT45M") == "45 min" and Mealie.timeText("30 minutes") == "30 minutes"
+        and Mealie.timeText("") == nil and Mealie.yieldText({ recipeServings = 8 }) == "Serves 8"
+        and Mealie.yieldText({ recipeYieldQuantity = 12, recipeYield = "cookies", recipeServings = 4 }) == "12 cookies"
+        and Mealie.yieldText({ recipeServings = 0, recipeYieldQuantity = 0 }) == nil and Mealie.fmt(2.50) == "2.5" and Mealie.fmt(4) == "4",
+        "Recipes: times and what a recipe makes, as the list and the page say them")
+
+    -- connecting with an API token
+    plugin.store.mealie = nil
+    local ok, err = Mealie.connect(plugin, "127.0.0.1:" .. MP, "wrong-token")
+    check(not ok and err:match("didn't accept that token") and not (plugin.store.mealie or {}).token, "Recipes: a wrong token is refused")
+    ok, err = Mealie.connect(plugin, "127.0.0.1:" .. (PORT + 38), "mealie-test-token")
+    check(not ok and err:match("Couldn't reach Mealie"), "Recipes: nothing at that address: it says so")
+    ok, err = Mealie.connect(plugin, "http://127.0.0.1:" .. (PORT + 30 + 1000), "")
+    check(not ok and err:match("Paste an API token"), "Recipes: no token: it asks for one (nothing asked of the server)")
+    ok, err = Mealie.connect(plugin, "http://127.0.0.1:" .. PORT, "mealie-test-token")
+    check(not ok and err:match("doesn't look like Mealie"), "Recipes: another server at the address: it says it isn't Mealie (" .. tostring(err) .. ")")
+    ok, err = Mealie.connect(plugin, "127.0.0.1:" .. MP .. "/g/home", " mealie-test-token\n")
+    local ms = plugin.store.mealie
+    check(ok and ms.server == "http://127.0.0.1:" .. MP and ms.token == "mealie-test-token" and ms.name == "Sam Example"
+        and ms.username == "sam" and ms.version == "v3.9.2" and ms.sso == nil and ms.token_id == nil,
+        "Recipes: connected (address cleaned up, token trimmed, who it is and Mealie's version kept) " .. tostring(err))
+
+    -- the tab: the list's first page
+    local tab = Recipes.show(plugin)
+    local function rows() return tab.menu.item_table end
+    local function row(text) for _i, r in ipairs(rows()) do if r.text == text then return r end end end
+    local function names() local t = {} for _i, r in ipairs(rows()) do if r.gz_recipe then t[#t + 1] = r.text end end return t end
+    local head = {}
+    for i = 1, 4 do head[i] = rows()[i].text .. "=" .. tostring(rows()[i].mandatory) end
+    check(tab and tab.menu._gz_navbar_tab_id == "ct_recipes" and tab.list and #names() == 50 and tab.list.total == 60
+        and table.concat(head, "|") == "Refresh=60 recipes · just now|Search=nil|Category=All|Order=A to Z",
+        "Recipes tab: opened (its tab id), the first 50 of 60 recipes; Refresh, Search, Category, Order on top (" .. table.concat(head, "|") .. ")")
+    check(names()[1] == "Apple pie" and row("Apple pie").mandatory == "1 hour 20 minutes" and row("Banana bread").mandatory == "1 h 5 min"
+        and row("Empty idea").mandatory == nil and row("Apple pie").gz_icon:match("icons/recipes/recipe%.svg$")
+        and io.open(row("Apple pie").gz_icon, "rb") ~= nil,
+        "Recipes tab: by name, each with how long it takes; their icon")
+    check(row("More recipes") and row("More recipes").mandatory == "50 of 60" and rows()[#rows()] == row("More recipes"),
+        "Recipes tab: More recipes, last, while Mealie has more")
+    local kept_list = Mealie.loadList()
+    check(kept_list and #kept_list.items == 50 and kept_list.total == 60 and kept_list.items[1].slug == "apple-pie",
+        "Recipes tab: the list is kept on the Kindle for the next opening")
+    row("More recipes").callback()
+    check(#names() == 60 and not row("More recipes") and names()[60] == "Weeknight dinner 56" and tab.list.page == 2,
+        "Recipes tab: More recipes: the rest added to the list, the row gone")
+
+    -- search
+    package.loaded["ui/widget/inputdialog"] = { new = function(_s, o)
+        o.onShowKeyboard = function() end
+        o.getInputText = function() return o.typed end
+        return o
+    end }
+    local d = tab:askSearch()
+    d.typed = "  banana "
+    d.buttons[1][3].callback()
+    check(#names() == 1 and names()[1] == "Banana bread" and row("Search").mandatory == "banana" and tab.list.total == 1 and not row("More recipes"),
+        "Recipes tab: Search: Mealie's own search (names, descriptions, ingredients), the words on the Search row")
+    check(#Mealie.loadList().items == 50, "Recipes tab: a search's list isn't kept in place of the whole one")
+    d = tab:askSearch()
+    d.typed = "zzz-nothing"
+    d.buttons[1][3].callback()
+    check(#names() == 0 and row("No recipes found. Change the search or the category."), "Recipes tab: nothing found: it says so")
+    d = tab:askSearch()
+    check(d.input == "zzz-nothing" and d.buttons[1][2].text == "All recipes", "Recipes tab: Search opens with the words it has; All recipes clears them")
+    d.buttons[1][2].callback()
+    check(#names() == 50 and row("Search").mandatory == nil and tab.list.total == 60, "Recipes tab: All recipes: every recipe again")
+
+    -- a category, and the order
+    captured.buttons = nil
+    tab:askCategory()
+    local cat_labels = {}
+    for _i, r in ipairs(captured.buttons and captured.buttons.buttons or {}) do cat_labels[#cat_labels + 1] = r[1].text end
+    check(table.concat(cat_labels, "|") == "● All|Baking|Breakfast|Dinner|Cancel", "Recipes tab: Category: Mealie's categories by name, All marked (" .. table.concat(cat_labels, "|") .. ")")
+    pressButton("Baking")
+    check(table.concat(names(), "|") == "Apple pie|Banana bread" and row("Category").mandatory == "Baking",
+        "Recipes tab: a category chosen: its recipes, its name on the Category row")
+    row("Order").callback()
+    check(table.concat(names(), "|") == "Banana bread|Apple pie" and row("Order").mandatory == "Newest first" and row("Category").mandatory == "Baking",
+        "Recipes tab: Order: newest first (the category kept)")
+    tab:askCategory()
+    check(captured.buttons.buttons[2][1].text == "● Baking", "Recipes tab: Category again: the one chosen is marked")
+    pressButton("All")
+    row("Order").callback()
+    check(#names() == 50 and names()[1] == "Apple pie" and row("Category").mandatory == "All" and row("Order").mandatory == "A to Z",
+        "Recipes tab: All and A to Z again")
+
+    -- a recipe
+    viewer, captured.info = nil, nil
+    row("Apple pie").callback()
+    local page = viewer and viewer.text or ""
+    local function has(s) return page:find(s, 1, true) ~= nil end
+    check(viewer and viewer.title == "Apple pie" and viewer.justified == false
+        and page:sub(1, 34) == "A classic pie with a butter crust." and has("Serves 8  ·  Total 1 hour 20 minutes  ·  Prep 30 minutes  ·  Cook 50 minutes"),
+        "Recipes tab: a recipe opens as a page: its description, what it makes and how long it takes")
+    check(has("INGREDIENTS\n\nCrust:\n•  2 ½ cups flour, sifted\n•  1 cup butter, cold\n\nFilling:\n•  6 apples, peeled and sliced\n•  3/4 cup sugar\n•  2 tsp cinnamon\n•  a pinch of salt\n"),
+        "Recipes tab: the ingredients, under their sections (" .. page:sub(1, 400):gsub("\n", "⏎") .. ")")
+    check(has("STEPS\n\nCrust:\n\n1.  Rub the butter into the flour, add cold water and rest the dough for 30 minutes.\n\n2.  Roll out half and line the dish.\n\nFilling:\n\n1.  Toss the apples")
+        and has("for 50 minutes.\n\nSee the notes.") and not has("**") and not has("https://"),
+        "Recipes tab: the steps numbered, from 1 again in each section; Markdown marks and links' addresses left out")
+    check(has("NOTES\n\nApples:\nTart ones keep their shape.\n\nGood cold the next day.") and page:sub(-23) == "Good cold the next day.",
+        "Recipes tab: the notes last")
+    local kept = Mealie.loadRecipe("apple-pie")
+    check(kept and kept.name == "Apple pie" and #kept.steps == 6 and Mealie.loadRecipe("chili") == nil and Mealie.loadRecipe("../x") == nil,
+        "Recipes tab: an opened recipe is kept on the Kindle (others aren't; only plain names make files)")
+    viewer = nil
+    row("Empty idea").callback()
+    check(viewer and viewer.text == "This recipe has no ingredients or steps yet.", "Recipes tab: a recipe with nothing in it says so")
+
+    -- kept recipes open at once, also when Mealie can't be reached
+    mctl(MP, "POST", "/__rename?slug=apple-pie&name=Apple%20pie%20(new)")
+    viewer, captured.info = nil, nil
+    row("Apple pie").callback()
+    check(viewer and viewer.title == "Apple pie" and Mealie.loadRecipe("apple-pie").name == "Apple pie (new)",
+        "Recipes tab: a kept recipe opens from the Kindle's copy, and the copy is fetched again for the next time")
+    mctl(MP, "POST", "/__offline?on=1")
+    viewer, captured.info = nil, nil
+    row("Apple pie").callback()
+    check(viewer and viewer.title == "Apple pie (new)" and captured.info == nil, "Recipes tab: Mealie unreachable: a kept recipe still opens, no complaint")
+    viewer, captured.info = nil, nil
+    row("Chili").callback()
+    check(viewer == nil and tostring(captured.info):match("couldn't answer just now %(error 503%)"), "Recipes tab: …one that isn't kept says why it can't open")
+    tab:refresh(true)
+    check(tab.err and #names() == 50 and rows()[#rows()].text:match("couldn't answer just now"), "Recipes tab: a refresh that fails: the list stays, it says why")
+    mctl(MP, "POST", "/__offline?on=0")
+    tab:refresh(true)
+    check(tab.err == nil and names()[1] == "Apple pie (new)" and not rows()[#rows()].text:match("couldn't answer"), "Recipes tab: back again on the next refresh")
+    mctl(MP, "POST", "/__rename?slug=apple-pie&name=Apple%20pie")
+
+    -- Settings → Accounts and services → Recipes
+    local function labels(items) local t = {} for _i, it in ipairs(items) do t[#t + 1] = it.text or it.text_func() end return table.concat(t, "|") end
+    local items = Recipes.settingsItems(plugin)
+    check(labels(items) == "Connected: Sam Example · 127.0.0.1:" .. MP .. "|Recipes tab|Disconnect", "Settings: Mealie's rows (" .. labels(items) .. ")")
+    local saved = 0
+    local zen = { config = { navbar = { show_tabs = { home = true, books = true }, tab_order = { "home", "books" }, custom_tabs = {} } },
+        saveConfig = function() saved = saved + 1 end }
+    rawset(_G, "__ZEN_UI_PLUGIN", zen)
+    local was_fm = package.loaded["apps/filemanager/filemanager"]
+    package.loaded["apps/filemanager/filemanager"] = { instance = nil }
+    check(items[2].checked_func() == false and Recipes.setTabShown(true) and zen.config.navbar.show_tabs.ct_recipes == true
+        and zen.config.navbar.tab_order[3] == "ct_recipes" and zen.config.navbar.custom_tabs[1].action.gzreader_recipes
+        and zen.config.navbar.custom_tabs[1].icon == "tab_recipes" and saved == 1 and items[2].checked_func() == true,
+        "Settings: Recipes tab on: in the tab bar (listed, defined), ZenOS's settings saved")
+    items[2].callback()
+    check(zen.config.navbar.show_tabs.ct_recipes == false and #zen.config.navbar.custom_tabs == 1, "Settings: Recipes tab off again")
+    package.loaded["apps/filemanager/filemanager"] = was_fm
+    rawset(_G, "__ZEN_UI_PLUGIN", T0.zen)
+    captured.confirm = nil
+    items[3].callback()
+    check(captured.confirm and captured.confirm.text:match("still works until you delete it in Mealie"), "Settings: Disconnect asks first (a token you made: it says to delete it in Mealie)")
+    captured.confirm.ok_callback()
+    check(not plugin.store.mealie.token and not plugin.store.mealie.server and Mealie.loadList() == nil and Mealie.loadRecipe("apple-pie") == nil
+        and rows()[1].text == "Connect with QR code" and #rows() == 3,
+        "Settings: disconnected: address, token and the kept recipes gone; the open tab shows the ways to connect")
+    check(labels(Recipes.settingsItems(plugin)) == "Connect with QR code|Connect by typing|About Mealie|Recipes tab", "Settings: not connected: the ways to connect, and the tab's switch")
+
+    -- connect by typing, from inside the tab
+    local typed
+    package.loaded["ui/widget/multiinputdialog"] = { new = function(_s, o)
+        o.onShowKeyboard = function() end
+        o.getFields = function() return typed end
+        return o
+    end }
+    typed = { "127.0.0.1:" .. MP, "mealie-test-token" }
+    captured.info = nil
+    rows()[2].callback()
+    local md = UI.shown[#UI.shown]
+    check(md and md.title == "Connect to Mealie" and md.fields[2].text_type == "password", "Recipes tab: Connect by typing: the address, and the token as a password field")
+    md.buttons[1][2].callback()
+    check(plugin.store.mealie.token == "mealie-test-token" and tostring(captured.info):match("Connected to Mealie as Sam Example")
+        and #names() == 50, "Recipes tab: connected from inside the tab: the list at once")
+    tab.menu:onCloseWidget()
+    check(tab.closed and Recipes.instance == nil, "Recipes tab: closed")
+
+    -- the next opening: the kept list at once; with Wi-Fi turned off in Settings nothing is fetched
+    NET.connected = false
+    gsettings.gzreader_wifi_mode = "off"
+    local wifi_before = #captured.wifi
+    local before = #mstate().log
+    local tab2 = Recipes.show(plugin)
+    local n2 = 0
+    for _i, r in ipairs(tab2.menu.item_table) do if r.gz_recipe then n2 = n2 + 1 end end
+    check(n2 == 50 and #mstate().log == before and #captured.wifi == wifi_before,
+        "Recipes tab: opened with Wi-Fi turned off: the kept list, Mealie not asked, Wi-Fi left off")
+    NET.connected = true
+    gsettings.gzreader_wifi_mode = "on"
+    tab2.menu:onCloseWidget()
+
+    -- no Wi-Fi (a Kindle 2, or syncing through a computer)
+    NetM.usb = true
+    local tab3 = Recipes.show(plugin)
+    check(tab3.menu.item_table[1].text == "No Wi-Fi here" and #tab3.menu.item_table == 1, "Recipes tab: no Wi-Fi: it says so")
+    tab3.menu:onCloseWidget()
+    NetM.usb = nil
+
+    -- the phone page: an API token
+    local PS = require("gzreader_pairscreen")
+    local orig_ps = PS.new
+    local scr
+    PS.new = function(_self, o) scr = o; return o end
+    local Phone = require("gzreader_phone")
+    local closed
+    Mealie.disconnect(plugin)
+    Phone.open(plugin, { section = "recipes", on_close = function(ch) closed = ch end })
+    local ORIGIN = "http://127.0.0.1:" .. UI.zmqs[1].port
+    local P = ORIGIN .. scr.url:match("(/phone/%x+)")
+    local function post(path, fields, more)
+        local args = { more or "-L", #fields == 0 and "-d ''" or nil }
+        for _i, kv in ipairs(fields) do args[#args + 1] = "--data-urlencode '" .. kv .. "'" end
+        return phone(table.concat(args, " ") .. " '" .. P .. path .. "'")
+    end
+    local c, b = phone("'" .. P .. "'")
+    check(c == 200 and b:find('data-tab="recipes"', 1, true) and b:find('<section id="recipes" class="tab">', 1, true) and b:find('"recipes";', 1, true)
+        and b:find("Sign in with single sign-on", 1, true) and b:find("https://9retirement6irk.github.io/GZreader/oauth2-callback</code>", 1, true),
+        "phone page: the Recipes tab, opening at it: a token or single sign-on, and the redirect address to allow")
+    c, b = post("/recipes", { "server=127.0.0.1:" .. MP, "token=nope", "action=token" })
+    check(c == 200 and (b:find("didn&#39;t accept that token", 1, true) or b:find("didn't accept that token", 1, true))
+        and not plugin.store.mealie.token, "phone page: Recipes: a wrong token -> the page says so")
+    c, b = post("/recipes", { "server=127.0.0.1:" .. MP, "token=mealie-test-token", "action=token" })
+    check(c == 200 and b:find("Connected to Mealie as Sam Example.", 1, true) and plugin.store.mealie.token == "mealie-test-token"
+        and b:find("Connected as <b>Sam Example</b> · 127.0.0.1:" .. MP, 1, true) and not b:find("· single sign-on", 1, true),
+        "phone page: Recipes: connected with an API token")
+    c, b = post("/recipes/disconnect", {})
+    check(c == 200 and not plugin.store.mealie.token and #mstate().tokens == 0, "phone page: Recipes: disconnected")
+
+    -- the phone page: single sign-on (Mealie's sign-on for apps, GZreader's hand-off page)
+    local function sso(port)
+        local hdr = WORK .. "/mealie_sso_headers"
+        os.remove(hdr)
+        local code, body = post("/recipes", { "server=127.0.0.1:" .. port, "action=sso" }, "-D '" .. hdr .. "'")
+        local f = io.open(hdr, "rb"); local headers = f and f:read("*a") or ""; if f then f:close() end
+        return code, headers:match("[Ll]ocation: ([^\r\n]+)"), body
+    end
+    local loc
+    c, loc = sso(MP)
+    local unescape = require("socket.url").unescape
+    local back_url = loc and loc:match("#back=([^&]+)")
+    local go = loc and loc:match("&go=(.+)$")
+    go = go and unescape(go)
+    local asked = go and unescape(go) or ""
+    check(c == 302 and loc and loc:match("^https://9retirement6irk%.github%.io/GZreader/oauth2%-callback#back=") and back_url
+        and unescape(back_url):match("^http://[%d%.]+:%d+/oauth2%-callback$") and go and go:match("^http://127%.0%.0%.1:" .. MP .. "/idp/authorize%?")
+        and asked:find("code_challenge_method=S256", 1, true) and asked:find("client_id=mealie-web", 1, true) and asked:find("response_type=code", 1, true)
+        and asked:find("redirect_uri=https://9retirement6irk.github.io/GZreader/oauth2-callback", 1, true) and asked:find("scope=openid email profile", 1, true),
+        "phone page: Recipes: single sign-on sends the browser to the hand-off page, then to the provider Mealie names (PKCE, Mealie's client)")
+    -- (the provider signs you in and sends the browser back with a code)
+    local pp = io.popen("curl -s '" .. tostring(go) .. "'"); local answer = json.decode(pp:read("*a")) or {}; pp:close()
+    c, b = phone("-L '" .. ORIGIN .. "/oauth2-callback?code=" .. tostring(answer.code) .. "&state=wrong'")
+    check(c == 200 and not plugin.store.mealie.token and not b:find('id="recipes"', 1, true), "phone page: Recipes: a sign-in with another state isn't taken")
+    c, b = phone("-L '" .. ORIGIN .. "/oauth2-callback?code=" .. tostring(answer.code) .. "&state=" .. tostring(answer.state) .. "'")
+    ms = plugin.store.mealie
+    local st = mstate()
+    check(c == 200 and b:find("Connected to Mealie as Sam Example.", 1, true) and b:find("· single sign-on", 1, true)
+        and ms.token == "made-token-1" and ms.sso == true and ms.token_id == 1 and ms.server == "http://127.0.0.1:" .. MP and ms.name == "Sam Example",
+        "phone page: Recipes: signed in through single sign-on: GZreader's own API token kept, not the session's (" .. tostring(ms.token) .. ")")
+    check(#st.tokens == 1 and st.tokens[1].name == "GZreader" and st.sessions == 1
+        and st.sso[1].redirect_uri == "https://9retirement6irk.github.io/GZreader/oauth2-callback" and st.sso[1].scope == "openid email profile",
+        "Mealie: one token named GZreader made; the provider was asked with Mealie's scope and the hand-off page's address")
+    c, b = phone("-L '" .. ORIGIN .. "/oauth2-callback?code=" .. tostring(answer.code) .. "&state=" .. tostring(answer.state) .. "'")
+    check(c == 200 and #mstate().tokens == 1 and not b:find("Connected to Mealie", 1, true), "phone page: Recipes: the same sign-in can't be used twice")
+    local tab5 = Recipes.show(plugin)
+    local n5 = 0
+    for _i, r in ipairs(tab5.menu.item_table) do if r.gz_recipe then n5 = n5 + 1 end end
+    check(n5 == 50, "Recipes tab: the list with the token made after single sign-on")
+    tab5.menu:onCloseWidget()
+    captured.confirm = nil
+    local sitems = Recipes.settingsItems(plugin)
+    sitems[#sitems].callback()
+    check(captured.confirm and captured.confirm.text:match("asks Mealie to delete the token it made"), "Settings: Disconnect after single sign-on says its token is deleted in Mealie too")
+    captured.confirm.ok_callback()
+    check(not plugin.store.mealie.token and #mstate().tokens == 0, "Settings: disconnected: the token GZreader made is deleted in Mealie")
+    -- a provider that says no; a Mealie without it
+    c, loc = sso(MP)
+    c, b = phone("-L '" .. ORIGIN .. "/oauth2-callback?error=access_denied&error_description=Not%20allowed'")
+    check(c == 200 and b:find("Sign-in didn&#39;t complete: Not allowed", 1, true) and b:find('value="127.0.0.1:' .. MP .. '"', 1, true) and not plugin.store.mealie.token,
+        "phone page: Recipes: the provider said no: the page says so, the address still filled in")
+    c, loc, b = sso(MP2)
+    c, b = phone("'" .. P .. "?m=" .. tostring(loc and loc:match("%?m=(%w+)")) .. "'")
+    check(b and b:find("too old for single sign-on from another app", 1, true), "phone page: Recipes: a Mealie without sign-on for apps: it says to update or use a token")
+    c, loc, b = sso(MP3)
+    c, b = phone("'" .. P .. "?m=" .. tostring(loc and loc:match("%?m=(%w+)")) .. "'")
+    check(b and b:find("Single sign-on isn&#39;t turned on for this Mealie", 1, true), "phone page: Recipes: a Mealie without single sign-on: it says so")
+    scr.on_cancel()
+    check(closed and closed.recipes and Phone.session == nil and #UI.zmqs == 0, "phone page: closed, the caller hears Recipes changed")
+    PS.new = orig_ps
+
+    -- nothing secret in the log; the token is kept with the other sign-ins
+    local lg = io.open(WORK .. "/gzreader.log", "rb"); local ltxt = lg and lg:read("*a") or ""; if lg then lg:close() end
+    check(ltxt:find("recipes: connecting to", 1, true) and ltxt:find("recipes: signed in through single sign-on", 1, true)
+        and not ltxt:find("mealie-test-token", 1, true) and not ltxt:find("made-token", 1, true) and not ltxt:find("session-1", 1, true)
+        and not ltxt:find("code_verifier", 1, true), "Recipes: tokens are never in the log")
+    check(ltxt:find("orderDirection=asc&search=…", 1, true) and not ltxt:find("search=banana", 1, true) and not ltxt:find("zzz-nothing", 1, true)
+        and not ltxt:find("zzz%2dnothing", 1, true), "Recipes: what you searched for isn't in the log either")
+    local in_secrets = false
+    for _i, path in ipairs(require("gzreader_secrets").PATHS) do if path[1] == "mealie" and path[2] == "token" then in_secrets = true end end
+    check(in_secrets, "Recipes: Mealie's token is kept with the other sign-ins (off the USB drive where they are)")
+    local main_src = io.open(PLUGIN .. "/main.lua", "rb"):read("*a")
+    check(main_src:find('Dispatcher:registerAction("gzreader_recipes"', 1, true) and main_src:find("function Grimmory:onShowGzRecipes()", 1, true)
+        and main_src:find("function Grimmory:recipesSettingsItems()", 1, true) and require("gzreader_tabs").IDS.ct_recipes == true,
+        "the Recipes tab: its action, its Settings page, and it closes the other tabs")
+
+    os.execute("kill $(cat " .. WORK .. "/mealie.pid) $(cat " .. WORK .. "/mealie2.pid) $(cat " .. WORK .. "/mealie3.pid) 2>/dev/null")
+    plugin.store.mealie = nil
+    Mealie.clearCache()
+    package.loaded["ui/widget/textviewer"], package.loaded["ui/widget/inputdialog"] = T0.viewer, T0.input
+    package.loaded["ui/widget/multiinputdialog"] = T0.multi
+    gsettings.gzreader_sso_redirect = T0.sso
+    AsyncMod.sync, NetM.usb, plugin.save = T0.sync, T0.usb, T0.save
+end)()
+
 print("Catalog: the Music page (CD cases on the shelves)")
 ;(function()
     local Tab = require("gzreader_musictab")

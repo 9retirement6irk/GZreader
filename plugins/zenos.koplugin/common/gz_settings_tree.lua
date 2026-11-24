@@ -99,7 +99,7 @@ end
 --- Settings → Accounts and services: one row per service, named for what it
 --- does with the service it uses on the right (as iOS 18 puts every app's
 --- settings behind one Apps row). `opts`: gzreader, plugin_root, audio (the
---- Kindle plays sound: Music and Audiobooks), wifi (House needs Wi-Fi).
+--- Kindle plays sound: Music and Audiobooks), wifi (House and Recipes need Wi-Fi).
 function M.accountsItems(opts)
     local _ = gettext()
     local page = function(method) return M.gzPage(opts.gzreader, method) end
@@ -146,9 +146,11 @@ function M.accountsItems(opts)
         row(_("Photos"), "Immich", "immichSettingsItems", "wallpaper"),
         opts.wifi and iconFile({ text = _("House"), mandatory = "Home Assistant", sub_item_table_func = page("houseSettingsItems") },
             "tab_house", opts.plugin_root) or nil,
+        opts.wifi and iconFile({ text = _("Recipes"), mandatory = "Mealie", sub_item_table_func = page("recipesSettingsItems") },
+            "tab_recipes", opts.plugin_root) or nil,
         -- GZreader: the daily paper (its feeds, fetched once a day; read on Home: the owner, 2026-11-18)
         row(_("Daily paper"), _("Feeds"), "dailySettingsItems", "history"),
-    }, 8)
+    }, 9)
 end
 
 --- Software update's value: the version waiting, if one is known.

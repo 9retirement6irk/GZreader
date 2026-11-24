@@ -16,6 +16,7 @@ the Nook 1st Edition and Nook Simple Touch.
 | [Immich](https://immich.app) | your photos as the sleep screen and wallpaper, and in notes |
 | CalDAV and calendar links (Nextcloud, Radicale, Baïkal, any `.ics` link) | your calendars |
 | [Home Assistant](https://www.home-assistant.io) | lights, switches and the weather on the House tab |
+| [Mealie](https://mealie.io) | your recipes on the Recipes tab |
 
 Every connection is optional: without any server it's still a reader you can
 send books to from your browser, and each one you connect adds its part. The
@@ -39,7 +40,7 @@ name is where it started: Grimmory + ZenOS + KOReader.
 - [Grimmory library](Grimmory-Library) and [Grimmory sync](Grimmory-Sync): browsing, downloads, progress, bookmarks, highlights
 - [BookOrbit](BookOrbit): BookOrbit as the book server instead of Grimmory (browse and download so far)
 - [Home and bookshelves](Home-and-Bookshelves), [Picture books](Picture-Books)
-- [Notes](Notes) (and drawing), [Calendar](Calendar), [Music](Music), [Audiobooks and read aloud](Audiobooks-and-Read-Aloud), [Bluetooth](Bluetooth), [House](House) (Home Assistant)
+- [Notes](Notes) (and drawing), [Calendar](Calendar), [Music](Music), [Audiobooks and read aloud](Audiobooks-and-Read-Aloud), [Bluetooth](Bluetooth), [House](House) (Home Assistant), [Recipes](Recipes) (Mealie)
 - [Sync with a computer](Sync-with-a-Computer) (Kindles without Wi‑Fi), [Wi‑Fi: on, off, auto](Wi-Fi)
 - [Updates and test builds](Updates-and-Test-Builds), [Privacy and diagnostics](Privacy-and-Diagnostics)
 - Kobos: [Kobo](Kobo); Nooks: [Nook 1st Edition](Nook-1st-Edition), [Nook Simple Touch](Nook-Simple-Touch)
