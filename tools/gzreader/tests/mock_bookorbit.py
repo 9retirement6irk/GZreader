@@ -629,7 +629,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             d = self.body()
             pg = isinstance(d, dict) and d.get("pagination")
-            if not isinstance(pg, dict) or not isinstance(pg.get("page"), int) or not isinstance(pg.get("size"), int) \
+            if not isinstance(pg, dict) or not isinstance(pg.get("page"), int) or not isinstance(pg.get("size"), int) or pg["page"] < 0 \
                     or not isinstance(d.get("sort"), list):
                 return self.error(400, "sort and pagination are required")
             rules = (d.get("filter") or {}).get("rules") or []
@@ -646,7 +646,7 @@ class Handler(BaseHTTPRequestHandler):
                 found.append(audio_card(ab))
             if d["sort"] and isinstance(d["sort"][0], dict) and d["sort"][0].get("dir") == "desc":
                 found.reverse()
-            items = found[(pg["page"] - 1) * pg["size"]:pg["page"] * pg["size"]]
+            items = found[pg["page"] * pg["size"]:(pg["page"] + 1) * pg["size"]]  # (pages from 0, as the real one)
             return self.send(201, {"items": items, "total": len(found), "page": pg["page"], "size": pg["size"]})
         m = re.match(r"^dashboard/scrollers/([a-z-]+)$", p)
         if m and method == "GET":

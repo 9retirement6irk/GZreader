@@ -16541,6 +16541,13 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
         and abs.content[1].primaryFileType == "AUDIOBOOK" and abs.content[1].authors[1] == "Ada Marsh" and abs.content[2].id == "a102"
         and abs.content[2].narrators[2] == "Sam Lee", "the audiobooks list: each under its own id (a…), so an ebook with the same BookOrbit id stays apart")
     check(#plugin.api:listBooks{ page = 0, size = 20, fileType = { "AUDIOBOOK" }, search = "short" }.content == 1, "searching the audiobooks")
+    -- (BookOrbit counts pages from 0: one a page, each audiobook once, none left out)
+    local p0 = plugin.api:listBooks{ page = 0, size = 1, sort = "title", dir = "asc", fileType = { "AUDIOBOOK" } }
+    local p1 = plugin.api:listBooks{ page = 1, size = 1, sort = "title", dir = "asc", fileType = { "AUDIOBOOK" } }
+    check(p0 and p1 and #p0.content == 1 and #p1.content == 1 and p0.content[1].id == "a201" and p1.content[1].id == "a102"
+        and p0.totalPages == 2 and p0.hasNext and not p1.hasNext, "the audiobooks a page at a time: the first page is the first audiobooks")
+    local every = require("gzreader_browser").fetchAllAudiobooks({ api = plugin.api })
+    check(every and every.total == 2, "every audiobook for Authors and Series (none skipped)")
     check(#plugin.api:listBooks{ page = 0, size = 50, fileType = plugin.api.READABLE_TYPES }.content == 5, "the books list is unchanged")
     local AB = require("gzreader_audiobook")
     local info = plugin.api:audiobookInfo("a201")

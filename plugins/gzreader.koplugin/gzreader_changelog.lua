@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "BookOrbit: every audiobook in the Catalog", text = "With BookOrbit, the Catalog's Audiobooks page left out the first 50 audiobooks (in title order), and Authors and Series missed them too: GZreader asked BookOrbit for its pages counting from 1, and BookOrbit counts from 0. Every audiobook now shows, including books that have both an ebook and audio files." },
+        },
+    },
+    {
         version = "2026.11.22",
         changes = {
             { short = "Colour Kindles: Immich photos in colour", text = "On a Kindle Colorsoft or Scribe Colorsoft, the pictures from your Immich album (the sleep screen and the Home wallpaper) are kept in colour instead of being made grey. Pictures already on the Kindle stay grey until they are swapped for others from the album (about half each time GZreader gets new pictures)." },
