@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Quick panel: your order, and tiles of your own", text = "Settings → Home and tabs → Quick panel has two new rows. Arrange tiles puts each group's tiles in the order you like (the letters on Kindles with keys follow). Your tiles adds up to ten tiles of your own in a third group: a plugin's screen (the way to open a plugin you added to GZreader) or any of KOReader's own menus, at Home or in a book." },
+        },
+    },
+    {
         version = "2026.11.22",
         changes = {
             { short = "Colour Kindles: Immich photos in colour", text = "On a Kindle Colorsoft or Scribe Colorsoft, the pictures from your Immich album (the sleep screen and the Home wallpaper) are kept in colour instead of being made grey. Pictures already on the Kindle stay grey until they are swapped for others from the album (about half each time GZreader gets new pictures)." },

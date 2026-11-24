@@ -2795,8 +2795,76 @@ do
     local item = Panel.settingsItem()
     local subs = {}
     for _i, s in ipairs(item.sub_item_table) do subs[#subs + 1] = s.text end
-    check(item.text == "Quick panel" and table.concat(subs, "|") == "Controls|Home|This book|Show every tile",
-        "the settings: Quick panel → Controls, Home, This book, Show every tile… " .. table.concat(subs, "|"))
+    for i, sub in ipairs(item.sub_item_table) do if not sub.text and sub.text_func then subs[i] = sub.text_func() end end
+    check(item.text == "Quick panel" and table.concat(subs, "|") == "Controls|Home|This book|Show every tile|Arrange tiles|Your tiles",
+        "the settings: Quick panel → Controls, Home, This book, Show every tile, Arrange tiles, Your tiles… " .. table.concat(subs, "|"))
+    ;(function() -- the tiles in your order, and tiles of your own (gzreader_panelcustom.lua)
+        local Custom = require("gzreader_panelcustom")
+        local function ids(list) local t = {}; for _i, x in ipairs(list) do t[#t + 1] = x.id end; return table.concat(t, ",") end
+        local list = { { id = "a" }, { id = "b" }, { id = "c" }, { id = "d" } }
+        check(ids(Custom.ordered("nogroup", list)) == "a,b,c,d", "arrange: no order saved, the usual one")
+        Custom.setOrder("home", { "history", "search", "gone" })
+        local home = ids(Panel.homeTiles(hplug, nil))
+        check(home:match("^history,search,") and not home:match("gone") and home:match(",continue") ~= nil,
+            "arrange: Home's tiles in the order chosen, the others after them in their usual order (" .. home .. ")")
+        check(ids(Panel.controls(hplug)):match("^wifi") ~= nil, "…the other groups as they were")
+        local arr = item.sub_item_table[5].sub_item_table
+        local names = {}
+        for _i, r in ipairs(arr) do names[#names + 1] = r.text end
+        check(table.concat(names, "|") == "Controls|Home|This book|Your tiles|Back to the usual order", "Arrange tiles: a row a group, and the usual order back")
+        local Sort = package.loaded["ui/widget/sortwidget"]
+        local shown_sort
+        package.loaded["ui/widget/sortwidget"] = { new = function(_s, o) shown_sort = o; return o end }
+        arr[2].callback()
+        local first = shown_sort and shown_sort.item_table[1]
+        check(first and first.id == "history" and shown_sort.item_table[2].id == "search", "Arrange → Home: KOReader's arrange window, the tiles in their order now")
+        if shown_sort then
+            shown_sort.item_table[1], shown_sort.item_table[2] = shown_sort.item_table[2], shown_sort.item_table[1]
+            shown_sort.callback()
+        end
+        package.loaded["ui/widget/sortwidget"] = Sort
+        check(ids(Panel.homeTiles(hplug, nil)):match("^search,history,") ~= nil, "…saved when it's accepted")
+        arr[#arr].callback()
+        check(G_reader_settings:readSetting("gzreader_panel_order") == nil and not ids(Panel.homeTiles(hplug, nil)):match("^search,history"),
+            "Back to the usual order")
+        -- your own tiles: a plugin's screen and one of KOReader's menus (ZenOS's scanners, stood in for here)
+        local opened = {}
+        local kept_p, kept_m = package.loaded["modules/menu/app_launcher/plugin_scan"], package.loaded["modules/menu/app_launcher/native_menu"]
+        package.loaded["modules/menu/app_launcher/plugin_scan"] = {
+            scan = function() return { { key = "gzreader", method = "open", title = "GZreader" }, { key = "chess", method = "open", title = "Chess" } } end,
+            exists = function(key) return key == "chess" end,
+            resolve = function(key) return function() opened[#opened + 1] = "plugin:" .. key end end,
+        }
+        package.loaded["modules/menu/app_launcher/native_menu"] = {
+            scan = function(scope) return scope == "filemanager" and { { id = "tools", title = "Tools", indent_level = 0 } } or {} end,
+            exists = function(id, scope) return id == "tools" and scope == "filemanager" end,
+            resolve = function(id) return function() opened[#opened + 1] = "menu:" .. id end end,
+        }
+        local pc = Custom.pluginChoices()
+        check(#pc == 1 and pc[1].key == "chess" and pc[1].label == "Chess", "your tiles: the plugins with a screen are offered, GZreader's own aside")
+        check(#Custom.tiles() == 0, "…none to begin with")
+        check(Custom.add(pc[1]) == true and select(2, Custom.add({ kind = "plugin", key = "chess", method = "open", label = "Chess" })) == "there",
+            "a plugin's screen added once")
+        Custom.add(Custom.menuChoices("filemanager")[1])
+        Custom.add({ kind = "menu", menu = "typeset", scope = "reader", label = "Typeset" })
+        local tiles = Custom.tiles()
+        check(#Custom.own() == 3 and #tiles == 2 and tiles[1].label == "Chess" and tiles[2].label == "Tools",
+            "…a tile shows where it can open (a book's menu isn't on the panel at Home)")
+        tiles[1].run(); tiles[2].run()
+        check(table.concat(opened, ",") == "plugin:chess,menu:tools", "…and opens the plugin's screen, or the menu")
+        Custom.setOrder("own", { tiles[2].id, tiles[1].id })
+        check(Custom.tiles()[1].label == "Tools", "…in the order you put them")
+        check(table.concat(Panel.ownKeys(14), "") == "NM" and Panel.ownKeys(3)[1] == "F", "…their letters: the keys the second group leaves")
+        for i = 1, Custom.MAX do Custom.add({ kind = "menu", menu = "m" .. i, label = "M" .. i }) end
+        check(#Custom.own() == Custom.MAX and select(2, Custom.add({ kind = "menu", menu = "more", label = "More" })) == "full", "…at most ten")
+        local own_rows = item.sub_item_table[6].sub_item_table_func()
+        check(own_rows[1].text_func() == "Take off: Chess" and own_rows[#own_rows].text == "Add one of KOReader's menus (in a book)",
+            "Your tiles in Settings: the ones there to take off, then what can be added")
+        own_rows[1].callback()
+        check(Custom.own()[1].label ~= "Chess" and own_rows[1].enabled_func() == false, "…a tap takes one off")
+        G_reader_settings:delSetting("gzreader_panel_own"); Custom.resetOrder()
+        package.loaded["modules/menu/app_launcher/plugin_scan"], package.loaded["modules/menu/app_launcher/native_menu"] = kept_p, kept_m
+    end)()
     local function row(group_i, label)
         for _i, r in ipairs(item.sub_item_table[group_i].sub_item_table) do
             if r.text == label or r.text:match("^" .. label:gsub("%-", "%%-") .. " %(") then return r end

@@ -31,6 +31,8 @@ Touch Kindles with sound (the Kindle Touch; Bluetooth Kindles) get a volume
 slider under those: TTS.volume, the speaker's 0 to 15 or the Kindle's
 Bluetooth volume 1 to 8 (the Kindle 2, 3 and DX: their volume buttons).
 
+Settings → Home and tabs → Quick panel also puts the tiles in your order and
+adds tiles of your own, a third group (gzreader_panelcustom.lua).
 Settings → Home and tabs → Quick panel shows or hides each tile (Panel.CATALOG;
 the hidden ones in G_reader_settings "gzreader_panel_hidden", as
 "<group>:<id>"). Home, Settings and Exit to Kindle are always there; a group
@@ -88,6 +90,14 @@ function Panel.columns(sw, pad, gap, keys, dev)
     local max_w = math.floor(dev.display_dpi * Panel.TILE_MAX_IN)
     local fit = math.ceil((sw - 2 * pad + gap) / (max_w + gap)) -- (enough for none to be wider)
     return math.max(cols, math.min(fit, Panel.MAX_COLUMNS))
+end
+
+--- The letters for your own tiles: the second group's keys it doesn't use
+--- (it has `used` tiles), so no key means two tiles.
+function Panel.ownKeys(used)
+    local out = {}
+    for i = (used or 0) + 1, #Panel.SECOND_KEYS do out[#out + 1] = Panel.SECOND_KEYS[i] end
+    return out
 end
 
 local root = (debug.getinfo(1, "S").source or ""):match("^@(.*)/[^/]+$") or "plugins/gzreader.koplugin"
@@ -254,13 +264,14 @@ end
 
 function Panel.showAll() G_reader_settings:delSetting(HIDDEN_KEY) end
 
---- The tiles of a group the user hasn't hidden.
+--- The tiles of a group the user hasn't hidden, in the order they chose
+--- (Settings → Quick panel → Arrange tiles: gzreader_panelcustom.lua).
 local function shown(group, list)
     local out = {}
     for _i, t in ipairs(list) do
         if not t.id or Panel.isShown(group, t.id) then out[#out + 1] = t end
     end
-    return out
+    return require("gzreader_panelcustom").ordered(group, out)
 end
 
 --- Settings → Home and tabs → Quick panel: a tick per tile, by group.
@@ -323,6 +334,17 @@ function Panel.settingsItem()
         groups[#groups + 1] = { text = g.title, sub_item_table = items }
     end
     groups[#groups].separator = true
+    local Custom = require("gzreader_panelcustom")
+    local arrange = {}
+    for gi, g in ipairs(Panel.catalog()) do
+        arrange[#arrange + 1] = { id = g.id, title = g.title, tiles = function()
+            local out = {}
+            for _j, t in ipairs(Panel.catalog()[gi].tiles) do
+                if not t.available or t.available() then out[#out + 1] = { id = t.id, label = t.label } end
+            end
+            return out
+        end }
+    end
     groups[#groups + 1] = {
         text = _("Show every tile"),
         keep_menu_open = true,
@@ -333,10 +355,13 @@ function Panel.settingsItem()
                 UIManager:show(require("ui/widget/infomessage"):new{ text = _("Every tile is back on the quick panel."), timeout = 2 })
             end)
         end,
+        separator = true,
     }
+    groups[#groups + 1] = Custom.arrangeItem(arrange)
+    groups[#groups + 1] = Custom.ownItem()
     return {
         text = _("Quick panel"),
-        help_text = _("How the quick panel opens (touch Kindles: a tap at the top, a swipe down; the Menu key on the others) and its tiles. Home, Settings and Exit to Kindle are always there. Hidden tiles' letters go to the tiles after them."),
+        help_text = _("How the quick panel opens (touch Kindles: a tap at the top, a swipe down; the Menu key on the others) and its tiles: which show, their order, and tiles of your own (a plugin's screen, one of KOReader's menus). Home, Settings and Exit to Kindle are always there. Hidden tiles' letters go to the tiles after them."),
         sub_item_table = groups,
     }
 end
@@ -610,7 +635,9 @@ function PanelWidget:init()
     -- (a group with every tile hidden in Settings isn't drawn)
     local groups = {}
     for _i, g in ipairs({ { title = _("Controls"), tiles = self.controls, letters = Panel.TOP_KEYS },
-        { title = self.section_title, tiles = self.section, letters = Panel.SECOND_KEYS } }) do
+        { title = self.section_title, tiles = self.section, letters = Panel.SECOND_KEYS },
+        -- (your own tiles: the keys the second group leaves, from the end of its row)
+        { title = _("Your tiles"), tiles = self.own or {}, letters = Panel.ownKeys(#(self.section or {})) } }) do
         if #g.tiles > 0 then groups[#groups + 1] = g end
     end
     local light = Device:hasFrontlight() and Device:isTouchDevice()
@@ -1100,7 +1127,8 @@ function Panel.show(plugin)
         local okh, book = pcall(HomeMenu.highlighted)
         section, title, id = Panel.homeTiles(plugin, okh and book or nil), _("Home"), "home"
     end
-    local w = PanelWidget:new{ controls = Panel.controls(plugin), section = section, section_title = title, section_id = id }
+    local w = PanelWidget:new{ controls = Panel.controls(plugin), section = section, section_title = title, section_id = id,
+        own = require("gzreader_panelcustom").tiles() }
     Panel.open = w
     UIManager:show(w)
     return true
