@@ -8,7 +8,7 @@ What works with BookOrbit today:
 |---|---|
 | Browse the Catalog: all books, libraries, collections (as shelves), SmartScopes (as magic shelves), authors, series, search | yes |
 | Covers | yes |
-| Download books (EPUB, PDF and the other formats the Kindle opens) | yes |
+| Download books (EPUB, PDF and the other formats the Kindle opens), with the book's size and time left once it starts (a read-aloud EPUB sent text-only shows only how much has come: BookOrbit makes that copy as it sends it) | yes |
 | Auto-download a shelf (a BookOrbit collection) | yes |
 | Reading progress, both ways (the exact page; BookOrbit converts it for its web reader) | yes |
 | Books already on the Kindle matched to BookOrbit's (by the file's fingerprint) | yes |

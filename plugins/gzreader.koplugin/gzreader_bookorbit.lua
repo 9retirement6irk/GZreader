@@ -729,6 +729,9 @@ function BookOrbit:downloadToFile(book_id, path, _resume)
     if not d then return false, err end
     local f = BookOrbit.pickFile(d)
     if not f then return false, "bookorbit_no_file" end
+    -- (its size for the progress: BookOrbit's lists have none. A read-aloud EPUB sent
+    -- text-only has none here either: it's made as it's sent)
+    if n(f.sizeBytes) then require("gzreader_download").noteSize(path, f.sizeBytes) end
     local fh, ferr = io.open(path, "wb")
     if not fh then return false, ferr end
     local headers = self:authHeaders()

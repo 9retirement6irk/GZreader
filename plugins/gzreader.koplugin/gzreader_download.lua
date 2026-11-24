@@ -71,6 +71,26 @@ local function mb(bytes)
     return string.format("%.1f MB", (bytes or 0) / (1024 * 1024))
 end
 
+--- When a book's size isn't in the list it came from (BookOrbit's lists have no
+--- sizes), the download says it once it knows: written in the download's own
+--- process beside the part, read by the progress here.
+function Download.sizePath(part) return part .. ".size" end
+
+function Download.noteSize(part, bytes)
+    bytes = tonumber(bytes)
+    if not (bytes and bytes > 0) then return end
+    local f = io.open(Download.sizePath(part), "wb")
+    if f then f:write(string.format("%d", bytes)); f:close() end
+end
+
+function Download.readSize(part)
+    local f = io.open(Download.sizePath(part), "rb")
+    if not f then return nil end
+    local v = tonumber(f:read("*a"))
+    f:close()
+    return v and v > 0 and v or nil
+end
+
 --- Start downloading `book` to `dest_path`.
 --- on_done(ok, err, opened_by_user) is called on the UI thread when finished.
 function Download.start(plugin, book, dest_path, on_done, from_queue, token_ready)
@@ -109,6 +129,7 @@ function Download.start(plugin, book, dest_path, on_done, from_queue, token_read
     local resume_from = lfs.attributes(part, "size") or 0
     local expected = tonumber(book.fileSizeKb) and tonumber(book.fileSizeKb) * 1024 or nil
     if expected and expected <= 0 then expected = nil end
+    os.remove(Download.sizePath(part)) -- (one left from before: this download says it again)
 
     Log.info("download start", "book=" .. tostring(book.id), "expected=" .. tostring(expected), "->", dest_path,
         resume_from > 0 and ("continuing after " .. mb(resume_from)) or "")
@@ -173,6 +194,7 @@ function Download.start(plugin, book, dest_path, on_done, from_queue, token_read
         Awake.release(job)
         UIManager:unschedule(job.poll)
         closeDialog()
+        os.remove(Download.sizePath(part))
         local took = math.floor(secs() - job.started + 0.5)
         if job.yields > 0 then
             Log.info("download book=" .. tostring(book.id), "waited", job.yielded_s, "s for", job.yields, "other request(s)")
@@ -269,6 +291,15 @@ function Download.start(plugin, book, dest_path, on_done, from_queue, token_read
     job.poll = function()
         if job.finished then return end
         local size = lfs.attributes(part, "size") or 0
+        if not expected then
+            -- the size, from the download itself (not in the list the book came from)
+            local said = Download.readSize(part)
+            if said then
+                expected, job.expected = said, said
+                Log.info("download book=" .. tostring(book.id), "size from the server:", mb(said))
+                if dialog then closeDialog(); openDialog() end -- (now with the bar and "of …")
+            end
+        end
         if size ~= job.last_size then
             job.last_size, job.last_change = size, secs()
         end

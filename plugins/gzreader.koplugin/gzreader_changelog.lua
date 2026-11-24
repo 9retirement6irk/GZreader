@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "BookOrbit: a download's size shows", text = "Downloading a book from BookOrbit showed only how much had come, with no bar, total or time left: BookOrbit's lists don't give a book's size. The download now tells the progress the size as soon as it knows it, so you see the bar, \"of …\" and the time left. (A read-aloud EPUB that BookOrbit sends text-only still shows only how much has come, because BookOrbit makes that copy as it sends it.)" },
+        },
+    },
+    {
         version = "2026.11.22",
         changes = {
             { short = "Colour Kindles: Immich photos in colour", text = "On a Kindle Colorsoft or Scribe Colorsoft, the pictures from your Immich album (the sleep screen and the Home wallpaper) are kept in colour instead of being made grey. Pictures already on the Kindle stay grey until they are swapped for others from the album (about half each time GZreader gets new pictures)." },
