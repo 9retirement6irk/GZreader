@@ -130,6 +130,36 @@ thermostat's icon is orange while it heats and blue while it cools.
 On the wall that's the dimmer's indicator lights or the toggle's pilot lamp
 and the thermostat's scale, and a thermometer's column is red.
 
+### The controls in the Bookshelf view
+
+<img src="https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/pw-house-panel-dimmer.png" alt="A dimmer's panel" width="250"> <img src="https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/pw-house-panel-thermostat.png" alt="A thermostat's panel" width="250"> <img src="https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/pw-house-panel-speaker.png" alt="A speaker's panel" width="250">
+
+In the Bookshelf view a dimmable light, a thermostat and a speaker open as
+a panel drawn like the device. It does what the buttons described here do,
+stays open, and shows what changed after each press. A tap outside it, **×**
+or Back closes it.
+
+- **Dimmer**: ten indicator lights, 10% at the bottom to 100% at the top,
+  lit up to the light's level. Tap one to set that level. Beside them a
+  rocker (**On** over **Off**, the half that's pressed sunk), **−** and
+  **+** for a step of ten, and for a bulb that takes a colour its eight
+  colours as round gels (the one it has ringed).
+- **Thermostat**: its dial with the target in the middle, round **−** and
+  **+** keys either side, what it reads now under it, and its modes on a
+  slide switch with the one it's in pressed in.
+- **Speaker, TV**: a display with the song, the artist and the volume;
+  the transport keys; the volume as ten lights between **−** and **+**
+  (tap a light for that level); **Mute**, **Shuffle** and **Repeat** with a
+  lamp each that is lit when on; **Music…** and the power key. Only what
+  the player can do is there.
+
+On a Kindle with a keyboard each key carries a letter, and the 5-way moves
+a frame from control to control (that's how to reach the indicator lights);
+Press presses what's framed.
+
+The lock's and garage door's question, and Music Assistant's lists, look as
+they do in the other views.
+
 ### Speakers and TVs
 
 <img src="https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/pw-house-speaker.png" alt="A speaker's buttons" width="300">

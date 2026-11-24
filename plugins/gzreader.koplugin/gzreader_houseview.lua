@@ -729,6 +729,9 @@ local function art(fit, w, h)
     return rendered[key] or nil
 end
 
+--- A drawing rendered w x h (kept until the tab closes), or nil.
+View.artImage = art
+
 ---------------------------------------------------------------- the page
 
 local Page = WidgetContainer:extend{ w = 0, h = 0 }

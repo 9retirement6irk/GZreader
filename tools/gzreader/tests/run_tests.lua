@@ -1059,6 +1059,140 @@ print("House tab in the Bookshelf view: the rooms as a wall (where things go, th
     Shop.bookshelf = was_shelf
 end)()
 
+print("House tab in the Bookshelf view: a device's controls as a panel (the dimmer, the thermostat, the speaker)")
+;(function()
+    local HA = require("gzreader_homeassistant")
+    local saved_w = {}
+    local widget_mods = { "ui/widget/container/inputcontainer", "ui/widget/container/widgetcontainer", "ui/gesturerange", "ui/font", "ffi/blitbuffer" }
+    for _i, wm in ipairs(widget_mods) do
+        saved_w[wm] = package.loaded[wm]
+        if type(saved_w[wm]) ~= "table" then package.loaded[wm] = setmetatable({ extend = function(_s, o) return o or {} end }, { __index = function() return function() end end }) end
+    end
+    local Panel = require("gzreader_housepanel")
+    local Shop = require("gzreader_bookshop")
+    require("gzreader_houseview")
+    for _i, wm in ipairs(widget_mods) do package.loaded[wm] = saved_w[wm] end
+    local function ids(P, kind)
+        local t = {}
+        for _i, c in ipairs(P.controls) do if not kind or c.kind == kind then t[#t + 1] = c.id end end
+        return table.concat(t, ",")
+    end
+    local function get(P, id) for i, c in ipairs(P.controls) do if c.id == id then return c, i end end end
+    local function lit(P) local n = 0 for _i, c in ipairs(P.controls) do if c.kind == "seg" and c.lit then n = n + 1 end end return n end
+
+    -- the dimmer
+    local lamp = HA.entity({ i = "light.x", s = "on", n = "Lamp", b = 204, d = true })
+    local P = Panel.spec("light", lamp, { label = "Lamp" })
+    check(P.title == "Lamp" and P.state == "On · 80%" and P.w == 420 and P.h == 364
+        and ids(P) == "level100,level90,level80,level70,level60,level50,level40,level30,level20,level10,on,off,down,up",
+        "a dimmer's panel: ten lights for its levels, the rocker (On over Off), − and + (" .. ids(P) .. ")")
+    check(lit(P) == 8 and get(P, "level80").lit and not get(P, "level90").lit and get(P, "level60").act[1] == "brightness" and get(P, "level60").act[2] == 60
+        and get(P, "level100").y < get(P, "level10").y and get(P, "level30").label == "30%",
+        "a dimmer at 80%: eight lights lit, from the bottom; a light is that level to press")
+    check(get(P, "on").on == true and get(P, "off").on == false and get(P, "on").act[1] == "on" and get(P, "off").act[1] == "off"
+        and get(P, "down").act[2] == 70 and get(P, "up").act[2] == 90 and not get(P, "down").dim and not get(P, "up").dim,
+        "a dimmer that's on: On is the half pressed in; − and + are a step of ten")
+    local dark = Panel.spec("light", HA.entity({ i = "light.x", s = "off", b = 204, d = true }), {})
+    local full = Panel.spec("light", HA.entity({ i = "light.x", s = "on", b = 255, d = true }), {})
+    check(lit(dark) == 0 and get(dark, "off").on == true and get(dark, "down").dim == true and get(dark, "up").act[2] == 10
+        and get(full, "up").dim == true and lit(full) == 10 and lit(Panel.spec("light", HA.entity({ i = "light.x", s = "on", b = 1, d = true }), {})) == 1,
+        "a dimmer that's off: no lights lit, Off pressed in, − can't be pressed and + starts at 10%; at 100% + can't be")
+    local bulb = Panel.spec("light", HA.entity({ i = "light.c", s = "on", b = 128, d = true, cm = true, rgb = { 10, 132, 255 } }), {})
+    check(bulb.h == 440 and ids(bulb, "swatch") == "color1,color2,color3,color4,color5,color6,color7,color8" and get(bulb, "color6").on == true
+        and get(bulb, "color1").on == false and get(bulb, "color6").act[1] == "color" and get(bulb, "color6").act[2] == "#0a84ff" and get(bulb, "color2").label == "Red",
+        "a bulb that takes a colour: eight gels under the dimmer, the one it has ringed")
+
+    -- the thermostat
+    local th = HA.entity({ i = "climate.t", s = "heat", n = "Thermostat", g = 21, t = 20.5, a = "heating", lo = 7, hi = 35, hm = { "heat", "cool", "off" } })
+    local C = Panel.spec("climate", th, { label = "Thermostat" })
+    check(ids(C) == "dial,cooler,warmer,now,track,mode_heat,mode_cool,mode_off" and get(C, "dial").text == "21°" and get(C, "dial").fit.key:match("^thermostat%-")
+        and get(C, "cooler").act[1] == "target" and get(C, "cooler").act[2] < 21 and get(C, "warmer").act[2] > 21 and get(C, "cooler").round
+        and get(C, "now").label == "20.5° now · heating" and C.h == 416,
+        "a thermostat's panel: its dial with the target, round − and + keys, what it reads now, its modes (" .. ids(C) .. ")")
+    check(get(C, "mode_heat").on == true and get(C, "mode_cool").on == false and get(C, "mode_off").act[1] == "mode" and get(C, "mode_off").act[2] == "off"
+        and get(C, "mode_heat").x < get(C, "mode_cool").x and get(C, "mode_cool").x < get(C, "mode_off").x,
+        "a thermostat's modes on a slide switch: the one it's in pressed in")
+    local bare = Panel.spec("climate", HA.entity({ i = "climate.b", s = "off", t = 19 }), {})
+    check(ids(bare) == "dial,cooler,warmer,now" and bare.h == 352 and get(bare, "cooler").dim == true and get(bare, "warmer").dim == true and get(bare, "dial").text == "–",
+        "a thermostat without a target or modes: the dial and what it reads; − and + can't be pressed")
+
+    -- the speaker
+    local sp = HA.entity({ i = "media_player.s", s = "paused", n = "Speaker", v = 0.3, mu = false, sh = false, rp = "off", mt = "Blue in Green",
+        ar = "Example Quartet", sf = 8322623, ap = "music_assistant", ce = "entry" })
+    local M = Panel.spec("media", sp, { label = "Speaker", touch = true })
+    check(ids(M) == "close,display,previous,play_pause,next,quieter,volume10,volume20,volume30,volume40,volume50,volume60,volume70,volume80,volume90,volume100,louder,mute,shuffle,repeat,music"
+        and M.h == 430, "a speaker's panel: a display, the transport keys, the volume as ten lights between − and +, mute, shuffle, repeat, music (× on a touch screen) (" .. ids(M) .. ")")
+    local disp = get(M, "display")
+    check(disp.lines[1] == "Blue in Green" and disp.lines[2] == "Example Quartet" and disp.foot == "Paused · Volume 30%" and lit(M) == 3
+        and get(M, "play_pause").sym == "play" and get(M, "volume50").act[2] == 50 and get(M, "quieter").act[2] == 25 and get(M, "louder").act[2] == 35
+        and get(M, "mute").lamp == false and get(M, "shuffle").lamp == false and get(M, "repeat").lamp == false and get(M, "repeat").label == "Repeat"
+        and get(M, "music").open == "music" and get(M, "music").w == 364 and get(M, "close").open == "close",
+        "a speaker, paused at 30%: the song and artist in the display, three lights lit, Play on the middle key, the lamps out")
+    local busy = Panel.spec("media", HA.entity({ i = "media_player.s", s = "playing", v = 0.74, mu = true, sh = true, rp = "one", mt = "Song", sf = 8322623 }), {})
+    check(get(busy, "play_pause").sym == "pause" and lit(busy) == 7 and get(busy, "mute").lamp == true and get(busy, "shuffle").lamp == true
+        and get(busy, "repeat").lamp == true and get(busy, "repeat").label == "Repeat one" and get(busy, "display").foot == "Playing · Volume 74% · muted"
+        and get(busy, "music") == nil and get(busy, "close") == nil,
+        "a speaker playing, muted, shuffled, repeating one: Pause on the key, the lamps lit; no Music… when it isn't Music Assistant's")
+    local tv = Panel.spec("media", HA.entity({ i = "media_player.t", s = "off", n = "TV", c = "tv", sf = 384 }), {})
+    check(ids(tv) == "display,power" and get(tv, "power").act[1] == "media_on" and get(tv, "power").label == "Turn on" and get(tv, "power").y == 158
+        and tv.h == 226 and get(tv, "display").foot == "Off" and get(tv, "display").lines[1] == nil
+        and get(Panel.spec("media", HA.entity({ i = "media_player.t", s = "on", sf = 384 }), {}), "power").act[1] == "media_off",
+        "a TV that only switches: its display and the power key, the panel no taller than that")
+    local steps = Panel.spec("media", HA.entity({ i = "media_player.t", s = "on", sf = 1024 + 8 }), {})
+    check(ids(steps) == "display,quieter,louder,mute" and get(steps, "quieter").act[1] == "volume_down" and get(steps, "louder").label == "Louder"
+        and get(steps, "quieter").y == 158, "a player whose volume only steps: Quieter and Louder")
+
+    -- letters, the 5-way, a tap
+    local by = Panel.letters(M)
+    check(by.Q == get(M, "previous") and by.W == get(M, "play_pause") and by.E == get(M, "next") and by.R == get(M, "quieter") and by.T == get(M, "louder")
+        and by.Y == get(M, "mute") and by.U == get(M, "shuffle") and by.I == get(M, "repeat") and by.O == get(M, "music") and by.P == nil
+        and get(M, "volume30").letter == nil and get(M, "close").letter == nil and get(M, "display").letter == nil,
+        "a panel's letters: its keys in order (not the lights of a ladder, the display or ×)")
+    local function go(Pn, from, dir) return Pn.controls[Panel.move(Pn, (select(2, get(Pn, from))), dir)].id end
+    check(M.controls[Panel.move(M, nil, "down")].id == "previous" and go(M, "previous", "right") == "play_pause" and go(M, "play_pause", "right") == "next"
+        and go(M, "next", "right") == "next" and go(M, "previous", "down") == "quieter" and go(M, "quieter", "right") == "volume10"
+        and go(M, "volume10", "right") == "volume20" and go(M, "volume100", "right") == "louder" and go(M, "volume20", "left") == "volume10"
+        and go(M, "mute", "down") == "music" and go(M, "music", "up") ~= "music" and go(M, "previous", "left") == "previous",
+        "the 5-way moves the frame to the nearest control that way (and stays when there is none); it starts on the first key")
+    check(go(P, "level50", "up") == "level60" and go(P, "level50", "down") == "level40" and go(P, "level50", "right") ~= "level50"
+        and go(P, "on", "down") == "off" and go(P, "off", "down"):match("^[du]") and go(dark, "up", "left") ~= "down",
+        "the 5-way on a dimmer: up and down its lights, across to the rocker; never onto a key that can't be pressed")
+    local c1 = Panel.at(M, 160, 180)
+    check(c1 == get(M, "play_pause") and Panel.at(M, 5, 5) == nil and Panel.at(M, 200, 100) == nil and Panel.at(dark, 200, 300) == nil
+        and Panel.pressable(get(dark, "down")) == false and Panel.pressable(get(M, "display")) == false and Panel.pressable(get(M, "music")) == true,
+        "a tap finds the control under it; the display, and a key that can't be pressed, take none")
+
+    -- pressing: what the window's button did
+    local ran, opened, closed = {}, nil, 0
+    local tab = { run = function(_t, e, what, arg, after) ran[#ran + 1] = { e, what, arg, after } end, musicDialog = function(_t, e) opened = e end }
+    local w = { tab = tab, e = sp, P = M, onClose = function() closed = closed + 1; return true end }
+    local UIM = require("ui/uimanager")
+    local was_close = UIM.close
+    UIM.close = function() closed = closed + 1 end
+    Panel.Widget.press(w, get(M, "volume50"))
+    Panel.Widget.press(w, get(M, "shuffle"))
+    Panel.Widget.press(w, get(dark, "down"))
+    check(#ran == 2 and ran[1][1] == sp and ran[1][2] == "volume" and ran[1][3] == 50 and ran[1][4] == nil and ran[2][2] == "shuffle" and closed == 0,
+        "pressing a control does what the window's button did (House:run), and the panel stays open; a key that can't be pressed does nothing")
+    Panel.Widget.press(w, get(M, "close"))
+    Panel.Widget.press(w, get(M, "music"))
+    check(closed == 2 and opened == sp and #ran == 2, "×: closed; Music…: the panel closes for Music Assistant's lists")
+    UIM.close = was_close
+
+    -- when: the Bookshelf view (the other views keep the windows of buttons)
+    local House = require("gzreader_house")
+    local was_shelf, was_show = Shop.bookshelf, Panel.show
+    local shelf, shown = true, {}
+    Shop.bookshelf = function() return shelf end
+    Panel.show = function(t, e, kind) shown[#shown + 1] = kind; return "panel" end
+    local fake = {}
+    check(Panel.wanted() == true and House.lightDialog(fake, lamp) == "panel" and House.climateDialog(fake, th) == "panel" and House.mediaDialog(fake, sp) == "panel"
+        and table.concat(shown, ",") == "light,climate,media", "in the Bookshelf view a dimmer, a thermostat and a speaker open their panel")
+    shelf = false
+    check(Panel.wanted() == false, "in the other views: the windows of buttons, as before")
+    Shop.bookshelf, Panel.show = was_shelf, was_show
+end)()
+
 print("House tab (Home Assistant): connecting, rooms, switching, Settings, the phone page")
 ;(function()
     local HA = require("gzreader_homeassistant")
