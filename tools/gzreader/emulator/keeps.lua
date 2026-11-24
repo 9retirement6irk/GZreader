@@ -63,7 +63,7 @@ local KINDLE_WORD -- "Kindle", or "Nook" on a Nook
 -- 1. the setup guide, then Home and its tabs
 add({ fn = function(E)
     KINDLE_WORD = (E.model == "nook" or E.model == "nst") and "Nook" or "Kindle"
-    local first = NO_WIFI[E.model] and "Sync with a computer" or "Set up from your browser"
+    local first = NO_WIFI[E.model] and "Sync with a computer" or "Set up GZreader"
     check(has(first), "setup guide opens on \"" .. first .. "\"")
     for i = #UIM()._window_stack, 1, -1 do
         local w = UIM()._window_stack[i].widget
