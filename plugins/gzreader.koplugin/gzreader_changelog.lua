@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Notes: scrolling follows the pen smoothly", text = "Dragging the Notes tab's long page (Layout → Scroll up and down) now follows the pen or finger smoothly, as the Kindle's own library does: the notes around the screen are drawn once when the drag starts, and each step only slides that picture along, about ten times a second, in quick black and white with pictures dithered into dots. Before, every step built and drew every note on the screen again, so it moved in jerks and pictures turned into black blotches. The notes are drawn properly when you lift the pen, as before." },
+        },
+    },
+    {
         version = "2026.11.22",
         changes = {
             { short = "Colour Kindles: Immich photos in colour", text = "On a Kindle Colorsoft or Scribe Colorsoft, the pictures from your Immich album (the sleep screen and the Home wallpaper) are kept in colour instead of being made grey. Pictures already on the Kindle stay grey until they are swapped for others from the album (about half each time GZreader gets new pictures)." },

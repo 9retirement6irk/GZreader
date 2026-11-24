@@ -58,8 +58,11 @@ end, after = 2 })
 add({ shot = "1-list-following", after = 0.2 })
 add({ fn = function(E)
     local b = N().board
-    E.mid = b._gz_y
-    check(b._gz_y >= 60 and b._gz_y <= 130, "the finger 120 px up and still down: the notes have followed (" .. b._gz_y .. " px)")
+    -- (shown from the drag's strip: the board's own place changes at the lift)
+    local shown = b._gz_pan and b._gz_pan.shown_y or b._gz_y
+    E.mid = shown
+    check(shown >= 60 and shown <= 130 and b._gz_pan and b._gz_pan.strip ~= nil,
+        "the finger 120 px up and still down: the notes have followed, slid from the strip drawn once (" .. shown .. " px)")
     E.fingerMove(W * 0.5, H * 0.75 - 200, 0.3)
     E.fingerMove(W * 0.5, H * 0.75 - 260, 0.9)
     E.fingerUp(2.5)

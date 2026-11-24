@@ -2009,6 +2009,7 @@ function Notes.Board:onSwipe(arg, ges)
         -- (a drag that ended as a swipe: from where the notes were when it began, not from where they followed to)
         local pan = self._gz_pan
         self._gz_pan = nil
+        self:dropStrip(pan)
         if pan and (pan.y0 ~= (self._gz_y or 0) or pan.rough) then self._gz_y = pan.y0; self._gz_moved = true end
         if self._gz_moved and not (d == "north" or d == "south" or d == "west" or d == "east") then
             self._gz_moved = nil
@@ -2037,6 +2038,98 @@ function Notes.Board:scrollTo(y)
     return self:scrollBy(y - (self._gz_y or 0))
 end
 
+--- Scrolling, while a drag lasts: the notes around the window drawn once,
+--- into a picture (a "strip"), which each step of the drag then only slides
+--- into the window and shows with the fast black-and-white refresh, dithered
+--- (pictures as dots, not black blotches). As the Kindle's own lists do: a
+--- step used to build and draw every note on the screen again, too slow to
+--- follow the pen (the owner's video IMG_0358, 2026-11-24). The notes are
+--- drawn properly where the pen lifts.
+Notes.STRIP = { MARGIN = 0.5, INTERVAL = 0.09, MIN_STEP = 6 }
+
+local function LiveScrollRefresh() return require("gzreader_livescroll").STEP_REFRESH end
+
+--- LiveScroll.step with the strip's own (quicker) rule, or LiveScroll's.
+function Notes.stripStep(state, rel, now, rule)
+    local LiveScroll = require("gzreader_livescroll")
+    if not rule then return LiveScroll.step(state, rel, now) end
+    local d = rel - (state.applied or 0)
+    if math.abs(d) < rule.MIN_STEP then return 0 end
+    if state.at and now - state.at < rule.INTERVAL then return 0 end
+    state.applied, state.at = rel, now
+    return d
+end
+
+--- The strip for scroll position `y`: { bb, top, h, w } (top: its first
+--- pixel's place in the whole list), or nil. Pure of the screen: tested.
+function Notes.Board:makeStrip(y)
+    local sc = self._gz_scroll
+    if not (sc and sc.at and sc.cols and sc.cell_h) then return nil end
+    local cols, cell_h, view_h = sc.cols, sc.cell_h, sc.view_h
+    local total_h = sc.max_y + view_h
+    local margin = math.floor(view_h * Notes.STRIP.MARGIN)
+    local top = math.max(0, y - margin)
+    local bottom = math.min(total_h, y + view_h + margin)
+    local first = math.floor(top / cell_h)
+    local last = math.ceil(bottom / cell_h) - 1
+    local w = sc.at.w
+    local h = bottom - top
+    if h <= 0 or w <= 0 then return nil end
+    -- (grey: the fast refresh is black and white anyway, and a colour screen's 32 bits a pixel would be four times the memory)
+    local bb = Blitbuffer.new(w, h, Blitbuffer.TYPE_BB8)
+    bb:fill(Blitbuffer.COLOR_WHITE)
+    local cell_w = math.floor(self.item_dimen.w / cols)
+    for row = first, last do
+        local group = HorizontalGroup:new{ align = "top" }
+        for c = 1, cols do
+            local idx = row * cols + c
+            local e = self.item_table[idx]
+            if not e then break end
+            e.idx = idx
+            group[#group + 1] = StickyItem:new{ entry = e, menu = self, look = Sticky.look(idx), show_parent = self.show_parent,
+                dimen = Geom:new{ w = e.memo and cell_w or self.item_dimen.w, h = cell_h } }
+        end
+        if #group > 0 then
+            group:paintTo(bb, 0, row * cell_h - top)
+            group:free()
+        end
+    end
+    return { bb = bb, top = top, h = h, w = w }
+end
+
+--- Show the notes scrolled to `y` from the strip (making a new one when `y`
+--- is past its ends). False when it can't (no strip): the ordinary way then.
+function Notes.Board:showFromStrip(pan, y)
+    local sc = self._gz_scroll
+    local at = sc and sc.at
+    if not at then return false end
+    y = math.max(0, math.min(sc.max_y, math.floor(y + 0.5)))
+    local st = pan.strip
+    if not st or y < st.top or y + at.h > st.top + st.h then
+        if st then st.bb:free() end
+        local ok, made = pcall(self.makeStrip, self, y)
+        st = ok and made or nil
+        pan.strip = st
+        if not st then return false end
+    end
+    local screen_bb = Screen.bb
+    if not screen_bb then return false end
+    screen_bb:blitFrom(st.bb, at.x, at.y, 0, y - st.top, math.min(at.w, st.w), at.h)
+    pan.shown_y = y -- (where the notes look scrolled to, while the board itself stays put until the lift)
+    -- (only a refresh: the board isn't painted again until the pen lifts)
+    UIManager:setDirty(nil, LiveScrollRefresh(), Geom:new{ x = at.x, y = at.y, w = at.w, h = at.h }, true)
+    pan.rough = true
+    return true
+end
+
+--- A drag's end: its strip let go.
+function Notes.Board:dropStrip(pan)
+    if pan and pan.strip then
+        pan.strip.bb:free()
+        pan.strip = nil
+    end
+end
+
 --- Scrolling: a drag moves the notes with the finger, a step at a time
 --- (gzreader_livescroll: an e-ink screen can't follow every sample), and
 --- they settle where it lifts.
@@ -2055,9 +2148,14 @@ function Notes.Board:onPan(arg, ges)
         end
         pan.rel = rel
         local LiveScroll = require("gzreader_livescroll")
-        if LiveScroll.step(pan.live, rel, LiveScroll.now()) ~= 0 then
-            -- (a step: shown without the flash of an ordinary refresh; properly when the finger lifts)
-            LiveScroll.quiet(function() if self:scrollTo(pan.y0 - rel) then pan.rough = true end end)
+        -- (from the strip: shorter, quicker steps)
+        local rule = pan.strip ~= false and Notes.STRIP or nil
+        if Notes.stripStep(pan.live, rel, LiveScroll.now(), rule) ~= 0 then
+            if pan.strip == false or not self:showFromStrip(pan, pan.y0 - rel) then
+                pan.strip = false -- (no strip this drag: each step drawn as before)
+                -- (a step: shown without the flash of an ordinary refresh; properly when the finger lifts)
+                LiveScroll.quiet(function() if self:scrollTo(pan.y0 - rel) then pan.rough = true end end)
+            end
         end
         return true
     end
@@ -2067,6 +2165,7 @@ end
 function Notes.Board:onGzPanRelease()
     local pan = self._gz_pan
     self._gz_pan = nil
+    self:dropStrip(pan)
     if not (pan and self._gz_scroll) then return false end
     self:scrollTo(pan.y0 - (pan.rel or 0))
     -- (after steps shown roughly: once more, cleanly; they left ghosts the ordinary refresh kept)

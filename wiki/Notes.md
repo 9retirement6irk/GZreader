@@ -61,10 +61,12 @@ API to `/api` are found too.
   - **Scroll up and down** (touch Kindles, compact notes; off until you
     turn it on): the Notes tab becomes one long page. A swipe or a drag up
     or down moves the notes exactly as far as your finger went, and a drag
-    moves them while your finger is still down (in steps, about five a
-    second: e-ink can't follow every movement, so the steps are shown
-    roughly; an opened note that's longer than the screen follows your
-    finger the same way). When your finger lifts, the page is shown once
+    moves them while your finger is still down. As in the Kindle's own
+    library, the notes around the screen are drawn once when the drag
+    starts, and each step only slides that picture along: about ten steps a
+    second, shown in quick black and white with pictures as dots. (An opened
+    note that's longer than the screen follows your finger too, in slower
+    steps.) When your finger lifts, the page is shown once
     more cleanly, without a flash (as a page turn is), so nothing is left
     standing twice. Only the part that moves is refreshed: the notes, not
     the buttons above them or the tab bar (in a note, not its top bar); notes cut

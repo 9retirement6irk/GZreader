@@ -10300,6 +10300,46 @@ print("Notes (Memos v0.31)")
             b:onSwipe(nil, { direction = "north", distance = 160 })
             check(followed == 1140 and b._gz_y == 1200 and b._gz_pan == nil, "…a swipe after following: " .. followed .. " then " .. b._gz_y .. " (not counted twice)")
             b:onSwipe(nil, { direction = "south", distance = 160 })
+            do -- a drag's steps slide a strip of notes drawn once (not every note built and drawn again each step)
+                local st1 = {}
+                check(Notes.stripStep(st1, 5, 1, Notes.STRIP) == 0 and Notes.stripStep(st1, 8, 1, Notes.STRIP) == 8
+                    and Notes.stripStep(st1, 30, 1.05, Notes.STRIP) == 0 and Notes.stripStep(st1, 30, 1.1, Notes.STRIP) == 22,
+                    "strip steps: from 6 px, 0.09 s apart (quicker than drawing the notes again: 12 px, 0.18 s)")
+                local Scr = require("device").screen
+                local had_bb = Scr.bb
+                local blits, freed, made = {}, 0, 0
+                Scr.bb = { blitFrom = function(_bb, _src, x, y, sx, sy, w, h) blits[#blits + 1] = table.concat({ x, y, sx, sy, w, h }, ",") end }
+                local UIMt = require("ui/uimanager")
+                local real_dirty_t, refreshes = UIMt.setDirty, {}
+                UIMt.setDirty = function(_s, w, mode, region, dither)
+                    local r = type(region) == "table" and region or {}
+                    refreshes[#refreshes + 1] = tostring(w) .. ":" .. tostring(mode) .. "@" .. tostring(r.x) .. "," .. tostring(r.y) .. " "
+                        .. tostring(r.w) .. "x" .. tostring(r.h) .. (dither and " dithered" or "")
+                end
+                local sb = setmetatable({ _gz_y = 0, _gz_scroll = { cols = 2, cell_h = 300, view_h = 400, max_y = 2000, at = { x = 0, y = 100, w = 600, h = 400 } },
+                    updateItems = function() error("not drawn again during the drag") end,
+                    makeStrip = function(_self, y)
+                        made = made + 1
+                        return { bb = { free = function() freed = freed + 1 end }, top = math.max(0, y - 200), h = 800, w = 600 }
+                    end },
+                    { __index = function(_t, k) return rawget(Notes.Board, k) end })
+                local pan = { y0 = 0, live = {} }
+                local ok1 = sb:showFromStrip(pan, 120)
+                local ok2 = sb:showFromStrip(pan, 300)
+                local ok3 = sb:showFromStrip(pan, 900) -- (past the strip's end: a new one)
+                local ok4 = sb:showFromStrip(pan, 5000) -- (past the list's end: kept at it)
+                sb:dropStrip(pan)
+                Scr.bb, UIMt.setDirty = had_bb, real_dirty_t
+                check(ok1 and ok2 and ok3 and ok4 and made == 3 and freed == 3 and pan.strip == nil and pan.rough
+                    and table.concat(blits, "|") == "0,100,0,120,600,400|0,100,0,300,600,400|0,100,0,200,600,400|0,100,0,200,600,400"
+                    and pan.shown_y == 2000,
+                    "strip steps: each one only slides the strip into the notes' window; a new strip past its ends; let go at the end (" .. table.concat(blits, "|") .. ")")
+                check(#refreshes == 4 and refreshes[1]:match("^nil:fast@.* dithered$") ~= nil,
+                    "strip steps: shown with the fast black-and-white refresh, dithered, nothing painted again (the window: emulator/live_scroll.lua)")
+                local fb = setmetatable({ _gz_scroll = { at = { x = 0, y = 0, w = 10, h = 10 }, max_y = 10 }, makeStrip = function() return nil end },
+                    { __index = function(_t, k) return rawget(Notes.Board, k) end })
+                check(fb:showFromStrip({}, 5) == false, "strip steps: no strip, the ordinary way")
+            end
             local s1, s2 = { }, { }
             check(LiveScroll.step(s1, 5, 1) == 0 and LiveScroll.step(s1, 40, 1) == 40 and LiveScroll.step(s1, 80, 1.05) == 0
                 and LiveScroll.step(s1, 80, 1.3) == 40 and LiveScroll.step(s2, -30, 9) == -30,
