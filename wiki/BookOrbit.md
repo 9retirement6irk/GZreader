@@ -41,7 +41,7 @@ That user name and password are what GZreader asks for. Your website user name, 
 
 Any of these:
 
-- **The setup guide** (on the first start, or Settings → General → Setup Guide): choose **Set up on this device** and tick **BookOrbit** (then type its login from the list that opens when the guide ends), or **Set up with my phone** and connect BookOrbit on the page there.
+- **The setup guide** (on the first start, or Settings → General → Setup Guide): answer **With BookOrbit, my book server** to *How will you use GZreader?*, then *Set up from a browser* or *Type my BookOrbit login here*.
 - **The setup page** (Settings → Accounts and services → Books → Connect from your browser, then scan the code): on its **Books** tab, under **Book server**, choose **BookOrbit** (the heading changes to BookOrbit and the form to BookOrbit's). Enter BookOrbit's address, then either paste an **API key** and press **Connect with the API key** (the easy way: see [Signing in with just an API key](#signing-in-with-just-an-api-key)), or open **Use the KOReader sync user name and password instead**. There is no single sign-on for BookOrbit: its e-reader sign-in doesn't have one.
 - **On the Kindle**: Settings → Accounts and services → Books → **Connect to BookOrbit by typing**.
 - **In the Catalog**, when you aren't signed in: the server tile at the bottom → **Connect to BookOrbit by typing**.
