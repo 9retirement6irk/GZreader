@@ -1,5 +1,6 @@
 local ZEN = arg[1]
 package.path = ZEN .. "/?.lua;" .. package.path
+if arg[2] then package.path = arg[2] .. "/?.lua;" .. package.path end -- (GZreader's plugin: gzreader_setupdevice)
 local function magic()
     local m
     m = setmetatable({}, { __index = function() return function() return m end end, __call = function() return m end })
@@ -9,7 +10,7 @@ end
 table.insert(package.loaders, 2, function(name)
     if name == "gettext" then return function() return function(s) return s end end end
     if name == "ffi/util" then return function() return { template = function(f, ...) local a = { ... }; return (f:gsub("%%(%d)", function(i) return tostring(a[tonumber(i)]) end)) end } end end
-    if name:match("^common/quickstart/") or name == "common/quickstart_pages" or name == "common/gz_server_recent" then return nil end
+    if name:match("^common/quickstart/") or name == "common/quickstart_pages" or name == "common/gz_server_recent" or name == "gzreader_setupdevice" then return nil end
     if name == "ui/event" then return function() return { new = function(_, n) return { name = n } end } end end
     if name == "ui/uimanager" then return function() return { scheduleIn = function(_, _, f) f() end, broadcastEvent = function(_, ev) BROADCAST = ev.name end } end end
     if name == "common/plugin_root" then return function() return "" end end
@@ -21,8 +22,10 @@ local function build(paired, backend, source)
     local grimmory = { api = { isPaired = function() return paired end }, store = { username = "will", book_source = source },
         backend = function() return backend or "grimmory" end, save = function() SAVES = (SAVES or 0) + 1 end,
         useLibraryAsHome = function() HOME_SET = (HOME_SET or 0) + 1 end }
-    return M.build_install_pages({ plugin = { ui = { gzreader = grimmory } },
+    local built = M.build_install_pages({ plugin = { ui = { gzreader = grimmory } },
         config = { navbar = { show_tabs = {} }, _meta = {}, features = {} } })
+    built.gz_store = grimmory.store
+    return built
 end
 local ok_count, fail = 0, 0
 local function check(c, n) if c then ok_count = ok_count + 1 print("  ok   " .. n) else fail = fail + 1 print("  FAIL " .. n) end end
@@ -33,8 +36,8 @@ local has_folder_page = false
 for _, pg in ipairs(pages) do if pg.title == "Home Folder" then has_folder_page = true end end
 check(not has_folder_page, "no 'Home Folder' question in the guide")
 check(HOME_SET == 1, "guide sets the home folder to the Grimmory folder instead")
-check(pages[1].title == "How will you use GZreader?", "the setup guide starts by asking how GZreader will be used")
-check(pages[2].title == "Set up from your browser", "then Set up from your browser (the book server, Notes, Calendar, books)")
+check(pages[1].title == "Set up GZreader", "the setup guide starts by asking how to set up: with a phone or on this device")
+check(pages[2].title == "Set up with your phone", "then what the answer leads to (the phone, to start with)")
 check(pages[3].title == "Welcome to GZreader", "GZreader welcome follows")
 local titles = {} for _, pg in ipairs(pages) do titles[#titles + 1] = pg.title end
 local tl = table.concat(titles, "|")
@@ -78,51 +81,75 @@ local SAVED = {} G_reader_settings.makeTrue = function(_, k) SAVED[k] = true end
 sleep.on_apply({ gz_auto = true }) check(SAVED.gzreader_sleep_auto == true and SAVED.screensaver_show_message == false,
     "choosing it turns GZreader sleep mode on (no message over it)")
 local function idsOf(pg) local ids = {} for _, c in ipairs(pg.choices) do ids[#ids + 1] = c.id .. (c.checked and "*" or "") end return table.concat(ids, ",") end
--- the first question: Grimmory, BookOrbit, or on its own
-local how, connect = pages[1], pages[2]
-check(how.choice_type == "radio" and idsOf(how) == "grimmory*,bookorbit,local", "how: Grimmory (the default), BookOrbit, or on its own with books from a browser")
-check(idsOf(connect) == "qr*,type,gz_copy,skip" and connect.description:match("connect Grimmory"), "Grimmory, not connected: QR (default), type, copy from another GZreader, skip")
-BROADCAST = nil; connect.on_apply({ qr = true });   check(BROADCAST == "GrimmoryPair", "QR choice -> GrimmoryPair event")
-BROADCAST = nil; connect.on_apply({ type = true }); check(BROADCAST == "GrimmoryKeyboardLogin", "type choice -> keyboard login event")
-BROADCAST = nil; connect.on_apply({ skip = true }); check(BROADCAST == nil, "skip -> nothing")
-BROADCAST = nil; connect.on_apply({ gz_copy = true }); check(BROADCAST == "GzCopyReceive", "copy choice -> GzCopyReceive event")
-connect.reset_selection = nil; SAVES = 0
-how.on_apply({ grimmory = true })
-check(connect.reset_selection == nil and SAVES == 1, "answering Grimmory: the next page stays as it is; the answer is saved")
-how.on_apply({ grimmory = true })
-check(SAVES == 1, "the same answer again isn't saved twice")
-how.on_apply({ bookorbit = true })
-check(idsOf(connect) == "bo_qr*,bo_type,skip" and connect.reset_selection == true and connect.description:match("connect BookOrbit")
-    and connect.description:match("KOReader sync user name") and connect.choices[2].text == "Type my BookOrbit login here",
-    "answering BookOrbit: the next page is BookOrbit's (which sign-in it wants), its defaults again")
-BROADCAST = nil; connect.on_apply({ bo_qr = true });   check(BROADCAST == "BookOrbitPair", "BookOrbit, from a browser -> BookOrbitPair event")
-BROADCAST = nil; connect.on_apply({ bo_type = true }); check(BROADCAST == "BookOrbitKeyboardLogin", "BookOrbit, typed -> its keyboard login event")
-how.on_apply({ ["local"] = true })
-check(idsOf(connect) == "books*,gz_copy,skip" and connect.title == "Send books from your browser" and connect.description:match("drop your books"),
-    "answering on its own: the next page is sending books from a browser")
-BROADCAST = nil; connect.on_apply({ books = true }); check(BROADCAST == "GzSendBooksPage", "show the QR code -> the setup page at Send books")
-check(SAVES == 3, "each new answer is saved")
+-- the first question: with my phone, or on this device
+local function finale(pgs) return pgs[#pgs] end
 local function syncPage(pgs) for _, pg in ipairs(pgs) do if pg.gz_sync_page then return pg end end end
-check(syncPage(pages).title == "Your books" and syncPage(pages).description:match("kept on this Kindle"), "on its own: the guide's sync page says the books stay on the Kindle")
-how.on_apply({ bookorbit = true })
-check(syncPage(pages).title == "Books from BookOrbit" and syncPage(pages).description:match("browse and download your books"), "BookOrbit: it says what works (gzreader_bookorbit's note, when it loads)")
-how.on_apply({ grimmory = true })
-check(syncPage(pages).title == "Synced with Grimmory" and syncPage(pages).description:match("in sync with Grimmory"), "Grimmory again: as before")
+local function tabsPage(pgs) for _, pg in ipairs(pgs) do if pg.title == "Navbar Tabs" then return pg end end end
+local how, connect = pages[1], pages[2]
+check(how.choice_type == "radio" and idsOf(how) == "phone*,device,skip", "how: with my phone (the default), on this device, or skip")
+check(not connect.choices and connect.description:match("QR code shows") and connect.description:match("Notes, Calendar"),
+    "with my phone: the next page says the QR code comes when the guide ends (nothing to choose)")
+BROADCAST = nil; connect.on_apply({}); check(BROADCAST == nil, "…nothing opens in the middle of the guide")
+finale(pages).on_apply({}); check(BROADCAST == "GrimmoryPair", "…the guide's last page: the setup page's QR code")
+BROADCAST = nil; finale(pages).on_apply({}); check(BROADCAST == nil, "…once")
+-- on this device: which services
+connect.reset_selection = nil
+how.on_apply({ device = true })
+check(connect.title == "What do you want to set up?" and connect.choice_type == "checkbox" and connect.reset_selection == true
+    and idsOf(connect) == "grimmory,bookorbit,memos,house,immich,mealie,calendar" and connect.description:match("tick one"),
+    "on this device: tick boxes for Grimmory, BookOrbit, Memos, Home Assistant, Immich, Mealie, Calendar (Plex only where audio plays) " .. idsOf(connect))
+check(connect.choices[1].text:match("^Grimmory: ") and connect.choices[4].text:match("^Home Assistant: "), "…each says what it gives")
+local sel = connect.on_toggle({ grimmory = true, memos = true }, "grimmory")
+check(sel.grimmory and sel.memos, "ticking Grimmory: ticked")
+sel = connect.on_toggle({ grimmory = true, bookorbit = true, memos = true }, "bookorbit")
+check(sel.bookorbit and sel.grimmory == nil and sel.memos, "ticking BookOrbit unticks Grimmory (one book server), the rest as it was")
+sel = connect.on_toggle({ grimmory = true, bookorbit = true }, "grimmory")
+check(sel.grimmory and sel.bookorbit == nil, "…and the other way round")
+sel = connect.on_toggle({ bookorbit = true }, "memos")
+check(sel.bookorbit and not sel.memos, "unticking another box changes nothing else")
+local store = pages.gz_store
+SAVES = 0; BROADCAST = nil
+connect.on_apply({ bookorbit = true, calendar = true })
+check(store.book_source == "bookorbit" and table.concat(store.setup_services, ",") == "bookorbit,calendar" and SAVES == 1 and BROADCAST == nil,
+    "Next: the book server and the services ticked are remembered; nothing opens yet")
+local tp = tabsPage(pages)
+local tab = {} for _, c in ipairs(tp.choices) do tab[c.id] = c.checked end
+check(tab.ct_calendar == true and tab.ct_notes == false and tp.reset_selection == true and tab.home == true,
+    "…the Navbar Tabs page follows: Calendar ticked, Notes (Memos, not ticked) unticked, the other tabs as they were")
+check(syncPage(pages).title == "Books from BookOrbit", "…the guide's sync page is BookOrbit's")
+finale(pages).on_apply({}); check(BROADCAST == "GzSetupOnDevice", "…the guide's last page: the list of the ticked services, to connect by typing")
+BROADCAST = nil
+connect.on_apply({ memos = true })
+check(store.book_source == "local" and syncPage(pages).title == "Your books", "no book server ticked: books sent from a browser (the sync page says so)")
+connect.on_apply({})
+finale(pages).on_apply({}); check(BROADCAST == nil and #store.setup_services == 0, "nothing ticked: nothing opens")
+connect.on_apply({ grimmory = true })
+check(syncPage(pages).title == "Synced with Grimmory", "Grimmory ticked: as before")
+-- skip, and back to the phone
+how.on_apply({ skip = true })
+check(connect.title == "Set up later" and not connect.choices and connect.description:match("Accounts and services"), "skip: where to set up later")
+BROADCAST = nil; connect.on_apply({ grimmory = true }); finale(pages).on_apply({})
+check(BROADCAST == nil, "…and nothing opens (ticks left from before don't count)")
+how.on_apply({ phone = true }); connect.on_apply({}); finale(pages).on_apply({})
+check(BROADCAST == "GrimmoryPair", "back to the phone: the QR code at the end")
 -- what was answered before, and what this Kindle is signed in to
 local again = build(false, nil, "local")
-check(syncPage(again).title == "Your books", "…and the sync page fits it from the start")
-check(idsOf(again[1]) == "grimmory,bookorbit,local*" and again[2].title == "Send books from your browser", "the guide again: the earlier answer is the default")
+check(syncPage(again).title == "Your books", "an earlier answer (no book server): the sync page fits it from the start")
+BROADCAST = nil; again[2].on_apply({}); finale(again).on_apply({})
+check(BROADCAST == "GzSendBooksPage", "…and the phone's page opens at Send books")
+local orbit_first = build(false, nil, "bookorbit")
+BROADCAST = nil; orbit_first[2].on_apply({}); finale(orbit_first).on_apply({})
+check(BROADCAST == "BookOrbitPair", "an earlier answer of BookOrbit: the phone's page with BookOrbit picked")
 pages = build(true)
 how, connect = pages[1], pages[2]
-check(idsOf(how) == "grimmory*,bookorbit,local" and idsOf(connect) == "keep*,qr,type,gz_copy,gz_send,skip" and connect.choices[1].text:match("will"),
-    "connected to Grimmory: keep (default) shows the account; send to another GZreader offered")
-BROADCAST = nil; connect.on_apply({ gz_send = true }); check(BROADCAST == "GzCopySend", "send choice -> GzCopySend event")
-BROADCAST = nil; connect.on_apply({ keep = true }); check(BROADCAST == nil, "keep -> nothing")
-how.on_apply({ bookorbit = true })
-check(idsOf(connect) == "bo_qr*,bo_type,gz_send,skip", "connected to Grimmory, answering BookOrbit: no \"keep\" (it's the other server's)")
+check(idsOf(how) == "keep*,phone,device,skip" and how.choices[1].text:match("will") and connect.title == "Already connected" and connect.description:match("will"),
+    "connected already: keep (default) shows the account")
+BROADCAST = nil; connect.on_apply({}); finale(pages).on_apply({}); check(BROADCAST == nil, "keep -> nothing opens")
+how.on_apply({ device = true })
+check(idsOf(connect):match("^grimmory%*,bookorbit,"), "…on this device: what's connected is ticked to start with")
 local orbit = build(true, "bookorbit", "grimmory")
-check(idsOf(orbit[1]) == "grimmory,bookorbit*,local" and idsOf(orbit[2]) == "keep*,bo_qr,bo_type,gz_send,skip",
-    "connected to BookOrbit: that's the default (whatever was answered before), and its connection can be kept")
+orbit[1].on_apply({ device = true })
+check(idsOf(orbit[2]):match("^grimmory,bookorbit%*,"), "connected to BookOrbit: that box is the one ticked")
 local np = M.build_install_pages({ plugin = { ui = {} }, config = { navbar = { show_tabs = {} }, _meta = {}, features = {} } })
 check(np[1].title == "Welcome to GZreader", "no Grimmory plugin -> starts with the welcome")
 
@@ -181,10 +208,11 @@ do
     check(set_to == true, "yes turns the option on (through GZreader)")
     rpage.on_apply({ recent_off = true })
     check(set_to == false, "only this Kindle turns it off")
-    -- the first page's answer changes it
-    rp[1].on_apply({ bookorbit = true })
-    check(rpage.description:match("from BookOrbit") and rpage.reset_selection, "BookOrbit picked first: it names BookOrbit")
-    rp[1].on_apply({ ["local"] = true })
+    -- the services ticked (set up on this device) change it
+    rp[1].on_apply({ device = true })
+    rp[2].on_apply({ bookorbit = true })
+    check(rpage.description:match("from BookOrbit") and rpage.reset_selection, "BookOrbit ticked: it names BookOrbit")
+    rp[2].on_apply({ memos = true })
     check(idsOf(rpage) == "recent_off*,recent_on" and rpage.description:match("when this Kindle is connected to a book server"),
         "on its own: not now picked, it says it comes with a book server")
     local bo = build(false, nil, "bookorbit")

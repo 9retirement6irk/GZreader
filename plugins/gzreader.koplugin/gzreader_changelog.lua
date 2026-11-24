@@ -9,6 +9,7 @@ return {
     {
         version = "next",
         changes = {
+            { short = "Setup guide: with your phone, or on the device by ticking the services you use", text = "The setup guide now starts by asking how to set up. With my phone: the QR code for the setup page shows when the guide ends. On this device: tick the services you use (Grimmory or BookOrbit, Plex, Memos, Home Assistant, Immich, Mealie, Calendar); their tabs are switched on, and when the guide ends a list of the ticked services opens, each connected by typing its address and sign-in." },
             { short = "Setup guide: asks whether Home shows what you read on every device", text = "The setup guide now asks, after Library View, whether Home should also show the books and audiobooks you're in the middle of on your other devices (Home's Recently read on every device), from Grimmory or BookOrbit. Yes is picked when you use a book server; on its own, Not now. Change it later in Settings → Home and tabs → Home → Widgets → Featured book." },
         },
     },

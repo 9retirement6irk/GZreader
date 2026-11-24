@@ -788,6 +788,8 @@ function QuickstartScreen:onQsConfirm()
                     if count >= page.max_selections then return true end
                 end
                 sel[choice.id] = sel[choice.id] ~= true
+                -- GZreader: a page can answer a tick (one of two boxes at most: on_toggle)
+                if type(page.on_toggle) == "function" then sel = page.on_toggle(sel, choice.id) or sel end
             end
             self._selections[self._page_idx] = sel
             UIManager:setDirty(self, function() return "ui", self.dimen end)
@@ -908,6 +910,8 @@ function QuickstartScreen:_onTap(ges)
                         if count >= page.max_selections then return true end
                     end
                     sel[choice.id] = sel[choice.id] ~= true
+                    -- GZreader: a page can answer a tick (one of two boxes at most: on_toggle)
+                    if type(page.on_toggle) == "function" then sel = page.on_toggle(sel, choice.id) or sel end
                 end
                 self._selections[self._page_idx] = sel
                 UIManager:setDirty(self, function() return "ui", self.dimen end)

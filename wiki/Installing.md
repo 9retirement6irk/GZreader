@@ -19,7 +19,13 @@ You'll need a computer with a USB cable, and about 100 MB free on the device.
 
 ## After installing
 
-**The first start.** A setup guide runs. It first asks **How will you use GZreader?**: with Grimmory, with [BookOrbit](BookOrbit), or on its own, sending books from your browser. The next page fits your answer. For a book server it is **Set up from your browser**, which shows a QR code: scan it with your phone, or type the address under it into any browser on the same Wi‑Fi and enter the PIN, to connect Grimmory, Notes (Memos) and Calendar, or to send books, or pick *Skip for now* (you can also type the sign-in on the Kindle). On its own, the page is **Send books from your browser**: the same QR code, opening the page where you drop your books. You can come back to it any time: the quick panel → **Send books** (Menu, or on a touch Kindle swipe down from the top). The guide then asks about the library view, tabs, sleep screen, clock and whether to send debug reports. → [Setup page and connections](Setup-Page-and-Connections)
+**The first start.** A setup guide runs. It first asks how you want to set up:
+
+- **Set up with my phone**: when the guide ends, a QR code shows. Scan it with your phone, or type the address under it into any browser on the same Wi‑Fi and enter the PIN. The page there connects your book server (Grimmory or [BookOrbit](BookOrbit)), Notes (Memos), Calendar and the rest, and sends books.
+- **Set up on this device**: the next page lists the services to tick: Grimmory, BookOrbit, Plex (on devices that play audio), Memos, Home Assistant, Immich, Mealie (once its Recipes tab is in your build) and Calendar. Grimmory and BookOrbit are both book servers, so ticking one unticks the other. The tabs follow your ticks (Notes, Calendar, Music, House, Recipes). When the guide ends, a list of the ticked services opens: pick each one to type its address and sign in; a connected one gets a ✓. Tick neither book server and GZreader works on its own, with books sent from your browser.
+- **Skip for now**: nothing is connected; everything is in Settings → Accounts and services later.
+
+You can come back to it any time: the quick panel → **Send books** (Menu, or on a touch Kindle swipe down from the top). The guide then asks about the library view, tabs, sleep screen, clock and whether to send debug reports. → [Setup page and connections](Setup-Page-and-Connections)
 
 Books you download or send go to **GZreader/books** on the Kindle's drive; the **Downloads** tab shows them.
 
