@@ -11,6 +11,7 @@ return {
         changes = {
             { short = "Catalog: Genres on Books and Audiobooks", text = "The Catalog's Books and Audiobooks pages have Genres: your server's genres (Grimmory's categories, BookOrbit's genres), each with how many books, opening to that genre's books. On the Books page Genres takes the last compartment, where the Grimmory or BookOrbit card was; on the Audiobooks page the card is gone too. The card's Reading stats, Request a book and About are in Settings → Accounts and services → Books. Signed out, the card is still there with the ways to sign in. With BookOrbit, genres need its API key." },
             { short = "BookOrbit: every audiobook in the Catalog", text = "With BookOrbit, the Catalog's Audiobooks page left out the first 50 audiobooks (in title order), and Authors and Series missed them too: GZreader asked BookOrbit for its pages counting from 1, and BookOrbit counts from 0. Every audiobook now shows, including books that have both an ebook and audio files." },
+            { short = "Settings → Books fits the server you use", text = "Settings → Accounts and services → Books: the two typing rows are named, Connect to Grimmory by typing and Connect to BookOrbit by typing, with your server's first. Signed in to BookOrbit there's no Single sign-on row (BookOrbit has none) and its API key row comes first; signed in to Grimmory there's no BookOrbit API key row. Storage on this Kindle is gone from Books (it's in Settings → General → Storage). The sync switches' help names your server." },
         },
     },
     {

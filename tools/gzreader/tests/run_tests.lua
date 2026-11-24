@@ -3099,8 +3099,9 @@ do
     check(g:match("|Sync highlights and notes|Reading stats|Rebuild library|Reconnect") and not g:match("Request a book") and not g:match("Keep connections open")
             and not g:match("Copy from another GZreader"),
         "Books (Grimmory): the sync switches, then Rebuild library; Keep connections open in General → Performance, Copy in General → Transfer " .. g)
-    check(g:match("|Single sign%-on %(SSO%)|Storage on this Kindle|Disconnect|About Grimmory|$"),
-        "Books (Grimmory): Storage on this Kindle (a link to General → Storage), then Disconnect, then About Grimmory last " .. g)
+    check(g:match("|Connect to Grimmory by typing|Connect to BookOrbit by typing|Single sign%-on %(SSO%)|Disconnect|About Grimmory|$")
+            and not g:match("Storage on this Kindle") and not g:match("API key") and not g:match("|Connect by typing|"),
+        "Books (Grimmory): each server's typing row named (Grimmory's first), single sign-on, Disconnect, then About Grimmory last; no Storage row (it's in General) and no BookOrbit key " .. g)
     do -- Rebuild library: the index from Grimmory again, the saved lists forgotten, Wi-Fi on first
         local NetR = require("gzreader_net")
         local IndexR, LCR = require("gzreader_index"), require("gzreader_listcache")
@@ -17266,6 +17267,21 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
     check(found and found.help_text_func():find("KOReader sync user name", 1, true) and found.help_text_func():find("Synced with BookOrbit:", 1, true),
         "the menu: Connect to BookOrbit by typing")
     check(plugin:menuItems()[1].text_func() == "Connected to BookOrbit as will-kindle", "the menu's first line names BookOrbit")
+    do -- Books, signed in to BookOrbit: its rows first, Grimmory's to switch, no single sign-on, the help names BookOrbit
+        local t, rows = {}, {}
+        for _i, it in ipairs(plugin:menuItems()) do
+            local name = it.text or (it.text_func and it.text_func()) or "?"
+            t[#t + 1] = name
+            rows[name] = it
+        end
+        local g = "|" .. table.concat(t, "|") .. "|"
+        check(g:match("|BookOrbit API key[^|]*|Connect to BookOrbit by typing|Connect to Grimmory by typing|Disconnect|$")
+                and not g:match("Single sign%-on") and not g:match("Storage on this Kindle"),
+            "Books (BookOrbit): the API key, then BookOrbit's typing row, Grimmory's to switch; no single sign-on (BookOrbit has none) " .. g)
+        check(rows["Sync reading progress"].help_text:find("BookOrbit", 1, true) and not rows["Sync reading progress"].help_text:find("Grimmory", 1, true)
+                and rows["Sync bookmarks"].help_text:find("BookOrbit", 1, true) and rows["Sync highlights and notes"].help_text:find("BookOrbit", 1, true),
+            "Books (BookOrbit): the sync switches' help names BookOrbit")
+    end
 
     -- a restart keeps it; the backup list of downloads is this server's
     local again = Grimmory:new{ ui = { menu = { registerToMainMenu = function() end } } }

@@ -607,6 +607,11 @@ end
 
 function Grimmory:menuItems()
     local paired = self.api:isPaired()
+    -- (the help texts name the server signed in to: Grimmory or BookOrbit)
+    local fix = require("gzreader_servername").fix
+    -- BookOrbit: signed in to it, or (not signed in) chosen in the setup guide
+    local orbit = (paired and self:backend() == "bookorbit")
+        or (not paired and type(self.store.book_source) == "string" and self.store.book_source == "bookorbit")
     local items = {
         {
             text_func = function()
@@ -633,7 +638,7 @@ function Grimmory:menuItems()
     local more = {
         {
             text = _("Sync reading progress"),
-            help_text = _("Send your position to Grimmory as you read, and pick up where you left off on other devices or in Grimmory's web reader."),
+            help_text = fix(_("Send your position to Grimmory as you read, and pick up where you left off on other devices or in Grimmory's web reader.")),
             checked_func = function() return self.store.sync_disabled ~= true end,
             callback = function()
                 self.store.sync_disabled = (self.store.sync_disabled ~= true) or nil
@@ -644,7 +649,7 @@ function Grimmory:menuItems()
         require("gzreader_shelfsync").menuItems(self),
         {
             text = _("Sync bookmarks"),
-            help_text = _("Keep page bookmarks the same here and in Grimmory (its web reader and other devices)."),
+            help_text = fix(_("Keep page bookmarks the same here and in Grimmory (its web reader and other devices).")),
             checked_func = function() return self.store.bookmark_sync_disabled ~= true end,
             callback = function()
                 self.store.bookmark_sync_disabled = (self.store.bookmark_sync_disabled ~= true) or nil
@@ -653,7 +658,7 @@ function Grimmory:menuItems()
         },
         {
             text = _("Sync highlights and notes"),
-            help_text = _("Keep highlights and notes in EPUBs the same here and in Grimmory (its web reader and other devices). A highlight changed in both places since the last sync is left as it is in each."),
+            help_text = fix(_("Keep highlights and notes in EPUBs the same here and in Grimmory (its web reader and other devices). A highlight changed in both places since the last sync is left as it is in each.")),
             checked_func = function() return self.store.annotation_sync_disabled ~= true end,
             callback = function()
                 self.store.annotation_sync_disabled = (self.store.annotation_sync_disabled ~= true) or nil
@@ -690,14 +695,15 @@ function Grimmory:menuItems()
         },
         {
             text = paired and _("Reconnect from your browser (QR code)") or _("Connect from your browser (QR code)"),
-            help_text = _("Shows a QR code and this Kindle's address: the page they open in a browser (phone or computer) connects Grimmory, Notes and calendars, and sends books to this Kindle."),
+            help_text = fix(_("Shows a QR code and this Kindle's address: the page they open in a browser (phone or computer) connects Grimmory, Notes and calendars, and sends books to this Kindle.")),
             callback = function(touchmenu) self:onGrimmoryPair(touchmenu) end,
         },
-        {
-            text = _("Connect by typing"),
-            callback = function() self:keyboardLogin() end,
-        },
-        {
+        -- (each server's own row, named, the one in use first)
+        not orbit and {
+            text = _("Connect to Grimmory by typing"),
+            callback = function() self:keyboardLogin(nil, "grimmory") end,
+        } or nil,
+        orbit and {
             text_func = function()
                 return self.api.hasApiKey and self.api:hasApiKey() and _("BookOrbit API key: set") or _("BookOrbit API key")
             end,
@@ -705,7 +711,7 @@ function Grimmory:menuItems()
             help_text = _("BookOrbit's audiobooks (listing, downloading, and where you stopped listening), changing collections and requesting books need an API key as well as the sign-in. Make one in BookOrbit: Settings → You → API keys. Access: Read and write. Extra permissions: “KOReader sync” (to sign in with the key) and “Request books” (to request books); nothing else, and not Administrator access. Leave the box empty to remove the key."),
             keep_menu_open = true,
             callback = function(touchmenu) self:askBookOrbitApiKey(touchmenu) end,
-        },
+        } or nil,
         {
             text = _("Connect to BookOrbit by typing"),
             help_text_func = function()
@@ -713,14 +719,21 @@ function Grimmory:menuItems()
                     .. " " .. require("gzreader_bookorbit").note()
             end,
             callback = function() self:keyboardLogin(nil, "bookorbit") end,
+            separator = not orbit,
         },
-        {
+        orbit and {
+            text = _("Connect to Grimmory by typing"),
+            help_text = _("Grimmory instead of BookOrbit as this Kindle's book server."),
+            callback = function() self:keyboardLogin(nil, "grimmory") end,
+            separator = true,
+        } or nil,
+        -- (Grimmory's: BookOrbit's KOReader sign-in has no single sign-on)
+        not orbit and {
             text = _("Single sign-on (SSO)"),
             sub_item_table_func = function() return self:ssoMenu() end,
             separator = true,
-        },
-        -- (what's on the Kindle, and freeing it: Settings → General → Storage)
-        require("gzreader_storage").linkItem("books"),
+        } or nil,
+        -- (what's on the Kindle: Settings → General → Storage, not here as well)
         {
             text = _("Disconnect"),
             enabled_func = function() return self.api:isPaired() end,
