@@ -17275,7 +17275,7 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
             rows[name] = it
         end
         local g = "|" .. table.concat(t, "|") .. "|"
-        check(g:match("|BookOrbit API key[^|]*|Connect to BookOrbit by typing|Connect to Grimmory by typing|Disconnect|$")
+        check(g:match("|BookOrbit API key[^|]*|Connect to BookOrbit by typing|Connect to Grimmory by typing|Disconnect|About BookOrbit|$")
                 and not g:match("Single sign%-on") and not g:match("Storage on this Kindle"),
             "Books (BookOrbit): the API key, then BookOrbit's typing row, Grimmory's to switch; no single sign-on (BookOrbit has none) " .. g)
         check(rows["Sync reading progress"].help_text:find("BookOrbit", 1, true) and not rows["Sync reading progress"].help_text:find("Grimmory", 1, true)
