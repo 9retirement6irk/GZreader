@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Fixed-layout magazines: no page of text after each page", text = "A fixed-layout EPUB made from a PDF (each page a picture with an invisible text layer over it) could show as the page's picture, then a page of the same text. GZreader hides that layer, but only found it when the book's style rules were in a CSS file; it now also finds it when the converter wrote the rules into each page." },
+        },
+    },
+    {
         version = "2026.11.22",
         changes = {
             { short = "Colour Kindles: Immich photos in colour", text = "On a Kindle Colorsoft or Scribe Colorsoft, the pictures from your Immich album (the sleep screen and the Home wallpaper) are kept in colour instead of being made grey. Pictures already on the Kindle stay grey until they are swapped for others from the album (about half each time GZreader gets new pictures)." },

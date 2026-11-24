@@ -5894,6 +5894,31 @@ do
             "fitted: the layer hidden (no blank page after each picture), the body's own 1359 px dropped (the picture was cut off on the right)")
         check(#PB.textLayers(epubOf(scans)) == 0 and not PB.css(99, {}):find("display: none", 1, true),
             "a reflowable picture book: no layers, nothing hidden")
+        -- a converter that writes its rules into every page's <style>, not a CSS file
+        ;(function()
+            local own = {}
+            local items, refs = { '<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>' }, {}
+            own["OEBPS/nav.xhtml"] = "<html><head><style>.toc{position:absolute;color:transparent}</style></head><body><nav/></body></html>"
+            for i = 1, 12 do
+                items[#items + 1] = string.format('<item id="page%d" href="page_%04d.xhtml" media-type="application/xhtml+xml" properties="rendition:layout-pre-paginated"/>', i, i)
+                refs[#refs + 1] = string.format('<itemref idref="page%d"/>', i)
+                own[string.format("OEBPS/page_%04d.xhtml", i)] = string.format('<html><head><style type="text/css">\n'
+                    .. 'html, body { margin:0; padding:0; width:1275px; height:1650px; }\n.page { position:relative; width:1275px; height:1650px; overflow:hidden; }\n'
+                    .. '.page img { position:absolute; left:0; top:0; z-index:1; }\n.text-layer { position:absolute; left:0; top:0; width:100%%; height:100%%; z-index:2; }\n'
+                    .. '.text-layer span { position:absolute; color:transparent; background:transparent; }\n.text-layer span::selection { color:transparent; }\n'
+                    .. '</style></head><body><div class="page"><img src="images/p%d.jpg" alt=""/><div class="text-layer">%s</div></div></body></html>', i, words)
+            end
+            own["META-INF/container.xml"] = fx["META-INF/container.xml"]
+            own["OEBPS/content.opf"] = '<package version="3.0"><metadata><meta property="rendition:layout">pre-paginated</meta></metadata><manifest>'
+                .. table.concat(items) .. "</manifest><spine>" .. table.concat(refs) .. "</spine></package>"
+            local asked = 0
+            local own_read = function(p) if p:find("page_", 1, true) then asked = asked + 1 end; return own[p] end
+            local own_layers = PB.textLayers(own_read)
+            check(#own_layers == 1 and own_layers[1] == ".text-layer" and asked == PB.INLINE_PAGES,
+                "fixed-layout book with its rules in each page's <style> (no CSS file): the text layer found from the first few pages (it showed as a picture page, then a page of text)")
+            check(PB.detectWith(own_read) and PB.css(99, {}, own_layers):find(".text-layer { display: none !important; }", 1, true),
+                "…a picture book, its layer hidden when fitted")
+        end)()
         fx["OEBPS/content.opf"] = opf:gsub("pre%-paginated", "reflowable")
         check(#PB.textLayers(read) == 0, "…and only for fixed-layout (pre-paginated) books")
         local fdoc = { getDocumentFileContent = function(_, p) return fx[p] end }
@@ -6018,8 +6043,8 @@ do
     check(reopened == 4 and ui.styletweak.book_style_tweak:find("/* v" .. PB.VERSION .. " */", 1, true), "fitted by an older version: fitted again once")
     ui.styletweak.book_style_tweak = "/* GZreader picture book: begin */ /* v5 */ img{} /* GZreader picture book: end */"
     PB.onOpen(ui)
-    check(reopened == 5 and PB.VERSION == 6 and ui.styletweak.book_style_tweak:find("/* v6 */", 1, true),
-        "fitted by 1.30.0 (v5, a fixed-layout book's text layers still showing): fitted again once")
+    check(reopened == 5 and PB.VERSION == 7 and ui.styletweak.book_style_tweak:find("/* v7 */", 1, true),
+        "fitted by an earlier build (v5, v6: a fixed-layout book's text layers still showing): fitted again once")
     PB.onOpen(ui)
     check(reopened == 5, "…and not again")
 
