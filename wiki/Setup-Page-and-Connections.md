@@ -99,9 +99,15 @@ diagnostics; updates in Settings → General → Software update.
 - **Connect with QR code**: opens the setup page (above) at its Grimmory
   section. The Kindle keeps only Grimmory's login tokens (never the
   password).
-- **Connect by typing**: the same, using the Kindle's keyboard.
+- **Connect to Grimmory by typing** / **Connect to BookOrbit by typing**: the
+  same, using the Kindle's keyboard. The server you're signed in to has its
+  row first; the other one is there to switch to it.
 
 ### Single sign-on (SSO / OIDC)
+
+(Grimmory only: signed in to BookOrbit, Settings → Accounts and services →
+Books has no single sign-on row. BookOrbit's KOReader sign-in is a user name
+and password, or the API key.)
 
 If Grimmory has SSO turned on, the setup page shows **Sign in with <provider>**.
 One-time setup, the same for every Kindle: add
