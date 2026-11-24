@@ -162,8 +162,21 @@ On a Kindle with a keyboard each key carries a letter, and the 5-way moves
 a frame from control to control (that's how to reach the indicator lights);
 Press presses what's framed.
 
-The lock's and garage door's question, and Music Assistant's lists, look as
-they do in the other views.
+<img src="https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/pw-house-music-keys.png" alt="Choosing music: a key for each shelf" width="250"> <img src="https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/pw-house-music-radio.png" alt="Radio stations as radios on shelves" width="250">
+
+- **Music…** (a Music Assistant player): a key for each kind of thing to
+  play, with what it is drawn on it: a cassette for **Playlists**, a record
+  in its sleeve for **Albums**, a record for **Artists**, a transistor
+  radio for **Radio**. **Search…** and **Back** are under them.
+- **The lists** are shelves: each playlist a cassette, each album a record
+  half out of its sleeve, each artist a record, each station a radio, a
+  song (in a search) a single. Its name is under it, with who it's by (in a
+  search: what kind of thing it is). A tap, Press or its letter plays it.
+  A page holds as many as stand on the shelves, twelve on a 6" Kindle, and
+  the arrows go on; **More…** is a card at the end. There are no cover
+  pictures, so every album looks alike.
+
+The lock's and garage door's question looks as it does in the other views.
 
 ### Speakers and TVs
 

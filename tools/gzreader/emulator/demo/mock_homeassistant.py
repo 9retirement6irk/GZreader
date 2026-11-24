@@ -25,7 +25,7 @@ The house is the mockup's: a living room (with a Music Assistant speaker and
 a TV), a kitchen, outside, a switch in no room and three scenes. Test helpers: GET /__state (states and the request
 log), POST /__reset, POST /__offline?on=1, POST /__set?id=<entity>&state=<s>.
 """
-import copy, json, sys, threading
+import copy, json, os, sys, threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
@@ -91,6 +91,18 @@ LIBRARY = {
     "track": [{"name": "Blue in Green", "uri": "library://track/9", "media_type": "track",
                "artists": [{"name": "Example Quartet"}]}],
 }
+if os.environ.get("GZ_HA_DEMO_MUSIC"):
+    # a fuller library, for looking at Music Assistant's lists (the tours; the tests use the small one)
+    def many(kind, names, by=None):
+        return [dict({"name": n, "uri": "library://%s/%d" % (kind, 100 + i), "media_type": kind},
+                     **({"artists": [{"name": by[i % len(by)]}]} if by else {})) for i, n in enumerate(names)]
+    LIBRARY["radio"] = many("radio", ["Example FM", "Jazz Around the Clock", "Classic Rock Radio", "Coffee House Radio", "Deep Forest Radio",
+                                      "Dinner Party Radio", "Lofi Sleep Radio", "News and Talk", "Sunday Baroque", "The Corner 106.1",
+                                      "Reggae Roots", "World Service"])
+    LIBRARY["playlist"] += many("playlist", ["Cooking", "Long drive", "Rainy day", "Workout", "Sunday morning"])
+    LIBRARY["album"] += many("album", ["Blue Hour", "Northern Lights", "Paper Boats", "Second Sight", "The Long Way Round"],
+                             ["Example Quartet", "The Placeholders", "Ada Sample"])
+    LIBRARY["artist"] += many("artist", ["The Placeholders", "Ada Sample", "Lorem Trio"])
 NAMES = {i["uri"]: i for items in LIBRARY.values() for i in items}
 SC = {"temperature", "humidity"}
 BC = {"door", "window", "garage_door", "opening", "lock"}

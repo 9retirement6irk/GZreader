@@ -657,6 +657,7 @@ end
 --- or radio stations, or a search.
 function House:musicDialog(e)
     local Ha = HA()
+    if Panel().wanted() then return Panel().show(self, e, "music") end
     local ButtonDialog = require("ui/widget/buttondialog")
     local d
     local buttons = {}
@@ -679,10 +680,10 @@ function House:musicRows(e, list, pick, more)
     local rows = {}
     for _i, it in ipairs(list or {}) do
         rows[#rows + 1] = { text = it.name, mandatory = pick.kinds and Ha.musicKindName(it.media_type) or it.by,
-            gz_music_uri = it.uri, callback = function() pick.play(it) end }
+            gz_music_uri = it.uri, gz_music_kind = it.media_type, callback = function() pick.play(it) end }
     end
     if #rows == 0 then rows[1] = { text = pick.empty or _("Nothing here."), select_enabled = false, dim = true } end
-    if more then rows[#rows + 1] = { text = _("More…"), callback = more } end
+    if more then rows[#rows + 1] = { text = _("More…"), gz_music_more = true, callback = more } end
     return rows
 end
 
@@ -710,6 +711,8 @@ function House:musicShow(e, title, ask, rows_of)
                 onMenuSelect = function(_m, item) if item.callback then item.callback() end return true end,
             }
             menu.close_callback = function() UIManager:close(menu) end
+            -- the Bookshelf view: the things themselves on shelves (gzreader_housemusic.lua)
+            pcall(function() require("gzreader_housemusic").apply(menu) end)
             self.music_menu = menu
             UIManager:show(menu)
         end, "house music")
