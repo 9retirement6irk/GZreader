@@ -250,7 +250,11 @@ function M.build(p)
         sub_item_table = p.library,
     }, "settings_library") or nil
     if type(home) == "table" then home.text = _("Home") end
-    local home_tabs = compact({ home, status, navbar, quick, library }, 5)
+    -- GZreader: the Catalog's pages, their order (gzreader_catalog.lua)
+    local okcat, Cat = pcall(require, "gzreader_catalog")
+    local okrow, catalog = pcall(function() return okcat and Cat.settingsItem() end)
+    catalog = okrow and type(catalog) == "table" and type(catalog.text) == "string" and icon(catalog, "settings_library") or nil
+    local home_tabs = compact({ home, status, navbar, quick, catalog, library }, 6)
 
     ---------------------------------------------------------------- Performance
     local performance = {}

@@ -161,8 +161,8 @@ The same key lets the Kindle change your **collections**: a book's menu gets *Ad
 
 If your BookOrbit has requests set up, the Kindle can ask for a book it doesn't have. This uses the API key, which needs **Request books** ticked when you make it (and your account allowed to request books).
 
-Signed in to BookOrbit, the Catalog has a **Requests** page, the last of its
-pages (swipe past Books, or Music on Kindles that play audio).
+Signed in to BookOrbit, the Catalog has a **Requests** page, the first of its
+pages: from Books, swipe back (past Magazines if you have that page).
 
 1. Catalog → **Requests** → **Request a book…**.
 2. Type the title and, if you like, the author, then choose **Book** or **Audiobook**.

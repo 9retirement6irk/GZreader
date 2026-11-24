@@ -13,10 +13,13 @@ pages:
 Audiobooks and Music only on Kindles with a speaker or headphone jack; the
 others have the Books page alone (no strip, nothing to turn to).
 
-The tab opens on Books. A page's first list is the page: a swipe left (or
-the list's next-page button, or the page-turn key) on its last page goes to
-the next page, a swipe right on its first page back to the one before; the
-pages go round (before Books: Music, after Music: Books). The title says
+The pages' order: Requests, Magazines, Books, Audiobooks, Music, unless
+another was chosen in Settings → Home and tabs → Catalog pages
+(`gzreader_catalog_order`). The tab opens on Books wherever it is in the
+order. A page's first list is the page: a swipe left (or the list's
+next-page button, or the page-turn key) on its last page goes to the next
+page, a swipe right on its first page back to the one before; the pages go
+round (after the last: the first; before the first: the last). The title says
 which page it is; under it a strip: ‹ the page before, a dot per page (this
 one filled), the next page › (a tap on either side turns to it).
 Inside a page's lists the strip is blank and swipes turn the list's pages,
@@ -26,19 +29,54 @@ as before.
 local _ = require("gettext")
 
 local Catalog = {
-    ORDER = { "books", "magazines", "audiobooks", "music", "requests" },
+    ORDER = { "requests", "magazines", "books", "audiobooks", "music" }, -- the usual order
+    SETTING = "gzreader_catalog_order",
 }
+
+--- The pages' order: the one chosen in Settings (`saved`: a list of page
+--- ids; read from the settings when nil), made whole: ids it doesn't know
+--- or repeats are dropped, pages it lacks come after, in the usual order.
+--- Without a choice: the usual order. Pure when `saved` is passed.
+function Catalog.order(saved)
+    if saved == nil then
+        local ok, v = pcall(function() return G_reader_settings:readSetting(Catalog.SETTING) end)
+        saved = ok and v or false
+    end
+    if type(saved) ~= "table" then return Catalog.ORDER end
+    local known, out, seen = {}, {}, {}
+    for _i, id in ipairs(Catalog.ORDER) do known[id] = true end
+    for _i, id in ipairs(saved) do
+        if known[id] and not seen[id] then seen[id] = true; out[#out + 1] = id end
+    end
+    for _i, id in ipairs(Catalog.ORDER) do
+        if not seen[id] then out[#out + 1] = id end
+    end
+    return out
+end
+
+--- Keep `list` as the pages' order (nil: the usual order again), and show
+--- an open Catalog with it.
+function Catalog.setOrder(list)
+    if type(list) == "table" then
+        G_reader_settings:saveSetting(Catalog.SETTING, Catalog.order(list))
+    else
+        G_reader_settings:delSetting(Catalog.SETTING)
+    end
+    local B = package.loaded["gzreader_browser"]
+    local b = B and B.current
+    if b and not b.closed and b.menu then pcall(b.openSection, b, b.section or "books") end
+end
 
 --- The pages this Kindle has, in order (`audio`: a speaker, headphone
 --- jack or Bluetooth; asked of gzreader_touch when nil; `magazines`: a
 --- magazine library is chosen; `requests`: signed in to BookOrbit).
-function Catalog.sections(audio, magazines, requests)
+function Catalog.sections(audio, magazines, requests, order)
     if audio == nil then
         local ok, on = pcall(function() return require("gzreader_touch").player() end)
         audio = ok and on == true
     end
     local out = {}
-    for _i, id in ipairs(Catalog.ORDER) do
+    for _i, id in ipairs(order or Catalog.order()) do
         if id == "books" or (id == "magazines" and magazines) or (id == "requests" and requests)
                 or (audio and (id == "audiobooks" or id == "music")) then
             out[#out + 1] = id
@@ -51,6 +89,69 @@ local TITLES = { books = _("Books"), magazines = _("Magazines"), audiobooks = _(
 
 --- A page's title (the title bar's label).
 function Catalog.title(id) return TITLES[id] or TITLES.books end
+
+local NOTES = { requests = _("with BookOrbit"), magazines = _("when a magazine library is chosen"),
+    audiobooks = _("devices that play audio"), music = _("devices that play audio") }
+
+--- Settings → Home and tabs → Catalog pages → Arrange the pages: every
+--- page in its order, to move (KOReader's SortWidget).
+function Catalog.arrange(on_done)
+    local UIManager = require("ui/uimanager")
+    local SortWidget = require("ui/widget/sortwidget")
+    local T = require("ffi/util").template
+    local rows = {}
+    for _i, id in ipairs(Catalog.order()) do
+        rows[#rows + 1] = { text = NOTES[id] and T("%1 (%2)", Catalog.title(id), NOTES[id]) or Catalog.title(id), gz_page = id }
+    end
+    UIManager:show(SortWidget:new{
+        title = _("Arrange the Catalog's pages"),
+        item_table = rows,
+        callback = function()
+            local list = {}
+            for _i, row in ipairs(rows) do list[#list + 1] = row.gz_page end
+            Catalog.setOrder(list)
+            if on_done then on_done() end
+        end,
+    })
+end
+
+--- The order as one line ("Requests, Magazines, Books, …").
+function Catalog.orderText()
+    local names = {}
+    for _i, id in ipairs(Catalog.order()) do names[#names + 1] = Catalog.title(id) end
+    return table.concat(names, ", ")
+end
+
+--- Settings → Home and tabs → Catalog pages.
+function Catalog.settingsItem()
+    return {
+        text = _("Catalog pages"),
+        help_text = _("The order of the Catalog's pages. The Catalog always opens on Books; swipe either way to turn to the others, and past the last page you come round to the first."),
+        sub_item_table = {
+            {
+                text_func = function() return require("ffi/util").template(_("Order: %1"), Catalog.orderText()) end,
+                enabled_func = function() return false end,
+            },
+            {
+                text = _("Arrange the pages"),
+                help_text = _("Move a page up or down. A page only shows when it has something to show: Requests with BookOrbit, Magazines when a magazine library is chosen, Audiobooks and Music on devices that play audio."),
+                keep_menu_open = true,
+                callback = function(touchmenu_instance)
+                    Catalog.arrange(function() if touchmenu_instance then touchmenu_instance:updateItems() end end)
+                end,
+            },
+            {
+                text = _("Back to the usual order"),
+                enabled_func = function() return type(G_reader_settings:readSetting(Catalog.SETTING)) == "table" end,
+                keep_menu_open = true,
+                callback = function(touchmenu_instance)
+                    Catalog.setOrder(nil)
+                    if touchmenu_instance then touchmenu_instance:updateItems() end
+                end,
+            },
+        },
+    }
+end
 
 local function indexOf(list, id)
     for i, v in ipairs(list) do if v == id then return i end end
