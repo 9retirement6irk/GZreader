@@ -38,6 +38,34 @@ token can read. With another user's token the tab still works, grouped by kind
 
 ## What the tab shows
 
+In the **Bookshelf** view (quick panel → **View**) the tab is a wall, each
+room a stretch of it with its devices mounted there:
+
+<img src="https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/pw-house-wall.png" alt="The House tab as a wall of fittings on a Paperwhite" width="300"> <img src="https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/house-wall.png" alt="The same on a Kindle Keyboard, with a letter beside each fitting" width="300">
+
+- a room's name is on a strip of **label tape**, its devices in rows under
+  it (four a row on a 6" Kindle, more on a bigger screen);
+- a **dimmable light** is a rocker with ten indicator lights beside it,
+  eight lit at 80%; a plain light, a switch, a fan or a helper is a
+  **toggle**, its lever up and its pilot lamp lit when on;
+- the **thermostat** is a round dial with the target in the middle and a
+  pointer at it on the scale;
+- a temperature sensor is a **wall thermometer**, humidity a round gauge, a
+  door or window sensor a two-piece **contact** (apart when open);
+- a **lock** is a deadbolt, its thumb-turn level when locked and upright
+  when unlocked; a **garage door** or gate is a panelled door, rolled up
+  when open; blinds are a window with its slats;
+- **scenes** and scripts are keys on a keypad.
+
+Under each fitting are its name and what the list says about it
+(`On · 80%`, `20.5° → 21°`, `Locked`). A tap, Press, or the letter beside
+it on a Kindle with a keyboard, does what's described below. Letters go to
+what does something (Refresh, devices, scenes), not to sensors or room
+names. A page holds as many rooms as fit; the arrows or Page turn go on.
+A scene Home Assistant doesn't let you run is a greyed key.
+
+In the other views the tab is the list:
+
 ```
 Refresh                       updated 1 min ago
 Living room
@@ -79,6 +107,8 @@ What tapping (or the device's letter key) does:
 On a colour Kindle (Colorsoft, Scribe Colorsoft) a light that's on shows its
 bulb in its colour (warm yellow when it has none of its own), and a
 thermostat's icon is orange while it heats and blue while it cools.
+On the wall that's the dimmer's indicator lights or the toggle's pilot lamp
+and the thermostat's scale, and a thermometer's column is red.
 
 **Refresh** (the first row) fetches everything again. The list also refreshes
 every 30 seconds while the tab is on the screen, and is only drawn again (a

@@ -14,6 +14,9 @@ Kindle (ZenOS's tab bar; off until turned on in Settings → Accounts and servic
   Scenes
     Goodnight                                           ›
 
+In the Bookshelf view the same rows are drawn as a wall with a fitting for
+each device (gzreader_houseview.lua); the other views keep this list.
+
 Rooms are Home Assistant's areas; with a token that isn't an administrator's
 the list is grouped by kind instead (gzreader_homeassistant.lua says why).
 The list shown at once is the last one kept on the Kindle; it's fetched again
@@ -143,7 +146,7 @@ function House:rootItems()
     local hidden, hidden_rooms = st.hidden or {}, st.hidden_rooms or {}
     local items = {
         { text = _("Refresh"), gz_icon = Rows.FILE.sync, mandatory = self:updatedText(), gz_no_arrow = true,
-          keep_menu_open = true, callback = function() self:refresh(true) end },
+          gz_house_refresh = true, keep_menu_open = true, callback = function() self:refresh(true) end },
     }
     if not self.house then
         items[#items + 1] = { text = self.err and HA().why(self.err) or _("Loading…"), select_enabled = false, dim = true }
@@ -438,6 +441,8 @@ function House.show(plugin)
     self.menu.key_events.LeftButtonTap = nil
     pcall(require("gzreader_tabs").decorate, self.menu, _("House"))
     require("gzreader_rows").apply(self.menu)
+    -- the Bookshelf view: the rooms as a wall with their fittings (gzreader_houseview.lua)
+    pcall(function() require("gzreader_houseview").apply(self) end)
     -- Alt + Q, W, E… switch the bottom tabs (as in the other tabs)
     local digits = { "1", "2", "3", "4", "5", "6", "7", "8", "9" }
     local row = { "Q", "W", "E", "R", "T", "Y", "U", "I", "O" }

@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "House tab: your rooms as a wall of switches, dials and locks (Bookshelf view)", text = "In the Bookshelf view the House tab draws each room as a stretch of wall with its devices mounted on it, instead of a list: a dimmer with ten indicator lights for a dimmable light, a toggle with a pilot lamp for a switch, a round dial for the thermostat, a wall thermometer, a deadbolt for a lock, a panelled garage door, a window with blinds, a two-piece contact for a door or window sensor, and a keypad with a key for each scene. A room's name is on a strip of label tape. A tap, Press or the letter beside a fitting does what its row did (letters go to what does something, not to sensors or room names), and a page holds as much as fits. On a colour Kindle a lit lamp shows the bulb's colour, the thermostat's scale is orange while it heats and blue while it cools, and the thermometer is red. The other views (quick panel, View) keep the list." },
+        },
+    },
+    {
         version = "2026.11.22",
         changes = {
             { short = "Colour Kindles: Immich photos in colour", text = "On a Kindle Colorsoft or Scribe Colorsoft, the pictures from your Immich album (the sleep screen and the Home wallpaper) are kept in colour instead of being made grey. Pictures already on the Kindle stay grey until they are swapped for others from the album (about half each time GZreader gets new pictures)." },
