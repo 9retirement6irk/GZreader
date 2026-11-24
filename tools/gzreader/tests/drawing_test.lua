@@ -283,15 +283,18 @@ print("== notepaper: a background as memos keeps one")
     local Notepaper = require("gzreader_notepaper")
     local scene = Notepaper.scene("college")
     local bg = scene.elements[1]
-    check(bg and bg.type == "image" and bg.locked and scene.files[bg.fileId] and #Notepaper.LIST == 18
-        and Notepaper.LIST[1].id == "blank" and Notepaper.get("checklist").label == "Checklist" and Notepaper.get("cornell").label == "Cornell notes",
-        "a new page on College ruled: its picture under everything, in the scene's files (eighteen papers offered, Blank first; the earlier ones still known)")
+    check(bg and bg.type == "image" and bg.locked and scene.files[bg.fileId] and #Notepaper.LIST == 30
+        and Notepaper.LIST[1].id == "blank" and Notepaper.get("checklist").label == "Checklist" and Notepaper.get("cornell").label == "Cornell note"
+        and Notepaper.get("gregg") ~= nil,
+        "a new page on College rule: its picture under everything, in the scene's files (thirty papers offered, Blank first; the earlier ones still known)")
     local labels = {}
     for _i, p in ipairs(Notepaper.all()) do labels[#labels + 1] = p.label end
-    check(table.concat(labels, "|") == "Blank|Medium ruled|Medium ruled with margin|Wide ruled|Wide ruled with margin|Narrow ruled|"
-        .. "Narrow ruled with margin|Vertical ruled|Vertical ruled with margin|Graph|Dotted|Checklist|Daily planner|Weekly planner|"
-        .. "Monthly planner|Habit tracker|Storyboard|Music",
-        "the papers offered: the Kindle Scribe's templates, in its order after Blank")
+    check(table.concat(labels, "|") == "Blank|Narrow ruled|Medium ruled|Wide ruled|Narrow ruled with margin|Legal pad|"
+        .. "Medium ruled with margin|College rule|Wide ruled with margin|Medium ruled top|Medium ruled bottom|Vertical ruled with margin|"
+        .. "Vertical ruled|Graph|Graph large|Dotted|Dotted top|Dotted bottom|"
+        .. "Checklist small|Checklist|2 Column|Daily planner|Weekly planner|Weekly planner 2|"
+        .. "Monthly planner|Meeting notes|Cornell note|Habit tracker|Storyboard|Music",
+        "the papers offered: the Kindle Scribe's thirty templates, in its order (six to a row, as its chooser)")
     local function isFile(path) local f = path and io.open(path, "rb"); if f then f:close() end; return f ~= nil end
     local tiles, seen = true, {}
     for _i, p in ipairs(Notepaper.LIST) do
@@ -313,8 +316,23 @@ print("== notepaper: a background as memos keeps one")
     end
     local grey = {}
     for _i, p in ipairs(Notepaper.LIST) do
-        if p.file and p.id ~= "dots" and not coloured(Notepaper.path(p)) then grey[#grey + 1] = p.id end
+        if p.file and not p.id:match("^dots") and not coloured(Notepaper.path(p)) then grey[#grey + 1] = p.id end
     end
+    -- the papers with a colour of their own: the legal pad's yellow page, the bands of Weekly planner 2 and Meeting notes
+    local function has(path, r0, g0, b0)
+        local f = io.open(path, "rb"); local data = f:read("*a"); f:close()
+        local at = data:find("PLTE", 1, true)
+        local n = ((data:byte(at - 4) * 256 + data:byte(at - 3)) * 256 + data:byte(at - 2)) * 256 + data:byte(at - 1)
+        for i = at + 4, at + 3 + n - 2, 3 do
+            local r, g, b = data:byte(i, i + 2)
+            if math.abs(r - r0) + math.abs(g - g0) + math.abs(b - b0) <= 12 then return true end
+        end
+        return false
+    end
+    check(has(Notepaper.path(Notepaper.get("legal")), 250, 242, 178) and has(Notepaper.tile(Notepaper.get("legal")), 250, 242, 178)
+        and has(Notepaper.path(Notepaper.get("weekly-2")), 168, 214, 214) and has(Notepaper.tile(Notepaper.get("weekly-2")), 168, 214, 214)
+        and has(Notepaper.path(Notepaper.get("meeting")), 196, 222, 170) and has(Notepaper.path(Notepaper.get("meeting")), 200, 190, 228),
+        "Legal pad is yellow, Weekly planner 2 has its teal band, Meeting notes its teal, green and purple ones (pages and tiles)")
     check(#grey == 0 and coloured(Notepaper.path(Notepaper.get("ruled-medium-margin")))
         and coloured(Notepaper.tile(Notepaper.get("weekly"))),
         "the papers are in colour (a colour screen and Memos show them so; Dotted is grey dots): " .. table.concat(grey, ","))

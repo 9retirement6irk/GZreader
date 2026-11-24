@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Drawings: all thirty of the Scribe's papers, in colour", text = "The paper chooser now has every one of the Kindle Scribe's notebook templates, in its order. New: Legal pad (yellow), College rule, Medium ruled top and bottom, Graph large, Dotted top and bottom, Checklist small, 2 Column, Weekly planner 2, Meeting notes and Cornell note. The papers are in colour (blue rules, red margins, the legal pad's yellow, the planners' teal, green and purple bands): a colour Kindle shows them so in the chooser and under your drawing, as Memos does; other Kindles show them grey." },
+        },
+    },
+    {
         version = "2026.11.22",
         changes = {
             { short = "Colour Kindles: Immich photos in colour", text = "On a Kindle Colorsoft or Scribe Colorsoft, the pictures from your Immich album (the sleep screen and the Home wallpaper) are kept in colour instead of being made grey. Pictures already on the Kindle stay grey until they are swapped for others from the album (about half each time GZreader gets new pictures)." },

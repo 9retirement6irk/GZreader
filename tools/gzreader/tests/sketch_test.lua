@@ -846,7 +846,7 @@ print("== notepaper: a page's background, as memos keeps one")
         and bg.height == Notepaper.H and sk.base.files[bg.fileId].mimeType == "image/png"
         and sk.base.files[bg.fileId].dataURL:match("^data:image/png;base64,iVBOR") ~= nil,
         "College ruled: a locked picture at (0, 0) at its stored size, under everything, its PNG in the scene's files")
-    check(sk:paper() == "college", "…and it's known again as College ruled")
+    check(sk:paper() == "college", "…and it's known again as College rule")
     local after = { sk:toScene(sk.strokes[1].points[2][1], sk.strokes[1].points[2][2]) }
     check(sk.per_unit < 2 and Notepaper.W * sk.per_unit <= PW3.w and Notepaper.H * sk.per_unit <= PW3.h
         and math.abs(before[1] - after[1]) < 0.01 and math.abs(before[2] - after[2]) < 0.01,

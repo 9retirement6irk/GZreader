@@ -14,7 +14,9 @@ Writes, into plugins/gzreader.koplugin/notepaper/:
                   top-left corner, its lines darker so they show small
                   (for every paper, the ones made earlier too)
 
-    python3 tools/gzreader/make_notepaper.py [font.ttf]
+    python3 tools/gzreader/make_notepaper.py [font.ttf] [--force]
+
+Only papers that aren't there yet are written (--force: all of them again).
 
 The font is for the planners' few words (times, days, numbers): NotoSans
 from a KOReader folder, DejaVu Sans otherwise. The `*-plain.png` files are the margin papers as they
@@ -37,7 +39,7 @@ MARGIN_X = 190  # the margin line of a "with margin" paper
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.normpath(os.path.join(HERE, "..", "..", "plugins", "gzreader.koplugin", "notepaper"))
-FONTS = [a for a in sys.argv[1:]] + [
+FONTS = [a for a in sys.argv[1:] if not a.startswith("--")] + [
     "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
 ]
@@ -228,7 +230,154 @@ def music():
     return im
 
 
+# ---- the rest of the Scribe's templates (the owner, 2026-11-24)
+
+YELLOW = (250, 242, 178)       # a legal pad's page
+YELLOW_BAND = (236, 224, 140)  # its binding at the top
+TEAL = (168, 214, 214)         # the planners' and meeting notes' bands
+GREEN = (196, 222, 170)
+PURPLE = (200, 190, 228)
+DOT = (150, 150, 150)
+BOX = (140, 140, 140)
+
+
+def legal():
+    """A legal pad: yellow, blue rules from edge to edge, a double red margin
+    line, the binding's band across the top."""
+    im = Image.new("RGB", (W, H), YELLOW)
+    d = ImageDraw.Draw(im)
+    d.rectangle([0, 0, W, 86], fill=YELLOW_BAND)
+    y = TOP
+    while y <= H - 30:
+        hline(d, y, 0, W)
+        y += 37
+    vline(d, MARGIN_X - 6, 86, H, RED)
+    vline(d, MARGIN_X, 86, H, RED)
+    return im
+
+
+def ruled_part(top):
+    """Medium ruled on the top or the bottom half; the other half blank."""
+    im, d = page()
+    y0, y1 = (TOP, H // 2) if top else (H // 2 + 20, BOTTOM)
+    y = y0
+    while y <= y1:
+        hline(d, y)
+        y += 37
+    return im
+
+
+def graph_large():
+    im, d = page()
+    step = 74
+    nx, ny = (RIGHT - LEFT) // step, (BOTTOM - 80) // step
+    x0 = LEFT + ((RIGHT - LEFT) - nx * step) // 2
+    y0 = 80 + ((BOTTOM - 80) - ny * step) // 2
+    for i in range(nx + 1):
+        vline(d, x0 + i * step, y0, y0 + ny * step)
+    for j in range(ny + 1):
+        hline(d, y0 + j * step, x0, x0 + nx * step)
+    return im
+
+
+def dots_part(top):
+    """Dotted on the top or the bottom half."""
+    im, d = page()
+    step = 37
+    y0, y1 = (110, H // 2) if top else (H // 2 + 20, BOTTOM)
+    y = y0
+    while y <= y1:
+        x = LEFT
+        while x <= RIGHT:
+            d.ellipse([x - 2, y - 2, x + 2, y + 2], fill=DOT)
+            x += step
+        y += step
+    return im
+
+
+def checklist_small():
+    """A checklist with small boxes and narrow lines."""
+    im, d = page()
+    step, box = 37, 20
+    y = 110 + step
+    while y <= BOTTOM:
+        d.rectangle([LEFT, y - box - 6, LEFT + box, y - 6], outline=BOX, width=2)
+        hline(d, y, LEFT + box + 16, RIGHT)
+        y += step
+    return im
+
+
+def two_column():
+    im, d = page()
+    gap = 50
+    mid = (LEFT + RIGHT) // 2
+    y = TOP
+    while y <= BOTTOM:
+        hline(d, y, LEFT, mid - gap // 2)
+        hline(d, y, mid + gap // 2, RIGHT)
+        y += 37
+    return im
+
+
+def weekly2():
+    """A week as seven columns under a teal band with the days' names."""
+    im, d = page()
+    f = font(22)
+    top, band = 90, 70
+    d.rectangle([LEFT, top, RIGHT, top + band], fill=TEAL)
+    col = (RIGHT - LEFT) / 7.0
+    for i, day in enumerate(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]):
+        x = int(LEFT + i * col)
+        d.text((x + 10, top + 22), day, font=f, fill=TEXT)
+        if i:
+            vline(d, x, top, BOTTOM)
+    d.rectangle([LEFT, top, RIGHT, BOTTOM], outline=LINE, width=2)
+    hline(d, top + band)
+    return im
+
+
+def meeting():
+    """Meeting notes: a teal band for the title, a green one for the date and
+    who's there, ruled lines for the notes, then a purple band and a
+    checklist for what's to be done."""
+    im, d = page()
+    f = font(22)
+    y = 90
+    d.rectangle([LEFT, y, RIGHT, y + 64], fill=TEAL)
+    d.text((LEFT + 12, y + 18), "Meeting", font=f, fill=TEXT)
+    y += 64
+    d.rectangle([LEFT, y, RIGHT, y + 46], fill=GREEN)
+    d.text((LEFT + 12, y + 10), "Date", font=f, fill=TEXT)
+    d.text(((LEFT + RIGHT) // 2 + 12, y + 10), "Attendees", font=f, fill=TEXT)
+    y += 46
+    notes_end = 980
+    y += 37
+    while y <= notes_end:
+        hline(d, y)
+        y += 37
+    d.rectangle([LEFT, y, RIGHT, y + 46], fill=PURPLE)
+    d.text((LEFT + 12, y + 10), "Action items", font=f, fill=TEXT)
+    y += 46 + 37
+    box = 20
+    while y <= BOTTOM:
+        d.rectangle([LEFT + 8, y - box - 6, LEFT + 8 + box, y - 6], outline=BOX, width=2)
+        hline(d, y, LEFT + box + 24, RIGHT)
+        y += 37
+    d.rectangle([LEFT, 90, RIGHT, y - 37], outline=LINE, width=2)
+    return im
+
+
 PAPERS = [
+    ("legal", legal),
+    ("ruled-medium-top", lambda: ruled_part(True)),
+    ("ruled-medium-bottom", lambda: ruled_part(False)),
+    ("graph-large", graph_large),
+    ("dots-top", lambda: dots_part(True)),
+    ("dots-bottom", lambda: dots_part(False)),
+    ("checklist-small", checklist_small),
+    ("two-column", two_column),
+    ("weekly-2", weekly2),
+    ("meeting", meeting),
     ("ruled-medium", lambda: ruled(37)),
     ("ruled-medium-margin", lambda: ruled(37, True)),
     ("ruled-wide", lambda: ruled(46)),
@@ -250,15 +399,31 @@ EARLIER = ["college", "wide", "gregg", "dots", "graph", "checklist", "cornell"]
 TILE, CROP = 200, 360
 
 
-def tile(im, punched=False):
-    """The chooser's picture: the page's top-left corner, its lines darker
-    (in their colours: a colour screen shows the tiles so too)."""
-    t = im.convert("RGB").crop((40, 80, 40 + CROP, 80 + CROP)).resize((TILE, TILE), Image.LANCZOS)
+# where a tile is cut from, for the papers whose top-left corner doesn't show what they are
+TILE_AT = {
+    "ruled-medium-top": (40, H // 2 - 250), "ruled-medium-bottom": (40, H // 2 - 110),
+    "dots-top": (40, H // 2 - 250), "dots-bottom": (40, H // 2 - 110),
+    "two-column": ((LEFT + RIGHT) // 2 - CROP // 2, 80), "legal": (40, 0), "meeting": (40, 900),
+}
+FILLS = (YELLOW, YELLOW_BAND, TEAL, GREEN, PURPLE)
+
+
+def near(c, fills, by=14):
+    return any(abs(c[0] - f[0]) + abs(c[1] - f[1]) + abs(c[2] - f[2]) <= by for f in fills)
+
+
+def tile(im, punched=False, at=(40, 80)):
+    """The chooser's picture: a corner of the page (its top-left one unless
+    TILE_AT says), its lines darker (in their colours: a colour screen shows
+    the tiles so too); a page's or a band's own colour stays as it is."""
+    t = im.convert("RGB").crop((at[0], at[1], at[0] + CROP, at[1] + CROP)).resize((TILE, TILE), Image.LANCZOS)
     px = t.load()
     for y in range(TILE):
         for x in range(TILE):
             r, g, b = px[x, y]
-            if punched and abs(r - g) < 4 and abs(g - b) < 4 and r >= 230:
+            if near((r, g, b), FILLS):
+                pass
+            elif punched and abs(r - g) < 4 and abs(g - b) < 4 and r >= 230:
                 pass  # (a punched hole's pale fill: as it is, not a dark blot)
             elif min(r, g, b) <= 246:
                 px[x, y] = (int(r * 0.5), int(g * 0.5), int(b * 0.5))
@@ -273,11 +438,17 @@ def save(im, path):
 
 def main():
     os.makedirs(os.path.join(OUT, "tiles"), exist_ok=True)
+    force = "--force" in sys.argv
     for name, make in PAPERS:
+        # (a paper that's there stays as it is: pages drawn on it know it by its bytes)
+        if os.path.exists(os.path.join(OUT, name + ".png")) and not force:
+            continue
         im = make()
         save(im, os.path.join(OUT, name + ".png"))
-        save(tile(im, name.endswith("-margin") and name.startswith("ruled-")), os.path.join(OUT, "tiles", name + ".png"))
+        save(tile(im, name.endswith("-margin") and name.startswith("ruled-"), TILE_AT.get(name, (40, 80))), os.path.join(OUT, "tiles", name + ".png"))
     for name in EARLIER:
+        if os.path.exists(os.path.join(OUT, "tiles", name + ".png")) and not force:
+            continue
         save(tile(Image.open(os.path.join(OUT, name + ".png"))), os.path.join(OUT, "tiles", name + ".png"))
     for f in sorted(os.listdir(OUT)):
         if f.endswith(".png"):
