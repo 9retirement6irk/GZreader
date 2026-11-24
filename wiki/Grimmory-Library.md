@@ -6,8 +6,9 @@ The **Catalog** tab (called Grimmory before 1.27.x) holds what's on your
 servers, in pages:
 
 1. **Books**: your Grimmory books (below). The tab always opens here.
-2. **Audiobooks**: Grimmory's audiobooks ([Audiobooks](Audiobooks-and-Read-Aloud)).
-3. **Music**: your Plex music ([Music](Music)).
+2. **Magazines**: only when you've chosen a magazine library ([Magazines](#magazines), below).
+3. **Audiobooks**: Grimmory's audiobooks ([Audiobooks](Audiobooks-and-Read-Aloud)).
+4. **Music**: your Plex music ([Music](Music)).
 
 Audiobooks and Music are only on Kindles with a speaker or headphone jack
 (Kindle 2, 3, DX, Touch) or with Bluetooth (Scribe, Paperwhite 5 and newer…); the others have the Books page alone, with no
@@ -62,6 +63,34 @@ Tab bar → Tabs → Audiobooks, or the setup guide's tab page; Kindles with a
 speaker or headphone jack) opens the Catalog's Audiobooks page on its own:
 its tab is underlined, and there's no strip and nothing to swipe to. The
 Music tab (Settings → Home and tabs → Tab bar → Tabs → Music) stays as it was.
+
+## Magazines
+
+Keep your magazines in a library of their own on Grimmory (or BookOrbit), then
+choose it in **Settings → Accounts and services → Books → Magazines**. It
+lists your libraries; pick the one with your magazines, or **Off**.
+
+- The Catalog gets a **Magazines** page after Books, with only that library's
+  books. In the Bookshelf view it's a magazine stand: a striped awning with the
+  library's name, the search bar, wire racks with the covers face out, and a
+  counter below.
+  - The top rack is **Latest issues**. Each rack below is one magazine, the
+    ones with the newest issues first. A price tag at the end of a rack
+    ("+12 more") opens all of them; so does the rack's sign.
+  - An issue that's on the Kindle has an **ON KINDLE** tag.
+  - The counter's drawers: **Magazines A–Z** (each magazine with how many
+    issues, opening to its issues, newest first) and **All issues** (A–Z).
+  - **Search magazines…** searches that library only.
+- The **Books** page leaves the magazines out: All books, Recently added,
+  Continue reading, searches, Authors, Series, Genres and the counts on the
+  cards. The magazine library isn't among **Libraries** either.
+- Which magazine an issue belongs to: its series when it has one, otherwise
+  its title up to " - ", " – ", " — " or ": ". "Wired - November 2026" is Wired.
+- The racks show your newest 200 issues; Magazines A–Z is made from them too.
+  All issues and searches cover the whole library.
+- The choice is kept for the server and account you're signed in to.
+  Changing it rebuilds the library index in the background, so the Books
+  page's counts follow.
 
 ## Browsing Grimmory
 

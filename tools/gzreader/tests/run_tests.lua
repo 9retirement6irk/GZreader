@@ -1628,6 +1628,106 @@ do -- Genres (Grimmory's categories): from the index, each opening to its books
     end
     check(ids() == "2,5" and asked and asked:match("fileType=EPUB"), "a genre opens to its books (Grimmory asked for that category, books only): " .. ids())
 end
+;(function() -- Magazines: a library chosen as the magazine library (gzreader_magazines.lua)
+    print("Magazines: their own Catalog page, left out of Books")
+    local Mag = require("gzreader_magazines")
+    local Catalog = require("gzreader_catalog")
+    check(table.concat(Catalog.sections(true, true), ",") == "books,magazines,audiobooks,music"
+        and table.concat(Catalog.sections(false, true), ",") == "books,magazines"
+        and table.concat(Catalog.sections(true, false), ",") == "books,audiobooks,music"
+        and table.concat(Catalog.sections(false, false), ",") == "books",
+        "the Catalog's pages: Magazines after Books, only with a magazine library")
+    check(Catalog.title("magazines") == "Magazines", "its title")
+    check(Mag.titleOf({ title = "Wired - November 2026" }) == "Wired" and Mag.titleOf({ title = "The Atlantic: Dec 2026" }) == "The Atlantic"
+        and Mag.titleOf({ title = "Harper’s – Jan" }) == "Harper’s" and Mag.titleOf({ title = "Plain" }) == "Plain"
+        and Mag.titleOf({ title = "Issue 5", seriesName = "Orbit" }) == "Orbit",
+        "an issue's magazine: its series, else its title before the dash or colon")
+    local g = Mag.groups({ { id = 1, title = "B - 2" }, { id = 2, title = "A - 2" }, { id = 3, title = "b - 1" }, { id = 4, title = "A - 1" } })
+    check(#g == 2 and g[1].name == "B" and #g[1].issues == 2 and g[1].issues[2].id == 3 and g[2].name == "A",
+        "issues grouped by magazine (letter case aside), the one with the newest issue first, issues in order")
+    check(Mag.get(plugin) == nil and Browser.magazineItems({ plugin = plugin, api = plugin.api })[1].select_enabled == false,
+        "no magazine library: none chosen, and the page says where to choose one")
+    -- (the mock's even books are in library 2)
+    Mag.set(plugin, { id = 2, name = "Non-fiction" })
+    check(Mag.get(plugin).name == "Non-fiction" and Mag.key(plugin.store) == "2", "a magazine library chosen")
+    local saved_user = plugin.store.username
+    plugin.store.username = "someone else"
+    check(Mag.get(plugin) == nil, "…for this server and account only")
+    plugin.store.username = saved_user
+    check(Index.load(plugin.store) == nil, "the library index made for no magazine library isn't used any more (its counts would be off)")
+    local built
+    Index.build(plugin, false, function(d) built = d or false end)
+    runLoop(function() return built ~= nil end, 30)
+    local mi = Index.load(plugin.store)
+    local evens = 0
+    for _i, id in ipairs(mi and mi.magazines and mi.magazines.ids or {}) do if id % 2 == 0 then evens = evens + 1 end end
+    check(mi and mi.total == 16 and mi.libraries["2"] == nil and mi.libraries["1"] == 16 and evens == 16 and #mi.magazines.ids == 16
+        and mi.files["book2.epub"] ~= nil,
+        "the index leaves the magazines out of its counts and Libraries, keeps their ids (and their files, for relinking)")
+    check(Mag.isMagazine(plugin, { id = 4 }) and Mag.isMagazine(plugin, { id = 99, libraryId = 2 }) and not Mag.isMagazine(plugin, { id = 5, libraryId = 1 }),
+        "a magazine: in the library by its libraryId, or by its id (BookOrbit's lists don't say a book's library)")
+    check(Mag.hider(plugin, { libraryId = 2 }) == nil and Mag.hider(plugin, { libraryId = 1 }) ~= nil and Mag.hider(plugin, {}) ~= nil,
+        "lists leave them out, except the magazine library's own")
+    local mb = Browser:new(plugin); mb:show()
+    check(table.concat(mb:sections(), ","):match("^books,magazines") ~= nil, "the Catalog has the Magazines page")
+    local bi = Browser.bookItems(mb)
+    check(bi[#bi].gz_id == "magazines", "the Books page's next page is Magazines")
+    local mi_items = Browser.magazineItems(mb)
+    local ids = {}
+    for _i, it in ipairs(mi_items) do ids[#ids + 1] = tostring(it.gz_id) end
+    check(mi_items.gz_root and table.concat(ids, ","):match("^mag_search,mag_latest,mag_titles,mag_all") ~= nil, "the Magazines page's items: " .. table.concat(ids, ","))
+    -- All books: no magazines
+    mb:openPaged("All books", { sort = "title", dir = "asc" })
+    local function shown()
+        local t = {}
+        for _i, it in ipairs(mb.menu.item_table) do if type(it.book) == "table" then t[#t + 1] = it.book.id end end
+        return t
+    end
+    runLoop(function() return mb.menu.title == "All books" and #shown() > 0 end, 20)
+    local odd = true
+    for _i, id in ipairs(shown()) do if id % 2 == 0 then odd = false end end
+    check(odd and #shown() > 0, "All books on the Books page: no magazines")
+    -- the magazine library's own list has them
+    mb:openPaged("All issues", { libraryId = 2, sort = "title", dir = "asc" })
+    runLoop(function() return mb.menu.title == "All issues" and #shown() > 0 end, 20)
+    local even = true
+    for _i, id in ipairs(shown()) do if id % 2 == 1 then even = false end end
+    check(even, "All issues: the magazines")
+    -- Recently added without them
+    local hide = Mag.hider(plugin)
+    local rec = Mag.recent(plugin.api, hide, 5)
+    local rok = rec and #rec == 5
+    for _i, bk in ipairs(rec or {}) do if bk.id % 2 == 0 then rok = false end end
+    check(rok, "Recently added: the newest books that aren't magazines")
+    -- Libraries: not the magazine library
+    mb:openLibraries()
+    runLoop(function() return mb.menu.title == "Libraries" end, 20)
+    check(not texts(mb.menu.item_table):match("Non%-fiction"), "Libraries: the magazine library isn't among them")
+    -- the stand's issues and titles
+    local issues = Mag.fetch(plugin.api, 2)
+    check(issues and #issues == 16, "the stand's issues: the library's books")
+    local Stand = require("gzreader_magstand")
+    local racks = Stand.racks(issues, 3)
+    check(racks[1].kind == "latest" and #racks[1].books == 4 and racks[1].total == 16, "the first rack: the latest issues")
+    local one = Stand.racks({ { id = 1, title = "A - 1" }, { id = 2, title = "A - 2" } }, 3)
+    check(#one == 1, "one magazine only: no rack of its own (it would be Latest issues again)")
+    local two = Stand.racks({ { id = 1, title = "A - 2" }, { id = 2, title = "B - 2" }, { id = 3, title = "A - 1" } }, 3)
+    check(#two == 3 and two[2].label == "A" and #two[2].books == 2 and two[3].label == "B", "then a rack a magazine, newest first")
+    local L = Stand.layout(1072, 1180, function(px) return px end)
+    local ok_l = L.fits and #L.racks == 3 and L.racks[3].lip.y + L.racks[3].lip.h <= L.counter.y and L.slip.y > L.awning.h
+    for i = 1, #L.racks do
+        ok_l = ok_l and L.racks[i].box_w <= L.racks[i].cols[1].w and math.abs(L.racks[i].box_w / L.racks[i].box_h - Stand.RATIO) < 0.02
+    end
+    check(ok_l, "the stand's layout: awning, slip, three racks of magazine-shaped covers above the counter")
+    check(#Stand.layout(600, 560, function(px) return px end).racks == 2, "a smaller page: two racks")
+    -- off again: Books as before, the index made again without them
+    Mag.set(plugin, nil)
+    check(Mag.get(plugin) == nil and table.concat(Catalog.sections(false, Mag.get(plugin) ~= nil), ",") == "books", "off: no Magazines page")
+    built = nil
+    Index.build(plugin, false, function(d) built = d or false end)
+    runLoop(function() return built ~= nil end, 30)
+    check(Index.load(plugin.store) and Index.load(plugin.store).total == 32, "off: the index counts every book again")
+end)()
 check(b:bookItem({ id = 2, title = "Book 02", authors = { "A" }, primaryFileType = "EPUB" }).text == "Book 02: Rodrick Rules — A", "Grimmory lists show the subtitle")
 check(require("gzreader_titles").full("Diary of a Wimpy Kid: Old School", "Old School") == "Diary of a Wimpy Kid: Old School", "subtitle not doubled when the title already has it")
 local index_requests = 0
@@ -3096,7 +3196,7 @@ do
         and not g:match("Downloads") and not g:match("Browse library") and not g:match("updates")
         and not g:match("Diagnostic") and not g:match("Read aloud") and not g:match("Pre%-size")
         and not g:match("Wi%-Fi only"), "Grimmory section: connection and sync only " .. g)
-    check(g:match("|Sync highlights and notes|Reading stats|Rebuild library|Reconnect") and not g:match("Request a book") and not g:match("Keep connections open")
+    check(g:match("|Sync highlights and notes|Reading stats|Magazines: off|Rebuild library|Reconnect") and not g:match("Request a book") and not g:match("Keep connections open")
             and not g:match("Copy from another GZreader"),
         "Books (Grimmory): the sync switches, then Rebuild library; Keep connections open in General → Performance, Copy in General → Transfer " .. g)
     check(g:match("|Connect to Grimmory by typing|Connect to BookOrbit by typing|Single sign%-on %(SSO%)|Disconnect|About Grimmory|$")
@@ -17214,6 +17314,29 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
         local label, body = require("gzreader_browser").aboutServer(plugin)
         check(label == "About BookOrbit" and body:find("AGPL", 1, true) and body:find("isn't part of it or endorsed by it", 1, true),
             "About BookOrbit: still says what BookOrbit is and that GZreader isn't part of it")
+    end
+    -- Magazines with BookOrbit: its lists don't say a book's library, so by the library's ids
+    do
+        local Mag = require("gzreader_magazines")
+        Mag.set(plugin, { id = 2, name = "Non-fiction" })
+        local ids = Mag.allIds(plugin.api, 2)
+        local has = {}
+        for _i, id in ipairs(ids or {}) do has[tostring(id)] = true end
+        check(has["103"] and not has["101"] and not has["102"], "BookOrbit: the magazine library's books, by id")
+        Mag.forget()
+        Mag.noteIssues({ { id = 103 } })
+        local hide = Mag.hider(plugin, {})
+        local page = plugin.api:listBooks{ page = 0, size = 20, sort = "title", dir = "asc" }
+        local left = {}
+        for _i, bk in ipairs(page and page.content or {}) do if not hide(bk) then left[#left + 1] = tostring(bk.id) end end
+        check(page and page.content[1] and page.content[1].libraryId == nil and not table.concat(left, ","):find("103", 1, true)
+            and table.concat(left, ","):find("101", 1, true),
+            "BookOrbit: the Books page leaves the magazines out by id (" .. table.concat(left, ",") .. ")")
+        local rows = {}
+        for _i, it in ipairs(plugin:menuItems()) do rows[it.text or (it.text_func and it.text_func()) or "?"] = it end
+        check(rows["Magazines: Non-fiction"] ~= nil, "Settings → Books: the Magazines row names the library")
+        Mag.set(plugin, nil)
+        Mag.forget()
     end
     -- signing in again as the same user keeps the key; another user doesn't get it
     plugin:connect(BO, "will-kindle", "hunter22", "bookorbit")
