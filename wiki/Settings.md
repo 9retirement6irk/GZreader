@@ -43,7 +43,8 @@ GZreader. They aren't part of GZreader and GZreader doesn't check them.
 
 - **Install ZenPM** downloads [ZenPM](https://github.com/xZenLabs/zen-pm),
   ZenLabs' package manager, from its latest release (checked against the
-  release's SHA-256) and installs its plugin. After the restart the row reads
+  release's SHA-256) and installs its plugin; the screen shows how much has
+  downloaded (megabytes and percent), like a software update. After the restart the row reads
   **Open ZenPM**, and ZenPM has a tile on the quick panel, under **Your
   tiles**. ZenPM has builds for Kindles and Kobos; where it has none the row
   says so.
@@ -51,13 +52,19 @@ GZreader. They aren't part of GZreader and GZreader doesn't check them.
   `GZreader/app/plugins/`) are kept through GZreader's updates. To open one,
   give it a tile: Settings → Home and tabs → Quick panel → **Your tiles** →
   **Add a plugin's screen**.
-- **Don't install or update "Zen UI" (ZenOS) from ZenPM.** ZenPM lists
-  GZreader's own ZenOS as its Zen UI package and may offer an update. That
-  update is ZenLabs' ZenOS without GZreader's changes: Home, the tabs and
-  Settings would stop being GZreader's. If it happens, GZreader says so at
-  its next start and offers **Put back**, which downloads this version of
-  GZreader again (your settings, books and add-ons are kept). The same is
-  under Add-ons as **Put GZreader's ZenOS back**.
+- **ZenPM lists GZreader's own ZenOS under Installed**, as "GZreader" by
+  ZenLabs. ZenPM can't hide it, so leave it alone there. GZreader looks after
+  it at each start:
+  - it turns on ZenPM's **Ignore updates** for it, so ZenPM offers no update
+    and its Update all skips it (from the first start after ZenPM has been
+    opened once);
+  - if it was **Disabled** in ZenPM, GZreader switches it back on and offers
+    a restart;
+  - if it was updated, changed to another version or **Uninstalled**, Home,
+    the tabs and Settings stop being GZreader's. GZreader says so and offers
+    **Put back**, which downloads this version of GZreader again (your
+    settings, books and add-ons are kept). The same is under Add-ons as
+    **Put GZreader's ZenOS back**.
 - KOReader patches change KOReader's own code and can break GZreader's
   screens: remove a patch in ZenPM if something stops working after adding it.
 - Progress sync, OPDS and similar plugins do what GZreader already does with

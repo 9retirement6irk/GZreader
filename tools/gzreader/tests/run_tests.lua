@@ -2800,7 +2800,7 @@ do
             "GZreader's ZenOS carries its mark: nothing replaced")
         local tmp = WORK .. "/addons-plugins"
         os.execute("rm -rf '" .. tmp .. "' && mkdir -p '" .. tmp .. "/zenos.koplugin'")
-        check(#Addons.replaced(tmp) == 0, "no ZenOS there at all: not this guard's matter")
+        check(table.concat(Addons.replaced(tmp), ",") == "ZenOS", "no ZenOS there at all (ZenPM's Uninstall): replaced too")
         local f = io.open(tmp .. "/zenos.koplugin/main.lua", "w"); f:write("return {}"); f:close()
         check(table.concat(Addons.replaced(tmp), ",") == "ZenOS", "a ZenOS without GZreader's mark (ZenPM's update): replaced")
         local UIMa = require("ui/uimanager")
@@ -2814,6 +2814,40 @@ do
         f = io.open(tmp .. "/zenos.koplugin/GZREADER", "w"); f:write("x"); f:close()
         shown_box = nil
         check(#Addons.check(hplug, tmp) == 0 and shown_box == nil, "GZreader's own: nothing said")
+        -- ZenPM's Disable on one of GZreader's own plugins: switched back on
+        G_reader_settings:saveSetting("plugins_disabled", { zenos = true, chess = true })
+        shown_box = nil
+        Addons.check(hplug, tmp)
+        local dis = G_reader_settings:readSetting("plugins_disabled")
+        check(dis.zenos == nil and dis.chess == true and shown_box and shown_box.ok_text == "Restart",
+            "ZenOS disabled (ZenPM's Disable): switched back on, a restart offered; other plugins left as they are")
+        G_reader_settings:delSetting("plugins_disabled")
+        -- ZenPM's Ignore updates, set for GZreader's ZenOS in ZenPM's own list
+        local none_n, none_why = Addons.ignoreUpdates(WORK .. "/no-zenpm-list.sqlite3")
+        check(none_n == nil and none_why == "no ZenPM list" and not io.open(WORK .. "/no-zenpm-list.sqlite3"),
+            "ZenPM not opened yet (no list): nothing set, and no list made")
+        ;(function()
+            local okq, SQ3 = pcall(require, "lua-ljsqlite3/init")
+            if not okq then print("  (no SQLite here: ZenPM's list not tried)"); return end
+            local db = WORK .. "/zenpm-list.sqlite3"
+            os.remove(db)
+            local conn = SQ3.open(db)
+            conn:exec([[CREATE TABLE installed_packages (id TEXT PRIMARY KEY, name TEXT NOT NULL, version TEXT NOT NULL, repo TEXT NOT NULL,
+                asset TEXT NOT NULL DEFAULT '', asset_arch TEXT NOT NULL DEFAULT '', install_path TEXT NOT NULL DEFAULT '',
+                launcher_add_pending INTEGER NOT NULL DEFAULT 0, update_ignored INTEGER NOT NULL DEFAULT 0,
+                update_ignored_version TEXT NOT NULL DEFAULT '', installed_at TEXT NOT NULL)]])
+            conn:exec("INSERT INTO installed_packages(id, name, version, repo, install_path, installed_at) VALUES('zen-ui', 'ZenOS', '4.3.2', 'r', '/x/plugins/zenos.koplugin', 't')")
+            conn:exec("INSERT INTO installed_packages(id, name, version, repo, install_path, installed_at) VALUES('chess', 'Chess', '1.0', 'r', '/x/plugins/kochess.koplugin', 't')")
+            conn:close()
+            local first, again = Addons.ignoreUpdates(db), Addons.ignoreUpdates(db)
+            conn = SQ3.open(db)
+            local zen = tonumber(conn:rowexec("SELECT update_ignored FROM installed_packages WHERE id = 'zen-ui'"))
+            local chess = tonumber(conn:rowexec("SELECT update_ignored FROM installed_packages WHERE id = 'chess'"))
+            conn:close()
+            os.remove(db)
+            check(first == 1 and again == 0 and zen == 1 and chess == 0,
+                "ZenPM's Ignore updates: turned on for GZreader's ZenOS in ZenPM's list, nothing else touched")
+        end)()
         -- ZenPM installed: its tile on the quick panel, once
         local Custom = require("gzreader_panelcustom")
         local real_zenpm = Addons.zenpm
@@ -2834,12 +2868,32 @@ do
         check(rows[1].text == "Install ZenPM" and rows[2].text == "About add-ons" and #rows == 2, "Add-ons: Install ZenPM, About add-ons")
         shown_box = nil
         rows[1].callback()
-        check(asked == nil and shown_box and shown_box.text:find("Don't install or update “Zen UI”", 1, true) and shown_box.ok_text == "Continue",
-            "Install ZenPM: GZreader's word on it first (leave Zen UI alone)")
+        check(asked == nil and shown_box and shown_box.text:find("Leave it alone", 1, true) and shown_box.ok_text == "Continue",
+            "Install ZenPM: GZreader's word on it first (leave its ZenOS alone)")
         shown_box.ok_callback()
         check(asked == true, "…then ZenOS's installer")
         package.loaded["modules/settings/zenpm_installer"] = { build_item = function() return nil end }
         check(Addons.items(hplug)[1].text == "ZenPM isn't available for this device.", "a device ZenPM has no build for: said")
+        -- the download's progress on ZenOS's install screen (its functions cut out of the installer)
+        local isrc = io.open(zen_dir .. "/zenos.koplugin/modules/settings/zenpm_installer.lua"):read("*a")
+        local from, upto = isrc:find("local function megabytes", 1, true), isrc:find("local function show_install_prompt", 1, true)
+        local IM = {}
+        local chunk = from and upto and load(isrc:sub(from, upto - 1), "zenpm progress", "t",
+            { M = IM, _ = function(t) return t end, string = string, math = math, tonumber = tonumber, require = require, io = io })
+        if chunk then chunk() end
+        check(IM.progress_text and IM.progress_text(0, 5000000) == "Downloading ZenPM..."
+            and IM.progress_text(2621440, 10485760) == "Downloading ZenPM...\n2.5 MB / 10.0 MB (25%)"
+            and IM.progress_text(3145728, nil) == "Downloading ZenPM...\n3.0 MB"
+            and IM.progress_text(99999999, 10485760):find("10.0 MB / 10.0 MB (100%)", 1, true) ~= nil,
+            "Installing ZenPM: the screen says how much has come, of how much, as a software update does")
+        local zp = WORK .. "/zenpm-progress.zip"
+        local zf = io.open(zp, "wb"); zf:write(string.rep("x", 2048)); zf:close()
+        zf = io.open(zp .. ".size", "w"); zf:write("8192"); zf:close()
+        local have, total = IM.read_progress(zp)
+        os.remove(zp); os.remove(zp .. ".size")
+        check(have == 2048 and total == 8192 and select(1, IM.read_progress(zp)) == 0, "…read from the file as it grows and the size the download noted")
+        check(isrc:find("UIManager:scheduleIn(1, progress_tick)", 1, true) and isrc:find("UIManager:unschedule(progress_tick)", 1, true)
+            and isrc:find('os.remove(zip_path .. ".size")', 1, true), "…every second while it downloads, stopped and tidied after")
         Addons.zenpm = real_zenpm
         UIMa.show = real_show
         package.loaded["ui/widget/confirmbox"] = real_box

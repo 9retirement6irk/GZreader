@@ -125,7 +125,8 @@ local function release_asset(release, name_prefix)
         if prefix_match and zip_match and valid_url and valid_digest then
             local sha = asset.digest:match("^sha256:([0-9a-fA-F]+)$")
             if sha and #sha == 64 then
-                return { name = asset.name, url = asset.browser_download_url, sha256 = sha:lower() }
+                return { name = asset.name, url = asset.browser_download_url, sha256 = sha:lower(),
+                    size = tonumber(asset.size) } -- GZreader: for the download's progress
             end
         end
     end
@@ -294,6 +295,33 @@ local function restart_koreader()
     require("common/restart").request()
 end
 
+-- GZreader: the download's progress, as a software update shows it. The
+-- download runs in its own process, which notes the file's size beside it
+-- (`<zip>.size`, from the release); the screen reads how much has come.
+local function megabytes(bytes) return string.format("%.1f MB", bytes / 1048576) end
+
+--- The screen's line while downloading: `have` bytes of `total` (nil: not known).
+function M.progress_text(have, total)
+    local base = _("Downloading ZenPM") .. "..."
+    have = tonumber(have) or 0
+    total = tonumber(total)
+    if have <= 0 then return base end
+    if total and total > 0 then
+        local pct = math.min(100, math.floor(have * 100 / total))
+        return base .. "\n" .. megabytes(math.min(have, total)) .. " / " .. megabytes(total) .. " (" .. pct .. "%)"
+    end
+    return base .. "\n" .. megabytes(have)
+end
+
+function M.read_progress(zip_path)
+    local lfs = require("libs/libkoreader-lfs")
+    local have = lfs.attributes(zip_path, "size") or 0
+    local total
+    local f = io.open(zip_path .. ".size", "r")
+    if f then total = tonumber(f:read("*l")); f:close() end
+    return have, total
+end
+
 local function show_install_prompt(plugin)
     local ConfirmBox = require("ui/widget/confirmbox")
     local UIManager = require("ui/uimanager")
@@ -327,6 +355,21 @@ local function show_install_prompt(plugin)
                         coroutine.resume(co, false)
                     end
                     UIManager:scheduleIn(DOWNLOAD_TIMEOUT, timeout_cb)
+                    -- GZreader: every second, how much has come; the timeout counts from
+                    -- the last time the file grew (60 s for the whole download was too
+                    -- short on slow Wi-Fi), not from the start
+                    local progress_path, last_have
+                    local function progress_tick()
+                        if not progress_path then return end
+                        local have, total = M.read_progress(progress_path)
+                        if have ~= last_have then
+                            last_have = have
+                            UIManager:unschedule(timeout_cb)
+                            UIManager:scheduleIn(DOWNLOAD_TIMEOUT, timeout_cb)
+                            screen:update{ subtitle = M.progress_text(have, total) }
+                        end
+                        UIManager:scheduleIn(1, progress_tick)
+                    end
 
                     logger.info("fetching latest ZenPM release")
                     local asset_prefix = M.asset_prefix(plugin_template)
@@ -334,14 +377,24 @@ local function show_install_prompt(plugin)
                     local plugins_dir = root:match("^(.*)/[^/]+$") or root
                     local zip_path = plugins_dir .. "/.zenpm_download.zip"
                     os.remove(zip_path)
+                    os.remove(zip_path .. ".size") -- GZreader
+                    progress_path = zip_path
+                    UIManager:scheduleIn(1, progress_tick)
                     local completed, ok, err, asset = Trapper:dismissableRunInSubprocess(function()
                         local release, err = get_release()
                         if not release then return false, err end
                         local selected = release_asset(release, asset_prefix)
                         if not selected then return false end
+                        if selected.size then -- GZreader: the size, for the screen's progress
+                            local sf = io.open(zip_path .. ".size", "w")
+                            if sf then sf:write(tostring(selected.size)); sf:close() end
+                        end
                         local downloaded, download_err = download(selected, zip_path)
                         return downloaded, download_err, selected
                     end, screen)
+                    progress_path = nil
+                    UIManager:unschedule(progress_tick)
+                    os.remove(zip_path .. ".size")
                     UIManager:unschedule(timeout_cb)
                     screen._on_button_action = nil
                     if not completed then
@@ -379,7 +432,7 @@ local function show_install_prompt(plugin)
                         return
                     end
                     local subtitle = _("ZenPM has been installed. Restart KOReader to use it.")
-                        .. "\n\n" .. _("A launcher button has been added for ZenPM.")
+                        .. "\n\n" .. _("After the restart, ZenPM has a tile on the quick panel, under Your tiles.") -- GZreader (was: a launcher button)
                     screen:update{
                         subtitle = subtitle,
                         button = _("Restart now"),
