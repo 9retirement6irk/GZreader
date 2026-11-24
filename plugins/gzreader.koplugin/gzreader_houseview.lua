@@ -24,6 +24,14 @@ Under each fitting its name and what the list's row says (On · 80%,
 colour, the thermostat's scale is orange while it heats and blue while it
 cools, and the thermometer is red; greys everywhere else.
 
+With two rooms or more the wall starts in the hallway: what belongs to the
+whole home (thermostats, locks, garage doors) under "Home", then a plate
+for each room (how many of its lights are on, its temperature and
+humidity, what plays there) and the scenes' keypad. A room's plate opens
+that room: its fittings, with "All lights" first when it has several, and a
+Home sign (or Back) to return. One room, or no rooms (a token that isn't an
+administrator's): everything on the one wall, as before.
+
 The page draws the tab's own rows (House:rootItems), so a tap, Press or a
 letter does what the row did. Letters go to what does something (Refresh,
 devices, scenes), in order; the 5-way moves over them. A page holds as much
@@ -62,16 +70,20 @@ local function clamp(v, lo, hi) return math.max(lo, math.min(hi, v)) end
 
 ---------------------------------------------------------------- when
 
---- What each row of the tab's list is on the wall: "refresh", "room",
---- "fitting", "key" (a scene or script) or "note" (anything else: a
---- message, Why no rooms?).
+--- What each row is on the wall: "refresh", "back" (the Home sign in a
+--- room), "room" (a name on tape), "roomplate" (a room's plate in the
+--- hallway), "fitting", "key" (a scene or script) or "note" (anything else:
+--- a message, Why no rooms?).
 function View.kinds(items, house)
     local out = {}
     for i, it in ipairs(items or {}) do
         local k = "note"
         if type(it) == "table" then
             if it.gz_house_refresh then k = "refresh"
-            elseif it.gz_house_room then k = "room"
+            elseif it.gz_wall_back then k = "back"
+            elseif it.gz_wall_plate then k = "roomplate"
+            elseif it.gz_wall_all then k = "fitting"
+            elseif it.gz_house_room or it.gz_wall_head then k = "room"
             elseif it.gz_house_id then
                 local e = HA().find(house, it.gz_house_id)
                 k = (e and (e.domain == "scene" or e.domain == "script")) and "key" or "fitting"
@@ -90,6 +102,138 @@ function View.applies(m, tab)
         if type(it) == "table" and it.gz_house_id then return true end
     end
     return false
+end
+
+---------------------------------------------------------------- the hallway and the rooms
+
+--- The list's rows by room: { refresh, groups = { { id, header, rows } },
+--- notes (rows that belong to no room: messages, Why no rooms?) }.
+function View.groups(items)
+    local out = { groups = {}, notes = {} }
+    local cur
+    for _i, it in ipairs(items or {}) do
+        if type(it) == "table" then
+            if it.gz_house_refresh then out.refresh = it
+            elseif it.gz_house_room then
+                cur = { id = it.gz_house_room, header = it, rows = {} }
+                out.groups[#out.groups + 1] = cur
+            elseif it.gz_house_id and cur then cur.rows[#cur.rows + 1] = it
+            else out.notes[#out.notes + 1] = it end
+        end
+    end
+    return out
+end
+
+local function real(id) return type(id) == "string" and id:sub(1, 1) ~= "_" end
+
+--- The hallway first (rooms behind their plates)? With two rooms or more;
+--- not when the list is by kind (no rooms).
+function View.hallway(items, house)
+    if type(house) ~= "table" or house.by_kind then return false end
+    local n = 0
+    for _i, it in ipairs(items or {}) do
+        if type(it) == "table" and real(it.gz_house_room) then n = n + 1 end
+    end
+    return n >= 2
+end
+
+--- What belongs to the whole home rather than a room (shown in the hallway
+--- too): thermostats, locks, and what opens into the house.
+function View.homeLevel(e)
+    if type(e) ~= "table" then return false end
+    if e.domain == "climate" or e.domain == "lock" then return true end
+    return e.domain == "cover" and HA().GUARDED_COVERS[e.dc or ""] == true
+end
+
+--- A room at a glance, for its plate: { lights, on (of them), temp,
+--- humidity (as its rows say them), playing (what plays there), count }.
+function View.summary(rows, house)
+    local Ha = HA()
+    local sum = { lights = 0, on = 0, count = #rows }
+    for _i, r in ipairs(rows) do
+        local e = Ha.find(house, r.gz_house_id)
+        if e then
+            if e.domain == "light" then
+                sum.lights = sum.lights + 1
+                if e.state == "on" then sum.on = sum.on + 1 end
+            elseif e.domain == "sensor" and e.dc == "temperature" and not sum.temp then sum.temp = Ha.stateText(e)
+            elseif e.domain == "sensor" and e.dc == "humidity" and not sum.humidity then sum.humidity = Ha.stateText(e)
+            elseif e.domain == "media_player" and e.state == "playing" and not sum.playing then sum.playing = e.title or r.text
+            end
+        end
+    end
+    return sum
+end
+
+--- A room's plate, in words: its lines under the name.
+function View.plateLines(sum)
+    local _ = require("gettext")
+    local T = require("ffi/util").template
+    local lines = {}
+    if sum.lights > 0 then
+        lines[#lines + 1] = sum.on == 0 and _("Lights off") or T(_("%1 of %2 lights on"), sum.on, sum.lights)
+    elseif sum.count > 0 then
+        lines[#lines + 1] = T(_("%1 here"), sum.count)
+    end
+    if sum.temp or sum.humidity then
+        lines[#lines + 1] = (sum.temp and sum.humidity) and (sum.temp .. " · " .. sum.humidity) or sum.temp or sum.humidity
+    end
+    if sum.playing then lines[#lines + 1] = T(_("Playing · %1"), sum.playing) end
+    return lines
+end
+
+--- What the wall shows now, as rows like the list's: the hallway (`room`
+--- nil), or one room. `act`: { open(room id), home(), all(room id, on) }.
+--- The list's own rows are used as they are; the plates, the Home sign,
+--- "Home" and "Rooms" on tape and All lights are rows made here.
+function View.scene(items, house, room, act)
+    local _ = require("gettext")
+    local T = require("ffi/util").template
+    local Ha = HA()
+    local G = View.groups(items)
+    local out = {}
+    local function add(it) out[#out + 1] = it end
+    local group
+    for _i, g in ipairs(G.groups) do if g.id == room then group = g end end
+    if group then
+        add({ text = _("Home"), gz_wall_back = true, callback = act.home })
+        if G.refresh then add(G.refresh) end
+        add(group.header)
+        local sum = View.summary(group.rows, house)
+        if sum.lights >= 2 and real(group.id) then
+            local on = sum.on > 0
+            add({ text = _("All lights"), mandatory = on and T(_("%1 of %2 on"), sum.on, sum.lights) or _("Off"),
+                gz_wall_all = { on = on, room = group.id }, callback = function() act.all(group.id, not on) end })
+        end
+        for _i, r in ipairs(group.rows) do add(r) end
+    else
+        if G.refresh then add(G.refresh) end
+        local home = {}
+        for _i, g in ipairs(G.groups) do
+            for _j, r in ipairs(g.rows) do
+                if View.homeLevel(Ha.find(house, r.gz_house_id)) then home[#home + 1] = r end
+            end
+        end
+        if #home > 0 then
+            add({ text = _("Home"), gz_wall_head = true, select_enabled = false })
+            for _i, r in ipairs(home) do add(r) end
+        end
+        add({ text = _("Rooms"), gz_wall_head = true, select_enabled = false })
+        local scenes
+        for _i, g in ipairs(G.groups) do
+            if g.id == "_scenes" then scenes = g
+            else
+                add({ text = g.header.text, gz_wall_plate = View.summary(g.rows, house), gz_wall_room = g.id,
+                    callback = function() act.open(g.id) end })
+            end
+        end
+        if scenes then
+            add(scenes.header)
+            for _i, r in ipairs(scenes.rows) do add(r) end
+        end
+    end
+    for _i, n in ipairs(G.notes) do add(n) end
+    return out
 end
 
 ---------------------------------------------------------------- where things go
@@ -115,9 +259,15 @@ function View.layout(kinds, w, h, s)
     local screw = s(18)
     local kgap = s(10)
     local kw = math.floor((w - 2 * pad - 2 * screw - s(6) - (kcols - 1) * kgap) / kcols)
+    -- rooms' plates in the hallway
+    local pcols = clamp(math.floor((w - 2 * pad + gap) / (s(170) + gap)), 2, 5)
+    local pw = math.floor((w - 2 * pad - (pcols - 1) * s(12)) / pcols) - s(2)
+    local roomplate_h = s(92)
+    local back_w = s(104)
+    local band_y, band_x
     local base_h = s(12)
     local top, bottom = s(6), h - base_h - s(4)
-    local L = { w = w, h = h, cols = cols, kcols = kcols, cell_w = cw, cell_h = cell_h, art_w = art_w, art_h = art_h,
+    local L = { w = w, h = h, cols = cols, kcols = kcols, pcols = pcols, cell_w = cw, cell_h = cell_h, art_w = art_w, art_h = art_h,
         cap_h = cap_h, base = { x = 0, y = h - base_h, w = w, h = base_h }, pages = {}, fits = true }
     if top + tape_block + cell_h > bottom or cw < s(60) then
         L.fits = false
@@ -132,6 +282,8 @@ function View.layout(kinds, w, h, s)
     local function endRow()
         if rowtype then y = y + rowh + rgap end
         rowtype, col, rowh = nil, 0, 0
+        -- (a Home sign with no Refresh beside it)
+        if band_y then y, band_y = band_y + band_h + rgap, nil end
     end
     local function need(hh)
         if y + hh > bottom and #page.places > 0 then newPage() end
@@ -147,16 +299,35 @@ function View.layout(kinds, w, h, s)
     end
     newPage()
     for i, k in ipairs(kinds or {}) do
-        if k == "refresh" then
+        if k == "back" then
             endRow()
             need(band_h)
-            put(i, k, pad, y, w - 2 * pad, band_h)
-            y = y + band_h + rgap
+            put(i, k, pad, y, back_w, band_h)
+            band_y, band_x = y, pad + back_w + s(10)
+        elseif k == "refresh" then
+            if band_y then
+                -- beside the Home sign
+                put(i, k, band_x, band_y, w - pad - band_x, band_h)
+                y, band_y = band_y + band_h + rgap, nil
+            else
+                endRow()
+                need(band_h)
+                put(i, k, pad, y, w - 2 * pad, band_h)
+                y = y + band_h + rgap
+            end
+        elseif k == "roomplate" then
+            if rowtype ~= "roomplate" or col >= pcols then
+                endRow()
+                need(roomplate_h + s(6))
+                rowtype, rowh = "roomplate", roomplate_h + s(6)
+            end
+            put(i, k, pad + col * (pw + s(12)), y, pw, roomplate_h)
+            col = col + 1
         elseif k == "room" then
             endRow()
             -- (never a room's name alone at the foot of a page)
             local nxt = kinds[i + 1]
-            need(tape_block + (nxt == "fitting" and cell_h or nxt == "key" and plate_h or 0))
+            need(tape_block + (nxt == "fitting" and cell_h or nxt == "key" and plate_h or nxt == "roomplate" and roomplate_h + s(6) or 0))
             put(i, k, pad, y, w - 2 * pad, tape_h)
             y = y + tape_block
         elseif k == "fitting" then
@@ -442,6 +613,14 @@ function Draw.tv(how)
     return wrap(s)
 end
 
+--- A room plate's lever (its own size: 80 x 140), up when a light is on there.
+function Draw.lever(on)
+    local INK = View.INK
+    local s = rect(4, 4, 72, 132, 10, "#dedede", INK, 3) .. rect(24, 24, 32, 92, 4, INK)
+        .. (on and polygon("27,74 53,74 49,12 31,12", "#fbfbfb", INK, 3) or polygon("27,66 53,66 49,128 31,128", "#cfcfcf", INK, 3))
+    return '<?xml version="1.0" encoding="utf-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="80px" height="140px" viewBox="0 0 80 140">' .. s .. "</svg>\n"
+end
+
 View.Draw = Draw
 
 --- Which drawing a device gets: { key (its file's name: one per look),
@@ -590,6 +769,49 @@ function Page:paintRefresh(bb, x, y, pl)
     end
 end
 
+--- The Home sign in a room.
+function Page:paintBack(bb, x, y, pl)
+    local D = Shop().draw
+    local r = D.sign(bb, self.menu, { x = x + pl.x, y = y + pl.y + S(3), h = pl.h - S(6) }, "‹ " .. (pl.entry.text or ""), nil, pl.letter)
+    pl.hot.dimen = Geom:new(r)
+    if pl.hot.focused then D.focusRing(bb, r) end
+end
+
+--- A room's plate in the hallway: a lever (up when a light is on there),
+--- its name, and the room at a glance.
+function Page:paintRoomPlate(bb, x, y, pl)
+    local D = Shop().draw
+    local px, py = x + pl.x, y + pl.y
+    local r, bw = S(8), math.max(2, S(2))
+    bb:paintRoundedRect(px + S(5), py + S(5), pl.w, pl.h, D.gray(0.3), r)
+    bb:paintRoundedRect(px, py, pl.w, pl.h, D.gray(0.06), r)
+    bb:paintBorder(px, py, pl.w, pl.h, bw, Blitbuffer.COLOR_BLACK, r)
+    local sum = pl.entry.gz_wall_plate
+    local lh = pl.h - S(20)
+    local lw = math.floor(lh * 80 / 140)
+    local on = sum.on > 0
+    local img = art({ key = "lever-" .. (on and "on" or "off"), svg = function() return Draw.lever(on) end }, lw, lh)
+    local lx = px + S(10)
+    if img then bb:alphablitFrom(img, lx, py + S(10), 0, 0, img:getWidth(), img:getHeight()) end
+    local tx = lx + lw + S(10)
+    local room = px + pl.w - S(8) - tx
+    local TextWidget = require("ui/widget/textwidget")
+    local name = TextWidget:new{ text = tostring(pl.entry.text or ""):upper(), face = Font:getFace("cfont", 13), bold = true, max_width = room }
+    local ty = py + S(8)
+    name:paintTo(bb, tx, ty)
+    ty = ty + name:getSize().h
+    name:free()
+    for _i, words in ipairs(View.plateLines(sum)) do
+        local t = TextWidget:new{ text = words, face = Font:getFace("cfont", 12), max_width = room, fgcolor = D.gray(0.85) }
+        if ty + t:getSize().h <= py + pl.h - S(4) then t:paintTo(bb, tx, ty) end
+        ty = ty + t:getSize().h
+        t:free()
+    end
+    if pl.letter then D.badge(bb, self.menu, pl.letter, px - S(4), py - S(4), S(20)) end
+    pl.hot.dimen = Geom:new{ x = px, y = py, w = pl.w, h = pl.h }
+    if pl.hot.focused then D.focusRing(bb, pl.hot.dimen) end
+end
+
 --- A room's name on a strip of label tape.
 function Page:paintTape(bb, x, y, pl)
     local D = Shop().draw
@@ -703,6 +925,8 @@ function Page:paintTo(bb, x, y)
     bb:paintRect(x + b.x, y + b.y + b.h - S(4), b.w, S(4), D.gray(0.35))
     for _i, pl in ipairs(self.places) do
         if pl.kind == "refresh" then self:paintRefresh(bb, x, y, pl)
+        elseif pl.kind == "back" then self:paintBack(bb, x, y, pl)
+        elseif pl.kind == "roomplate" then self:paintRoomPlate(bb, x, y, pl)
         elseif pl.kind == "room" then self:paintTape(bb, x, y, pl)
         elseif pl.kind == "fitting" then self:paintFitting(bb, x, y, pl)
         elseif pl.kind == "plate" then self:paintPlate(bb, x, y, pl)
@@ -728,6 +952,8 @@ function View.fill(L, n, items, house, shortcuts)
         if e then
             p.entry = e
             p.device = e.gz_house_id and Ha.find(house, e.gz_house_id) or nil
+            -- (All lights: a switch that is on when any of the room's lights is)
+            if e.gz_wall_all then p.device = { domain = "switch", state = e.gz_wall_all.on and "on" or "off" } end
             p.acts = type(e.callback) == "function" and e.select_enabled ~= false
             if p.acts then
                 k = k + 1
@@ -741,6 +967,23 @@ function View.fill(L, n, items, house, shortcuts)
     return out
 end
 
+--- Going between the hallway and a room, and a room's All lights.
+function View.acts(m, tab)
+    return {
+        open = function(id)
+            tab.wall_home_page, tab.wall_room, m.page = m.page, id, 1
+            m:updateItems()
+        end,
+        home = function()
+            -- (back in the hallway: the page it was on, the focus on that room's plate)
+            m._gz_wall_last = { gz_wall_room = tab.wall_room }
+            tab.wall_room, m.page = nil, tab.wall_home_page or 1
+            m:updateItems()
+        end,
+        all = function(id, on) tab:allLights(id, on) end,
+    }
+end
+
 --- Draw the page of `m` (the House tab's list) as the wall. False: it
 --- doesn't fit (the list instead).
 function View.build(m, tab, select_number, no_recalculate_dimen)
@@ -748,7 +991,16 @@ function View.build(m, tab, select_number, no_recalculate_dimen)
     local wanted = m.page or 1
     m:_recalculateDimen(no_recalculate_dimen)
     local W, H = m.item_dimen.w, m.available_height
-    local L = View.layout(View.kinds(m.item_table, tab.house), W, H)
+    -- the hallway and its rooms (two rooms or more), or everything on the one wall
+    local shown = m.item_table
+    if View.hallway(shown, tab.house) then
+        shown = View.scene(shown, tab.house, tab.wall_room, View.acts(m, tab))
+        -- (a room that's gone, e.g. hidden in Settings: the hallway)
+        if tab.wall_room and not (shown[1] and shown[1].gz_wall_back) then tab.wall_room = nil end
+    else
+        tab.wall_room = nil
+    end
+    local L = View.layout(View.kinds(shown, tab.house), W, H)
     if not L.fits then return false end
     -- the pages are this view's (what fits on each), not the Menu's rows
     m.page_num = #L.pages
@@ -760,8 +1012,8 @@ function View.build(m, tab, select_number, no_recalculate_dimen)
     m.content_group:resetLayout()
     local Hot = Shop().Hot
     local page = Page:new{ w = W, h = H, L = L, menu = m, colour = require("gzreader_colour").enabled() }
-    page.places = View.fill(L, m.page, m.item_table, tab.house, m.is_enable_shortcut and m.item_shortcuts or nil)
-    local rows, row_y = {}, nil
+    page.places = View.fill(L, m.page, shown, tab.house, m.is_enable_shortcut and m.item_shortcuts or nil)
+    local frows, row_y = {}, nil
     page.by_letter = {}
     for _i, pl in ipairs(page.places) do
         if pl.acts then
@@ -769,14 +1021,14 @@ function View.build(m, tab, select_number, no_recalculate_dimen)
             pl.hot = Hot:new{ menu = m, entry = pl.entry, shop = page }
             page[#page + 1] = pl.hot
             if pl.y ~= row_y then
-                rows[#rows + 1] = {}
+                frows[#frows + 1] = {}
                 row_y = pl.y
             end
-            table.insert(rows[#rows], pl.hot)
+            table.insert(frows[#frows], pl.hot)
             if pl.letter then page.by_letter[pl.letter] = pl.entry end
         end
     end
-    for _i, r in ipairs(rows) do m.layout[#m.layout + 1] = r end
+    for _i, r in ipairs(frows) do m.layout[#m.layout + 1] = r end
     table.insert(m.item_group, page)
     m._gz_wall = page
     -- the focus: on what was chosen (back from it), else the first thing
@@ -784,13 +1036,19 @@ function View.build(m, tab, select_number, no_recalculate_dimen)
     local back = m._gz_wall_last
     if back then
         for yy, r in ipairs(m.layout) do
-            for xx, h in ipairs(r) do if h.entry == back or (h.entry.gz_house_id and h.entry.gz_house_id == back.gz_house_id) then fx, fy = xx, yy end end
+            for xx, h in ipairs(r) do
+                if h.entry == back or (h.entry.gz_house_id and h.entry.gz_house_id == back.gz_house_id)
+                    or (h.entry.gz_wall_room and h.entry.gz_wall_room == back.gz_wall_room)
+                    or (h.entry.gz_wall_all and back.gz_wall_all) then fx, fy = xx, yy end
+            end
         end
     end
     m:updatePageInfo(select_number or 1)
-    if (fx > 1 or fy > 1) and Device:hasDPad() and m.layout[fy] then
-        local FocusManager = require("ui/widget/focusmanager")
-        m:moveFocusTo(fx, fy, FocusManager.FOCUS_ONLY_ON_NT)
+    if (fx > 1 or fy > 1) and m.layout[fy] then
+        -- (the focus is a nicety: the page is drawn whether or not it can be placed)
+        pcall(function()
+            if Device:hasDPad() then m:moveFocusTo(fx, fy, require("ui/widget/focusmanager").FOCUS_ONLY_ON_NT) end
+        end)
     end
     m:mergeTitleBarIntoLayout()
     UIManager:setDirty(m.show_parent, function()
@@ -831,6 +1089,15 @@ function View.apply(tab)
     m.onMenuSelect = function(menu, item, ...)
         if menu._gz_wall then menu._gz_wall_last = item end
         return orig_select(menu, item, ...)
+    end
+    -- Back in a room: the hallway (not out of the tab)
+    local orig_back = m.onClose
+    m.onClose = function(menu, ...)
+        if menu._gz_wall and tab.wall_room then
+            View.acts(menu, tab).home()
+            return true
+        end
+        if orig_back then return orig_back(menu, ...) end
     end
     local orig_close = m.onCloseWidget
     m.onCloseWidget = function(menu, ...)

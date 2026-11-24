@@ -944,6 +944,17 @@ print("House tab (Home Assistant): connecting, rooms, switching, Settings, the p
     check(hstate("light.porch").state == "off" and hstate("light.floor_lamp").state == "off" and row("Porch light").mandatory == "Off",
         "House tab: a scene runs (Goodnight: the lights off)")
 
+    -- All lights of a room (the wall's): Home Assistant's own service for the area
+    hctl(HP, "POST", "/__set?id=light.porch&state=on")
+    tab:allLights("outside", false)
+    check(hstate("light.porch").state == "off" and hstate("light.living_room_ceiling").state == "off" and row("Porch light").mandatory == "Off",
+        "House tab: All lights off in a room: that room's lights (Home Assistant's light.turn_off for the area)")
+    tab:allLights("living_room", true)
+    check(hstate("light.living_room_ceiling").state == "on" and hstate("light.floor_lamp").state == "on" and hstate("light.porch").state == "off"
+        and row("Floor lamp").mandatory == "On", "House tab: All lights on in a room: only that room's")
+    tab:allLights("_other", true)
+    tab:allLights("living_room", false)
+
     -- media players: a speaker (Music Assistant's) and a TV
     ;(function()
         check(row("Speaker").mandatory == "Paused · Blue in Green" and row("TV").mandatory == "Off" and row("Speaker").gz_icon:match("icons/house/speaker%.svg$")
@@ -1294,7 +1305,7 @@ print("House tab in the Bookshelf view: the rooms as a wall (where things go, th
         { id = "outside", name = "Outside", entities = {
             dev("lock.front", "locked"), dev("cover.garage", "closed", { dc = "garage" }), dev("cover.blinds", "open", { dc = "blind" }),
             dev("binary_sensor.back", "on", { dc = "door" }) } },
-        { id = "scenes", name = "Scenes", entities = { dev("scene.night", "2026-01-01"), dev("script.away", "off") } },
+        { id = "_scenes", name = "Scenes", entities = { dev("scene.night", "2026-01-01"), dev("script.away", "off") } },
     } }
     local function cb() end
     local witems = { { text = "Refresh", mandatory = "updated just now", gz_house_refresh = true, callback = cb } }
@@ -1407,12 +1418,60 @@ print("House tab in the Bookshelf view: the rooms as a wall (where things go, th
     local was_shelf = Shop.bookshelf
     local shelf = true
     Shop.bookshelf = function() return shelf end
-    local tab = { house = house }
+    -- (the one wall: a house whose list is by kind, without rooms)
+    local flat = { rooms = house.rooms, by_kind = true }
+    local tab = { house = flat }
     check(View.applies({ item_table = witems }, tab) == true and View.applies({ item_table = { witems[1] } }, tab) == false
         and View.applies({ item_table = witems }, { house = nil }) == false, "the wall: when there are devices to show (not the ways to connect, or Loading…)")
     shelf = false
     check(View.applies({ item_table = witems }, tab) == false, "the wall: only in the Bookshelf view; the other views keep the list")
     shelf = true
+
+    -- the hallway (two rooms or more): the home's own things, a plate a room, the scenes; a room behind each plate
+    ;(function()
+        local function texts(list) local t = {} for _i, it in ipairs(list) do t[#t + 1] = it.text end return table.concat(t, "|") end
+        check(View.hallway(witems, house) == true and View.hallway(witems, flat) == false
+            and View.hallway({ witems[1], witems[2], witems[3] }, house) == false and View.hallway(witems, nil) == false,
+            "the hallway: with two rooms or more (one room, or a list by kind: everything on the one wall)")
+        local did = {}
+        local act = { open = function(id) did.open = id end, home = function() did.home = true end, all = function(id, on) did.all = { id, on } end }
+        local hall = View.scene(witems, house, nil, act)
+        check(texts(hall) == "Refresh|Home|climate.t|lock.front|cover.garage|Rooms|Living room|Outside|Scenes|scene.night|script.away|Couldn't reach Home Assistant"
+            and table.concat(View.kinds(hall, house), ",") == "refresh,room,fitting,fitting,fitting,room,roomplate,roomplate,room,key,key,note",
+            "the hallway: Refresh, the home's thermostat, lock and garage door, a plate for each room, the scenes' keys, then any message (" .. texts(hall) .. ")")
+        local living, outside = hall[7], hall[8]
+        check(living.gz_wall_plate.lights == 2 and living.gz_wall_plate.on == 1 and living.gz_wall_plate.temp == "20.5°" and living.gz_wall_plate.humidity == "40%"
+            and table.concat(View.plateLines(living.gz_wall_plate), "|") == "1 of 2 lights on|20.5° · 40%"
+            and table.concat(View.plateLines(outside.gz_wall_plate), "|") == "4 here"
+            and table.concat(View.plateLines({ lights = 3, on = 0, count = 3, playing = "A song" }), "|") == "Lights off|Playing · A song",
+            "a room's plate: how many of its lights are on, its temperature and humidity, what plays there (a room without lights: how many things)")
+        living.callback()
+        check(did.open == "living", "a room's plate opens that room")
+        local room = View.scene(witems, house, "living", act)
+        check(texts(room) == "Home|Refresh|Living room|All lights|light.ceiling|light.lamp|climate.t|sensor.temp|sensor.hum|Couldn't reach Home Assistant"
+            and table.concat(View.kinds(room, house), ",") == "back,refresh,room,fitting,fitting,fitting,fitting,fitting,fitting,note"
+            and room[4].mandatory == "1 of 2 on", "a room: the Home sign, Refresh, its name, All lights (it has several), then its fittings (" .. texts(room) .. ")")
+        room[4].callback()
+        room[1].callback()
+        check(did.all[1] == "living" and did.all[2] == false and did.home == true, "a room: All lights turns them off when any is on; the Home sign goes back")
+        check(texts(View.scene(witems, house, "outside", act)) == "Home|Refresh|Outside|lock.front|cover.garage|cover.blinds|binary_sensor.back|Couldn't reach Home Assistant"
+            and View.scene(witems, house, "gone", act)[2].gz_wall_head, "a room without lights has no All lights; a room that's gone: the hallway")
+        local Lr = View.layout(View.kinds(room, house), 600, 574, one)
+        local pr = Lr.pages[1].places
+        check(pr[1].kind == "back" and pr[2].kind == "refresh" and pr[1].y == pr[2].y and pr[2].x >= pr[1].x + pr[1].w and pr[3].y > pr[1].y,
+            "a room: the Home sign and Refresh side by side, the room's name under them")
+        local Lh = View.layout(View.kinds(hall, house), 600, 574, one)
+        local ph, plates = Lh.pages[1].places, {}
+        for _i, pl in ipairs(ph) do if pl.kind == "roomplate" then plates[#plates + 1] = pl end end
+        check(Lh.pcols == 3 and #plates == 2 and plates[1].y == plates[2].y and plates[2].x >= plates[1].x + plates[1].w,
+            "the hallway on a Kindle 3: three plates a row")
+        local filled = View.fill(Lr, 1, room, house, { "Q", "W", "E", "R", "T" })
+        check(filled[1].letter == "Q" and filled[2].letter == "W" and filled[4].letter == "E" and View.fitting(filled[4].device).key == "toggle-on-1a1a1a",
+            "a room: letters for Home, Refresh, All lights…; All lights is a switch, on when any light is")
+        check(View.homeLevel(E["climate.t"]) and View.homeLevel(E["lock.front"]) and View.homeLevel(E["cover.garage"])
+            and not View.homeLevel(E["cover.blinds"]) and not View.homeLevel(E["light.lamp"]) and View.Draw.lever(true):match("^<%?xml"),
+            "the hallway's own things: thermostats, locks, what opens into the house (not blinds or lights)")
+    end)()
 
     -- taking the list over: its own pages and letters; the list again when it can't be drawn
     local drawn, picked = {}, nil
@@ -1461,6 +1520,35 @@ print("House tab in the Bookshelf view: the rooms as a wall (where things go, th
     check(drawn[1] == "list" and drawn[2] == "list" and m._gz_wall_failed == true, "the wall can't be drawn: the list, from then on")
     m:onCloseWidget()
     check(drawn[#drawn] == "closed", "the wall: closing the tab still closes it")
+    -- the hallway on the screen: a plate opens its room, Back returns, All lights asks the tab
+    ;(function()
+        m._gz_wall_failed, m.page = nil, 1
+        m.onClose = nil
+        local backs, asked = 0, nil
+        local tab2 = { house = house, menu = m, allLights = function(_t, id, on) asked = { id, on } end }
+        local m2 = {}
+        for k, v in pairs(m) do m2[k] = v end
+        m2._gz_wall_applied, m2._gz_wall, m2._gz_wall_last = nil, nil, nil
+        m2.updateItems = function() drawn[#drawn + 1] = "list" end
+        m2.onMenuSelect = function(_m, item) if item.callback then item.callback() end end
+        m2.onClose = function() backs = backs + 1; return true end
+        tab2.menu = m2
+        View.apply(tab2)
+        local function kindsNow() local t = {} for _i, pl in ipairs(m2._gz_wall.places) do t[#t + 1] = pl.kind end return table.concat(t, ",") end
+        local function letterOf(text) for _i, pl in ipairs(m2._gz_wall.places) do if pl.entry and pl.entry.text == text then return pl.letter end end end
+        check(m2._gz_wall and kindsNow():match("^refresh,room,fitting,fitting,fitting,room,roomplate,roomplate") and tab2.wall_room == nil,
+            "the hallway is what the wall opens with (" .. kindsNow() .. ")")
+        m2:onSelectByShortCut(nil, { key = letterOf("Living room") })
+        check(tab2.wall_room == "living" and m2.page == 1 and kindsNow():match("^back,refresh,room,fitting"), "a plate's letter opens its room (" .. kindsNow() .. ")")
+        m2:onSelectByShortCut(nil, { key = letterOf("All lights") })
+        check(asked and asked[1] == "living" and asked[2] == false, "All lights asks the tab to switch the room's lights")
+        check(m2:onClose() == true and tab2.wall_room == nil and backs == 0 and kindsNow():match("^refresh,room"), "Back in a room: the hallway, not out of the tab")
+        m2:onClose()
+        check(backs == 1, "Back in the hallway: as before")
+        tab2.wall_room = "gone"
+        m2:updateItems()
+        check(tab2.wall_room == nil and kindsNow():match("^refresh,room"), "a room that's gone (hidden in Settings): the hallway")
+    end)()
     Screen.scaleBySize = was_scale
     Shop.Hot, View.Page.new, UI.setDirty = saved.Hot, saved.Page_new, saved.dirty
     Shop.bookshelf = was_shelf

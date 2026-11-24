@@ -362,6 +362,29 @@ function House:run(e, what, arg, after)
     end, { reason = "Home Assistant" })
 end
 
+--- Every light in a room on or off (the wall's All lights): Home
+--- Assistant's own light.turn_on / turn_off for the area.
+function House:allLights(room_id, on)
+    local Ha = HA()
+    if type(room_id) ~= "string" or room_id:sub(1, 1) == "_" then return end
+    local client = House.client(self.plugin)
+    local service = on and "turn_on" or "turn_off"
+    Log.info("house: light." .. service, "area", room_id)
+    Net().run(function()
+        Async().run(nil, function() return client:call("light", service, { area_id = room_id }) end, function(changed, err)
+            if self.closed then return end
+            if not changed then
+                Log.warn("house: light." .. service, "failed:", tostring(err))
+                return info(Ha.why(err))
+            end
+            if Ha.applyChanged(self.house, changed) then Ha.saveCache(self.house) end
+            self:redraw()
+            -- (lights answer as they change: the rest in a moment)
+            UIManager:scheduleIn(2, function() self:refresh(false) end)
+        end, "house lights")
+    end, { reason = "Home Assistant" })
+end
+
 --- A dimmable light: On, Off, a step dimmer or brighter, or a level; a
 --- colour, for a bulb that takes one.
 function House:lightDialog(e)

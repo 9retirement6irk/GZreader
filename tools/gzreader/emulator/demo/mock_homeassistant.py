@@ -174,6 +174,11 @@ def media(s, service, data):
 def call(domain, service, data):
     """Run a service; the states it changed, or None (unknown service)."""
     ids = data.get("entity_id")
+    if ids is None and domain == "light" and service in ("turn_on", "turn_off") and data.get("area_id"):
+        # every light of an area
+        ids = [i for aid, _n, lst in AREAS if aid == data["area_id"] for i in lst if i.startswith("light.")]
+        if not ids:
+            return None
     if domain == "music_assistant" and service == "play_media":
         s = by_id(ids)
         item = NAMES.get(data.get("media_id"))
