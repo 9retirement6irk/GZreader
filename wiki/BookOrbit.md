@@ -167,7 +167,16 @@ pages (swipe past Books, or Music on Kindles that play audio).
 1. Catalog → **Requests** → **Request a book…**.
 2. Type the title and, if you like, the author, then choose **Book** or **Audiobook**.
 
-Under it, the page lists what you asked for with its state (waiting for approval, approved, searching, downloading, in the library, declined…). Tap one for its details and any note from whoever decided; one that isn't finished can be cancelled there. If someone already asked for the same book, you're added to their request. When a request arrives it's in the Catalog like any other book (use **Rebuild library** if it isn't showing yet). The list is BookOrbit's each time: nothing about requests is kept on the Kindle.
+In the Bookshelf view the page is the shop's **order desk**:
+
+- **On order**: each request still on its way is an order slip clipped to a rail, with its title, author, book or audiobook, four dots for how far it is (asked, approved, being found, in the library) and its state stamped below.
+- **Arrived**: what came in stands on the shelf, a book as its cover and an audiobook as a cassette.
+- **The counter**: the order pad is **Request a book…**; the **Didn't arrive** drawer holds what was declined, cancelled or failed.
+- When there are more than fit, a **+N more** tag (or the row's sign) opens that group as a list.
+- On a colour Kindle the stamps' frames are in colour: amber waiting, blue on its way, green arrived.
+- On Kindles with keys, the 5-way moves between the slips, the shelf and the counter, and the letters open them.
+
+In the other views the page is a list of what you asked for with its state (waiting for approval, approved, searching, downloading, in the library, declined…). Either way, tap one for its details and any note from whoever decided; one that isn't finished can be cancelled there. If someone already asked for the same book, you're added to their request. When a request arrives it's in the Catalog like any other book (use **Rebuild library** if it isn't showing yet). The list is BookOrbit's each time: nothing about requests is kept on the Kindle.
 
 - When you save a key on the setup page, the page says BookOrbit accepted it and what the key can do: whether it may request books and whether it could sign in by itself. A box left unticked in BookOrbit shows there at once.
 - The key is checked when you enter it, kept on the Kindle's own disk, never shown again and never written to the log.

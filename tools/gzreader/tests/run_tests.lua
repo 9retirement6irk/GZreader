@@ -16869,6 +16869,48 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
             check(reopened == 1 and now == "Request a book…|Low Tide = Searching|The Salt Road = Waiting for approval",
                 "…drawn again with your requests, each with its status " .. now)
             check(Browser.requestItems(page) and reopened == 1, "…not fetched again within a minute")
+            -- the order desk (the Bookshelf view draws it in the list's place)
+            local desk_items = Browser.requestItems(page)
+            check(desk_items.gz_root == true and desk_items[1].gz_action == "request" and desk_items[2].gz_request ~= nil,
+                "the Requests page is a page of the shop (gz_root): the order desk draws its rows")
+            local Desk = require("gzreader_orderdesk")
+            local g = Desk.groups({ { id = 1, status = "pending" }, { id = 2, status = "available" }, { id = 3, status = "rejected" },
+                { id = 4, status = "downloading" }, { id = 5, status = "failed" }, { id = 6, status = "cancelled" }, { id = 7, status = "needs_review" }, "x" })
+            check(#g.order == 3 and g.order[1].id == 1 and g.order[2].id == 4 and g.order[3].id == 7 and #g.arrived == 1 and #g.closed == 3,
+                "order desk: on order (waiting to being found), arrived (in the library), didn't arrive (declined, cancelled, failed)")
+            check(Desk.stage("pending") == 1 and Desk.stage("approved") == 2 and Desk.stage("searching") == 3 and Desk.stage("importing") == 3
+                and Desk.stage("available") == 4 and Desk.stage("rejected") == nil, "…a slip's four steps: asked, approved, being found, in the library")
+            check(Desk.shown(3, 3) == 3 and Desk.shown(4, 3) == 2 and Desk.shown(0, 3) == 0, "…all the slips when they fit, else one place for the +N more tag")
+            local px = function(v) return v end
+            for _i, size in ipairs({ { 1072, 1180 }, { 600, 640 }, { 824, 1010 }, { 1860, 2200 } }) do
+                local DL = Desk.layout(size[1], size[2], px)
+                local R1, R2 = DL.rows[1], DL.rows[2]
+                local last = DL.cols[#DL.cols]
+                check(DL.fits and DL.slip.y + DL.slip.h <= R1.ledge.y and R1.ledge.y + R1.ledge.h <= R2.sign.y
+                    and R2.feet - DL.book.h >= R2.top and R2.ledge.y + R2.ledge.h <= DL.counter.y
+                    and DL.pad.x + DL.pad.w < DL.drawer.x and DL.drawer.x + DL.drawer.w <= DL.counter.x + DL.counter.w
+                    and last.x + last.w <= size[1] and DL.slip.w <= last.w and DL.book.w <= last.w,
+                    "…its layout at " .. size[1] .. " x " .. size[2] .. ": plate, slips on the rail, the shelf, the counter's pad and drawer, nothing over anything")
+            end
+            check(not Desk.layout(300, 200, px).fits, "…too small a page: the list instead")
+            local okc, Colour = pcall(require, "gzreader_colour")
+            if okc then
+                local was = Colour.enabled
+                Colour.enabled = function() return false end
+                local grey = Desk.ink("pending")
+                Colour.enabled = function() return true end
+                local Bb = require("ffi/blitbuffer")
+                local had = Bb.ColorRGB32
+                Bb.ColorRGB32 = function(r, gg, b) return { r, gg, b } end
+                local amber, blue, green = Desk.ink("pending"), Desk.ink("searching"), Desk.ink("available")
+                Bb.ColorRGB32 = had
+                Colour.enabled = was
+                check(grey == nil and amber[1] == 0x8a and blue[3] == 0xa8 and green[2] == 0x6f,
+                    "…stamps: black on grey screens; on a colour screen amber waiting, blue on its way, green arrived")
+            end
+            local shop_src = io.open(arg[5] .. "/plugins/gzreader.koplugin/gzreader_bookshop.lua"):read("*a")
+            check(shop_src:find('section == "requests" and not signed_out', 1, true) and shop_src:find('require("gzreader_orderdesk").build', 1, true),
+                "…the shop hands the Requests page to the order desk")
             local rows = {}
             for _i, it in ipairs(plugin:menuItems()) do rows[it.text or (it.text_func and it.text_func()) or "?"] = it end
             check(rows["Request a book"] == nil, "Settings → Books: no Request a book (the Requests page has it)")

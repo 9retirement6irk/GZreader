@@ -517,6 +517,7 @@ function Browser:requestItems()
     if not st.list then
         items[#items + 1] = { text = st.err and plugin:describeError(st.err) or _("Fetching your requests…"), select_enabled = false }
     end
+    items.gz_root = true -- (the Bookshelf view: the order desk, gzreader_orderdesk.lua)
     return Rows.mark(items)
 end
 
