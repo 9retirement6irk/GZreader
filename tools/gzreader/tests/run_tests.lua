@@ -1153,7 +1153,7 @@ print("House tab (Home Assistant): connecting, rooms, switching, Settings, the p
         end
         local function titles(d)
             local t = {}
-            for _i, line in ipairs(d and d.buttons or {}) do for _j, b in ipairs(line) do t[#t + 1] = b.text end end
+            for _i, line in ipairs(d and d.buttons or {}) do for _j, btn in ipairs(line) do t[#t + 1] = btn.text end end
             return table.concat(t, "|")
         end
         local md = media("Speaker")
@@ -1236,7 +1236,7 @@ print("House tab (Home Assistant): connecting, rooms, switching, Settings, the p
         captured.input = nil
         button(chooser(), "Search…").callback()
         local find
-        for _i, b in ipairs(captured.input.buttons[1]) do if b.text == "Search" then find = b end end
+        for _i, btn in ipairs(captured.input.buttons[1]) do if btn.text == "Search" then find = btn end end
         typed = " blue "
         find.callback()
         check(shown_menu.title == "Search: blue" and names() == "Blue in Green=Song", "House tab: a search: what Music Assistant found, each with its kind (" .. names() .. ")")
@@ -1258,10 +1258,10 @@ print("House tab (Home Assistant): connecting, rooms, switching, Settings, the p
         check(HA.nextRepeat("off") == "all" and HA.nextRepeat("all") == "one" and HA.nextRepeat("one") == "off" and HA.nextRepeat(nil) == "off"
             and HA.nextVolume({ vol = 98 }, 1) == 100 and HA.nextVolume({ vol = 3 }, -1) == 0 and e.vol == 30,
             "House: repeat's round, the volume's steps kept in 0–100")
-        local dom, svc, data = HA.service(e, "volume", 35)
-        local d2, s2, data2 = HA.service(e, "play", { uri = "library://album/7", media_type = "album" })
-        check(dom == "media_player" and svc == "volume_set" and data.volume_level == 0.35 and select(2, HA.service(e, "play_pause")) == "media_pause"
-            and d2 == "music_assistant" and s2 == "play_media" and data2.media_id == "library://album/7" and data2.media_type == "album" and data2.enqueue == "replace"
+        local dom, svc, vdata = HA.service(e, "volume", 35)
+        local d2, svc2, data2 = HA.service(e, "play", { uri = "library://album/7", media_type = "album" })
+        check(dom == "media_player" and svc == "volume_set" and vdata.volume_level == 0.35 and select(2, HA.service(e, "play_pause")) == "media_pause"
+            and d2 == "music_assistant" and svc2 == "play_media" and data2.media_id == "library://album/7" and data2.media_type == "album" and data2.enqueue == "replace"
             and HA.service(e, "play", { name = "no uri" }) == nil, "House: a media player's services (the volume as 0–1; playing something replaces the queue)")
         check(HA.musicItem({ uri = "", name = "x" }) == nil and HA.musicItem("junk") == nil and HA.musicItem({ uri = "a://b" }).name == "a://b"
             and HA.stateText(HA.entity({ i = "media_player.y", s = "idle" })) == "Idle" and HA.stateText(HA.entity({ i = "media_player.y", s = "standby" })) == "Off"
