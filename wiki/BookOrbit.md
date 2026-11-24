@@ -161,10 +161,13 @@ The same key lets the Kindle change your **collections**: a book's menu gets *Ad
 
 If your BookOrbit has requests set up, the Kindle can ask for a book it doesn't have. This uses the API key, which needs **Request books** ticked when you make it (and your account allowed to request books).
 
-1. Settings → Accounts and services → Books → **Request a book**.
+Signed in to BookOrbit, the Catalog has a **Requests** page, the last of its
+pages (swipe past Books, or Music on Kindles that play audio).
+
+1. Catalog → **Requests** → **Request a book…**.
 2. Type the title and, if you like, the author, then choose **Book** or **Audiobook**.
 
-**My book requests** lists what you asked for with its state (waiting for approval, approved, searching, downloading, in the library, declined…). Tap one for its details and any note from whoever decided; one that isn't finished can be cancelled there. If someone already asked for the same book, you're added to their request. When a request arrives it's in the Catalog like any other book (use **Rebuild library** if it isn't showing yet). The list is BookOrbit's each time: nothing about requests is kept on the Kindle.
+Under it, the page lists what you asked for with its state (waiting for approval, approved, searching, downloading, in the library, declined…). Tap one for its details and any note from whoever decided; one that isn't finished can be cancelled there. If someone already asked for the same book, you're added to their request. When a request arrives it's in the Catalog like any other book (use **Rebuild library** if it isn't showing yet). The list is BookOrbit's each time: nothing about requests is kept on the Kindle.
 
 - When you save a key on the setup page, the page says BookOrbit accepted it and what the key can do: whether it may request books and whether it could sign in by itself. A box left unticked in BookOrbit shows there at once.
 - The key is checked when you enter it, kept on the Kindle's own disk, never shown again and never written to the log.

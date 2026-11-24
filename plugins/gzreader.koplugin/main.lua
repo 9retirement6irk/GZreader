@@ -665,16 +665,7 @@ function Grimmory:menuItems()
                 if self.annotations and not self.store.annotation_sync_disabled then self.annotations:run() end
             end,
         },
-        -- (was on the Catalog's server card; Reading stats opens from Home's widget)
-        (self:backend() == "bookorbit" and not Net.usb) and {
-            text = _("Request a book"),
-            help_text = _("Ask BookOrbit for a book it doesn't have yet (needs the BookOrbit API key, and BookOrbit's Request books permission)."),
-            enabled_func = function() return self.api:isPaired() end,
-            callback = function(touchmenu)
-                closeTouchMenu(touchmenu)
-                require("gzreader_bo_requests").ask(self)
-            end,
-        } or nil,
+        -- (Request a book: the Catalog's Requests page; Reading stats: Home's widget)
         {
             -- (a library as the Catalog's Magazines page, left out of Books: gzreader_magazines.lua)
             text_func = function()

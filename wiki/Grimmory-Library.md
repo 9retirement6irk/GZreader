@@ -9,6 +9,7 @@ servers, in pages:
 2. **Magazines**: only when you've chosen a magazine library ([Magazines](#magazines), below).
 3. **Audiobooks**: Grimmory's audiobooks ([Audiobooks](Audiobooks-and-Read-Aloud)).
 4. **Music**: your Plex music ([Music](Music)).
+5. **Requests**: with BookOrbit, asking for a book it doesn't have and what became of your requests ([Book requests](BookOrbit#book-requests)).
 
 Audiobooks and Music are only on Kindles with a speaker or headphone jack
 (Kindle 2, 3, DX, Touch) or with Bluetooth (Scribe, Paperwhite 5 and newer…); the others have the Books page alone, with no
@@ -51,8 +52,8 @@ with the ways to sign in. Your account is in Settings → Accounts and services
 account's own page (as Notes' Memos row): reconnect with a QR code, connect by
 typing (Grimmory or BookOrbit), single sign-on (Grimmory), BookOrbit's API key,
 Disconnect and About. The rest of Books is the sync switches, Magazines and
-Rebuild library (and Request a book with BookOrbit). Reading stats opens from
-Home's widget. What's on the Kindle is in the Downloads tab.
+Rebuild library. Reading stats opens from Home's widget; Request a book is on
+the Catalog's Requests page. What's on the Kindle is in the Downloads tab.
 
 **Staying signed in.** GZreader renews its sign-in now and then, and
 Grimmory hands over a new key each time and throws the old one away. It
