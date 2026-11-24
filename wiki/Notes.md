@@ -734,6 +734,13 @@ for the text tool's **Write by hand** and the lasso's **To text**:
   yourself. Give its **address** (`https://…/v1`; plain `http://` only to a
   computer on your network), a **key** and a **model** that reads pictures.
 
+**Keys from your phone or computer:** *Set up from your browser (QR code)*,
+at the top of the same menu, opens the setup page at its Notes tab, which has
+**Handwriting to text** too: choose how writing is read and paste the keys
+there instead of typing them on the Kindle. The page never shows a saved key
+back: it says the key is set, and a key field left empty keeps it. **Remove the
+keys** takes both off the Kindle.
+
 Online, only the writing being read is sent, as a black-and-white picture:
 never the page, its pictures or your other notes. Wi‑Fi turns on for it. The
 keys are kept with GZreader's other sign-ins, off the Kindle's USB drive,

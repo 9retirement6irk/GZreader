@@ -1131,6 +1131,64 @@ print("House tab (Home Assistant): connecting, rooms, switching, Settings, the p
     AsyncMod.sync, NetM.usb, plugin.save = T0.sync, T0.usb, T0.save
 end)()
 
+print("Setup page: handwriting to text (where it's read, and its keys)")
+;(function()
+    local Touch = require("gzreader_touch")
+    local was_on, was_save, was_hw = Touch.on, plugin.save, plugin.store.handwriting
+    Touch.on = function() return true end
+    plugin.store.handwriting = nil
+    local PS = require("gzreader_pairscreen")
+    local orig_ps = PS.new
+    local scr
+    PS.new = function(_self, o) scr = o; return o end
+    local Phone = require("gzreader_phone")
+    local Log = require("gzreader_log")
+    local was_info, logged = Log.info, {}
+    Log.info = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    local closed
+    Phone.open(plugin, { section = "handwriting", on_close = function(ch) closed = ch end })
+    local P = "http://127.0.0.1:" .. UI.zmqs[1].port .. scr.url:match("(/phone/%x+)")
+    local function post(fields)
+        local args = { "-L" }
+        for _i, kv in ipairs(fields) do args[#args + 1] = "--data-urlencode '" .. kv .. "'" end
+        return phone(table.concat(args, " ") .. " '" .. P .. "/handwriting'")
+    end
+    local c, b = phone("'" .. P .. "'")
+    check(c == 200 and b:find('<h2 id="handwriting"', 1, true) and b:find('"notes";', 1, true) and b:find("read <b>on the Kindle</b>", 1, true)
+        and b:find('name="claude_key" type="password"', 1, true), "setup page: Handwriting to text in the Notes tab, opening there; read on the Kindle")
+    c, b = post({ "engine=claude" })
+    check(c == 200 and b:find("Claude needs its API key.", 1, true) and require("gzreader_handwriting").engine(plugin) == "kindle",
+        "Claude without a key: the page says so, nothing changes")
+    c, b = post({ "engine=claude", "claude_key=sk-ant-example-secret", "claude_model=" })
+    local Hw = require("gzreader_handwriting")
+    check(c == 200 and Hw.engine(plugin) == "claude" and plugin.store.handwriting.claude.key == "sk-ant-example-secret"
+        and b:find("read by Claude", 1, true), "a Claude key pasted: saved, and writing is read by Claude")
+    check(not b:find("sk-ant-example-secret", 1, true) and b:find("Claude API key (set: leave empty to keep it)", 1, true),
+        "the page never shows the key back: it says it's set")
+    c, b = post({ "engine=claude", "claude_key=", "claude_model=claude-example-model" })
+    check(plugin.store.handwriting.claude.key == "sk-ant-example-secret" and plugin.store.handwriting.claude.model == "claude-example-model",
+        "saving again with the key field empty keeps the key")
+    c, b = post({ "engine=openai", "openai_url=http://example.com/v1", "openai_key=sk-example", "openai_model=vision" })
+    check(b:find("must start with https://", 1, true) and Hw.engine(plugin) == "claude" and plugin.store.handwriting.openai.key == nil,
+        "a plain http:// address on the internet: refused, nothing saved")
+    c, b = post({ "engine=openai", "openai_url=https://llm.example.com/v1", "openai_key=sk-example", "openai_model=" })
+    check(b:find("needs its key and a model", 1, true) and Hw.engine(plugin) == "claude", "the online service without a model: the page says so")
+    c, b = post({ "engine=openai", "openai_url=https://llm.example.com/v1", "openai_key=sk-example", "openai_model=vision" })
+    local o = plugin.store.handwriting.openai
+    check(Hw.engine(plugin) == "openai" and o.url == "https://llm.example.com/v1" and o.key == "sk-example" and o.model == "vision"
+        and plugin.store.handwriting.claude.key == "sk-ant-example-secret", "the online service: address, key and model saved; Claude's key kept")
+    c, b = post({ "clear=1" })
+    check(Hw.engine(plugin) == "kindle" and plugin.store.handwriting.claude.key == nil and plugin.store.handwriting.openai.key == nil
+        and b:find("keys are removed", 1, true), "Remove the keys: both gone, read on the Kindle again")
+    Log.info = was_info
+    local log = table.concat(logged, "\n")
+    check(log:find("handwriting: set on the setup page", 1, true) and not log:find("sk-ant-example-secret", 1, true) and not log:find("sk-example", 1, true),
+        "the log says what was set, never a key")
+    scr.on_cancel()
+    check(closed and closed.handwriting, "closed: the caller hears handwriting changed")
+    PS.new, Touch.on, plugin.save, plugin.store.handwriting = orig_ps, was_on, was_save, was_hw
+end)()
+
 print("Catalog: the Audiobooks page (search, All audiobooks, Authors, Shelves, Series)")
 ;(function()
     local saved_audio = require("gzreader_touch").audio

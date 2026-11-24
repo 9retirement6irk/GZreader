@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Handwriting to text: keys set from your phone or computer", text = "The setup page's Notes tab has Handwriting to text: choose how your writing is read (on the Kindle, Claude, or an OpenAI-style service) and paste the keys, model and service address from your phone or computer. A saved key is never shown back (the page says it's set; an empty field keeps it), and Remove the keys takes them off. On the Kindle: Settings → Notes → Handwriting to text → Set up from your browser (QR code)." },
+        },
+    },
+    {
         version = "2026.11.22",
         changes = {
             { short = "Colour Kindles: Immich photos in colour", text = "On a Kindle Colorsoft or Scribe Colorsoft, the pictures from your Immich album (the sleep screen and the Home wallpaper) are kept in colour instead of being made grey. Pictures already on the Kindle stay grey until they are swapped for others from the album (about half each time GZreader gets new pictures)." },

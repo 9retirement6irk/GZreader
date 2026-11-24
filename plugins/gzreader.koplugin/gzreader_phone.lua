@@ -198,6 +198,16 @@ local function state(S, flash)
     st.access = { enabled = ac.enabled == true, key = ac.key, hosts = ac.hosts, auto = auto, cf_id = ac.cf_id,
         cf_secret_set = ac.cf_secret ~= nil, rule = ac.key and Access.ruleExpression(plugin) or nil,
         error = sec == "access" and flash.error or nil }
+    -- handwriting to text (the drawing screen's Write and To text): touch Kindles.
+    -- Whether each key is set, never the key.
+    if require("gzreader_touch").on() then
+        local Hw = require("gzreader_handwriting")
+        local hw = Hw.settings(plugin)
+        st.handwriting = { engine = Hw.engine(plugin), chosen = hw.engine,
+            claude_set = (hw.claude.key or "") ~= "", claude_model = hw.claude.model, claude_default = Hw.CLAUDE_MODEL,
+            openai_set = (hw.openai.key or "") ~= "", openai_url = hw.openai.url, openai_model = hw.openai.model,
+            openai_default = Hw.OPENAI_URL, error = sec == "handwriting" and flash.error or nil }
+    end
     -- Home Assistant (the House tab): not on the Kindles without Wi-Fi
     if not require("gzreader_usbsync").noWifi() then
         local hs = store.homeassistant or {}
@@ -593,6 +603,44 @@ function Phone.open(plugin, opts)
         plugin:save()
         Log.info("access: key", ac.enabled and "on" or "off", "service token", ac.cf_id and "set" or "none")
         return back({ ok = true, text = _("Saved."), section = "access" })
+    end
+    -- Handwriting to text: where it's read, and its keys (an empty key field keeps the
+    -- one saved; keys are never logged, nor sent back to the page)
+    routes["/handwriting"] = function(form)
+        local Hw = require("gzreader_handwriting")
+        local s = Hw.settings(plugin)
+        local function trim(v) return (tostring(v or ""):gsub("^%s+", ""):gsub("%s+$", "")) end
+        local function done(text)
+            plugin:save()
+            S.changes.handwriting = true
+            Log.info("handwriting: set on the setup page: read", Hw.engine(plugin) == "kindle" and "on the Kindle" or ("with " .. Hw.engine(plugin)),
+                "· Claude key", (s.claude.key or "") ~= "" and "set" or "none", "· service key", (s.openai.key or "") ~= "" and "set" or "none")
+            return back({ ok = true, text = text, section = "handwriting" })
+        end
+        if form.clear == "1" then
+            s.claude.key, s.openai.key, s.engine = nil, nil, "kindle"
+            return done(_("The handwriting keys are removed: writing is read on the Kindle."))
+        end
+        local engine = form.engine == "claude" and "claude" or form.engine == "openai" and "openai" or "kindle"
+        local ckey, cmodel = trim(form.claude_key), trim(form.claude_model)
+        local url, okey, omodel = trim(form.openai_url), trim(form.openai_key), trim(form.openai_model)
+        local function fail(err) return back({ section = "handwriting", error = err }) end
+        if url ~= "" and not Hw.safeUrl(url) then
+            return fail(_("The service address must start with https:// (http:// only for a computer on your own network)."))
+        end
+        if engine == "claude" and ckey == "" and (s.claude.key or "") == "" then return fail(_("Claude needs its API key.")) end
+        if engine == "openai" and ((okey == "" and (s.openai.key or "") == "") or omodel == "") then
+            return fail(_("The online service needs its key and a model's name."))
+        end
+        if ckey ~= "" then s.claude.key = ckey end
+        s.claude.model = cmodel ~= "" and cmodel or nil
+        s.openai.url = url ~= "" and url or nil
+        if okey ~= "" then s.openai.key = okey end
+        s.openai.model = omodel ~= "" and omodel or nil
+        s.engine = engine
+        return done(engine == "claude" and _("Saved: your writing is read by Claude.")
+            or engine == "openai" and _("Saved: your writing is read by the online service.")
+            or _("Saved: your writing is read on the Kindle."))
     end
     -- Home Assistant (gzreader_homeassistant.lua): address and long-lived token
     routes["/house"] = function(form)
@@ -1025,6 +1073,11 @@ function Phone.afterClose(S)
     if ch.paper then
         lines[#lines + 1] = require("gzreader_daily").enabled(plugin) and _("Daily paper: on, its feeds as you set them.") or _("Daily paper: off.")
         pcall(function() require("common/gz_view").redrawHome() end)
+    end
+    if ch.handwriting then
+        local e = require("gzreader_handwriting").engine(plugin)
+        lines[#lines + 1] = e == "claude" and _("Handwriting to text: read by Claude.")
+            or e == "openai" and _("Handwriting to text: read by the online service.") or _("Handwriting to text: read on the Kindle.")
     end
     if ch.house then
         local hs = plugin.store.homeassistant or {}
