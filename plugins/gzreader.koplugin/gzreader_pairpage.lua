@@ -263,6 +263,9 @@ local function memosSection(st, base)
         input("m_server", "server", "Memos address", (m.form or {}).server, 'required placeholder="https://memos.example.com" ' .. URL_ATTRS)
         .. '<label for="m_token">Access token</label><input id="m_token" name="token" type="password" required ' .. NAME_ATTRS .. ">"
         .. '<button type="submit">Connect</button>'
+        .. '<div class="or">or</div><button class="alt" type="submit" name="action" value="sso" formnovalidate>Sign in with single sign-on (SSO)</button>'
+        .. '<p class="note">Single sign-on needs an identity provider set up in Memos (Settings → SSO), and <code>' .. esc(m.redirect_uri or "") .. "</code> as a redirect URI on Memos' client there"
+        .. (m.sso_relay and " (the same for every Kindle)" or "") .. '. The Kindle then makes an access token for itself in Memos, described “GZreader (this Kindle)”, and keeps only that.</p>'
         .. '<details><summary>Where do I get an access token?</summary><p class="note">In Memos: Settings → My account → Access Tokens → create one (no expiry, or a long one). The Kindle keeps the token, never your password.</p></details>',
         "Connecting…")
     if m.connected then parts[#parts + 1] = "</div></details>" end

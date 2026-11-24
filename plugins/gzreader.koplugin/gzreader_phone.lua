@@ -141,6 +141,7 @@ local function state(S, flash)
     local ms = store.memos or {}
     st.memos = { connected = ms.server ~= nil and ms.token ~= nil, user = ms.user, host = host(ms.server),
         form = sec == "notes" and flash.form or { server = ms.server }, error = sec == "notes" and flash.error or nil }
+    st.memos.redirect_uri, st.memos.sso_relay = g.redirect_uri, g.sso_relay
     -- calendars
     local cs = store.caldav or {}
     local cals = {}
@@ -659,12 +660,71 @@ function Phone.open(plugin, opts)
         S.changes.paper = true
         return back({ ok = true, text = _("Removed."), section = "paper" })
     end
-    routes["/memos"] = function(form)
-        local ok, err = Notes().connect(plugin, form.server, form.token)
-        if not ok then
-            if failedLogin() then return 200, "text/html", PairPage.gone() end
-            return back({ section = "notes", error = err, form = { server = form.server } })
+    local function memosFailed(form, err)
+        if failedLogin() then return 200, "text/html", PairPage.gone() end
+        return back({ section = "notes", error = err, form = { server = form.server } })
+    end
+    -- Single sign-on (a Memos with an identity provider): to the provider through
+    -- the same hand-off page as Grimmory's, back at /oauth2-callback (ssoFinishers.memos).
+    local function startMemosSso(form)
+        local Memos = require("gzreader_memos")
+        local srv = Memos.normalizeServer(form.server or "")
+        if not srv then return memosFailed(form, _("Enter your Memos address first.")) end
+        local Lan = require("gzreader_lan")
+        local providers, err = Memos.ssoProviders(srv)
+        if not providers and err == "unreachable" and Lan.plainRetry(form.server or "") then
+            -- (no https:// typed and no HTTPS there: a Memos on the home network)
+            local plain = srv:gsub("^https://", "http://")
+            local p2, e2 = Memos.ssoProviders(plain)
+            if p2 or e2 ~= "unreachable" then srv, providers, err = plain, p2, e2 end
         end
+        if not providers then
+            if err == "unreachable" and not (form.server or ""):match("^%s*https?://") and not Lan.isPrivate(srv) then return memosFailed(form, Lan.noHttpsText()) end
+            if err == "unreachable" then return memosFailed(form, _("Couldn't reach Memos at that address.")) end
+            return memosFailed(form, T(_("That doesn't look like a Memos server (%1)."), tostring(err)))
+        end
+        local provider = providers[1]
+        if not provider then return memosFailed(form, _("Single sign-on isn't set up on this Memos server.")) end
+        local redirect_uri, relay = Phone.ssoRedirect(plugin, S.origin)
+        local session = { kind = "memos", base = srv, input = form.server, provider = provider.name, state = PairServer.randomToken(16),
+            verifier = PairServer.randomToken(32), redirect_uri = redirect_uri, relay = relay }
+        local auth_url = Memos.ssoAuthUrl(provider, redirect_uri, session.state, Api.pkceChallenge(session.verifier))
+        S.sso = session
+        Log.info("memos sso: redirecting phone to", (auth_url:match("^https?://[^/?#]+") or "?"), "redirect_uri", redirect_uri)
+        if not relay then return 302, nil, auth_url end
+        local esc = require("socket.url").escape
+        return 302, nil, redirect_uri .. "#back=" .. esc(S.origin .. "/oauth2-callback") .. "&go=" .. esc(auth_url)
+    end
+    local memosConnected
+    ssoFinishers.memos = function(params, session)
+        if params.error then
+            S.sso = nil
+            return memosFailed({ server = session.input }, T(_("Sign-in didn't complete: %1"), params.error_description or params.error))
+        end
+        if not params.code or params.state ~= session.state then return 200, "text/html", PairPage.gone() end
+        S.sso = nil -- single use
+        local name = "GZreader"
+        pcall(function() name = "GZreader (" .. require("gzreader_copy").deviceName(plugin) .. ")" end)
+        local token, err = require("gzreader_memos").ssoFinish(session.base, session.provider, params.code, session.redirect_uri, session.verifier, name)
+        if not token then
+            Log.warn("memos sso: not finished:", tostring(err))
+            if tostring(err):match("^no_token:") then
+                return memosFailed({ server = session.input }, T(_("Signed in, but Memos didn't let the Kindle make its access token (%1)."), tostring(err):sub(10)))
+            end
+            return memosFailed({ server = session.input }, T(_("Memos didn't accept the sign-in: %1"), tostring(err)))
+        end
+        Log.info("memos sso: signed in; this Kindle's own access token made", session.relay and "(hand-off page)" or "(this Kindle's address)")
+        local ok, cerr = Notes().connect(plugin, session.base, token)
+        if not ok then return memosFailed({ server = session.input }, cerr) end
+        return memosConnected()
+    end
+    routes["/memos"] = function(form)
+        if form.action == "sso" then return startMemosSso(form) end
+        local ok, err = Notes().connect(plugin, form.server, form.token)
+        if not ok then return memosFailed(form, err) end
+        return memosConnected()
+    end
+    memosConnected = function()
         S.changes.notes = true
         Notes().notes = nil
         toast(T(_("Notes: connected to Memos as %1."), plugin.store.memos.user or "?"))

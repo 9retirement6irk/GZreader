@@ -15,6 +15,25 @@ API to `/api` are found too.
   the token (never your password) in GZreader's settings; it's never written
   to the log. An address without `https://` falls back to `http://` for a
   Memos on your home network.
+- **Connect with single sign-on:** if your Memos has an identity provider
+  set up (Memos → Settings → SSO), the setup page's Notes section also has
+  **Sign in with single sign-on (SSO)**: type the Memos address, press it,
+  and sign in at your identity provider. No access token to make.
+  - One-time setup, the same for every Kindle: add
+    `https://9retirement6irk.github.io/GZreader/oauth2-callback` as an extra
+    redirect URI on **Memos'** client at your identity provider, next to
+    Memos' own `…/auth/callback`. It's the same page as for Grimmory and
+    Immich ([Setup page and connections](Setup-Page-and-Connections#single-sign-on-sso--oidc));
+    the Notes section shows the address in use.
+  - After the sign-in the Kindle makes an access token of its own in Memos,
+    described "GZreader (*this Kindle*)", with no expiry, and signs the
+    sign-in's session out. Only that token is kept, so the Kindle stays
+    connected when your sign-in at the identity provider ends. To cut a
+    Kindle off, delete its token in Memos (Settings → My account → Access
+    Tokens).
+  - It needs a Memos whose API is at `/api` (Memos 26.10 or newer, or the
+    fork); with several identity providers in Memos, the first is used.
+    Kindles without Wi‑Fi (the sync page) still use an access token.
 - **Board:** the letter on a note (Q, W, E…) opens it, ◀ ▶ (or the page keys) turn pages, the 5-way
   moves around the notes.
   - **Keyboard Kindles:** **N** new note, **J** journal entry, **K** search, **G** tags,

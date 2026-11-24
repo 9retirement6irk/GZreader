@@ -16195,6 +16195,128 @@ print("Immich: single sign-on from the setup page; the Kindle makes an API key o
     plugin.store.immich = nil
 end)()
 
+print("Memos: single sign-on from the setup page; the Kindle makes an access token of its own")
+;(function()
+    local Memos = require("gzreader_memos")
+    local MP = PORT + 33
+    local SERVER = "http://127.0.0.1:" .. MP
+    local MOCK = "python3 -I " .. PLUGIN .. "/../../tools/gzreader/emulator/demo/mock_memos.py " .. MP
+    local function startMock(flags)
+        os.execute("kill $(cat " .. WORK .. "/memos-sso.pid 2>/dev/null) 2>/dev/null")
+        socket.sleep(0.3)
+        os.execute(MOCK .. " " .. flags .. " > " .. WORK .. "/memos-sso.log 2>&1 & echo $! > " .. WORK .. "/memos-sso.pid")
+        for _try = 1, 50 do
+            local pp = io.popen("curl -s -o /dev/null -w '%{http_code}' " .. SERVER .. "/__state"); local cc = pp:read("*a"); pp:close()
+            if cc == "200" then break end
+            socket.sleep(0.2)
+        end
+    end
+    local function mstate() local pp = io.popen("curl -s " .. SERVER .. "/__state"); local t = pp:read("*a"); pp:close(); return (json.decode(t) or {}).sso or {} end
+    local function mset(q) os.execute("curl -s -o /dev/null -X POST '" .. SERVER .. "/__sso?" .. q .. "'") end
+    local function ssoLog() require("gzreader_log").flush(); local lf = io.open(WORK .. "/gzreader.log", "rb"); local t = lf and lf:read("*a") or ""; if lf then lf:close() end; return t end
+    local function signIn(url) return phone("-L --max-redirs 5 --data-urlencode 'server=" .. SERVER .. "' --data-urlencode 'action=sso' '" .. url .. "/memos'") end
+    local RELAY, hdr, unesc = "https://relay.example.com/gzreader/oauth2-callback", WORK .. "/memos_sso_hdr", require("socket.url").unescape
+    local function location()
+        local hf = io.open(hdr); local h = hf and hf:read("*a") or ""; if hf then hf:close() end
+        return h:match("\n[Ll]ocation: ([^\r\n]+)")
+    end
+    local saved_redirect, saved_memos, saved_notes = G_reader_settings:readSetting("gzreader_sso_redirect"), plugin.store.memos, require("gzreader_notes").notes
+    local cache = Memos.cachePath()
+    local cf = io.open(cache, "rb"); local saved_cache = cf and cf:read("*a"); if cf then cf:close() end
+    plugin.store.memos = nil
+
+    -- what the server offers
+    startMock("--memos26")
+    local list = Memos.ssoProviders(SERVER)
+    check(type(list) == "table" and #list == 0, "a Memos with no identity provider: none offered")
+    G_reader_settings:saveSetting("gzreader_sso_redirect", "kindle")
+    local url, origin = startPairing()
+    local c, html = phone("'" .. url .. "'")
+    local sect = html and html:match('<section id="notes".-</section>') or ""
+    check(c == 200 and sect:find('name="action" value="sso" formnovalidate', 1, true) and sect:find(origin .. "/oauth2-callback", 1, true)
+        and sect:find("makes an access token for itself", 1, true),
+        "the page's Notes tab: a single sign-on button (no access token needed for it), the redirect address, what the Kindle keeps")
+    c, html = signIn(url)
+    check(c == 200 and html:find("set up on this Memos server", 1, true) and not plugin.store.memos, "no identity provider in Memos: said so, nothing connected")
+    startMock("")
+    local older = Memos.ssoProviders(SERVER)
+    check(type(older) == "table" and #older == 0, "an older Memos (its API at /api/v1): none offered, not an error")
+    check(select(2, Memos.ssoProviders("http://127.0.0.1:1")) == "unreachable", "no server there: unreachable")
+    startMock("--memos26 --sso")
+    list = Memos.ssoProviders(SERVER)
+    local pr = list and list[1] or {}
+    check(list and #list == 1 and pr.name == "identity-providers/authentik" and pr.title == "Authentik" and pr.client_id == "memos"
+        and pr.auth_url == SERVER .. "/idp/authorize" and pr.scopes == "openid profile email", "a Memos with one: its name, client, sign-in address and scopes")
+
+    -- signing in: provider -> the Kindle -> Memos; a token of the Kindle's own; the session signed out
+    c, html = signIn(url)
+    local ms = plugin.store.memos or {}
+    local sso = mstate()
+    check(c == 200 and html:find("Notes connected to Memos as Will", 1, true) and ms.server == SERVER and ms.user == "Will" and ms.prefix == "/api"
+        and type(ms.token) == "string" and ms.token:match("^memos_pat_"), "single sign-on: connected as with a pasted token")
+    check(#(sso.made or {}) == 1 and tostring(sso.made[1]):match("^GZreader %(.+%)$"), "the Kindle made one access token, described for GZreader and this Kindle (" .. tostring((sso.made or {})[1]) .. ")")
+    check(sso.open == 0 and sso.ended == 1, "the sign-in's session is signed out once the token is made: only the token is kept")
+    local lt = ssoLog()
+    check(lt:find("memos sso: signed in", 1, true) and not lt:find(ms.token, 1, true) and not lt:find("codeVerifier", 1, true)
+        and not lt:find("memos_refresh", 1, true) and not lt:find("sess-", 1, true), "the log has the sign-in, but no token, PKCE secret or session")
+    c, html = phone("'" .. origin .. "/oauth2-callback?code=again&state=again'")
+    check(c == 200 and html:match("has closed"), "the sign-in can't be replayed")
+
+    -- through GZreader's hand-off page (one redirect address for every Kindle)
+    plugin.store.memos = nil
+    G_reader_settings:saveSetting("gzreader_sso_redirect", RELAY)
+    url, origin = startPairing()
+    c = phone("-D '" .. hdr .. "' --data-urlencode 'server=" .. SERVER .. "' --data-urlencode 'action=sso' '" .. url .. "/memos'")
+    local back, go = (location() or ""):match("^" .. RELAY:gsub("%p", "%%%0") .. "#back=([^&]+)&go=(.+)$")
+    go = go and unesc(go) or ""
+    check(c == 302 and back and unesc(back) == origin .. "/oauth2-callback" and go:find(SERVER .. "/idp/authorize?", 1, true)
+        and unesc(go):find("redirect_uri=" .. RELAY .. "&", 1, true) and go:find("code_challenge_method=S256", 1, true)
+        and go:find("response_type=code", 1, true) and go:find("client_id=memos", 1, true) and go:match("[?&]state=%x+") and go:match("[?&]code_challenge=[%w_-]+"),
+        "hand-off page: #back is the Kindle, #go the provider's sign-in as the page needs it (a code with PKCE, coming back to the page)")
+    phone("-D '" .. hdr .. "' '" .. go .. "'")
+    local ret = location() or ""
+    c, html = phone("-L '" .. unesc(back or "") .. ret:sub(#RELAY + 1) .. "'")
+    check(ret:sub(1, #RELAY + 1) == RELAY .. "?" and c == 200 and html:find("Notes connected to Memos as Will", 1, true)
+        and (plugin.store.memos or {}).server == SERVER and #mstate().made == 2,
+        "hand-off page: the provider comes back to it, it forwards to the Kindle, connected")
+    screen.on_cancel()
+
+    -- cancelled at the provider; a forged answer; a token refused
+    plugin.store.memos = nil
+    G_reader_settings:saveSetting("gzreader_sso_redirect", "kindle")
+    url, origin = startPairing()
+    mset("deny=1")
+    c, html = signIn(url)
+    check(c == 200 and html:find("User cancelled", 1, true) and not plugin.store.memos, "cancelled at the provider: said so, nothing connected")
+    mset("deny=0")
+    phone("-D '" .. hdr .. "' --data-urlencode 'server=" .. SERVER .. "' --data-urlencode 'action=sso' '" .. url .. "/memos'")
+    c, html = phone("'" .. origin .. "/oauth2-callback?code=forged&state=forged'")
+    check(c == 200 and html:match("has closed") and not plugin.store.memos, "an answer with another state is refused")
+    url = startPairing()
+    mset("refuse=1")
+    local ended = mstate().ended
+    c, html = signIn(url)
+    sso = mstate()
+    check(c == 200 and html:find("make its access token", 1, true) and not plugin.store.memos and sso.open == 0 and sso.ended == ended + 1,
+        "Memos refuses the access token: said so, nothing connected, the session still signed out")
+    mset("refuse=0")
+    screen.on_cancel()
+
+    -- the code is no use without the Kindle's PKCE secret
+    local Api = require("gzreader_api")
+    local auth_url = Memos.ssoAuthUrl(pr, "http://kindle.example.com/oauth2-callback", "st-1", Api.pkceChallenge("the-kindles-own-secret"))
+    phone("-D '" .. hdr .. "' '" .. auth_url .. "'")
+    local code_back = (location() or ""):match("[?&]code=(%x+)")
+    local token, terr = Memos.ssoFinish(SERVER, pr.name, code_back, "http://kindle.example.com/oauth2-callback", "someone-elses-guess", "GZreader (test)")
+    check(code_back and token == nil and tostring(terr):find("failed to exchange token", 1, true), "a code with the wrong PKCE secret: Memos refuses it (" .. tostring(terr) .. ")")
+
+    os.execute("kill $(cat " .. WORK .. "/memos-sso.pid) 2>/dev/null")
+    G_reader_settings:saveSetting("gzreader_sso_redirect", saved_redirect)
+    plugin.store.memos = saved_memos
+    require("gzreader_notes").notes = saved_notes
+    if saved_cache then local o = io.open(cache, "wb"); if o then o:write(saved_cache); o:close() end else os.remove(cache) end
+end)()
+
 print("The mock BookOrbit server answers as the real one does, and the probe script (mock_bookorbit_test.py)")
 ;(function()
     local pp = io.popen("python3 -I " .. PLUGIN .. "/../../tools/gzreader/tests/mock_bookorbit_test.py " .. (PORT + 60) .. " 2>&1")
