@@ -545,6 +545,7 @@ function BookOrbit:listBooks(params)
     params = params or {}
     local page, size = tonumber(params.page) or 0, math.min(tonumber(params.size) or 20, BookOrbit.PAGE_MAX)
     if wantsOnlyAudio(params.fileType) then return self:listAudiobooks(params) end -- (the main API, with an API key)
+    if s(params.category) then return self:listGenreBooks(params) end -- (genres: the main API too)
     local q = { page = page + 1, size = size, sort = SORT[params.sort] or "title",
         order = (params.dir == "asc" or params.dir == "desc") and params.dir or nil,
         q = s(params.search), libraryId = params.libraryId, collectionId = params.shelfId, smartScopeId = params.magicShelfId,
@@ -869,27 +870,96 @@ local function audioCard(card)
         id = BookOrbit.AUDIO_PREFIX .. tostring(card.id), title = s(card.title) or ("Audiobook " .. tostring(card.id)),
         authors = names(card.authors), narrators = names(card.narrators), primaryFileType = "AUDIOBOOK",
         seriesName = s(card.seriesName), seriesNumber = n(card.seriesIndex), readProgress = n(card.readingProgress),
-        hasCover = card.hasCover == true,
+        hasCover = card.hasCover == true, categories = names(card.genres),
     }
+end
+
+--- One of the main API's book cards as a book in the Catalog's lists (its
+--- files' formats say what GZreader opens), or nil.
+local function bookCard(card)
+    if type(card) ~= "table" or not n(card.id) then return nil end
+    local formats = {}
+    for _i, f in ipairs(list(card.files)) do
+        if type(f) == "table" and s(f.format) then formats[#formats + 1] = f.format end
+    end
+    local book = BookOrbit.toBook({ id = card.id, title = card.title, authors = card.authors, seriesName = card.seriesName,
+        seriesIndex = card.seriesIndex, formats = formats, progressPercentage = card.readingProgress, addedAt = card.addedAt,
+        hasCover = card.hasCover })
+    if book then book.categories = names(card.genres) end
+    return book
+end
+
+-- The main API's filter: these formats (and, given, this genre).
+local function formatFilter(formats, genre)
+    local Json = require("gzreader_json")
+    local any = {}
+    for _i, f in ipairs(formats) do any[#any + 1] = f; any[#any + 1] = f:upper() end
+    local rules = { { type = "rule", field = "format", operator = "includesAny", value = Json.list(any) } }
+    if genre then rules[2] = { type = "rule", field = "genre", operator = "includesAny", value = Json.list({ genre }) } end
+    return { type = "group", join = "AND", rules = Json.list(rules) }
+end
+
+local function query(self, body)
+    local code, data, err = self:keyCall("POST", "/api/v1/books/query", { body = body, timeouts = { 15, 45 } })
+    if not ((code == 200 or code == 201) and type(data) == "table") then return nil, err or ("http_" .. tostring(code)) end
+    return data
+end
+
+--- A page of books in a genre (the main API, with the API key: BookOrbit's
+--- e-reader catalog has no genres). Without a key: none.
+function BookOrbit:listGenreBooks(params)
+    local page, size = tonumber(params.page) or 0, math.min(tonumber(params.size) or 20, BookOrbit.PAGE_MAX)
+    if not self:hasApiKey() then return emptyPage(page, size) end
+    local Json = require("gzreader_json")
+    local field = ({ title = "title", addedOn = "addedAt", lastReadTime = "lastReadAt" })[params.sort] or "title"
+    local data, err = query(self, {
+        sort = Json.list({ { field = field, dir = (params.dir == "desc") and "desc" or "asc" } }),
+        pagination = { page = page, size = size }, -- (from 0)
+        filter = formatFilter(BookOrbit.READABLE, s(params.category)),
+        q = s(params.search),
+    })
+    if not data then return nil, err end
+    local content = {}
+    for _i, card in ipairs(list(data.items)) do
+        local book = bookCard(card)
+        if book and book.primaryFileType and book.primaryFileType ~= "AUDIOBOOK" then content[#content + 1] = book end
+    end
+    local total = n(data.total) or #content
+    return { content = content, page = page, size = size, totalElements = total, totalPages = math.ceil(total / size),
+        hasNext = (page + 1) * size < total, hasPrevious = page > 0 }
+end
+
+--- Every genre of the books KOReader opens, with how many books: { [name] = count }
+--- (the library index's Genres). nil without the API key.
+function BookOrbit:genreCounts()
+    if not self:hasApiKey() then return nil end
+    local counts, page, pages = {}, 0, 1
+    while page < pages and page < 200 do
+        local data = self:listGenreBooks({ page = page, size = BookOrbit.PAGE_MAX })
+        if not data then return nil end
+        pages = tonumber(data.totalPages) or 1
+        for _i, b in ipairs(data.content) do
+            for _j, g in ipairs(b.categories or {}) do counts[g] = (counts[g] or 0) + 1 end
+        end
+        page = page + 1
+    end
+    return counts
 end
 
 --- A page of audiobooks (the main API's book query), as the Catalog reads one.
 function BookOrbit:listAudiobooks(params)
     local page, size = tonumber(params.page) or 0, math.min(tonumber(params.size) or 20, BookOrbit.PAGE_MAX)
     if not self:hasApiKey() then return emptyPage(page, size) end
-    local formats = {}
-    for _i, f in ipairs(AUDIO_FORMATS) do formats[#formats + 1] = f; formats[#formats + 1] = f:upper() end
     local Json = require("gzreader_json")
     local field = ({ title = "title", addedOn = "addedAt", lastReadTime = "lastReadAt" })[params.sort] or "title"
     local body = {
         sort = Json.list({ { field = field, dir = (params.dir == "desc") and "desc" or "asc" } }),
         pagination = { page = page, size = size }, -- (BookOrbit counts pages from 0, as GZreader does)
-        filter = { type = "group", join = "AND", rules = Json.list({
-            { type = "rule", field = "format", operator = "includesAny", value = Json.list(formats) } }) },
+        filter = formatFilter(AUDIO_FORMATS, s(params.category)), -- (a genre: Genres on the Audiobooks page)
         q = s(params.search),
     }
-    local code, data, err = self:keyCall("POST", "/api/v1/books/query", { body = body, timeouts = { 15, 45 } })
-    if not ((code == 200 or code == 201) and type(data) == "table") then return nil, err or ("http_" .. tostring(code)) end
+    local data, err = query(self, body)
+    if not data then return nil, err end
     local content = {}
     for _i, card in ipairs(list(data.items)) do content[#content + 1] = audioCard(card) end
     local total = n(data.total) or #content

@@ -53,12 +53,12 @@ def _png(w, h):
 PNG = _png(120, 168)
 
 
-def book(i, title, authors, library, series=None, idx=None, fmt="epub", collections=()):
+def book(i, title, authors, library, series=None, idx=None, fmt="epub", collections=(), genres=()):
     data = ("%s by %s\n" % (title, ", ".join(authors))).encode() * 40
     return {"id": i, "title": title, "authors": authors, "libraryId": library, "seriesName": series,
             "seriesId": (900 + sum(map(ord, series)) % 90) if series else None, "seriesIndex": idx,
             "format": fmt, "fileId": 5000 + i, "data": data, "hash": hashlib.md5(data).hexdigest(),
-            "collections": list(collections), "addedAt": "2026-10-%02dT08:00:00.000Z" % (i % 27 + 1),
+            "collections": list(collections), "genres": list(genres), "addedAt": "2026-10-%02dT08:00:00.000Z" % (i % 27 + 1),
             "updatedAt": "2026-11-%02dT09:30:00.000Z" % (i % 20 + 1)}
 
 
@@ -66,14 +66,14 @@ LIBRARIES = {1: "Fiction", 2: "Non-fiction"}
 COLLECTIONS = {11: "Beach reads", 12: "Book club"}
 COLLECTION_OWNERS = {}  # collection id -> user id, for the ones that aren't the signed-in user's (id 1)
 BOOKS = [
-    book(101, "The Long Way Round", ["Ada Marsh"], 1, "Waymarks", 1, collections=[11]),
-    book(102, "The Short Way Back", ["Ada Marsh"], 1, "Waymarks", 2),
-    book(103, "A Field Guide to Fog", ["Ben Okafor"], 2, collections=[12]),
+    book(101, "The Long Way Round", ["Ada Marsh"], 1, "Waymarks", 1, collections=[11], genres=["Travel"]),
+    book(102, "The Short Way Back", ["Ada Marsh"], 1, "Waymarks", 2, genres=["Travel", "Memoir"]),
+    book(103, "A Field Guide to Fog", ["Ben Okafor"], 2, collections=[12], genres=["Nature"]),
     book(104, "Night Trains", ["Clara Voss", "Ben Okafor"], 1, collections=[11, 12]),
     book(105, "Tide Tables", ["Dmitri Hale"], 2, fmt="pdf"),
 ]
 AUDIOBOOK = {
-    "id": 201, "title": "The Long Way Round", "authors": ["Ada Marsh"], "narrators": ["June Park"],
+    "id": 201, "title": "The Long Way Round", "authors": ["Ada Marsh"], "narrators": ["June Park"], "genres": ["Travel"],
     "assets": [
         {"assetId": "aud_11111111-1111-4111-8111-111111111111", "fileId": 6201, "sequence": 0, "format": "mp3",
          "durationMs": 60000, "data": b"ID3" + b"\0" * 4000},
@@ -158,7 +158,7 @@ def detail(b):
     d.update({"subtitle": None, "description": "About %s." % b["title"], "publisher": "Example House",
               "publishedDate": "2020-05-01", "publishedYear": 2020, "language": "en", "isbn10": None, "isbn13": None,
               "libraryId": b["libraryId"], "libraryName": LIBRARIES[b["libraryId"]], "rating": STATE["ratings"].get(str(b["id"])), "pageCount": 240,
-              "collections": [{"id": c, "name": COLLECTIONS[c]} for c in b["collections"]], "genres": [], "tags": [],
+              "collections": [{"id": c, "name": COLLECTIONS[c]} for c in b["collections"]], "genres": list(b.get("genres") or []), "tags": [],
               "progress": p and {"fileId": b["fileId"], "percentage": pct100(p["percentage"]),
                                  "koreaderProgress": p.get("progress"), "updatedAt": p["updatedAt"]} or None,
               "files": [{"id": b["fileId"], "format": b["format"], "role": "primary", "downloadVariant": "original",
@@ -437,12 +437,20 @@ def web_bookmark(w):
 
 
 
+def ebook_card(b):
+    """A book as one of the main API's book cards (the fields GZreader reads)."""
+    return {"id": b["id"], "title": b["title"], "authors": b["authors"], "seriesName": b["seriesName"],
+            "seriesIndex": b["seriesIndex"], "hasCover": True, "genres": b.get("genres") or [],
+            "readingProgress": None, "addedAt": b["addedAt"],
+            "files": [{"id": b["fileId"], "format": b["format"], "role": "primary", "sizeBytes": len(b["data"])}]}
+
+
 def audio_card(ab):
     """An audiobook as one of the main API's book cards (the real card has many more fields)."""
     state = STATE["playback"].get(ab["id"])
     return {"id": ab["id"], "title": ab["title"], "authors": ab["authors"], "narrators": ab["narrators"],
             "seriesName": None, "seriesIndex": None, "hasCover": True, "subtitle": None,
-            "readingProgress": state and state["percentage"] or None,
+            "readingProgress": state and state["percentage"] or None, "genres": ab.get("genres") or [],
             "files": [{"id": a["fileId"], "format": a["format"]} for a in ab["assets"]]}
 
 
@@ -635,15 +643,23 @@ class Handler(BaseHTTPRequestHandler):
             rules = (d.get("filter") or {}).get("rules") or []
             fmts = {str(v).lower() for r in rules if r.get("field") == "format" and r.get("operator") == "includesAny"
                     for v in r.get("value") or []}
+            genres = {str(v) for r in rules if r.get("field") == "genre" and r.get("operator") == "includesAny"
+                      for v in r.get("value") or []}
             if "q" in d and not isinstance(d["q"], str):
                 return self.error(400, "q must be a string")
             found = []
-            for ab in sorted(AUDIOBOOKS.values(), key=lambda ab: ab["title"].lower()):
-                if rules and not fmts & {a["format"] for a in ab["assets"]}:
+            # (the books, then the audiobooks: each as the main API's card)
+            cards = [(b["format"], b.get("genres") or [], b["title"] + " " + " ".join(b["authors"]), ebook_card(b)) for b in BOOKS]
+            cards += [(a["format"], ab.get("genres") or [], ab["title"] + " " + " ".join(ab["authors"]), audio_card(ab))
+                      for ab in AUDIOBOOKS.values() for a in ab["assets"][:1]]
+            for fmt, gs, text, card in sorted(cards, key=lambda c: c[3]["title"].lower()):
+                if rules and fmts and fmt not in fmts:
                     continue
-                if d.get("q") and d["q"].lower() not in (ab["title"] + " " + " ".join(ab["authors"])).lower():
+                if genres and not genres & set(gs):
                     continue
-                found.append(audio_card(ab))
+                if d.get("q") and d["q"].lower() not in text.lower():
+                    continue
+                found.append(card)
             if d["sort"] and isinstance(d["sort"][0], dict) and d["sort"][0].get("dir") == "desc":
                 found.reverse()
             items = found[pg["page"] * pg["size"]:(pg["page"] + 1) * pg["size"]]  # (pages from 0, as the real one)

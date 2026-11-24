@@ -287,7 +287,13 @@ try:
     code, j = call("POST", "/api/v1/books/query", API, q)
     check(code == 201 and j["total"] == 1 and j["items"][0]["id"] == 201, "books/query finds the audiobook by format")
     q["filter"]["rules"][0]["value"] = ["epub"]
-    check(call("POST", "/api/v1/books/query", API, q)[1]["total"] == 0, "books/query: no audio format, no audiobook")
+    j = call("POST", "/api/v1/books/query", API, q)[1]
+    check(j["total"] == 4 and all(c["files"][0]["format"] == "epub" for c in j["items"]),
+          "books/query: an ebook format finds the ebooks, no audiobook")
+    q["filter"]["rules"].append({"type": "rule", "field": "genre", "operator": "includesAny", "value": ["Travel"]})
+    j = call("POST", "/api/v1/books/query", API, q)[1]
+    check(sorted(c["id"] for c in j["items"]) == [101, 102] and "Travel" in j["items"][0]["genres"],
+          "books/query: and a genre: that genre's books, with their genres")
     check(call("POST", "/api/v1/books/query", API, {"page": 1})[0] == 400, "books/query needs sort and pagination")
     q2 = dict(q, pagination={"page": 1, "size": 5})
     check(call("POST", "/api/v1/books/query", API, q2)[1]["items"] == [], "books/query counts pages from 0: page 1 is the second")

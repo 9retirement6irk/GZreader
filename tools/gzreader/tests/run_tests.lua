@@ -1146,11 +1146,10 @@ print("Catalog: the Audiobooks page (search, All audiobooks, Authors, Shelves, S
     local ids = {}
     for _i, it in ipairs(m.item_table) do ids[#ids + 1] = it.gz_id end
     local ab_card = m.item_table[#m.item_table]
-    check(table.concat(ids, ",") == "ab_search,ab_continue,ab_recent,ab_all,ab_authors,ab_shelves,ab_series,ab_account"
+    check(table.concat(ids, ",") == "ab_search,ab_continue,ab_recent,ab_all,ab_authors,ab_shelves,ab_series,ab_genres"
         and m.item_table[1].gz_action == "search" and m.item_table[4].gz_kind == "section" and m.item_table[4].gz_contents == "tapes"
-        and m.item_table.gz_root and not m.item_table.gz_signed_out and ab_card.text == "Grimmory" and ab_card.gz_contents == "none"
-        and ab_card.mandatory == plugin.store.username .. " · " .. plugin.store.server:gsub("^https?://", ""),
-        "the page: search, Continue listening, Recently added, then All audiobooks, Authors, Shelves, Series and the Grimmory card (no On this Kindle) "
+        and m.item_table.gz_root and not m.item_table.gz_signed_out and ab_card.text == "Genres" and ab_card.gz_kind == "section",
+        "the page: search, Continue listening, Recently added, then All audiobooks, Authors, Shelves, Series and Genres (no server card: it's in Settings → Books) "
         .. table.concat(ids, ",") .. " / " .. tostring(ab_card.mandatory))
     local function abItem(id) for _i, it in ipairs(m.item_table) do if it.gz_id == id then return it end end end
     local saved_w = {}
@@ -1166,7 +1165,7 @@ print("Catalog: the Audiobooks page (search, All audiobooks, Authors, Shelves, S
     local comp = {}
     for _i, c in ipairs(ps.compartments) do comp[#comp + 1] = tostring(c.id) end
     check(ps.ledges[1].id == "ab_continue" and ps.ledges[1].label == "Continue listening" and ps.ledges[2].id == "ab_recent"
-        and table.concat(comp, ",") == "ab_all,ab_authors,ab_shelves,ab_series,ab_account" and ps.cover_kind == "audiobook"
+        and table.concat(comp, ",") == "ab_all,ab_authors,ab_shelves,ab_series,ab_genres,ab_account" and ps.cover_kind == "audiobook"
         and Shop.pageSpec("books").ledges[1].id == "continue" and Views.cardOf(m.item_table[5]) == m.item_table[5].mandatory,
         "the Bookshelf view: the books' shop, with Continue listening and Recently added ledges, then a compartment each")
     -- Continue listening: what you've listened to on the Kindle first
@@ -1332,15 +1331,20 @@ print("Catalog: not signed in to Grimmory (it opens all the same)")
         return table.concat(t, ",")
     end
     local all_ab = { ab_all = true, ab_authors = true, ab_shelves = true, ab_series = true, ab_account = true }
-    check(arranged("books", {}, true) == "all,libraries,shelves,authors,series,grimmory"
+    check(arranged("books", {}, true) == "all,libraries,shelves,authors,series,genres"
         and arranged("audiobooks", all_ab, false) == "ab_all,ab_authors,ab_shelves,ab_series,-,ab_account"
         and arranged("audiobooks", { ab_all = true, ab_authors = true, ab_account = true }, false) == "ab_all,ab_authors,-,-,-,ab_account"
-        and arranged("audiobooks", {}, true) == "ab_all,ab_authors,ab_shelves,ab_series,-,ab_account"
+        and arranged("audiobooks", {}, true) == "ab_all,ab_authors,ab_shelves,ab_series,ab_genres,ab_account"
         and arranged("music", { mu_playlists = true, mu_albums = true, mu_artists = true, mu_account = true }, false) == "mu_playlists,mu_albums,mu_artists,-,-,mu_account"
         and arranged("music", { mu_playlists = true, mu_albums = true, mu_artists = true, mu_now = true, mu_account = true }, false)
             == "mu_playlists,mu_albums,mu_artists,mu_now,-,mu_account"
-        and Shop.pageSpec("music").compartments[5].kind == "account" and Shop.pageSpec("audiobooks").compartments[5].kind == "account",
+        and Shop.pageSpec("music").compartments[5].kind == "account" and Shop.pageSpec("audiobooks").compartments[6].kind == "account",
         "the Grimmory and Plex cards: always the bottom-right compartment, the whole of it")
+    check(arranged("audiobooks", { ab_all = true, ab_authors = true, ab_shelves = true, ab_series = true, ab_genres = true }, false)
+            == "ab_all,ab_authors,ab_shelves,ab_series,ab_genres,-"
+        and table.concat((function() local t = {} for _i, c in ipairs(Shop.pageSpec("books", true).compartments) do t[#t + 1] = c.id end return t end)(), ",")
+            == "all,libraries,shelves,authors,series,grimmory",
+        "signed in, Genres in the server card's place (Books and Audiobooks); not signed in, the server's card there to sign in")
     check(bsrc:find("by.search or by.ab_search or by.mu_search", 1, true),
         "the Bookshelf view's slip is each page's own search line (the Audiobooks and Music slips did nothing)")
     require("gzreader_touch").audio = saved_audio
@@ -1453,12 +1457,12 @@ local Index = require("gzreader_index")
 local root = Browser:new(plugin):rootItems()
 local names = {}
 for _, it in ipairs(root) do names[#names + 1] = it.text end
-check(table.concat(names, "|"):match("^Search Grimmory…|Continue reading|Recently added|All books.-|Libraries|Shelves|Authors|Series|Grimmory"), "root menu: Search, Continue, Recent, All books, Libraries, Shelves, Authors, Series, Grimmory")
+check(table.concat(names, "|"):match("^Search Grimmory…|Continue reading|Recently added|All books.-|Libraries|Shelves|Authors|Series|Genres"), "root menu: Search, Continue, Recent, All books, Libraries, Shelves, Authors, Series, Grimmory")
 print("Grimmory tab as a bookshop")
 do
     local ids = {}
     for _i, it in ipairs(root) do ids[#ids + 1] = tostring(it.gz_id) end
-    check(root.gz_root == true and table.concat(ids, ",") == "search,continue,recent,all,libraries,shelves,authors,series,grimmory"
+    check(root.gz_root == true and table.concat(ids, ",") == "search,continue,recent,all,libraries,shelves,authors,series,genres"
         .. (#root > 9 and ",audiobooks" or ""), "root items: marked for the bookshop " .. table.concat(ids, ","))
     -- (its drawing only: its widgets stay stubs here)
     local widget_mods = { "ui/widget/container/inputcontainer", "ui/widget/container/widgetcontainer", "ui/gesturerange", "ui/font", "ffi/blitbuffer" }
@@ -1485,8 +1489,9 @@ do
     end
     check(fits, "layout: the slip, two ledges and the bookcase fit, in order, on every Kindle's page")
     check(Shop.layout(800, 380, one).fits == false, "layout: too short a page (landscape) says so: the list instead")
-    check(Shop.compartments()[6].id == "grimmory" and Shop.compartments()[6].kind == "account" and #Shop.compartments() == 6,
-        "compartments: the last is the Grimmory card (Audiobooks are the Catalog's next page; what's here is in Downloads)")
+    check(Shop.compartments()[6].id == "genres" and Shop.compartments()[6].kind == "genres" and #Shop.compartments() == 6
+            and Shop.compartments(true)[6].id == "grimmory" and Shop.compartments(true)[6].kind == "account",
+        "compartments: the last is Genres; not signed in, the server's card (Audiobooks are the Catalog's next page; what's here is in Downloads)")
     check(Shop.moreText(7) == "+3 more" and Shop.moreText(4) == "See all" and Shop.moreText(nil) == "See all", "the bundle's tag")
     local known = {
         index = { total = 1024, libraries = { ["1"] = 30, ["2"] = 0, ["3"] = 2 }, authors = { A = 1, B = 2, C = 3 }, series = { X = { count = 3 }, Y = { count = 1 } } },
@@ -1600,6 +1605,29 @@ check(find(al, "^Author 1$").mandatory:match("%d+ books"), "author shows how man
 local idx = Index.load(plugin.store)
 check(idx and idx.total == 32 and idx.files["book5.epub"] and idx.files["book5.epub"][1] == 5, "index: 32 readable books, file names recorded for relinking")
 check(idx.subtitles and idx.subtitles["2"] == "Rodrick Rules", "index: subtitles from Grimmory's web book list")
+do -- Genres (Grimmory's categories): from the index, each opening to its books
+    check(idx.genres and idx.genres.Mystery == 2 and idx.genres.Fantasy == 1 and idx.genres.Adventure == 1,
+        "index: the genres of the readable books, with how many (an audiobook's left out)")
+    local gb = Browser:new(plugin); gb:show()
+    gb:openGenres()
+    runLoop(function() return gb.menu.title == "Genres" end, 20)
+    local gl = gb.menu.item_table
+    check(gl[1].text:match("Refresh") and texts(gl):match("Adventure.*Fantasy.*Mystery") and find(gl, "^Mystery$").mandatory == "2 books",
+        "Genres: A–Z, each with its count, a refresh at the top")
+    find(gl, "^Mystery$").callback()
+    local function ids()
+        local t = {}
+        for _i, it in ipairs(gb.menu.item_table) do if type(it.book) == "table" then t[#t + 1] = tostring(it.book.id) end end
+        table.sort(t)
+        return table.concat(t, ",")
+    end
+    runLoop(function() return gb.menu.title == "Mystery" and ids() ~= "" end, 20)
+    local asked
+    for _i, e in ipairs(json.decode(ctl("/state")).log) do
+        if e[1] == "GET" and e[2]:match("^/api/v1/app/books%?") and e[2]:match("category=Mystery") then asked = e[2] end
+    end
+    check(ids() == "2,5" and asked and asked:match("fileType=EPUB"), "a genre opens to its books (Grimmory asked for that category, books only): " .. ids())
+end
 check(b:bookItem({ id = 2, title = "Book 02", authors = { "A" }, primaryFileType = "EPUB" }).text == "Book 02: Rodrick Rules — A", "Grimmory lists show the subtitle")
 check(require("gzreader_titles").full("Diary of a Wimpy Kid: Old School", "Old School") == "Diary of a Wimpy Kid: Old School", "subtitle not doubled when the title already has it")
 local index_requests = 0
@@ -3068,11 +3096,11 @@ do
         and not g:match("Downloads") and not g:match("Browse library") and not g:match("updates")
         and not g:match("Diagnostic") and not g:match("Read aloud") and not g:match("Pre%-size")
         and not g:match("Wi%-Fi only"), "Grimmory section: connection and sync only " .. g)
-    check(g:match("|Sync highlights and notes|Rebuild library|Reconnect") and not g:match("Keep connections open")
+    check(g:match("|Sync highlights and notes|Reading stats|Rebuild library|Reconnect") and not g:match("Request a book") and not g:match("Keep connections open")
             and not g:match("Copy from another GZreader"),
         "Books (Grimmory): the sync switches, then Rebuild library; Keep connections open in General → Performance, Copy in General → Transfer " .. g)
-    check(g:match("|Single sign%-on %(SSO%)|Storage on this Kindle|Disconnect|$"),
-        "Books (Grimmory): Storage on this Kindle (a link to General → Storage), then Disconnect last " .. g)
+    check(g:match("|Single sign%-on %(SSO%)|Storage on this Kindle|Disconnect|About Grimmory|$"),
+        "Books (Grimmory): Storage on this Kindle (a link to General → Storage), then Disconnect, then About Grimmory last " .. g)
     do -- Rebuild library: the index from Grimmory again, the saved lists forgotten, Wi-Fi on first
         local NetR = require("gzreader_net")
         local IndexR, LCR = require("gzreader_index"), require("gzreader_listcache")
@@ -3125,7 +3153,7 @@ do
     check(texts(plugin:sectionItems("interface")) == "||", "Paperwhite: no Menu key setting, nothing for Display and light")
     local Browser = require("gzreader_browser")
     local root = texts(Browser.rootItems({ api = plugin.api, plugin = plugin }))
-    check(root:match("|Grimmory|$") and not root:match("Audiobooks") and table.concat(require("gzreader_catalog").sections(), ",") == "books",
+    check(root:match("|Genres|$") and not root:match("Audiobooks") and table.concat(require("gzreader_catalog").sections(), ",") == "books",
         "Paperwhite: the Catalog is the Books page alone (no Audiobooks or Music) " .. root)
     do -- Settings → About: the version row takes taps (the easter egg: easteregg_test.lua, emulator/easter_egg.lua)
         local asrc = io.open(PLUGIN .. "/../zenos.koplugin/modules/settings/sections/about_settings.lua"):read("*a")
@@ -17156,6 +17184,35 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
         G_reader_settings:delSetting(Recent.SETTING)
         plugin.store.server_recent = nil
         bctl("/_mock/set", next(was_progress or {}) and ('{"progress": ' .. require("gzreader_json").encode(was_progress) .. '}') or '{"progress": {}}')
+    end
+    -- Genres: BookOrbit's e-reader catalog has none; its main API's, with the API key
+    do
+        local counts = plugin.api:genreCounts()
+        check(counts and counts.Travel == 2 and counts.Memoir == 1 and counts.Nature == 1 and next(counts) ~= nil,
+            "BookOrbit: the books' genres counted (the main API, the API key)")
+        local page = plugin.api:listBooks{ category = "Travel", page = 0, size = 20, sort = "title", dir = "asc" }
+        local t = {}
+        for _i, bk in ipairs(page and page.content or {}) do t[#t + 1] = tostring(bk.id) .. ":" .. tostring(bk.primaryFileType) end
+        check(table.concat(t, ",") == "101:EPUB,102:EPUB", "BookOrbit: a genre's books, as the Catalog's books (" .. table.concat(t, ",") .. ")")
+        local ab = plugin.api:listAudiobooks{ category = "Travel", page = 0, size = 20 }
+        check(ab and #ab.content == 1 and ab.content[1].id == "a201" and ab.content[1].categories[1] == "Travel",
+            "BookOrbit: a genre's audiobooks, each with its genres")
+        local B = require("gzreader_browser")
+        local all = B.fetchAllAudiobooks({ api = plugin.api })
+        local groups = B.groupAudiobooks(all and all.content)
+        check(groups.genres.Travel == 1 and groups.genres.Memoir == nil,
+            "the Audiobooks page's Genres: from the audiobooks' own genres (kept in the list of every audiobook)")
+        local key = plugin.store.bookorbit.api_key
+        plugin.store.bookorbit.api_key = nil
+        local none = plugin.api:listBooks{ category = "Travel", page = 0, size = 20 }
+        check(plugin.api:genreCounts() == nil and none and #none.content == 0, "without the API key: no genres")
+        plugin.store.bookorbit.api_key = key
+        local rows = {}
+        for _i, it in ipairs(plugin:menuItems()) do rows[it.text or (it.text_func and it.text_func()) or "?"] = it end
+        check(rows["Reading stats"] and rows["Request a book"] and rows["About BookOrbit"], "Settings → Books (BookOrbit): Reading stats, Request a book and About BookOrbit, from the Catalog's old card")
+        local label, body = require("gzreader_browser").aboutServer(plugin)
+        check(label == "About BookOrbit" and body:find("AGPL", 1, true) and body:find("isn't part of it or endorsed by it", 1, true),
+            "About BookOrbit: still says what BookOrbit is and that GZreader isn't part of it")
     end
     -- signing in again as the same user keeps the key; another user doesn't get it
     plugin:connect(BO, "will-kindle", "hunter22", "bookorbit")

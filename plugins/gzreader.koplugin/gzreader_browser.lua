@@ -288,6 +288,18 @@ function Browser:signedOutItems(section)
     }
 end
 
+--- The server's About: its label and text ("About BookOrbit" or "About Grimmory"),
+--- for the server card's list and Settings → Accounts and services → Books.
+function Browser.aboutServer(plugin)
+    local usb = require("gzreader_net").usb
+    if type(plugin.backend) == "function" and plugin:backend() == "bookorbit" then
+        return _("About BookOrbit"), T(_("BookOrbit is your book server: the Catalog's books come from it.") .. " " .. require("gzreader_bookorbit").note() .. _("\n\nSign in with the %1 sync user name and password you made in BookOrbit (Settings → %1), not your website sign-in.\n\nRebuild library: BookOrbit's list of books fetched again, when the Catalog is missing books or shows old ones.\n\nBookOrbit is its own project (github.com/bookorbit/bookorbit), under the GNU AGPL version 3 with additional terms. GZreader isn't part of it or endorsed by it: it only talks to your BookOrbit server, and has none of BookOrbit's code in it."), "KOReader")
+    end
+    return _("About Grimmory"), usb
+        and _("Grimmory is your book server. This Kindle has no Wi-Fi: sign in on the sync page on a computer, then sync. Books, progress and shelves come and go with each sync.")
+        or _("Grimmory is your book server: the Catalog's books (and audiobooks) come from it, and your reading progress, highlights and shelves go back to it.\n\nConnect with QR code: open the page on your phone and sign in there (also with single sign-on). Connect by typing: the server's address, your user name and password.\n\nRebuild library: Grimmory's list of books fetched again, when the Catalog is missing books or shows old ones.")
+end
+
 --- The Grimmory card's list: the account and what to do with it; signed
 --- out, the ways to sign in (as Settings → Accounts and services → Books).
 --- The Grimmory card's list, as ZenOS rows (gzreader_rows.lua): who you're
@@ -337,13 +349,7 @@ function Browser.grimmoryItems(self)
         add(_("Request a book"), "add", function() Requests.ask(plugin) end)
         add(_("My book requests"), "details", function() Requests.open(self) end)
     end
-    if orbit then
-        items[#items + 1] = Rows.about(_("About BookOrbit"), T(_("BookOrbit is your book server: the Catalog's books come from it.") .. " " .. require("gzreader_bookorbit").note() .. _("\n\nSign in with the %1 sync user name and password you made in BookOrbit (Settings → %1), not your website sign-in.\n\nRebuild library: BookOrbit's list of books fetched again, when the Catalog is missing books or shows old ones.\n\nBookOrbit is its own project (github.com/bookorbit/bookorbit), under the GNU AGPL version 3 with additional terms. GZreader isn't part of it or endorsed by it: it only talks to your BookOrbit server, and has none of BookOrbit's code in it."), "KOReader"))
-        return Rows.mark(items)
-    end
-    items[#items + 1] = Rows.about(_("About Grimmory"), usb
-        and _("Grimmory is your book server. This Kindle has no Wi-Fi: sign in on the sync page on a computer, then sync. Books, progress and shelves come and go with each sync.")
-        or _("Grimmory is your book server: the Catalog's books (and audiobooks) come from it, and your reading progress, highlights and shelves go back to it.\n\nConnect with QR code: open the page on your phone and sign in there (also with single sign-on). Connect by typing: the server's address, your user name and password.\n\nRebuild library: Grimmory's list of books fetched again, when the Catalog is missing books or shows old ones."))
+    items[#items + 1] = Rows.about(Browser.aboutServer(plugin))
     return Rows.mark(items)
 end
 
@@ -373,7 +379,8 @@ function Browser:bookItems()
         { gz_id = "shelves", text = require("gzreader_servername").shelves(), callback = function() self:openShelves() end },
         { gz_id = "authors", text = _("Authors"), callback = function() self:openAuthors() end },
         { gz_id = "series", text = _("Series"), callback = function() self:openSeries() end },
-        Browser.grimmoryItem(self, "grimmory"),
+        -- (the server card's place: its account and Reading stats are in Settings → Accounts and services → Books)
+        { gz_id = "genres", text = _("Genres"), callback = function() self:openGenres() end },
         -- (the next page, from the list: its letter on keyboard Kindles; the
         -- bookshop doesn't draw it. Only on Kindles that play audio.)
         require("gzreader_touch").player() and { gz_id = "audiobooks", text = _("Audiobooks"), callback = function() self:openSection("audiobooks") end } or nil,
@@ -469,8 +476,8 @@ end
 
 Browser.AUDIO_ALL_PAGES = 40 -- (50 a page: 2,000 audiobooks at most for Authors and Series)
 
---- Every audiobook Grimmory has (its few fields: authors, series), for the
---- Authors and Series lists. Runs in the background process.
+--- Every audiobook the server has (its few fields: authors, series, genres), for the
+--- Authors, Series and Genres lists. Runs in the background process.
 function Browser:fetchAllAudiobooks()
     local all, page, pages = {}, 0, 1
     while page < pages and page < Browser.AUDIO_ALL_PAGES do
@@ -480,7 +487,8 @@ function Browser:fetchAllAudiobooks()
         for _i, b in ipairs(type(data.content) == "table" and data.content or {}) do
             if isAudiobook(b) then
                 all[#all + 1] = { id = b.id, authors = type(b.authors) == "table" and b.authors or nil,
-                    seriesName = type(b.seriesName) == "string" and b.seriesName or nil }
+                    seriesName = type(b.seriesName) == "string" and b.seriesName or nil,
+                    categories = type(b.categories) == "table" and b.categories or nil }
             end
         end
         page = page + 1
@@ -491,8 +499,11 @@ end
 --- Authors and series of `list` (fetchAllAudiobooks' content):
 --- { authors = { name = count }, series = { name = { count, authors = { names } } } }. Pure.
 function Browser.groupAudiobooks(list)
-    local authors, series = {}, {}
+    local authors, series, genres = {}, {}, {}
     for _i, b in ipairs(type(list) == "table" and list or {}) do
+        for _j, g in ipairs(type(b.categories) == "table" and b.categories or {}) do
+            if type(g) == "string" and g ~= "" then genres[g] = (genres[g] or 0) + 1 end
+        end
         for _j, a in ipairs(type(b.authors) == "table" and b.authors or {}) do
             if type(a) == "string" and a ~= "" then authors[a] = (authors[a] or 0) + 1 end
         end
@@ -508,7 +519,7 @@ function Browser.groupAudiobooks(list)
             end
         end
     end
-    return { authors = authors, series = series }
+    return { authors = authors, series = series, genres = genres }
 end
 
 local function audioCount(n)
@@ -542,7 +553,7 @@ function Browser:audiobookItems()
         for _k in pairs(map) do c = c + 1 end
         return c
     end
-    local na, ns = count(groups and groups.authors), count(groups and groups.series)
+    local na, ns, ng = count(groups and groups.authors), count(groups and groups.series), count(groups and groups.genres)
     return {
         gz_root = true, -- (the Bookshelf view: a shop, gzreader_bookshop.lua)
         { gz_id = "ab_search", gz_action = "search", text = _("Search audiobooks…"),
@@ -560,7 +571,9 @@ function Browser:audiobookItems()
         { gz_id = "ab_series", gz_kind = "section", gz_contents = "piles", text = _("Series"),
             mandatory = ns and ns > 0 and (ns == 1 and _("1 series") or T(_("%1 series"), ns)) or _("in order"),
             callback = function() self:openAudioSeries() end },
-        Browser.grimmoryItem(self, "ab_account"),
+        { gz_id = "ab_genres", gz_kind = "section", gz_contents = "bookends", text = _("Genres"),
+            mandatory = ng and ng > 0 and (ng == 1 and _("1 genre") or T(_("%1 genres"), ng)) or _("by genre"),
+            callback = function() self:openAudioGenres() end },
     }
 end
 
@@ -613,6 +626,32 @@ function Browser:openAudioSeries()
                         self:openPaged(name, { series = name, sort = "seriesNumber", dir = "asc" }, true, { audio = true })
                     end,
                 }
+            end
+            return byName(items)
+        end,
+    }
+end
+
+--- Audiobooks by genre (Grimmory's categories, BookOrbit's genres), from every
+--- audiobook (the list Authors and Series use).
+function Browser:openAudioGenres()
+    self:openCached{
+        key = "audio-all",
+        title = _("Genres"),
+        fetch = function() return self:fetchAllAudiobooks() end,
+        build = function(data)
+            local items = {}
+            for name, c in pairs(Browser.groupAudiobooks(data and data.content).genres) do
+                items[#items + 1] = {
+                    text = name, sort_key = name:lower(),
+                    gz_kind = "collection", gz_contents = "tapes", gz_audio = true, gz_count = c,
+                    mandatory = audioCount(c),
+                    callback = function() self:openPaged(name, { category = name, sort = "title", dir = "asc" }, false, { audio = true }) end,
+                }
+            end
+            if #items == 0 then
+                items[1] = { text = _("No genres on your audiobooks yet"), select_enabled = false }
+                return items
             end
             return byName(items)
         end,
@@ -961,7 +1000,7 @@ function Browser:openPaged(title, params, with_series_number, opts)
     local header = opts.header
     if not header and not with_series_number then
         -- search this list (a library, a shelf, an author's books…) or everything
-        local scoped = params.libraryId or params.shelfId or params.magicShelfId or params.authors
+        local scoped = params.libraryId or params.shelfId or params.magicShelfId or params.authors or params.category
         local scope = scoped and { title = title, params = params, audio = opts.audio }
             or (opts.audio and Browser.audioScope()) or nil
         header = { {
@@ -1086,6 +1125,29 @@ function Browser:openShelves()
             return sortedByName(items)
         end,
     }
+end
+
+--- Genres (Grimmory's categories; BookOrbit's genres, with its API key): from the
+--- library index, each opening to its books.
+function Browser:openGenres()
+    Index.get(self.plugin, function(index)
+        local items = {}
+        for name, n in pairs(index.genres or {}) do
+            items[#items + 1] = {
+                text = name, sort_key = name:lower(), gz_kind = "shelf", gz_count = n, mandatory = countText(n),
+                callback = function() self:openPaged(name, { category = name, sort = "title", dir = "asc" }) end,
+            }
+        end
+        sortedByName(items)
+        if #items == 0 then
+            local orbit = type(self.plugin.backend) == "function" and self.plugin:backend() == "bookorbit"
+            local keyless = orbit and not (self.plugin.api.hasApiKey and self.plugin.api:hasApiKey())
+            items[1] = { text = keyless and _("BookOrbit's genres need its API key (Settings → Accounts and services → Books)")
+                or _("No genres on your books yet"), select_enabled = false }
+        end
+        table.insert(items, 1, refreshItem(self, function() self:openGenres() end))
+        self:push(_("Genres"), items)
+    end)
 end
 
 function Browser:openAuthors(search, replace)

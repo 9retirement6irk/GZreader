@@ -9,6 +9,7 @@ return {
     {
         version = "next",
         changes = {
+            { short = "Catalog: Genres on Books and Audiobooks", text = "The Catalog's Books and Audiobooks pages have Genres: your server's genres (Grimmory's categories, BookOrbit's genres), each with how many books, opening to that genre's books. On the Books page Genres takes the last compartment, where the Grimmory or BookOrbit card was; on the Audiobooks page the card is gone too. The card's Reading stats, Request a book and About are in Settings → Accounts and services → Books. Signed out, the card is still there with the ways to sign in. With BookOrbit, genres need its API key." },
             { short = "BookOrbit: every audiobook in the Catalog", text = "With BookOrbit, the Catalog's Audiobooks page left out the first 50 audiobooks (in title order), and Authors and Series missed them too: GZreader asked BookOrbit for its pages counting from 1, and BookOrbit counts from 0. Every audiobook now shows, including books that have both an ebook and audio files." },
         },
     },

@@ -20,7 +20,7 @@ local MAX_AGE = 24 * 3600
 local PAGE = 50 -- (Grimmory's most: AppBookService.MAX_PAGE_SIZE)
 
 local Index = {
-    data = nil,      -- { built_at, server, user, authors = {name=count}, series = {name={count, authors}}, libraries = {id=count}, total }
+    data = nil,      -- { built_at, server, user, authors = {name=count}, series = {name={count, authors}}, genres = {name=count}, libraries = {id=count}, total }
     building = nil,
 }
 
@@ -49,6 +49,7 @@ end
 --- Child process: page through readable books and aggregate.
 local function collect(api, report)
     local authors, series, libraries, files, total = {}, {}, {}, {}, 0
+    local genres = {} -- (Grimmory's categories)
     local page, pages = 0, 1
     while page < pages do
         local data, err = api:listBooks{ page = page, size = PAGE, sort = "title", dir = "asc",
@@ -62,6 +63,9 @@ local function collect(api, report)
                 local book_authors = type(b.authors) == "table" and b.authors or {}
                 for _, a in ipairs(book_authors) do
                     if type(a) == "string" and a ~= "" then authors[a] = (authors[a] or 0) + 1 end
+                end
+                for _, g in ipairs(type(b.categories) == "table" and b.categories or {}) do
+                    if type(g) == "string" and g ~= "" then genres[g] = (genres[g] or 0) + 1 end
                 end
                 if type(b.seriesName) == "string" and b.seriesName ~= "" then
                     local s = series[b.seriesName] or { count = 0, authors = {} }
@@ -93,6 +97,10 @@ local function collect(api, report)
     if next(libraries) == nil and type(api.libraryCounts) == "function" then
         libraries = api:libraryCounts() or libraries
     end
+    -- (…and its genres, BookOrbit with its API key: its e-reader lists have none)
+    if next(genres) == nil and type(api.genreCounts) == "function" then
+        genres = api:genreCounts() or genres
+    end
     -- Subtitles: only Grimmory's web book list has them. Optional (older
     -- servers may not have /books/page); failures just leave them out.
     local subtitles = {}
@@ -109,7 +117,7 @@ local function collect(api, report)
         end
         wpage = wpage + 1
     end
-    return { authors = authors, series = series, libraries = libraries, files = files, total = total, subtitles = subtitles }
+    return { authors = authors, series = series, genres = genres, libraries = libraries, files = files, total = total, subtitles = subtitles }
 end
 
 --- Build (or rebuild) the index. `show` = show a progress dialog.
