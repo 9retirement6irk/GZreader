@@ -1392,8 +1392,57 @@ local psrc, ssrc = read(PLUGIN .. "/gzreader_puzzles.lua"), read(PLUGIN .. "/gzr
 check(not psrc:find("math.random", 1, true) and not psrc:find("socket", 1, true) and not psrc:find("Api", 1, true), "made on the Kindle from the date: no network, not the Kindle's own random numbers")
 check(ssrc:find('PzPanel = { { "Menu" } }', 1, true) and ssrc:find("Paper.pulledDown(ges)", 1, true), "Menu and a swipe from the top are the quick panel there too")
 local dsrc2 = read(PLUGIN .. "/gzreader_dailyscreen.lua")
-check(dsrc2:find('if what == "puzzles" then Paper.puzzles(self.plugin); return true end', 1, true) and dsrc2:find("if i == #self.blocks + 2 and self.foot.puzzles then return Paper.puzzles(self.plugin) end", 1, true),
+check(dsrc2:find('if what == "puzzles" then', 1, true) and dsrc2:find("if self.foot.puzzles then Paper.puzzles(self.plugin) end", 1, true) and dsrc2:find('foot("puzzles", f.puzzles, S(6))', 1, true),
     "the paper opens them: a tap on Puzzles, or the 5-way to it and Press")
+
+print("== the paper with keys: the 5-way goes every way, letters open things")
+-- a page as it's laid out: TODAY's box, the lead across, two columns, the foot
+local stops = {
+    { id = "diary", x = 12, y = 100, w = 576, h = 30 },
+    { id = 1, x = 8, y = 140, w = 584, h = 200 },
+    { id = 2, x = 8, y = 346, w = 288, h = 120 }, { id = 3, x = 8, y = 472, w = 288, h = 150 }, { id = 4, x = 8, y = 628, w = 288, h = 100 },
+    { id = 5, x = 304, y = 346, w = 288, h = 220 }, { id = 6, x = 304, y = 572, w = 288, h = 130 },
+    { id = "fetch", x = 8, y = 775, w = 100, h = 20 }, { id = "type", x = 128, y = 775, w = 30, h = 20 }, { id = "puzzles", x = 170, y = 775, w = 60, h = 20 },
+}
+local function walk(from, sides)
+    local out = {}
+    for side in sides:gmatch(".") do
+        from = Paper.neighbour(stops, from, side)
+        out[#out + 1] = tostring(from)
+        if from == nil then break end
+    end
+    return table.concat(out, " ")
+end
+check(walk("diary", "sssss") == "1 2 3 4 fetch", "down: TODAY, the lead, down the left column, to the foot (" .. walk("diary", "sssss") .. ")")
+check(walk("fetch", "nnnnn") == "4 3 2 1 diary", "up: the same way back")
+check(walk(2, "e") == "5" and walk(3, "e") == "5" and walk(4, "e") == "6", "right: to the story beside it in the next column")
+check(walk(5, "w") == "2" and walk(6, "w") == "4", "left: back to the one beside it (" .. walk(5, "w") .. ", " .. walk(6, "w") .. ")")
+check(walk(5, "ss") == "6 puzzles" and walk(5, "n") == "1", "the right column: down it to the foot's nearest, up to the lead")
+check(walk("fetch", "ee") == "type puzzles" and walk("puzzles", "ww") == "type fetch", "along the foot both ways: Fetch, Aa, Puzzles")
+check(walk("type", "n") == "4" and walk("puzzles", "n") == "4", "up from Aa or Puzzles: the story above")
+check(walk(5, "e") == "nil" and walk(2, "w") == "nil" and walk("diary", "n") == "nil" and walk("fetch", "s") == "nil" and walk("puzzles", "e") == "nil" and walk(1, "e") == "nil",
+    "nothing that way: no move (the page turns then)")
+check(Paper.neighbour(stops, "gone", "s") == "diary" and Paper.neighbour({}, 1, "s") == nil, "a focus that isn't there: the first stop; an empty page: nothing")
+local three = { { id = 1, x = 0, y = 0, w = 100, h = 50 }, { id = 2, x = 110, y = 0, w = 100, h = 90 }, { id = 3, x = 220, y = 0, w = 100, h = 40 }, { id = 4, x = 220, y = 46, w = 100, h = 40 } }
+check(Paper.neighbour(three, 1, "e") == 2 and Paper.neighbour(three, 2, "e") == 3 and Paper.neighbour(three, 4, "w") == 2 and Paper.neighbour(three, 1, "s") == nil, "three columns: one column at a time")
+check(Paper.neighbour(stops, 5, "w") == 2 and Paper.neighbour(stops, 6, "w") == 4 and Paper.step(stops, 6, "w", { from = 3, to = 6, side = "e" }) == 3
+    and Paper.step(stops, 5, "w", { from = 4, to = 5, side = "e" }) == 4, "straight back the way you came returns to where you were (Right then Left ends where it began)")
+check(Paper.step(stops, 6, "w", { from = 3, to = 5, side = "e" }) == 4 and Paper.step(stops, 6, "n", { from = 3, to = 6, side = "e" }) == 5
+    and Paper.step(stops, 6, "w", { from = 99, to = 6, side = "e" }) == 4 and Paper.step(stops, 6, "w", nil) == 4, "…only straight back, from where the last move ended, to something still there")
+check(dsrc2:find("local to = Paper.step(self:stops(), self.focus, side, self.came)", 1, true) and dsrc2:find("self.came = { from = self.focus, to = to, side = side }", 1, true), "the page remembers its last move")
+check(table.concat(Paper.STORY_KEYS) == "QWERTYUIO" and Paper.PAGE_KEYS.P == "puzzles" and Paper.PAGE_KEYS.F == "fetch" and Paper.PAGE_KEYS.D == "diary", "letters: Q–O for the stories, P Puzzles, F Fetch, D TODAY")
+local taken = {}
+for _i, k in ipairs(Paper.STORY_KEYS) do taken[k] = true end
+local clash = false
+for k in pairs(Paper.PAGE_KEYS) do if taken[k] then clash = true end end
+check(not clash, "no letter means two things")
+check(dsrc2:find('GzLeft = { { "Left" }, event = "GzGo", args = "w" }', 1, true) and dsrc2:find('GzRight = { { "Right" }, event = "GzGo", args = "e" }', 1, true)
+    and dsrc2:find('GzUp = { { "Up" }, event = "GzGo", args = "n" }', 1, true) and dsrc2:find('GzDown = { { "Down" }, event = "GzGo", args = "s" }', 1, true)
+    and not dsrc2:find('{ "Down", "Right" }', 1, true), "the four arrows are four ways (Right isn't Down any more)")
+check(dsrc2:find('self.key_events["GzStory" .. n] = { { letter }, { tostring(n) }, event = "GzStory", args = n }', 1, true)
+    and dsrc2:find("self.keyboard = self.keys and Device:hasKeyboard() and true or false", 1, true), "a story's letter or number opens it, only on a Kindle with a keyboard")
+check(dsrc2:find('foot("fetch", f.fetch, S(4))', 1, true) and dsrc2:find('foot("type", f.type, S(6))', 1, true) and dsrc2:find('out[#out + 1] = { id = "diary"', 1, true),
+    "the 5-way reaches everything: TODAY, every story, Fetch, Aa, Puzzles")
 end)()
 
 local cl = read(PLUGIN .. "/gzreader_changelog.lua")

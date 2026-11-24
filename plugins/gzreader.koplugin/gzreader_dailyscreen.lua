@@ -751,16 +751,28 @@ local function pageClass()
         self.dimen = Geom:new{ x = 0, y = 0, w = Screen:getWidth(), h = Screen:getHeight() }
         self.starts = { 1 }
         self.keys = Device:hasDPad() and not Device:isTouchDevice()
+        self.keyboard = self.keys and Device:hasKeyboard() and true or false
         if Device:hasKeys() then
             local g = Device.input.group
             self.key_events = {
                 GzClose = { { g.Back } },
                 GzNextPage = { { g.PgFwd } },
                 GzPrevPage = { { g.PgBack } },
-                GzFocusNext = { { { "Down", "Right" } } },
-                GzFocusPrev = { { { "Up", "Left" } } },
+                GzUp = { { "Up" }, event = "GzGo", args = "n" },
+                GzDown = { { "Down" }, event = "GzGo", args = "s" },
+                GzLeft = { { "Left" }, event = "GzGo", args = "w" },
+                GzRight = { { "Right" }, event = "GzGo", args = "e" },
                 GzPress = { { "Press" } },
             }
+            if self.keyboard then
+                -- a letter a story (the keys under 1–9, or the numbers), and one for each thing at the foot
+                for n, letter in ipairs(Paper.STORY_KEYS) do
+                    self.key_events["GzStory" .. n] = { { letter }, { tostring(n) }, event = "GzStory", args = n }
+                end
+                for letter, what in pairs(Paper.PAGE_KEYS) do
+                    self.key_events["GzKey" .. letter] = { { letter }, event = "GzAct", args = what }
+                end
+            end
             local k = Paper.typeKeys(Device:hasKeyboard())
             self.key_events.GzType = { { k.type } }
             if k.panel then self.key_events.GzPanel = { { k.panel } } end
@@ -807,9 +819,12 @@ local function pageClass()
                 height = lh * max_lines, height_adjust = true, height_overflow_show_ellipsis = true }
         end
         add(head, S(2))
+        local byline_y, byline_h
         if story.item.source and story.item.source ~= "" then
+            byline_y = h
             add(TextWidget:new{ text = story.item.source, face = ff.face.id == "serif" and serifItalic(fz(8)) or face(ff.face.regular, fz(8), "smallinfofont"),
-                max_width = w, fgcolor = Blitbuffer.COLOR_DARK_GRAY }, S(2))
+                max_width = w - (self.keyboard and S(22) or 0), fgcolor = Blitbuffer.COLOR_DARK_GRAY }, S(2))
+            byline_h = parts[#parts].widget:getSize().h
         end
         local pic_path = D.pictures(self.plugin) and D.pagePicture(story.item) and D.picturePath(story.item)
         local pic = pic_path and Paper.pictureWidget(pic_path, w, math.floor(w * (lead and 0.3 or 0.5)))
@@ -826,7 +841,7 @@ local function pageClass()
             end
             add(body)
         end
-        return { parts = parts, h = h, story = story }
+        return { parts = parts, h = h, story = story, byline_y = byline_y, byline_h = byline_h }
     end
 
     --- Lay the current page out: the nameplate, the stories in columns.
@@ -909,7 +924,7 @@ local function pageClass()
         end
         -- the foot: fetch, the page, the arrows
         local foot_face = Font:getFace("smallinfofont", 10)
-        local fetch = TextWidget:new{ text = (edition and edition.day == D.day()) and _("Fetch again") or _("Fetch today's paper"), face = foot_face }
+        local fetch = TextWidget:new{ text = (self.keyboard and "F \u{00B7} " or "") .. ((edition and edition.day == D.day()) and _("Fetch again") or _("Fetch today's paper")), face = foot_face }
         local foot_h = fetch:getSize().h + S(10)
         local foot_y = H - foot_h
         self.widgets[#self.widgets + 1] = fetch
@@ -922,7 +937,7 @@ local function pageClass()
         self.foot.puzzles = nil
         local pz_label = Paper.puzzlesLabel(self.plugin)
         if pz_label then
-            local pzw = TextWidget:new{ text = pz_label, face = Font:getFace("smallinfofontbold", 10) }
+            local pzw = TextWidget:new{ text = (self.keyboard and "P \u{00B7} " or "") .. pz_label, face = Font:getFace("smallinfofontbold", 10) }
             self.widgets[#self.widgets + 1] = pzw
             self.foot.puzzles = { widget = pzw, x = self.foot.type.x + self.foot.type.w, y = foot_y + S(5), w = pzw:getSize().w + S(20) }
         end
@@ -977,7 +992,49 @@ local function pageClass()
             text = (self.page > 1 and "\u{2039}  " or "") .. T(_("Page %1"), self.page) .. (self.has_next and "  \u{203A}" or "") }
         self.widgets[#self.widgets + 1] = label
         self.foot.label = { widget = label, x = margin + inner_w - label:getSize().w, y = foot_y + S(5) }
-        if self.keys then self.focus = math.min(self.focus or 1, #self.blocks + (self.foot.puzzles and 2 or 1)) end
+        -- the stories' letters (a Kindle with a keyboard): a small key beside each byline
+        self.badges = {}
+        if self.keyboard then
+            for i, b in ipairs(self.blocks) do
+                local letter = Paper.STORY_KEYS[i]
+                if letter and b.byline_y and (not b.clip or b.byline_y + b.byline_h <= b.clip) then
+                    local g = TextWidget:new{ text = letter, face = Font:getFace("smallinfofontbold", 8), fgcolor = Blitbuffer.COLOR_WHITE }
+                    self.widgets[#self.widgets + 1] = g
+                    local side = math.max(g:getSize().w, g:getSize().h) + S(2)
+                    self.badges[i] = { widget = g, side = side, x = b.x + b.w - side, y = b.y + b.byline_y + math.floor((b.byline_h - side) / 2) }
+                end
+            end
+        end
+        if self.keys then
+            -- (after a page turn: the first story going on, the last going back)
+            local stops = self:stops()
+            local there = false
+            for _i, st in ipairs(stops) do if st.id == self.focus then there = true end end
+            if not there then
+                self.focus = (self.focus == "last" and #self.blocks > 0) and #self.blocks or (#self.blocks > 0 and 1 or "fetch")
+            end
+        end
+    end
+
+    --- Everything the 5-way can stop on, with where it is: { id, x, y, w, h }.
+    --- A story's id is its number on the page; the others "diary", "fetch",
+    --- "type", "puzzles".
+    function PaperPage:stops()
+        local out = {}
+        local d = self.diary
+        if d then out[#out + 1] = { id = "diary", x = d.x, y = d.y, w = d.w, h = d.h } end
+        for i, b in ipairs(self.blocks) do
+            out[#out + 1] = { id = i, x = b.x - S(4), y = b.y - S(3), w = b.w + S(8), h = math.min(b.h, b.clip or b.h) + S(6) }
+        end
+        local f = self.foot
+        local function foot(id, item, pad)
+            local sz = item.widget:getSize()
+            out[#out + 1] = { id = id, x = item.x - pad, y = item.y - S(2), w = sz.w + pad * 2, h = sz.h + S(4) }
+        end
+        foot("fetch", f.fetch, S(4))
+        foot("type", f.type, S(6))
+        if f.puzzles then foot("puzzles", f.puzzles, S(6)) end
+        return out
     end
 
     function PaperPage:paintTo(bb, x, y)
@@ -1034,8 +1091,10 @@ local function pageClass()
                     part.widget:paintTo(bb, x + b.x, y + b.y + part.y)
                 end
             end
-            if self.keys and self.focus == i then
-                bb:paintBorder(x + b.x - S(4), y + b.y - S(3), b.w + S(8), math.min(b.h, b.clip or b.h) + S(6), S(2), Blitbuffer.COLOR_BLACK)
+            local k = self.badges[i]
+            if k then
+                bb:paintRoundedRect(x + k.x, y + k.y, k.side, k.side, Blitbuffer.COLOR_BLACK, S(3))
+                k.widget:paintTo(bb, x + k.x + math.floor((k.side - k.widget:getSize().w) / 2), y + k.y + math.floor((k.side - k.widget:getSize().h) / 2))
             end
         end
         local f = self.foot
@@ -1044,14 +1103,16 @@ local function pageClass()
         f.label.widget:paintTo(bb, x + f.label.x, y + f.label.y)
         f.type.widget:paintTo(bb, x + f.type.x, y + f.type.y)
         bb:paintBorder(x + f.type.x - S(6), y + f.type.y - S(1), f.type.widget:getSize().w + S(12), f.type.widget:getSize().h + S(2), 1, Blitbuffer.COLOR_DARK_GRAY)
-        if self.keys and self.focus == #self.blocks + 1 then
-            bb:paintBorder(x + f.fetch.x - S(4), y + f.fetch.y - S(2), f.fetch.widget:getSize().w + S(8), f.fetch.widget:getSize().h + S(4), S(2), Blitbuffer.COLOR_BLACK)
-        end
         if f.puzzles then
             local pw, ph = f.puzzles.widget:getSize().w, f.puzzles.widget:getSize().h
             f.puzzles.widget:paintTo(bb, x + f.puzzles.x, y + f.puzzles.y)
-            bb:paintBorder(x + f.puzzles.x - S(6), y + f.puzzles.y - S(1), pw + S(12), ph + S(2), (self.keys and self.focus == #self.blocks + 2) and S(2) or 1,
-                (self.keys and self.focus == #self.blocks + 2) and Blitbuffer.COLOR_BLACK or Blitbuffer.COLOR_DARK_GRAY)
+            bb:paintBorder(x + f.puzzles.x - S(6), y + f.puzzles.y - S(1), pw + S(12), ph + S(2), 1, Blitbuffer.COLOR_DARK_GRAY)
+        end
+        -- the 5-way's frame
+        if self.keys then
+            for _i, st in ipairs(self:stops()) do
+                if st.id == self.focus then bb:paintBorder(x + st.x, y + st.y, st.w, st.h, S(2), Blitbuffer.COLOR_BLACK) end
+            end
         end
     end
 
@@ -1063,7 +1124,8 @@ local function pageClass()
         local to = self.page + by
         if to < 1 or (by > 0 and not self.has_next) then return true end
         self.page = to
-        self.focus = self.keys and (by > 0 and 1 or 9999) or nil
+        self.focus = self.keys and (by > 0 and 1 or "last") or nil
+        self.came = nil
         self:build()
         self:redraw(true)
         return true
@@ -1079,8 +1141,25 @@ local function pageClass()
     function PaperPage:open(i)
         local b = self.blocks[i]
         if b then return Paper.article(self.plugin, b.story.item) end
-        if i == #self.blocks + 1 then return Paper.refresh(self.plugin, self) end
-        if i == #self.blocks + 2 and self.foot.puzzles then return Paper.puzzles(self.plugin) end
+        return self:act(i)
+    end
+
+    --- Do one of the page's own things: "fetch", "type", "puzzles", "diary".
+    function PaperPage:act(what)
+        if what == "fetch" then Paper.refresh(self.plugin, self); return true end
+        if what == "type" then Paper.frontDialog(self.plugin); return true end
+        if what == "puzzles" then
+            if self.foot.puzzles then Paper.puzzles(self.plugin) end
+            return true
+        end
+        if what == "diary" then
+            if not self.diary then return true end
+            -- (the Calendar tab, for the day's events in full)
+            UIManager:close(self)
+            UIManager:nextTick(function() pcall(function() require("gzreader_calendar").show(self.plugin) end) end)
+            return true
+        end
+        return false
     end
 
     function PaperPage:onGzType() Paper.frontDialog(self.plugin); return true end
@@ -1089,14 +1168,27 @@ local function pageClass()
     function PaperPage:onGzPrevPage() return self:turn(-1) end
     function PaperPage:onGzClose() UIManager:close(self); return true end
     function PaperPage:onGzPress() self:open(self.focus or 0); return true end
-    function PaperPage:onGzFocusNext()
-        if not self.keys then return self:turn(1) end
-        if self.focus < #self.blocks + (self.foot.puzzles and 2 or 1) then self.focus = self.focus + 1; self:redraw() elseif self.has_next then self:turn(1) end
+    function PaperPage:onGzAct(what) return self:act(what) end
+    --- A story's letter (a Kindle with a keyboard): open it.
+    function PaperPage:onGzStory(n)
+        if self.blocks[n] then self:open(n) end
         return true
     end
-    function PaperPage:onGzFocusPrev()
-        if not self.keys then return self:turn(-1) end
-        if self.focus > 1 then self.focus = self.focus - 1; self:redraw() elseif self.page > 1 then self:turn(-1) end
+    --- The 5-way: to whatever lies that way ("n", "e", "s", "w"); with nothing
+    --- further that way, the next page (right, down) or the one before (left, up).
+    function PaperPage:onGzGo(side)
+        local on = side == "e" or side == "s"
+        if not self.keys then return self:turn(on and 1 or -1) end
+        local to = Paper.step(self:stops(), self.focus, side, self.came)
+        if to then
+            self.came = { from = self.focus, to = to, side = side }
+            self.focus = to
+            self:redraw()
+        elseif on then
+            if self.has_next then self:turn(1) end
+        elseif self.page > 1 then
+            self:turn(-1)
+        end
         return true
     end
 
@@ -1123,17 +1215,8 @@ local function pageClass()
     function PaperPage:onGzTap(_arg, ges)
         local what = self:at(ges.pos.x - self.dimen.x, ges.pos.y - self.dimen.y)
         if what == "close" then return self:onGzClose() end
-        if what == "fetch" then Paper.refresh(self.plugin, self); return true end
         if what == "next" then return self:turn(1) end
         if what == "prev" then return self:turn(-1) end
-        if what == "type" then Paper.frontDialog(self.plugin); return true end
-        if what == "puzzles" then Paper.puzzles(self.plugin); return true end
-        if what == "diary" then
-            -- (the Calendar tab, for the day's events in full)
-            UIManager:close(self)
-            UIManager:nextTick(function() pcall(function() require("gzreader_calendar").show(self.plugin) end) end)
-            return true
-        end
         if what then self:open(what) end
         return true
     end
@@ -1199,6 +1282,65 @@ function Paper.articleText(item)
             or _("The story's own page: QR code shows its link for your phone.")
     end
     return table.concat(parts, "\n\n")
+end
+
+---------------------------------------------------------------- keys
+
+-- A Kindle with a keyboard: the paper's stories open with the keys under 1–9
+-- (the letter is shown beside each byline; the number keys work too)…
+Paper.STORY_KEYS = { "Q", "W", "E", "R", "T", "Y", "U", "I", "O" }
+-- …and the page's own things with a letter each.
+Paper.PAGE_KEYS = { P = "puzzles", F = "fetch", D = "diary" }
+
+--- Which stop the 5-way goes to from one, towards a side ("n", "e", "s",
+--- "w"): its id, or nil when nothing lies that way. `stops` = { { id, x, y,
+--- w, h } }. Only stops wholly beyond the one you're on count; of those, the
+--- nearest, with ones in line with it (sharing its columns going up or down,
+--- its rows going sideways) before ones off to a side, and of two equally
+--- near and in line, the one that shares more of its span.
+function Paper.neighbour(stops, from, side)
+    local cur
+    for _i, st in ipairs(stops) do if st.id == from then cur = st end end
+    if not cur then return stops[1] and stops[1].id or nil end
+    local vertical = side == "n" or side == "s"
+    local best, best_score
+    for _i, st in ipairs(stops) do
+        if st ~= cur then
+            local gap
+            if side == "s" then gap = st.y - (cur.y + cur.h)
+            elseif side == "n" then gap = cur.y - (st.y + st.h)
+            elseif side == "e" then gap = st.x - (cur.x + cur.w)
+            else gap = cur.x - (st.x + st.w) end
+            local a1, a2, b1, b2
+            if vertical then a1, a2, b1, b2 = cur.x, cur.x + cur.w, st.x, st.x + st.w
+            else a1, a2, b1, b2 = cur.y, cur.y + cur.h, st.y, st.y + st.h end
+            -- how far off to a side it is (0: in line), and how much of this one's span it shares
+            local off = math.max(0, b1 - a2, a1 - b2)
+            local shared = math.max(0, math.min(a2, b2) - math.max(a1, b1))
+            -- In line, a little overlap still counts as beyond (frames are drawn a few pixels wide of
+            -- their text). Off to a side it must be wholly beyond, and not far off: no more than twice
+            -- this one's own span (so Right from the foot doesn't jump up into a column).
+            local slack = off == 0 and math.min(vertical and cur.h or cur.w, vertical and st.h or st.w) / 3 or 0
+            if gap >= -slack and off <= (a2 - a1) * 2 then
+                -- nearest; in line before off to a side; then the one sharing more, then the one nearer this one's start
+                local score = math.max(0, gap) + off * 3 - shared / 1e4 + math.abs(b1 - a1) / 1e7
+                if not best_score or score < best_score then best, best_score = st.id, score end
+            end
+        end
+    end
+    return best
+end
+
+--- One press of the 5-way: where the frame goes from `from` towards `side`.
+--- Straight back the way you just came (`came` = { from, to, side } of the
+--- last move) returns to where you were, whatever else lies that way: Right
+--- then Left ends where it began.
+function Paper.step(stops, from, side, came)
+    local back = { n = "s", s = "n", e = "w", w = "e" }
+    if came and came.to == from and back[came.side] == side then
+        for _i, st in ipairs(stops) do if st.id == came.from then return came.from end end
+    end
+    return Paper.neighbour(stops, from, side)
 end
 
 ---------------------------------------------------------------- the day's puzzles

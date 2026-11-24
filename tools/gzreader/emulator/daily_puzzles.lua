@@ -40,14 +40,22 @@ add({ fn = function(E)
 end, after = 5 })
 add({ shot = "puzzles-0-paper" })
 if KEYS then
-    -- the 5-way to the foot's Puzzles, Press
+    -- the 5-way along the foot to Puzzles (Fetch → Aa → Puzzles), and back out; then its letter, P
     add({ fn = function(E)
-        E.paper.focus = #E.paper.blocks + 1
+        E.paper.focus = "fetch"
         E.paper:redraw()
     end, after = 3 })
-    add({ key = "Down", after = 3 })
+    add({ key = "Right", after = 3 })
+    add({ key = "Right", after = 3 })
     add({ shot = "puzzles-0b-focus" })
+    add({ fn = function(E) check(E, E.paper.focus == "puzzles", "Right twice from Fetch: the frame is on Puzzles") end, after = 1 })
     add({ key = "Press", after = 6 })
+    add({ fn = function(E)
+        local Scr = require("gzreader_puzzlescreen")
+        check(E, Scr.instance ~= nil, "Press there opens the puzzles")
+        if Scr.instance then require("ui/uimanager"):close(Scr.instance) end
+    end, after = 4 })
+    add({ key = "P", after = 6 })
 else
     add({ fn = function(E)
         local f = E.paper.foot
