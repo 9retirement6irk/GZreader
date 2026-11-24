@@ -8,6 +8,15 @@ Mirrors the parts of Immich's API (v1.1xx to 3.x, under /api) GZreader uses:
                                    ({visibility: "timeline"} without albumIds: every photo, as the timeline)
                                    (404 with --old: a server without album search)
   GET  /api/assets/<id>/thumbnail  ?size=preview: a PNG picture (Immich's are JPEG or WebP)
+Single sign-on (Immich's OAuth), with a stand-in identity provider at /idp:
+  GET  /api/server/features        {oauth}
+  GET  /api/server/config          {oauthButtonText}
+  POST /api/oauth/authorize        {redirectUri, state, codeChallenge} -> {url} (the provider's sign-in)
+  GET  /idp/authorize              the provider: back to redirect_uri with ?code&state (or ?error)
+  POST /api/oauth/callback         {url, state, codeVerifier} -> {accessToken} (a session)
+  POST /api/api-keys               "Authorization: Bearer <session>" {name, permissions} -> {secret}
+  POST /api/auth/logout            ends the session
+A key made that way works as "x-api-key" with the permissions it was given.
 Sign-in: "x-api-key: <key>". KEY reads everything; LIMITED_KEY has no
 album.read (403), as an API key made with too few permissions; ALBUM_KEY
 has what GZreader needs (album.read, asset.read, asset.view) but no
@@ -17,11 +26,14 @@ Origin is let in, preflights answered.
 
   python3 -I mock_immich.py PORT [--cors] [--old]
 
-Test helpers: GET /__state (requests seen, without keys), POST /__reset.
+Test helpers: GET /__state (requests seen, without keys or sign-in secrets; the
+API keys made, by name and permissions; sessions open and ended), POST /__reset,
+POST /__set {oauth, pkce, deny, refuse_keys} (single sign-on off; a provider
+without PKCE; a sign-in cancelled at the provider; API keys refused).
 """
-import json, struct, sys, threading, zlib
+import base64, hashlib, json, secrets, struct, sys, threading, zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, urlencode
 
 KEY = "immich-test-key"
 LIMITED_KEY = "immich-limited-key"
@@ -31,7 +43,13 @@ CORS = "--cors" in sys.argv
 OLD = "--old" in sys.argv
 
 LOCK = threading.Lock()
-STATE = {"log": []}
+STATE = {"log": [], "oauth": True, "pkce": True, "deny": False, "refuse_keys": False,
+         "made": [], "sessions_open": 0, "sessions_ended": 0}
+# (sign-in secrets, never in /__state)
+CODES = {}     # the provider's code -> {challenge, redirect_uri, state}
+SESSIONS = {}  # a session's token -> True while it's open
+MADE = {}      # an API key made over a session -> its permissions
+NEEDS = {"/api/users/me": "user.read", "/api/albums": "album.read", "/api/search/metadata": "asset.read"}
 
 
 def uid(n, kind="a"):
@@ -117,14 +135,30 @@ class H(BaseHTTPRequestHandler):
         with LOCK:
             STATE["log"].append({"method": method, "path": path, "body": body,
                                  "key": "ok" if self.headers.get("x-api-key") == KEY else ("limited" if self.headers.get("x-api-key") == LIMITED_KEY
-                                         else ("album" if self.headers.get("x-api-key") == ALBUM_KEY else "none"))})
+                                         else ("album" if self.headers.get("x-api-key") == ALBUM_KEY
+                                               else ("made" if self.headers.get("x-api-key") in MADE else "none")))})
 
     def auth(self):
         k = self.headers.get("x-api-key")
-        if k in (KEY, LIMITED_KEY, ALBUM_KEY):
+        if k in (KEY, LIMITED_KEY, ALBUM_KEY) or k in MADE:
             return k
         self.send(401, {"message": "Invalid API key", "statusCode": 401})
         return None
+
+    def base(self):
+        return "http://" + (self.headers.get("Host") or ("127.0.0.1:%d" % PORT))
+
+    def session(self):
+        a = self.headers.get("Authorization") or ""
+        tok = a[7:] if a.startswith("Bearer ") else None
+        if tok and SESSIONS.get(tok):
+            return tok
+        self.send(401, {"message": "Authentication required", "statusCode": 401})
+        return None
+
+    def lacks(self, k, path):
+        need = NEEDS.get(path)
+        return k in MADE and need and need not in MADE[k] and "all" not in MADE[k] and need
 
     def do_GET(self):
         u = urlparse(self.path)
@@ -132,10 +166,37 @@ class H(BaseHTTPRequestHandler):
         if u.path == "/__state":
             with LOCK:
                 return self.send(200, STATE)
+        if u.path == "/api/server/features":
+            return self.send(200, {"oauth": STATE["oauth"], "oauthAutoLaunch": False, "passwordLogin": True, "search": True})
+        if u.path == "/api/server/config":
+            return self.send(200, {"oauthButtonText": "Login with Authentik", "loginPageMessage": "", "isInitialized": True})
+        if u.path == "/idp/authorize":
+            # the identity provider: Immich's client, a registered redirect address, and (when it offers PKCE) a challenge
+            ru = q.get("redirect_uri", [""])[0]
+            st = q.get("state", [""])[0]
+            if q.get("client_id") != ["immich"] or q.get("response_type") != ["code"] or not st \
+                    or (STATE["pkce"] and (q.get("code_challenge_method") != ["S256"] or not q.get("code_challenge"))):
+                return self.send(400, {"error": "invalid_request"})
+            if not ru.endswith("/oauth2-callback"):
+                return self.send(400, ctype="text/html", raw=b"<h1>Invalid redirect URI</h1>")
+            if STATE["deny"]:
+                loc = ru + "?" + urlencode({"error": "access_denied", "error_description": "User cancelled", "state": st})
+            else:
+                code = secrets.token_hex(8)
+                with LOCK:
+                    CODES[code] = {"challenge": q.get("code_challenge", [None])[0], "redirect_uri": ru, "state": st}
+                loc = ru + "?" + urlencode({"code": code, "state": st})
+            self.send_response(302)
+            self.send_header("Location", loc)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         self.note("GET", self.path)
         k = self.auth()
         if not k:
             return
+        if self.lacks(k, u.path):
+            return self.send(403, {"message": "Missing required permission: " + self.lacks(k, u.path)})
         if u.path == "/api/users/me":
             if k in (LIMITED_KEY, ALBUM_KEY):
                 return self.send(403, {"message": "Missing required permission: user.read"})
@@ -175,9 +236,22 @@ class H(BaseHTTPRequestHandler):
             body = json.loads(raw.decode() or "{}")
         except ValueError:
             body = None
+        if u.path == "/__set":
+            with LOCK:
+                for name in ("oauth", "pkce", "deny", "refuse_keys"):
+                    if name in (body or {}):
+                        STATE[name] = bool(body[name])
+            return self.send(200, {})
+        if u.path in ("/api/oauth/authorize", "/api/oauth/callback", "/api/api-keys", "/api/auth/logout"):
+            # (single sign-on: the log keeps which fields came, never the code, the PKCE secret or a token)
+            self.note("POST", u.path, sorted(body) if isinstance(body, dict) else None)
+            return self.sso(u.path, body if isinstance(body, dict) else {})
         self.note("POST", u.path, body)
-        if not self.auth():
+        k = self.auth()
+        if not k:
             return
+        if self.lacks(k, u.path):
+            return self.send(403, {"message": "Missing required permission: " + self.lacks(k, u.path)})
         if u.path == "/api/search/metadata":
             if OLD:
                 return self.send(404, {"message": "Cannot POST /api/search/metadata"})
@@ -194,6 +268,64 @@ class H(BaseHTTPRequestHandler):
             return self.send(200, {"albums": {"total": 0, "count": 0, "items": [], "facets": []},
                                    "assets": {"total": len(items), "count": len(chunk), "items": chunk, "facets": [], "nextPage": more}})
         return self.send(404, {"message": "Cannot POST " + u.path})
+
+    def sso(self, path, body):
+        if path == "/api/oauth/authorize":
+            if not STATE["oauth"]:
+                return self.send(400, {"message": "OAuth is not enabled", "statusCode": 400})
+            if not isinstance(body.get("redirectUri"), str):
+                return self.send(400, {"message": ["redirectUri must be a string"], "statusCode": 400})
+            q = {"redirect_uri": body["redirectUri"], "scope": "openid email profile",
+                 "state": body.get("state") or secrets.token_hex(8), "client_id": "immich", "response_type": "code"}
+            if STATE["pkce"]:
+                # (Immich sends the challenge only to a provider that lists PKCE)
+                q["code_challenge"] = body.get("codeChallenge") or "made-by-immich"
+                q["code_challenge_method"] = "S256"
+            return self.send(201, {"url": self.base() + "/idp/authorize?" + urlencode(q)})
+        if path == "/api/oauth/callback":
+            if not STATE["oauth"]:
+                return self.send(400, {"message": "OAuth is not enabled", "statusCode": 400})
+            if not body.get("state"):
+                return self.send(400, {"message": "OAuth state is missing", "statusCode": 400})
+            if not body.get("codeVerifier"):
+                return self.send(400, {"message": "OAuth code verifier is missing", "statusCode": 400})
+            cb = urlparse(str(body.get("url") or ""))
+            cq = parse_qs(cb.query)
+            with LOCK:
+                grant = CODES.pop(cq.get("code", [""])[0], None)
+            sent = "%s://%s%s" % (cb.scheme, cb.netloc, cb.path)
+            proof = base64.urlsafe_b64encode(hashlib.sha256(str(body["codeVerifier"]).encode()).digest()).decode().rstrip("=")
+            if not grant or cq.get("state") != [body["state"]] or grant["state"] != body["state"] or grant["redirect_uri"] != sent \
+                    or (STATE["pkce"] and grant["challenge"] != proof):
+                return self.send(500, {"message": "OAuth login failed", "statusCode": 500})
+            tok = secrets.token_urlsafe(24)
+            with LOCK:
+                SESSIONS[tok] = True
+                STATE["sessions_open"] += 1
+            return self.send(201, {"accessToken": tok, "userId": "u1", "userEmail": "will@example.com", "name": "Will",
+                                   "isAdmin": False, "isOnboarded": True, "profileImagePath": "", "shouldChangePassword": False})
+        tok = self.session()
+        if not tok:
+            return
+        if path == "/api/api-keys":
+            perms = body.get("permissions")
+            if STATE["refuse_keys"]:
+                return self.send(403, {"message": "Forbidden", "statusCode": 403})
+            if not isinstance(perms, list) or not perms or not all(isinstance(x, str) for x in perms):
+                return self.send(400, {"message": ["permissions must contain at least 1 element"], "statusCode": 400})
+            secret = secrets.token_urlsafe(24)
+            info = {"id": uid(len(MADE) + 1, "c"), "name": body.get("name") or "API Key", "permissions": perms,
+                    "createdAt": "2026-01-01T00:00:00.000Z", "updatedAt": "2026-01-01T00:00:00.000Z"}
+            with LOCK:
+                MADE[secret] = perms
+                STATE["made"].append({"name": info["name"], "permissions": perms})
+            return self.send(201, dict(info, secret=secret, apiKey=info))
+        # /api/auth/logout
+        with LOCK:
+            SESSIONS[tok] = False
+            STATE["sessions_open"] -= 1
+            STATE["sessions_ended"] += 1
+        return self.send(200, {"successful": True, "redirectUri": "/auth/login?autoLaunch=0"})
 
 
 ThreadingHTTPServer(("127.0.0.1", PORT), H).serve_forever()

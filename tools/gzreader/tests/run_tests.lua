@@ -16053,6 +16053,148 @@ print("Immich: an album's pictures for the sleep screen and the Home wallpaper")
     plugin.store.immich = nil
 end)()
 
+print("Immich: single sign-on from the setup page; the Kindle makes an API key of its own")
+;(function()
+    local Immich = require("gzreader_immich")
+    local SleepMode = require("gzsleepmode")
+    local IP = PORT + 32
+    local SERVER = "http://127.0.0.1:" .. IP
+    os.execute("python3 -I " .. PLUGIN .. "/../../tools/gzreader/emulator/demo/mock_immich.py " .. IP
+        .. " > " .. WORK .. "/immich-sso.log 2>&1 & echo $! > " .. WORK .. "/immich-sso.pid")
+    for _try = 1, 50 do
+        local pp = io.popen("curl -s -o /dev/null -w '%{http_code}' " .. SERVER .. "/__state"); local cc = pp:read("*a"); pp:close()
+        if cc == "200" then break end
+        socket.sleep(0.2)
+    end
+    local function istate() local pp = io.popen("curl -s " .. SERVER .. "/__state"); local t = pp:read("*a"); pp:close(); return json.decode(t) or {} end
+    local function iset(t) os.execute("curl -s -o /dev/null -H 'Content-Type: application/json' -d '" .. json.encode(t) .. "' " .. SERVER .. "/__set") end
+    local function ssoLog() require("gzreader_log").flush(); local lf = io.open(WORK .. "/gzreader.log", "rb"); local t = lf and lf:read("*a") or ""; if lf then lf:close() end; return t end
+    local function signIn(url, more) return phone("-L --max-redirs 5 " .. (more or "") .. " --data-urlencode 'server=" .. SERVER .. "' --data-urlencode 'action=sso' '" .. url .. "/immich'") end
+    local saved_redirect, saved_album = G_reader_settings:readSetting("gzreader_sso_redirect"), gsettings.gzreader_immich_album
+    local RELAY, hdr, unesc = "https://relay.example.com/gzreader/oauth2-callback", WORK .. "/immich_sso_hdr", require("socket.url").unescape
+    local function location()
+        local hf = io.open(hdr); local h = hf and hf:read("*a") or ""; if hf then hf:close() end
+        return h:match("\n[Ll]ocation: ([^\r\n]+)")
+    end
+    local saved_direct = plugin.store.sso_direct_ok
+    SleepMode.IMMICH_DIR = WORK .. "/immich-sso-pics"
+    plugin.store.immich = nil
+
+    -- what the server offers
+    local offer = Immich.ssoInfo(SERVER)
+    check(type(offer) == "table" and offer.name == "Login with Authentik", "an Immich with OAuth on: single sign-on offered, with its button's text")
+    iset({ oauth = false })
+    check(Immich.ssoInfo(SERVER) == false, "an Immich with OAuth off: not offered")
+    check(select(2, Immich.ssoInfo("http://127.0.0.1:1")) == "unreachable", "no server there: unreachable")
+
+    -- the setup page: the button, and the redirect address to register
+    G_reader_settings:saveSetting("gzreader_sso_redirect", "kindle")
+    local url, origin = startPairing()
+    local c, html = phone("'" .. url .. "'")
+    local sect = html and html:match('<section id="immich".-</section>') or ""
+    check(c == 200 and sect:find('name="action" value="sso" formnovalidate', 1, true) and sect:find(origin .. "/oauth2-callback", 1, true)
+        and sect:find("makes an API key for itself", 1, true),
+        "the page's Immich tab: a single sign-on button (no API key needed for it), the redirect address, what the Kindle keeps")
+    c, html = signIn(url)
+    check(c == 200 and html:find("turned on for this Immich server", 1, true) and not plugin.store.immich, "OAuth off on the server: said so, nothing connected")
+    iset({ oauth = true })
+
+    -- signing in: provider -> the Kindle -> Immich; a key of the Kindle's own; the session ended
+    c, html = signIn(url)
+    local im = plugin.store.immich or {}
+    local ms = istate()
+    local made = ms.made and ms.made[1] or {}
+    local perms = {}
+    for _i, pm in ipairs(made.permissions or {}) do perms[#perms + 1] = pm end
+    table.sort(perms)
+    check(c == 200 and html:find("Connected to Immich", 1, true) and im.server == SERVER and im.user == "Will" and #(im.albums or {}) == 3
+        and type(im.key) == "string" and #im.key > 20, "single sign-on: connected, the albums listed, as with a pasted key")
+    check(#(ms.made or {}) == 1 and tostring(made.name):match("^GZreader") and table.concat(perms, ",") == "album.read,asset.read,asset.view,user.read",
+        "the Kindle made one API key, named for GZreader, with only what GZreader uses (" .. tostring(made.name) .. ": " .. table.concat(perms, ",") .. ")")
+    check(ms.sessions_open == 0 and ms.sessions_ended == 1, "the sign-in's session is ended once the key is made: only the key is kept")
+    local with_key, fields = 0, nil
+    for _i, r in ipairs(ms.log or {}) do
+        if r.key == "made" and r.path:find("/api/albums", 1, true) then with_key = with_key + 1 end
+        if r.path == "/api/oauth/callback" then fields = table.concat(r.body or {}, ",") end
+    end
+    check(with_key >= 1 and fields == "codeVerifier,state,url", "Immich got the code with the state and the PKCE secret; the albums were then asked with the new key")
+    local lt = ssoLog()
+    check(lt:find("immich sso: signed in", 1, true) and not lt:find(im.key, 1, true) and not lt:find("codeVerifier", 1, true)
+        and not lt:find("code=", 1, true) and not lt:find("Bearer", 1, true), "the log has the sign-in, but no key, code, PKCE secret or session token")
+    c, html = phone("'" .. origin .. "/oauth2-callback?code=again&state=again'")
+    check(c == 200 and html:match("has closed"), "the sign-in can't be replayed")
+
+    -- through GZreader's hand-off page (one redirect address for every Kindle)
+    plugin.store.immich = nil
+    G_reader_settings:saveSetting("gzreader_sso_redirect", RELAY)
+    url, origin = startPairing()
+    c = phone("-D '" .. hdr .. "' --data-urlencode 'server=" .. SERVER .. "' --data-urlencode 'action=sso' '" .. url .. "/immich'")
+    local back, go = (location() or ""):match("^" .. RELAY:gsub("%p", "%%%0") .. "#back=([^&]+)&go=(.+)$")
+    go = go and unesc(go) or ""
+    check(c == 302 and back and unesc(back) == origin .. "/oauth2-callback" and go:find(SERVER .. "/idp/authorize?", 1, true)
+        and unesc(go):find("redirect_uri=" .. RELAY .. "&", 1, true) and go:find("code_challenge_method=S256", 1, true)
+        and go:find("response_type=code", 1, true) and go:match("[?&]state=%x+") and go:match("[?&]code_challenge=[%w_-]+"),
+        "hand-off page: #back is the Kindle, #go the provider's sign-in as the page needs it (a code with PKCE, coming back to the page)")
+    phone("-D '" .. hdr .. "' '" .. go .. "'")
+    local ret = location() or ""
+    c, html = phone("-L '" .. unesc(back or "") .. ret:sub(#RELAY + 1) .. "'")
+    im = plugin.store.immich or {}
+    check(ret:sub(1, #RELAY + 1) == RELAY .. "?" and c == 200 and html:find("Connected to Immich", 1, true) and im.server == SERVER and #istate().made == 2,
+        "hand-off page: the provider comes back to it, it forwards to the Kindle, connected")
+    screen.on_cancel()
+
+    -- a provider that doesn't offer PKCE: not through the hand-off page; fine at the Kindle's own address
+    iset({ pkce = false })
+    plugin.store.immich = nil
+    url = startPairing()
+    c, html = signIn(url)
+    check(c == 200 and html:find("offer PKCE", 1, true) and not plugin.store.immich, "a provider without PKCE, hand-off page: said so, nothing connected")
+    screen.on_cancel()
+    G_reader_settings:saveSetting("gzreader_sso_redirect", "kindle")
+    url, origin = startPairing()
+    c, html = signIn(url)
+    check(c == 200 and html:find("Connected to Immich", 1, true) and (plugin.store.immich or {}).server == SERVER,
+        "a provider without PKCE, the Kindle's own address: connected")
+    iset({ pkce = true })
+
+    -- cancelled at the provider; a forged answer; a key refused
+    plugin.store.immich = nil
+    iset({ deny = true })
+    c, html = signIn(url)
+    check(c == 200 and html:find("User cancelled", 1, true) and not plugin.store.immich, "cancelled at the provider: said so, nothing connected")
+    iset({ deny = false })
+    phone("-D '" .. hdr .. "' --data-urlencode 'server=" .. SERVER .. "' --data-urlencode 'action=sso' '" .. url .. "/immich'")
+    c, html = phone("'" .. origin .. "/oauth2-callback?code=forged&state=forged'")
+    check(c == 200 and html:match("has closed") and not plugin.store.immich, "an answer with another state is refused")
+    url = startPairing()
+    iset({ refuse_keys = true })
+    local ended = istate().sessions_ended
+    c, html = signIn(url)
+    ms = istate()
+    check(c == 200 and html:find("make its API key", 1, true) and not plugin.store.immich and ms.sessions_open == 0 and ms.sessions_ended == ended + 1,
+        "Immich refuses the API key: said so, nothing connected, the session still ended")
+    iset({ refuse_keys = false })
+    screen.on_cancel()
+
+    -- the code is no use without the Kindle's PKCE secret
+    local Api = require("gzreader_api")
+    local auth_url = Immich.ssoStart(SERVER, "http://kindle.example.com/oauth2-callback", "st-1", Api.pkceChallenge("the-kindles-own-secret"))
+    phone("-D '" .. hdr .. "' '" .. tostring(auth_url) .. "'")
+    local cb = location() or ""
+    local key, kerr = Immich.ssoFinish(SERVER, cb, "st-1", "someone-elses-guess", "GZreader (test)")
+    check(auth_url and cb:find("code=", 1, true) and key == nil and kerr == "OAuth login failed", "a code with the wrong PKCE secret: Immich refuses it (" .. tostring(kerr) .. ")")
+    check(select(2, Immich.ssoStart("http://127.0.0.1:1", "http://kindle.example.com/oauth2-callback", "s", "c")) == "unreachable",
+        "starting with no server there: unreachable")
+
+    os.execute("kill $(cat " .. WORK .. "/immich-sso.pid) 2>/dev/null")
+    os.execute("rm -rf '" .. SleepMode.IMMICH_DIR .. "'")
+    SleepMode.IMMICH_DIR = nil
+    G_reader_settings:saveSetting("gzreader_sso_redirect", saved_redirect)
+    gsettings.gzreader_immich_album = saved_album
+    plugin.store.sso_direct_ok = saved_direct
+    plugin.store.immich = nil
+end)()
+
 print("The mock BookOrbit server answers as the real one does, and the probe script (mock_bookorbit_test.py)")
 ;(function()
     local pp = io.popen("python3 -I " .. PLUGIN .. "/../../tools/gzreader/tests/mock_bookorbit_test.py " .. (PORT + 60) .. " 2>&1")

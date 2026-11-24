@@ -542,6 +542,9 @@ local function immichSection(st, base)
         input("i_server", "server", "Immich address (or an album's address from your browser)", (m.form or {}).server, 'required placeholder="https://photos.example.com" ' .. URL_ATTRS)
         .. '<label for="i_key">API key</label><input id="i_key" name="key" type="password" required ' .. NAME_ATTRS .. ">"
         .. '<button type="submit">Connect</button>'
+        .. '<div class="or">or</div><button class="alt" type="submit" name="action" value="sso" formnovalidate>Sign in with single sign-on (SSO)</button>'
+        .. '<p class="note">Single sign-on needs Immich\'s OAuth turned on, and <code>' .. esc(m.redirect_uri or "") .. "</code> as a redirect URI on Immich's client at your identity provider"
+        .. (m.sso_relay and " (the same for every Kindle)" or "") .. '. The Kindle then makes an API key for itself in Immich, named “GZreader (this Kindle)”, and keeps only that.</p>'
         .. '<details><summary>Where do I get an API key?</summary><p class="note">In Immich: your picture (top right) → Account Settings → API Keys → New API Key. Give it at least album.read, asset.read and asset.view (or all permissions). The Kindle keeps the key, never your password, and never writes it to its log.</p></details>',
         "Connecting…")
     if m.connected then parts[#parts + 1] = "</div></details>" end

@@ -321,6 +321,69 @@ end
 
 local function settings() return G_reader_settings end
 
+---------------------------------------------------------------- single sign-on
+-- Immich with OAuth turned on (Administration → Settings → Authentication):
+-- the setup page signs in at the identity provider (gzreader_phone.lua, the
+-- same hand-off page as Grimmory's), Immich gives a session for the code, and
+-- with it the Kindle makes an API key of its own, named after itself, and ends
+-- the session. What's kept is that key, as when one is pasted: so a sign-in
+-- that ends at the identity provider doesn't sign the Kindle out. The
+-- session's token, the code and the PKCE secret are never kept or logged.
+
+-- What the key the Kindle makes for itself can do (what GZreader uses).
+Immich.SSO_PERMISSIONS = { "album.read", "asset.read", "asset.view", "user.read" }
+
+local function said(data, code)
+    local m = type(data) == "table" and data.message
+    if type(m) == "table" then m = m[1] end
+    return type(m) == "string" and m ~= "" and m or (code and ("http_" .. code) or "unreachable")
+end
+
+--- Does this Immich offer single sign-on? { name = its button's text or nil },
+--- false (it doesn't), or nil, err ("unreachable", "http_<code>").
+function Immich.ssoInfo(server)
+    local Api = require("gzreader_api")
+    local feats, err = Api.fetchJson(server .. "/api/server/features")
+    if not feats then return nil, err end
+    if feats.oauth ~= true then return false end
+    local cfg = Api.fetchJson(server .. "/api/server/config")
+    local name = type(cfg) == "table" and type(cfg.oauthButtonText) == "string" and cfg.oauthButtonText:match("%S") and cfg.oauthButtonText or nil
+    return { name = name }
+end
+
+--- The identity provider's sign-in address, made by Immich for our redirect
+--- address, state and PKCE challenge. Returns it, or nil, err.
+function Immich.ssoStart(server, redirect_uri, state, challenge)
+    local Api = require("gzreader_api")
+    local code, data = Api.rawRequest("POST", server .. "/api/oauth/authorize", {
+        body = { redirectUri = redirect_uri, state = state, codeChallenge = challenge }, timeouts = { 10, 20 } })
+    if type(code) ~= "number" then return nil, "unreachable" end
+    if code >= 300 or type(data) ~= "table" or type(data.url) ~= "string" or not data.url:match("^https?://") then
+        return nil, said(data, code)
+    end
+    return data.url
+end
+
+--- Finish a sign-in: `callback_url` is the redirect address with what the
+--- identity provider added (?code=…&state=…). Returns the API key made for
+--- this Kindle (named `key_name`), or nil, err.
+function Immich.ssoFinish(server, callback_url, state, verifier, key_name)
+    local Api = require("gzreader_api")
+    local code, data = Api.rawRequest("POST", server .. "/api/oauth/callback", {
+        body = { url = callback_url, state = state, codeVerifier = verifier }, timeouts = { 15, 30 } })
+    if type(code) ~= "number" then return nil, "unreachable" end
+    local session = type(data) == "table" and type(data.accessToken) == "string" and data.accessToken ~= "" and data.accessToken
+    if code >= 300 or not session then return nil, said(data, code) end
+    local auth = { ["Authorization"] = "Bearer " .. session }
+    local kcode, kdata = Api.rawRequest("POST", server .. "/api/api-keys", {
+        headers = auth, body = { name = key_name, permissions = JSON.list(Immich.SSO_PERMISSIONS) }, timeouts = { 10, 20 } })
+    local key = type(kcode) == "number" and kcode < 300 and type(kdata) == "table" and type(kdata.secret) == "string" and kdata.secret ~= "" and kdata.secret
+    -- (the session was only for making the key: ended whether that worked or not)
+    Api.rawRequest("POST", server .. "/api/auth/logout", { headers = auth, body = {}, timeouts = { 10, 20 } })
+    if not key then return nil, "no_key:" .. said(kdata, type(kcode) == "number" and kcode or nil) end
+    return key
+end
+
 function Immich.client(plugin)
     plugin.store.immich = plugin.store.immich or {}
     return Immich:new(plugin.store.immich)

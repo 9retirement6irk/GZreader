@@ -4,7 +4,8 @@ GZreader: single sign-on hand-off page. The Kindle (its phone page) sends the
 phone here with #back=<the Kindle's own callback>&go=<the identity
 provider's sign-in>. This page remembers where to go back, opens the
 provider, and when the provider sends the phone back here (?code&state),
-forwards that to the Kindle, which finishes signing in with Grimmory.
+forwards that to the Kindle, which finishes signing in with its server
+(Grimmory, Immich).
 
 So the identity provider needs only this one redirect address for every
 Kindle, wherever it is, instead of each Kindle's own address. It only opens
@@ -137,7 +138,7 @@ Single sign-on redirect).
       return;
     }
     // a sign-in server this browser hasn't used from here: say where it goes first
-    show("Sign in at " + go.host, "Your Kindle asks you to sign in to Grimmory with your sign-in server, " + go.host
+    show("Sign in at " + go.host, "Your Kindle asks you to sign in with your sign-in server, " + go.host
       + ". Continue only if that's the one you use.");
     var a = document.getElementById("go");
     a.href = go.href;
@@ -159,7 +160,7 @@ Single sign-on redirect).
     location.replace(saved.back + location.search);
     return;
   }
-  show("GZreader sign-in", "This page finishes signing in to Grimmory on a Kindle running GZreader. Start from the QR code on the Kindle.");
+  show("GZreader sign-in", "This page finishes a single sign-on on a Kindle running GZreader. Start from the QR code on the Kindle.");
 })();
 </script>
 </body>

@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Immich: sign in with single sign-on from the setup page", text = "With Immich's OAuth turned on, the setup page's Immich tab has Sign in with single sign-on (SSO): sign in at your identity provider instead of pasting an API key. The Kindle then makes an API key of its own in Immich, named \"GZreader (this Kindle)\", with only what GZreader uses (album.read, asset.read, asset.view, user.read), ends the sign-in's session and keeps just that key, so it stays connected when your sign-in at the provider ends. One-time setup: add GZreader's redirect address (shown on the tab, the same one as for Grimmory) to Immich's client at your identity provider. Pasting an API key works as before." },
+        },
+    },
+    {
         version = "2026.11.22",
         changes = {
             { short = "Colour Kindles: Immich photos in colour", text = "On a Kindle Colorsoft or Scribe Colorsoft, the pictures from your Immich album (the sleep screen and the Home wallpaper) are kept in colour instead of being made grey. Pictures already on the Kindle stay grey until they are swapped for others from the album (about half each time GZreader gets new pictures)." },
