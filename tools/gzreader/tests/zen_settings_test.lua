@@ -105,7 +105,7 @@ if okb then
             and not sub(tht, "Home")[1].separator,
         "Status bar: Show on Home (Home's Show top status bar) first, then a line; Home keeps its own rows " .. texts(srows))
     check(texts(sub(t, "Display and light")) == "|Font|Blur menu background|", "Display and light: Interface's other rows, Font first " .. texts(sub(t, "Display and light")))
-    check(texts(t):find("|Wi-Fi|", 1, true) == nil and texts(sub(t, "General")) == "|Software update|Transfer|",
+    check(texts(t):find("|Wi-Fi|", 1, true) == nil and texts(sub(t, "General")) == "|Software update|Transfer|Add-ons|",
         "nothing to move: no empty rows, sections or Wi-Fi " .. texts(t) .. texts(sub(t, "General")))
     local dl = sub(ht, "Downloads tab")
     print("    Downloads tab: " .. texts(dl))

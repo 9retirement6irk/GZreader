@@ -275,6 +275,12 @@ function M.build(p)
         },
     }, "connect")
     general_out[#general_out + 1] = transfer
+    -- (plugins and extras from outside GZreader, ZenPM to install them: gzreader_addons.lua)
+    general_out[#general_out + 1] = icon({
+        text = _("Add-ons"),
+        help_text = _("Plugins and other extras from outside GZreader, and ZenPM, ZenLabs' package manager, to install them with."),
+        sub_item_table_func = M.gzPage(p.gzreader, "addonItems"),
+    }, "settings_advanced")
     if setup then general_out[#general_out + 1] = setup end
     if #performance > 0 then
         general_out[#general_out + 1] = icon({

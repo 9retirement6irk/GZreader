@@ -10,7 +10,7 @@ account uses). When an update is known, it shows at the top of the page.
 | Row | What's in it |
 |---|---|
 | **Wi‑Fi** | On, Off or Auto ([Wi‑Fi](Wi-Fi)), Networks, HTTP proxy, Network info. |
-| **General** | **About** (GZreader's version, what it's built on, the device), Software update (test builds, changelog), Storage, Battery, Time and date, Language; **Transfer** (copy to or from another GZreader, [sync through a computer](Sync-with-a-Computer)), Setup Guide, **Performance** (Pre-size covers, Lay out new books while charging, Keep connections open). |
+| **General** | **About** (GZreader's version, what it's built on, the device), Software update (test builds, changelog), Storage, Battery, Time and date, Language; **Transfer, [Add-ons](#add-ons-and-zenpm) (ZenPM)** (copy to or from another GZreader, [sync through a computer](Sync-with-a-Computer)), Setup Guide, **Performance** (Pre-size covers, Lay out new books while charging, Keep connections open). |
 | **Display and light** | Screen (e-ink refresh, flashing), Brightness and warmth (schedules), **Dark mode**, the menu font and its size, accent colour, custom icons, Blur menu background; on a Nook, its colour screen or touch orientation. |
 | **Sleep and wallpaper** | Sleep (the sleep screen, automatic sleep), Home background, Pictures from Immich. |
 | **Audio** | Kindles with a speaker, headphone jack or Bluetooth: [Bluetooth](Bluetooth) first (on or off, the devices), then [read aloud](Audiobooks-and-Read-Aloud), Test audiobook playback, the headphone jack. |
@@ -35,6 +35,36 @@ music*), and signing out last. The storage row opens Settings → General →
 Storage at that service's part, which has the Free up space rows (remove kept
 notes or attachments, kept events, downloaded music) that used to be on the
 service's own page.
+
+## Add-ons and ZenPM
+
+**Settings → General → Add-ons** is for plugins and extras from outside
+GZreader. They aren't part of GZreader and GZreader doesn't check them.
+
+- **Install ZenPM** downloads [ZenPM](https://github.com/xZenLabs/zen-pm),
+  ZenLabs' package manager, from its latest release (checked against the
+  release's SHA-256) and installs its plugin. After the restart the row reads
+  **Open ZenPM**, and ZenPM has a tile on the quick panel, under **Your
+  tiles**. ZenPM has builds for Kindles and Kobos; where it has none the row
+  says so.
+- Plugins you install (with ZenPM or by copying a `.koplugin` folder into
+  `GZreader/app/plugins/`) are kept through GZreader's updates. To open one,
+  give it a tile: Settings → Home and tabs → Quick panel → **Your tiles** →
+  **Add a plugin's screen**.
+- **Don't install or update "Zen UI" (ZenOS) from ZenPM.** ZenPM lists
+  GZreader's own ZenOS as its Zen UI package and may offer an update. That
+  update is ZenLabs' ZenOS without GZreader's changes: Home, the tabs and
+  Settings would stop being GZreader's. If it happens, GZreader says so at
+  its next start and offers **Put back**, which downloads this version of
+  GZreader again (your settings, books and add-ons are kept). The same is
+  under Add-ons as **Put GZreader's ZenOS back**.
+- KOReader patches change KOReader's own code and can break GZreader's
+  screens: remove a patch in ZenPM if something stops working after adding it.
+- Progress sync, OPDS and similar plugins do what GZreader already does with
+  your book server. Two of them syncing the same book can disagree.
+- Icon packs change ZenOS's icons; GZreader's own screens keep theirs.
+- ZenPM's own page warns against its standalone Kindle app on WinterBreak,
+  SpringBreak and Sanctuary jailbreaks. That's the Kindle app, not this plugin.
 
 ## Where things moved in 1.32.x
 

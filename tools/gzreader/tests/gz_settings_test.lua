@@ -155,8 +155,9 @@ if okb then
     local general = find(items, "General").sub_item_table
     local gen = texts(general)
     print("    General: " .. gen)
-    check(gen == "|About|Software update|Storage|Battery|Time and date|Language|Transfer|Setup Guide|",
-        "General: About (as on iOS), Software update, Storage, Battery, Time and date, Language, then Transfer and Setup Guide " .. gen)
+    check(gen == "|About|Software update|Storage|Battery|Time and date|Language|Transfer|Add-ons|Setup Guide|",
+        "General: About (as on iOS), Software update, Storage, Battery, Time and date, Language, then Transfer, Add-ons (ZenPM) and Setup Guide " .. gen)
+    check(type(find(general, "Add-ons").sub_item_table_func) == "function", "General → Add-ons: GZreader's page (gzreader_addons.lua)")
     check(find(general, "Language").separator == true, "a line under Language")
     local transfer = find(general, "Transfer")
     check(texts(transfer and transfer.sub_item_table) == "|Copy to or from another GZreader|Sync through a computer|",

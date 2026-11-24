@@ -2792,6 +2792,61 @@ do
         package.loaded["gzreader_notes"] = saved_notes
         hplug.store.memos = saved_memos
     end
+;(function() -- add-ons: ZenPM, and GZreader's own parts kept its own (gzreader_addons.lua)
+        print("Add-ons: ZenPM, and GZreader's ZenOS guarded")
+        local Addons = require("gzreader_addons")
+        local zen_dir = PLUGIN:gsub("/[^/]+$", "")
+        check(io.open(zen_dir .. "/zenos.koplugin/GZREADER") ~= nil and #Addons.replaced(zen_dir) == 0,
+            "GZreader's ZenOS carries its mark: nothing replaced")
+        local tmp = WORK .. "/addons-plugins"
+        os.execute("rm -rf '" .. tmp .. "' && mkdir -p '" .. tmp .. "/zenos.koplugin'")
+        check(#Addons.replaced(tmp) == 0, "no ZenOS there at all: not this guard's matter")
+        local f = io.open(tmp .. "/zenos.koplugin/main.lua", "w"); f:write("return {}"); f:close()
+        check(table.concat(Addons.replaced(tmp), ",") == "ZenOS", "a ZenOS without GZreader's mark (ZenPM's update): replaced")
+        local UIMa = require("ui/uimanager")
+        local real_show, shown_box = UIMa.show, nil
+        local real_box = package.loaded["ui/widget/confirmbox"]
+        package.loaded["ui/widget/confirmbox"] = { new = function(_s, o) return o end }
+        UIMa.show = function(_s, w) shown_box = w end
+        local gone = Addons.check(hplug, tmp)
+        check(#gone == 1 and shown_box and shown_box.ok_text == "Put back" and shown_box.text:find("ZenOS", 1, true) and type(shown_box.ok_callback) == "function",
+            "at start it says so and offers to put GZreader's parts back")
+        f = io.open(tmp .. "/zenos.koplugin/GZREADER", "w"); f:write("x"); f:close()
+        shown_box = nil
+        check(#Addons.check(hplug, tmp) == 0 and shown_box == nil, "GZreader's own: nothing said")
+        -- ZenPM installed: its tile on the quick panel, once
+        local Custom = require("gzreader_panelcustom")
+        local real_zenpm = Addons.zenpm
+        Addons.zenpm = function() return {} end
+        Addons.check(hplug, tmp)
+        local own = Custom.own()
+        check(#own == 1 and own[1].key == "zenpm" and own[1].method == "open" and own[1].label == "ZenPM", "ZenPM is there: a tile for it among Your tiles")
+        Custom.remove(own[1].id)
+        Addons.check(hplug, tmp)
+        check(#Custom.own() == 0, "…once: taken off, it stays off")
+        -- Settings → General → Add-ons
+        local asked
+        package.loaded["modules/settings/zenpm_installer"] = { build_item = function()
+            return { text = "Install ZenPM", callback = function() asked = true end }
+        end }
+        Addons.zenpm = function() return nil end
+        local rows = Addons.items(hplug)
+        check(rows[1].text == "Install ZenPM" and rows[2].text == "About add-ons" and #rows == 2, "Add-ons: Install ZenPM, About add-ons")
+        shown_box = nil
+        rows[1].callback()
+        check(asked == nil and shown_box and shown_box.text:find("Don't install or update “Zen UI”", 1, true) and shown_box.ok_text == "Continue",
+            "Install ZenPM: GZreader's word on it first (leave Zen UI alone)")
+        shown_box.ok_callback()
+        check(asked == true, "…then ZenOS's installer")
+        package.loaded["modules/settings/zenpm_installer"] = { build_item = function() return nil end }
+        check(Addons.items(hplug)[1].text == "ZenPM isn't available for this device.", "a device ZenPM has no build for: said")
+        Addons.zenpm = real_zenpm
+        UIMa.show = real_show
+        package.loaded["ui/widget/confirmbox"] = real_box
+        package.loaded["modules/settings/zenpm_installer"] = nil
+        G_reader_settings:delSetting(Addons.TILE_FLAG)
+        os.execute("rm -rf '" .. tmp .. "'")
+    end)()
     local item = Panel.settingsItem()
     local subs = {}
     for _i, s in ipairs(item.sub_item_table) do subs[#subs + 1] = s.text end

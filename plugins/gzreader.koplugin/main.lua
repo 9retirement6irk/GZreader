@@ -281,6 +281,8 @@ function Grimmory:init()
         pcall(function() require("gzreader_places").announce() end)
         -- a drawing never saved (GZreader stopped while it was open): ask what to do
         pcall(function() require("gzreader_drawdraft").schedule(self) end)
+        -- GZreader's own parts still its own (ZenPM could replace ZenOS), ZenPM's tile: gzreader_addons.lua
+        UIManager:scheduleIn(6, function() pcall(function() require("gzreader_addons").check(self) end) end)
         if self.api:isPaired() then
             UIManager:scheduleIn(8, function()
                 if not NetworkMgr:isConnected() then return end
@@ -604,6 +606,9 @@ function Grimmory:rebuildLibrary()
         end)
     end, { reason = "rebuilding the library", usb = true })
 end
+
+--- Settings → General → Add-ons (ZenPM): gzreader_addons.lua.
+function Grimmory:addonItems() return require("gzreader_addons").items(self) end
 
 function Grimmory:menuItems()
     local paired = self.api:isPaired()

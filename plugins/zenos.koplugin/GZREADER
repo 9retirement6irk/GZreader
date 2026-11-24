@@ -1,0 +1,4 @@
+This is GZreader's copy of ZenOS (github.com/9retirement6irk/GZreader): ZenOS
+with GZreader's changes. GZreader checks for this file at each start
+(gzreader_addons.lua): when another installer has put a different ZenOS here,
+it offers to put this one back.

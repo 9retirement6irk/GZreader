@@ -9,6 +9,7 @@ return {
     {
         version = "next",
         changes = {
+            { short = "Add-ons: install ZenPM from Settings", text = "Settings → General → Add-ons installs ZenPM, ZenLabs' package manager, for adding plugins and other extras (they aren't part of GZreader). Once it's installed it has a tile on the quick panel, under Your tiles. One thing to leave alone: ZenPM lists GZreader's own ZenOS as its Zen UI package; installing or updating that from ZenPM replaces GZreader's copy. If that happens, GZreader says so at its next start and offers to put its own back." },
             { short = "Quick panel: your order, and tiles of your own", text = "Settings → Home and tabs → Quick panel has two new rows. Arrange tiles puts each group's tiles in the order you like (the letters on Kindles with keys follow). Your tiles adds up to ten tiles of your own in a third group: a plugin's screen (the way to open a plugin you added to GZreader) or any of KOReader's own menus, at Home or in a book." },
         },
     },
