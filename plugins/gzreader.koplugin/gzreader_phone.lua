@@ -470,54 +470,9 @@ function Phone.open(plugin, opts)
         return 302, nil, redirect_uri .. "#back=" .. esc(S.origin .. "/oauth2-callback") .. "&go=" .. esc(auth_url)
     end
 
-    -- Mealie (gzreader_mealie.lua): single sign-on through the same hand-off
-    -- as Grimmory's. Mealie's sign-on for apps gives what the browser needs;
-    -- the state is ours (Mealie keeps none for an app).
-    local function recipesFailed(form, err)
-        return back({ section = "recipes", error = err, form = { server = form and form.server } })
-    end
-    local function startMealieSso(form)
-        local Mealie = require("gzreader_mealie")
-        local sso, err = Mealie.ssoStart(form.server or "")
-        if not sso then return recipesFailed(form, err) end
-        local redirect_uri, relay = Phone.ssoRedirect(plugin, S.origin)
-        S.sso = { kind = "mealie", base = sso.base, about = sso.about, server = form.server,
-            state = PairServer.randomToken(16), verifier = PairServer.randomToken(32), nonce = PairServer.randomToken(16),
-            redirect_uri = redirect_uri, relay = relay }
-        local q = Api.query{
-            response_type = "code", client_id = sso.client_id, redirect_uri = redirect_uri, scope = sso.scope,
-            code_challenge = Api.pkceChallenge(S.sso.verifier), code_challenge_method = "S256",
-            state = S.sso.state, nonce = S.sso.nonce,
-        }
-        Log.info("recipes: single sign-on: redirecting the browser to", Phone.originOf(sso.authorization_endpoint), "redirect_uri", redirect_uri)
-        local sep = sso.authorization_endpoint:find("?", 1, true) and "&" or "?"
-        local auth_url = sso.authorization_endpoint .. sep .. q:sub(2)
-        if not relay then return 302, nil, auth_url end
-        local esc = require("socket.url").escape
-        return 302, nil, redirect_uri .. "#back=" .. esc(S.origin .. "/oauth2-callback") .. "&go=" .. esc(auth_url)
-    end
-    local function finishMealieSso(params, session)
-        if params.error then
-            S.sso = nil
-            return recipesFailed(session, T(_("Sign-in didn't complete: %1"), params.error_description or params.error))
-        end
-        if not params.code or params.state ~= session.state then
-            return 200, "text/html", PairPage.gone()
-        end
-        S.sso = nil -- single use
-        local ok, err = require("gzreader_mealie").ssoFinish(plugin, session, params.code)
-        if not ok then return recipesFailed(session, err) end
-        S.changes.recipes = true
-        local said = T(_("Recipes: connected to Mealie as %1."), (plugin.store.mealie or {}).name or "?")
-        toast(said)
-        return back({ ok = true, text = T(_("Connected to Mealie as %1. Turn the Recipes tab on in Settings → Accounts and services → Recipes."),
-            (plugin.store.mealie or {}).name or "?"), section = "recipes" })
-    end
-
     local function finishSso(query)
         local params = PairServer.parseForm(query)
         local session = S.sso
-        if session and session.kind == "mealie" then return finishMealieSso(params, session) end
         if params.error then
             S.sso = nil
             return grimmoryFailed({ server = session and session.base },
@@ -667,6 +622,56 @@ function Phone.open(plugin, opts)
         S.changes.house = true
         toast(_("House: disconnected from Home Assistant."))
         return back({ ok = true, text = _("Disconnected from Home Assistant."), section = "house" })
+    end
+    -- Mealie (gzreader_mealie.lua): single sign-on through the same hand-off
+    -- as Grimmory's. Mealie's sign-on for apps gives what the browser needs;
+    -- the state is ours (Mealie keeps none for an app).
+    local function recipesFailed(form, err)
+        return back({ section = "recipes", error = err, form = { server = form and form.server } })
+    end
+    local function startMealieSso(form)
+        local Mealie = require("gzreader_mealie")
+        local sso, err = Mealie.ssoStart(form.server or "")
+        if not sso then return recipesFailed(form, err) end
+        local redirect_uri, relay = Phone.ssoRedirect(plugin, S.origin)
+        S.sso = { kind = "mealie", base = sso.base, about = sso.about, server = form.server,
+            state = PairServer.randomToken(16), verifier = PairServer.randomToken(32), nonce = PairServer.randomToken(16),
+            redirect_uri = redirect_uri, relay = relay }
+        local q = Api.query{
+            response_type = "code", client_id = sso.client_id, redirect_uri = redirect_uri, scope = sso.scope,
+            code_challenge = Api.pkceChallenge(S.sso.verifier), code_challenge_method = "S256",
+            state = S.sso.state, nonce = S.sso.nonce,
+        }
+        Log.info("recipes: single sign-on: redirecting the browser to", Phone.originOf(sso.authorization_endpoint), "redirect_uri", redirect_uri)
+        local sep = sso.authorization_endpoint:find("?", 1, true) and "&" or "?"
+        local auth_url = sso.authorization_endpoint .. sep .. q:sub(2)
+        if not relay then return 302, nil, auth_url end
+        local esc = require("socket.url").escape
+        return 302, nil, redirect_uri .. "#back=" .. esc(S.origin .. "/oauth2-callback") .. "&go=" .. esc(auth_url)
+    end
+    local function finishMealieSso(params, session)
+        if params.error then
+            S.sso = nil
+            return recipesFailed(session, T(_("Sign-in didn't complete: %1"), params.error_description or params.error))
+        end
+        if not params.code or params.state ~= session.state then
+            return 200, "text/html", PairPage.gone()
+        end
+        S.sso = nil -- single use
+        local ok, err = require("gzreader_mealie").ssoFinish(plugin, session, params.code)
+        if not ok then return recipesFailed(session, err) end
+        S.changes.recipes = true
+        local said = T(_("Recipes: connected to Mealie as %1."), (plugin.store.mealie or {}).name or "?")
+        toast(said)
+        return back({ ok = true, text = T(_("Connected to Mealie as %1. Turn the Recipes tab on in Settings → Accounts and services → Recipes."),
+            (plugin.store.mealie or {}).name or "?"), section = "recipes" })
+    end
+    -- (back at /oauth2-callback: Mealie's sign-ins are finished here, any other as before)
+    local otherSso = finishSso
+    finishSso = function(query)
+        local session = S.sso
+        if session and session.kind == "mealie" then return finishMealieSso(PairServer.parseForm(query), session) end
+        return otherSso(query)
     end
     -- Mealie (gzreader_mealie.lua): address and API token, or single sign-on
     routes["/recipes"] = function(form)
