@@ -2814,6 +2814,25 @@ do
         f = io.open(tmp .. "/zenos.koplugin/GZREADER", "w"); f:write("x"); f:close()
         shown_box = nil
         check(#Addons.check(hplug, tmp) == 0 and shown_box == nil, "GZreader's own: nothing said")
+        -- ZenPM swaps every question box's icon for its ZenOS logo: GZreader's stays
+        ;(function()
+            local saved_iw = package.loaded["ui/widget/iconwidget"]
+            local IW = { init = function(w) w.file = "resources/" .. tostring(w.icon) .. ".svg" end }
+            package.loaded["ui/widget/iconwidget"] = IW
+            local wrapped = Addons.keepIcon(tmp)
+            check(wrapped == false and IW.__zenpm_confirmation_icon_patched == true,
+                "question boxes: ZenPM's own mark set before it loads, so it swaps no icon")
+            -- (ZenPM loaded first: it had wrapped already)
+            IW = { __zenpm_confirmation_icon_patched = true }
+            IW.init = function(w) w.file = w.icon == "notice-question" and "zenpm.koplugin/assets/zen.svg" or "resources/x.svg" end
+            package.loaded["ui/widget/iconwidget"] = IW
+            Addons.keepIcon(tmp)
+            local q, i = { icon = "notice-question" }, { icon = "notice-info" }
+            IW.init(q); IW.init(i)
+            check(q.file == tmp .. "/zenos.koplugin/icons/zen_ui.svg" and i.file == "resources/x.svg" and Addons.keepIcon(tmp) == false,
+                "…and where ZenPM got there first, GZreader's icon is put back on question boxes (other icons as they were; done once)")
+            package.loaded["ui/widget/iconwidget"] = saved_iw
+        end)()
         -- ZenPM's Disable on one of GZreader's own plugins: switched back on
         G_reader_settings:saveSetting("plugins_disabled", { zenos = true, chess = true })
         shown_box = nil

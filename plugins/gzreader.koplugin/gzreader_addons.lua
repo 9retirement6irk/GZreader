@@ -116,6 +116,28 @@ function Addons.zenpm()
     return ok and inst or nil
 end
 
+--- GZreader's own icon stays on question boxes. ZenPM's plugin wraps
+--- IconWidget.init so that every "notice-question" icon (KOReader's ConfirmBox)
+--- shows ZenPM's ZenOS logo, unless it sees the mark it leaves on IconWidget.
+--- That mark is set here first (GZreader loads before ZenPM: it then wraps
+--- nothing); if ZenPM got there first, its file is put back after it.
+--- `dir`: the plugins folder (tests).
+function Addons.keepIcon(dir)
+    local IconWidget = require("ui/widget/iconwidget")
+    if IconWidget.__gz_question_icon then return false end
+    IconWidget.__gz_question_icon = true
+    local theirs = IconWidget.__zenpm_confirmation_icon_patched
+    IconWidget.__zenpm_confirmation_icon_patched = true
+    if not theirs then return false end
+    local own = (dir or pluginsDir() or "") .. "/zenos.koplugin/icons/zen_ui.svg"
+    local init = IconWidget.init
+    function IconWidget:init()
+        init(self)
+        if self.icon == "notice-question" then self.file = own end
+    end
+    return true
+end
+
 --- At start: GZreader's parts still its own (else: say so, offer to put them
 --- back), and ZenPM's tile on the quick panel the first time ZenPM is there.
 function Addons.check(plugin, dir)
