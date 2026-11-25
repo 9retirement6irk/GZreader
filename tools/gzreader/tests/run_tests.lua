@@ -1728,8 +1728,8 @@ print("Recipes tab in the Bookshelf view: the recipe box (dividers, where things
         if note then t[#t + 1] = { text = note, select_enabled = false, dim = true } end
         return t
     end
-    local items = rowsFor(20, true, "Mealie couldn't answer just now")
-    local kinds = View.kinds(items)
+    local box_rows = rowsFor(20, true, "Mealie couldn't answer just now")
+    local kinds = View.kinds(box_rows)
     check(table.concat(kinds, ","):match("^refresh,search,category,order,card,card,") and kinds[24] == "card" and kinds[25] == "more" and kinds[26] == "note",
         "the recipe box: what each row of the list is (Refresh, Search, Category, Order, a card, More recipes, a note)")
 
@@ -1797,20 +1797,20 @@ print("Recipes tab in the Bookshelf view: the recipe box (dividers, where things
     local Scr = require("device").screen
     local was_scale = Scr.scaleBySize
     Scr.scaleBySize = function(_s, px) return px end
-    local places = View.fill(Lk, 1, items, kinds, tab, letters, function(label) return 40 + 8 * #label end)
+    local places = View.fill(Lk, 1, box_rows, kinds, tab, letters, function(label) return 40 + 8 * #label end)
     local desc = {}
     for _i, pl in ipairs(places) do desc[#desc + 1] = pl.kind .. ":" .. tostring(pl.letter) .. (pl.kind == "tab" and ("=" .. pl.label .. (pl.chosen and "*" or "")) or "") end
     check(table.concat(desc, " ") == "refresh:Q tab:W=All tab:E=Baking tab:R=Breakfast* tab:T=Dinner tab:Y=More… card:U card:I card:O card:P card:A card:S card:D search:F order:G more:H",
         "the recipe box: a page's places and their letters, in order (" .. table.concat(desc, " ") .. ")")
-    check(places[1].entry == items[1] and places[7].entry == items[5] and places[13].entry == items[11] and places[14].entry == items[2]
-        and places[15].entry == items[4] and places[15].label == "A to Z" and places[16].entry == items[25] and places[16].label == "More cards · 20 of 60",
+    check(places[1].entry == box_rows[1] and places[7].entry == box_rows[5] and places[13].entry == box_rows[11] and places[14].entry == box_rows[2]
+        and places[15].entry == box_rows[4] and places[15].label == "A to Z" and places[16].entry == box_rows[25] and places[16].label == "More cards · 20 of 60",
         "the recipe box: Refresh, the cards, Search, the order and More cards are the list's own rows (a tap does what the row did)")
     places[2].entry.callback(); places[3].entry.callback(); places[6].entry.callback()
     check(table.concat(picked, ",") == "all,c1=Baking,window", "the recipe box: a divider's tab sets the category (All clears it; More… opens the Category window)")
     local order, more = places[15], places[16]
     check(order.y == more.y and order.x + order.w <= more.x and order.x >= Lk.front.x and more.x + more.w <= Lk.front.x + Lk.front.w,
         "the recipe box: the order and More cards side by side on the front")
-    local last = View.fill(Lk, 3, items, kinds, tab, nil)
+    local last = View.fill(Lk, 3, box_rows, kinds, tab, nil)
     local kinds_last = {}
     for _i, pl in ipairs(last) do if pl.kind == "card" or pl.kind == "note" then kinds_last[#kinds_last + 1] = pl.kind .. (pl.acts and "+" or "") end end
     check(table.concat(kinds_last, ",") == "card+,card+,card+,card+,card+,card+,note" and last[#last].kind == "more" and last[1].letter == nil,
@@ -1823,10 +1823,10 @@ print("Recipes tab in the Bookshelf view: the recipe box (dividers, where things
     -- when: the Bookshelf view, connected
     local was_shelf = Shop.bookshelf
     Shop.bookshelf = function() return true end
-    check(View.applies({ item_table = items }, tab) and not View.applies({ item_table = { { text = "Connect with QR code", callback = cb } } }, tab)
-        and not View.applies({ item_table = items }, nil), "the recipe box: in the Bookshelf view, for the connected tab's rows")
+    check(View.applies({ item_table = box_rows }, tab) and not View.applies({ item_table = { { text = "Connect with QR code", callback = cb } } }, tab)
+        and not View.applies({ item_table = box_rows }, nil), "the recipe box: in the Bookshelf view, for the connected tab's rows")
     Shop.bookshelf = function() return false end
-    check(not View.applies({ item_table = items }, tab), "the recipe box: not in the other views (the list)")
+    check(not View.applies({ item_table = box_rows }, tab), "the recipe box: not in the other views (the list)")
     Shop.bookshelf = was_shelf
     local src = io.open(PLUGIN .. "/gzreader_recipes.lua", "rb"):read("*a")
     check(src:find('require("gzreader_recipebox").apply(self)', 1, true) and src:find('gz_recipes = "search"', 1, true)
@@ -1839,7 +1839,7 @@ print("Recipes tab in the Bookshelf view: the recipe box (dividers, where things
         paintRoundedRectRGB32 = function(_s, _x, _y, _w, _h, c) painted[#painted + 1] = { "rgb-round", c } end }
     local BB = require("ffi/blitbuffer")
     local was_rgb, was_gray = rawget(BB, "ColorRGB32"), rawget(BB, "gray")
-    BB.ColorRGB32 = function(r, g, b) return r .. "," .. g .. "," .. b end
+    BB.ColorRGB32 = function(rr, gg, bl) return rr .. "," .. gg .. "," .. bl end
     BB.gray = function(v) return "grey " .. v end
     View.fillWith(fake, true, View.PAL.wood, 0, 0, 10, 10)
     View.fillWith(fake, true, View.PAL.card, 0, 0, 10, 10, 4)
