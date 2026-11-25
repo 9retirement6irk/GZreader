@@ -3270,11 +3270,13 @@ function DrawScreen:showPages()
     return require("gzreader_drawpages").showPages(self)
 end
 
---- Paper: the page's background (and the one new pages start on), picked from pictures of each.
+--- Paper: the page's background (and the one new pages start on), picked from pictures of each,
+--- in a window over the drawing (as a new drawing's paper is over the Notes tab).
 function DrawScreen:pickPaper()
     self:setFlyout(nil)
     return require("gzreader_drawpages").showPapers{
         current = self.sketch:paper(),
+        window = true,
         title = T(_("Paper for page %1"), self.index),
         on_pick = function(id)
             DrawScreen.setLastPaper(id)

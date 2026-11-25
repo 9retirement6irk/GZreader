@@ -254,13 +254,16 @@ end
 --- tiles, six to a row (four on a narrow screen), each a corner of the
 --- paper drawn large enough to tell it by, its name under it; the chosen
 --- one has a thick border. More rows than fit: the grid scrolls (a finger).
---- A page's paper: a tap picks. A new drawing (`create`): a tap chooses,
---- Create starts the drawing on it, Cancel leaves.
+--- It's a window over what's behind it (the Notes tab for a new drawing, the
+--- drawing for a page's paper): a tap chooses, the dark button takes it
+--- (Create for a new drawing, `create`; Done for a page's paper), Cancel or
+--- a tap outside leaves. Without `window` it's the whole screen and a tap
+--- picks at once.
 local PaperList = InputContainer:extend{
     name = "gz_paperlist",
     covers_fullscreen = true, -- (a new drawing's: a window over the Notes tab, see init)
     kind = "papers",
-    title = "", papers = nil, current = nil, on_pick = nil, create = nil,
+    title = "", papers = nil, current = nil, on_pick = nil, create = nil, window = nil,
 }
 
 --- A line of a paper's name (names run to three: "Medium ruled with margin").
@@ -288,8 +291,9 @@ end
 function PaperList:init()
     local full_w, full_h = Screen:getWidth(), Screen:getHeight()
     local sw, sh = full_w, full_h
-    -- a new drawing: a window (the Notes tab around it); changing a page's paper: the whole screen
-    local win = self.create and Pages.popupRect(full_w, full_h) or nil
+    -- a window (what's behind it around it): a new drawing's, and a page's paper
+    if self.create then self.window = true end
+    local win = self.window and Pages.popupRect(full_w, full_h) or nil
     self.win = win
     local border = win and Size.border.thick or 0
     if win then
@@ -313,9 +317,9 @@ function PaperList:init()
         HorizontalGroup:new{ HorizontalSpan:new{ width = S(14) },
             TextWidget:new{ text = _("Choose a template"), face = Font:getFace("cfont", 16), bold = true, max_width = sw - S(28) } },
         VerticalSpan:new{ width = S(8) } }
-    -- a new drawing: Cancel and Create under the grid
+    -- a window: Cancel and Create (a new drawing) or Done (a page's paper) under the grid
     local foot
-    if self.create then
+    if self.window then
         local bw = math.min(S(150), math.floor((sw - S(60)) / 2))
         local function btn(text, dark, fn)
             return Button:new{ text = text, callback = fn, show_parent = self, width = bw, bordersize = Size.border.thick,
@@ -325,7 +329,7 @@ function PaperList:init()
             HorizontalGroup:new{ align = "center",
                 HorizontalSpan:new{ width = sw - 2 * bw - S(12) - S(16) - 4 * Size.border.thick },
                 btn(_("Cancel"), false, function() self:back() end), HorizontalSpan:new{ width = S(12) },
-                btn(_("Create"), true, function() self:pick(self:chosenIndex()) end) },
+                btn(self.create and _("Create") or _("Done"), true, function() self:pick(self:chosenIndex()) end) },
             VerticalSpan:new{ width = S(10) } }
     end
     local cols, tile, cell_w, cell_h, gap = Pages.paperCell(sw)
@@ -392,9 +396,9 @@ function PaperList:init()
     end
 end
 
---- A new drawing's window: a tap outside it is Cancel (inside, the tiles and buttons have it).
+--- The window: a tap outside it is Cancel (inside, the tiles and buttons have it).
 function PaperList:onTapOutside(_arg, ges)
-    if not self.create or not ges or not ges.pos then return false end
+    if not self.window or not ges or not ges.pos then return false end
     if ges.pos:intersectWith(self.dimen) then return false end
     self:back()
     return true
@@ -411,9 +415,9 @@ function PaperList:chosenIndex()
     return 1
 end
 
---- A tap on paper `i`: the page's paper is picked at once; a new drawing's is chosen (Create starts it).
+--- A tap on paper `i`: in a window it's chosen (Create or Done takes it); on the whole screen it's picked at once.
 function PaperList:tapped(i)
-    if not self.create then return self:pick(i) end
+    if not self.window then return self:pick(i) end
     if self.papers[i].id == self.current then return end
     self.current = self.papers[i].id
     self.keep_offset = self.scroller and self.scroller._is_scrollable and self.scroller:getScrolledOffset() or nil
@@ -435,7 +439,8 @@ end
 Pages.PaperList = PaperList
 
 --- opts: current (the page's paper id), title, on_pick(id), on_back();
---- create: a new drawing's (a tap chooses; Create picks, Cancel is on_back).
+--- create: a new drawing's (a tap chooses; Create picks, Cancel is on_back);
+--- window: the same window for a page's paper (Done picks).
 function Pages.showPapers(opts)
     local list = PaperList:new{
         title = opts.title or _("Paper"),
@@ -444,6 +449,7 @@ function Pages.showPapers(opts)
         on_pick = opts.on_pick,
         on_back = opts.on_back,
         create = opts.create,
+        window = opts.window or opts.create,
     }
     UIManager:show(list, "ui")
     return list

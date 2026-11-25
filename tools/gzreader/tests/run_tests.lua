@@ -10678,10 +10678,18 @@ print("Notes (Memos v0.31)")
             "Paper: small tiles six to a row sized to the screen's width, in a grid that scrolls (no pages)")
         -- a new drawing's paper: in a window over the Notes tab, not the whole screen (the owner, 2026-11-19)
         check(psrc:find("Pages.POPUP_W, Pages.POPUP_H = 0.88, 0.74", 1, true) ~= nil
-            and psrc:find("local win = self.create and Pages.popupRect(full_w, full_h) or nil", 1, true) ~= nil
+            and psrc:find("local win = self.window and Pages.popupRect(full_w, full_h) or nil", 1, true) ~= nil
             and psrc:find("self.covers_fullscreen = false", 1, true) ~= nil
             and psrc:find("function PaperList:onTapOutside", 1, true) ~= nil,
             "a new drawing's paper: in a window in the middle of the screen; a tap outside it cancels (emulator/paper_list.lua)")
+        -- a page's paper (the drawing screen's Paper, a journal entry's too): the same window, Done takes the choice
+        local dsrcp = io.open(PLUGIN .. "/gzreader_drawscreen.lua"):read("*a")
+        local pick = dsrcp:match("function DrawScreen:pickPaper%(%)(.-)\nend") or ""
+        check(pick:find("window = true,", 1, true) ~= nil and pshow:find("window = opts.window or opts.create,", 1, true) ~= nil
+            and psrc:find('btn(self.create and _("Create") or _("Done"), true, function() self:pick(self:chosenIndex()) end)', 1, true) ~= nil
+            and psrc:find("if not self.window then return self:pick(i) end", 1, true) ~= nil
+            and psrc:find("if not self.window or not ges or not ges.pos then return false end", 1, true) ~= nil,
+            "a page's paper: the same window over the drawing; a tap chooses, Done takes it, Cancel or a tap outside leaves")
         -- a note that's only a drawing (its name and tags) opens on its drawing
         ;(function()
             local ND = require("gzreader_newdrawing")
@@ -11394,8 +11402,8 @@ print("Notes (Memos v0.31)")
         check(dsrcp:find("if opts.choose_paper and DrawScreen.asksPaper(opts.pages) then", 1, true) ~= nil
             and dsrcp:find("on_back = function() if opts.on_cancel then opts.on_cancel() end end", 1, true) ~= nil
             and esrc2:find("choose_paper = not self.floating, -- (a new drawing: which paper first; a sticky note's is blank)", 1, true) ~= nil
-            and psrc:find("if not self.create then return self:pick(i) end", 1, true) ~= nil,
-            "a new drawing asks which paper first (Create starts it, Cancel goes back to the note); a page's Paper: a tap picks")
+            and psrc:find("if not self.window then return self:pick(i) end", 1, true) ~= nil,
+            "a new drawing asks which paper first (Create starts it, Cancel goes back to the note); a page's Paper: the same window, Done takes it")
         local dsrc = io.open(PLUGIN .. "/gzreader_drawscreen.lua"):read("*a")
         check(dsrc:find("if not p.modified then", 1, true) ~= nil and esrc2:find("elseif p.changed and p.path then", 1, true) ~= nil,
             "a drawing opened and left as it was: nothing sent")
