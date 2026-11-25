@@ -2077,6 +2077,7 @@ function Grimmory:onReaderReady()
     nookChange()
     pcall(self.setupReader, self)
     pcall(function() require("gzreader_picturebook").onOpen(self.ui) end)
+    pcall(function() require("gzreader_explain").register(self, self.ui) end) -- (the selection menu's question mark)
     local book_id, entry = self:entryForPath(self.ui.document.file)
     if not book_id then return end
     if not entry.file_id and self.api:isPaired() and NetworkMgr:isConnected() then

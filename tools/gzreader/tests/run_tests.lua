@@ -1167,7 +1167,7 @@ print("Setup page: the AI tab (the service and its keys), and handwriting to tex
     check(c == 200 and b:find("Claude needs its API key.", 1, true) and AI.provider(plugin) == nil, "Claude without a key: the page says so, nothing changes")
     c, b = post("/ai", { "provider=claude", "claude_key=sk-ant-example-secret", "claude_model=" })
     check(c == 200 and AI.provider(plugin) == "claude" and plugin.store.handwriting.claude.key == "sk-ant-example-secret"
-        and b:find("Set up: <b>Claude</b>", 1, true) and b:find("Used for: nothing yet", 1, true), "a Claude key pasted: saved; AI is Claude, used for nothing yet")
+        and b:find("Set up: <b>Claude</b>", 1, true) and b:find("Used for: Explain", 1, true), "a Claude key pasted: saved; AI is Claude, used for Explain in books (nothing else yet")
     check(Hw.engine(plugin) == "kindle", "a key alone doesn't send your writing anywhere: handwriting is still read on the Kindle")
     check(not b:find("sk-ant-example-secret", 1, true) and b:find("Claude API key (set: leave empty to keep it)", 1, true),
         "the page never shows the key back: it says it's set")
@@ -1176,7 +1176,7 @@ print("Setup page: the AI tab (the service and its keys), and handwriting to tex
         "saving again with the key field empty keeps the key")
     c, b = post("/handwriting", { "engine=ai" })
     check(c == 200 and Hw.engine(plugin) == "claude" and plugin.store.handwriting.engine == "ai" and b:find("with AI: <b>Claude</b>", 1, true)
-        and b:find("Used for: Handwriting to text", 1, true), "handwriting switched to AI: read by Claude, and the AI tab says what uses the key")
+        and b:find(", Handwriting to text", 1, true), "handwriting switched to AI: read by Claude, and the AI tab says what uses the key")
     c, b = post("/ai", { "provider=openai", "openai_url=http://example.com/v1", "openai_key=sk-example", "openai_model=vision" })
     check(b:find("must start with https://", 1, true) and AI.provider(plugin) == "claude" and plugin.store.handwriting.openai.key == nil,
         "a plain http:// address on the internet: refused, nothing saved")
@@ -1256,7 +1256,7 @@ print("The AI connection (gzreader_ai.lua): one key, asked the same way by every
     local names = {}
     for _i, r in ipairs(rows) do names[#names + 1] = r.text or r.text_func() end
     local list = table.concat(names, "|")
-    check(list:find("Set up from your browser (QR code)|Claude|Online service (OpenAI-style)|Claude key: set|", 1, true) and list:find("|Try it|Used for: Handwriting to text|Remove the keys", 1, true),
+    check(list:find("Set up from your browser (QR code)|Claude|Online service (OpenAI-style)|Claude key: set|", 1, true) and list:find("|Try it|Used for: Explain (the question mark when you select text in a book), Handwriting to text|Remove the keys", 1, true),
         "Settings → Accounts and services → AI: " .. list)
     check(not list:find("sk-ant-example", 1, true), "the key is never shown")
     check(rows[2].checked_func() == true and rows[3].enabled_func() == false, "Claude is ticked; the service can't be chosen until it's set up")
@@ -1265,6 +1265,78 @@ print("The AI connection (gzreader_ai.lua): one key, asked the same way by every
         "keys removed: nothing uses AI; handwriting is read on the Kindle")
     check(type(plugin.aiSettingsItems) == "function" and #plugin:aiSettingsItems() == #rows, "the Settings row opens it")
     plugin.store.handwriting, plugin.store.ai = was_hw, was_ai
+end)()
+
+print("Explain: the selection menu's question mark asks the AI service about the selected text")
+;(function()
+    local Explain = require("gzreader_explain")
+    local AI = require("gzreader_ai")
+    local was_hw, was_ai = plugin.store.handwriting, plugin.store.ai
+    plugin.store.handwriting, plugin.store.ai = nil, nil
+    check(Explain.available(plugin) == false, "no AI key: no question mark")
+    -- the question
+    local q = Explain.question("  the whale's lay  ", "Moby-Dick", "Herman Melville")
+    check(q.text == 'The book: "Moby-Dick" by Herman Melville\n\nThe selected text:\nthe whale\'s lay' and q.what == "explain" and q.max_tokens == 500,
+        "the question: the book's title and author, then the selected text (trimmed)")
+    check(q.system:find("Explain it to them plainly", 1, true) and q.system:find("Do not reveal anything that happens later", 1, true)
+        and q.system:find("under 150 words", 1, true) and q.system:find("language of the selected text", 1, true),
+        "…asked to explain it plainly, briefly, with no spoilers, in the text's language")
+    check(Explain.question("x", nil, nil).text == "The selected text:\nx" and Explain.question("x", "T", "").text:find('The book: "T"\n', 1, true),
+        "…a book with no title or no author: left out")
+    check(Explain.cut("abcdef", 4) == "abcd" and Explain.cut("aé", 2) == "a" and Explain.cut("aé", 3) == "aé" and #Explain.question(("word "):rep(2000)).text < 3100,
+        "a long selection is cut (never inside a letter)")
+    -- the button, registered with the reader's selection menu
+    local added = {}
+    local ui = { doc_props = { display_title = "Moby-Dick", authors = "Herman Melville" }, annotation = { annotations = { { text = "an old highlight" } } } }
+    ui.highlight = { ui = ui, addToHighlightDialog = function(_s, key, fn) added[key] = fn end, onClose = function(h) h.closed = (h.closed or 0) + 1 end }
+    check(Explain.register(plugin, ui) and type(added["12_gz_explain"]) == "function", "registered with the reader's selection menu (key gz_explain)")
+    local btn = added["12_gz_explain"](ui.highlight, nil)
+    check(btn.text == "Explain (AI)" and btn.show_in_highlight_dialog_func() == false, "…KOReader's own menu: Explain (AI), hidden without a key")
+    AI.settings(plugin).claude.key = "sk-example"
+    check(btn.show_in_highlight_dialog_func() == true and Explain.available(plugin), "an AI key set up: the button shows")
+    local uses = table.concat(AI.uses(plugin), "|")
+    check(uses:find("Explain", 1, true), "…and the AI settings list it as a use of the key")
+    -- asking
+    local saved_im, saved_tv, was_ask = package.loaded["ui/widget/infomessage"], package.loaded["ui/widget/textviewer"], AI.ask
+    local shown, asked, answer_cb = {}, nil, nil
+    package.loaded["ui/widget/infomessage"] = { new = function(_c, o) o.kind = "info"; return o end }
+    package.loaded["ui/widget/textviewer"] = { new = function(_c, o) o.kind = "viewer"; return o end }
+    local UIM = require("ui/uimanager")
+    local was_show, was_close = UIM.show, UIM.close
+    UIM.show = function(_s, w) shown[#shown + 1] = w end
+    UIM.close = function(_s, w) w.closed = true end
+    AI.ask = function(_p, question, cb) asked, answer_cb = question, cb end
+    ui.highlight.selected_text = { text = "the whale's lay" }
+    btn.callback()
+    check(asked and asked.text:find("the whale's lay", 1, true) and asked.text:find("Moby-Dick", 1, true) and ui.highlight.closed == 1
+        and shown[1].kind == "info" and shown[1].text == "Asking Claude to explain…",
+        "tapped: the selection and the book's name are asked about, the menu closes, a message says who is asked")
+    answer_cb("A lay is a sailor's share of the voyage's profit.")
+    check(shown[1].closed and shown[2].kind == "viewer" and shown[2].title == "Explained by Claude"
+        and shown[2].text:find("“the whale's lay”", 1, true) and shown[2].text:find("A lay is a sailor's share", 1, true)
+        and shown[2].text:find("An AI wrote this. It can be wrong.", 1, true),
+        "the answer: a window with the selection, the explanation, and a line saying an AI wrote it")
+    shown = {}
+    btn.callback()
+    answer_cb(nil, "the key was refused")
+    check(shown[2].kind == "info" and shown[2].text == "Claude couldn't explain it: the key was refused", "no answer: it says why")
+    -- an existing highlight's menu: its text
+    ui.highlight.selected_text = nil
+    asked = nil
+    added["12_gz_explain"](ui.highlight, 1).callback()
+    check(asked and asked.text:find("an old highlight", 1, true), "an existing highlight: its text is explained")
+    asked = nil
+    check(Explain.run(plugin, { ui = ui, selected_text = { text = "   " } }) == false and asked == nil, "nothing selected: nothing asked")
+    UIM.show, UIM.close, AI.ask = was_show, was_close, was_ask
+    package.loaded["ui/widget/infomessage"], package.loaded["ui/widget/textviewer"] = saved_im, saved_tv
+    plugin.store.handwriting, plugin.store.ai = was_hw, was_ai
+    -- ZenOS's icon row shows it as the question mark
+    local hsrc = io.open(arg[5] .. "/plugins/zenos.koplugin/modules/reader/patches/highlight_menu.lua"):read("*a")
+    check(hsrc:find('find_highlight_button(self, index, "gz_explain")', 1, true) and hsrc:find('resolveLocalIcon(_icons_dir, "lookup_explain")', 1, true)
+        and hsrc:find("gz_explain = true", 1, true) and io.open(arg[5] .. "/plugins/zenos.koplugin/icons/lookup_explain.svg"),
+        "the icon row has it as a question mark (and it isn't repeated under More)")
+    local msrc = io.open(arg[5] .. "/plugins/gzreader.koplugin/main.lua"):read("*a")
+    check(msrc:find('require("gzreader_explain").register(self, self.ui)', 1, true), "registered when a book opens")
 end)()
 
 print("Catalog: the Audiobooks page (search, All audiobooks, Authors, Shelves, Series)")
