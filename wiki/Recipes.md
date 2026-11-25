@@ -88,6 +88,29 @@ More recipes                  50 of 340                     ›
 - The recipes, 50 at a time, each with its total time; **More recipes** at
   the end fetches the next 50.
 
+## The recipe box (Bookshelf view)
+
+In the **Bookshelf** view (the one GZreader starts with; the quick panel's
+**View** changes it), the tab is a recipe box on the kitchen counter instead of
+a list:
+
+- **The dividers' tabs** along the top are your Mealie categories, **All**
+  first. Tap one to see its recipes; the chosen one stands taller, in black.
+  When there are more categories than fit, the last tab is **More…**, which
+  opens the full list.
+- **The cards** filed in the box are the recipes: each shows its top edge with
+  the name in handwriting and the total time. A page holds as many cards as
+  the box is deep; turn pages as anywhere else.
+- **On the box's front:** the brass label holder is **Search** (it shows the
+  words you searched for), with two tags under it: the order (A to Z /
+  Newest first) and **More cards** while Mealie has more.
+- **Refresh** is the sign above the box.
+
+On a keyboard Kindle everything that does something has a letter, and the
+5-way moves over them. On a colour Kindle the box is wood, the cards cream
+and the dividers' tabs coloured; it's drawn in greys everywhere else. The
+other views keep the list.
+
 ## Reading a recipe
 
 A recipe opens as a page of text: its description, how much it makes and how
