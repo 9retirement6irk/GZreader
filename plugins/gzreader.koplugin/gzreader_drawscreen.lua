@@ -666,9 +666,8 @@ function DrawScreen:flyoutRows(which)
             end
         end
     elseif which == "options" then
-        rows[#rows + 1] = { id = "newpage2", row = true, label = _("New page") }
+        -- (only what has no button of its own: a new page is the page buttons' +, Erase page is beside them)
         if DrawScreen.immich then rows[#rows + 1] = { id = "immich", row = true, label = _("Picture from Immich…") } end
-        rows[#rows + 1] = { id = "clear", row = true, label = _("Erase page") }
         if self.sketch and self.sketch.zoomed then rows[#rows + 1] = { id = "whole", row = true, label = _("Whole page") } end
         rows[#rows + 1] = { id = "cancel", row = true, label = _("Close without saving") }
         -- (a note that's already there: its archive and delete, as in its own menus)
@@ -708,9 +707,10 @@ DrawScreen.SHORTCUT_NAMES = { eraser = _("Eraser"), pen = _("Pen"), pencil = _("
 --- button that folds them into one; the page buttons at the bottom; and a
 --- panel open beside what was tapped. `self.buttons`: { tool, rect, group }.
 --- The top bar's icons, right to left (⋮ first, by Done), as the note editor's
---- (gzreader_notebar.noteIcons): who can see it, its space, a tag, a photo from
---- Immich; then the drawing's own: paper, all pages; a note's Delete and
---- Archive (also in ⋮). What doesn't fit the screen's width is left to ⋮.
+--- (gzreader_notebar.noteIcons): who can see it, its space, a tag; then the
+--- drawing's own: paper, all pages. Nothing here is also in ⋮: a picture
+--- from Immich, Close without saving, and a note's Archive and Delete are in
+--- ⋮ only.
 function DrawScreen:topIcons()
     local icons = { { id = "options", icon = "more", label = _("Options") } }
     local note = self.note_icons and self.note_icons(self) or nil
@@ -719,8 +719,10 @@ function DrawScreen:topIcons()
         local list = NoteBar.noteIcons(note)
         for i = #list, 1, -1 do
             local ic = list[i]
+          if ic[1] ~= "photos" then -- (a picture from Immich: in ⋮)
             local labels = { photos = _("Picture from Immich…"), tag = _("Tags"), space = _("Space"), visibility = _("Who can see it") }
             icons[#icons + 1] = { id = "note-" .. ic[1], icon = ic[2], label = labels[ic[1]], fn = ic[3] }
+          end
         end
         -- (a new drawing: its tags in the panel, as before)
         if self.meta then
@@ -728,17 +730,9 @@ function DrawScreen:topIcons()
         end
     else
         if self.meta then icons[#icons + 1] = { id = "tag", icon = "tag", label = _("Tags") } end
-        if DrawScreen.immich and not self.journal then
-            icons[#icons + 1] = { id = "immich", icon = "photos", label = _("Picture from Immich…") }
-        end
     end
     icons[#icons + 1] = { id = "paper", icon = "paper", label = _("Paper") }
     icons[#icons + 1] = { id = "pages", icon = "pages", label = _("All pages") }
-    if self.note_actions then
-        -- (a note that's already there: Archive and Delete in the bar, as an opened note has; also in ⋮)
-        icons[#icons + 1] = { id = "delete-note", icon = "trash", label = _("Delete note…") }
-        icons[#icons + 1] = { id = "archive-note", icon = "archive", label = _("Archive note") }
-    end
     if self.journal then table.insert(icons, 2, { id = "typing", label = _("Aa") }) end -- (back to typing the entry)
     return icons
 end
@@ -819,6 +813,10 @@ function DrawScreen:layoutBar()
     add({ id = "page", passive = true }, px + pad + ts, py + pad, lw, ts, "pill")
     add({ id = "next", icon = "right", label = _("Next page") }, px + pad + ts + lw, py + pad, ts, ts, "pill")
     add({ id = "newpage", icon = "plus", label = _("New page") }, px + pad + 2 * ts + lw, py + pad, ts, ts, "pill")
+    -- Erase page: a round button of its own, left of the page buttons (Undo brings the page back)
+    local ew = ts + 2 * pad
+    self.frames.erase = Geom:new{ x = px - S(10) - ew, y = py, w = ew, h = ew }
+    add({ id = "clear", icon = "erase-page", label = _("Erase page") }, self.frames.erase.x + pad, py + pad, ts, ts, "erase")
     -- a panel: beside the tool tapped, or under the top bar's button
     local anchor = self.flyout and anchors[DrawScreen.FLYOUT_ANCHOR[self.flyout] or self.flyout]
     if anchor then
@@ -1102,7 +1100,7 @@ function DrawScreen:paintBar(bb, x, y)
     local function frame(name)
         local f = self.frames[name]
         if not f then return end
-        local radius = (name == "pill" or name == "fold") and math.floor(f.h / 2) or name == "flyout" and 0 or S(8)
+        local radius = (name == "pill" or name == "fold" or name == "erase") and math.floor(f.h / 2) or name == "flyout" and 0 or S(8)
         bb:paintRoundedRect(x + f.x, y + f.y, f.w, f.h, Blitbuffer.COLOR_WHITE, radius)
         bb:paintBorder(x + f.x, y + f.y, f.w, f.h, Size.border.thin, Blitbuffer.COLOR_BLACK, radius)
     end
@@ -1112,7 +1110,7 @@ function DrawScreen:paintBar(bb, x, y)
         if self.pane.y > 0 then bb:paintRect(x, y, sw, t, Blitbuffer.COLOR_BLACK) end
         if self.pane.x > 0 then bb:paintRect(x, y, t, self.dimen.h, Blitbuffer.COLOR_BLACK) end
     end
-    for _i, name in ipairs({ "tab", "fold", "toolbar", "pill", "selmenu", "paste" }) do frame(name) end
+    for _i, name in ipairs({ "tab", "fold", "toolbar", "pill", "erase", "selmenu", "paste" }) do frame(name) end
     for _i, b in ipairs(self.buttons) do if b.group ~= "flyout" then self:paintButton(bb, x, y, b) end end
     -- (an open panel over everything else)
     frame("flyout")

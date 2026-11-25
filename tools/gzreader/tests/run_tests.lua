@@ -9536,9 +9536,36 @@ print("Notes (Memos v0.31)")
                 and dsrc3:find('rows[#rows + 1] = { id = "archive-note", row = true, label = _("Archive note") }', 1, true) ~= nil
                 and dsrc3:find('rows[#rows + 1] = { id = "delete-note", row = true, label = _("Delete note…") }', 1, true) ~= nil,
                 "the editor's ⋮ and the drawing screen's ⋮ (a note that's there): Archive note (saved first), Delete note…")
-            check(dsrc3:find('icons[#icons + 1] = { id = "delete-note", icon = "trash", label = _("Delete note…") }', 1, true) ~= nil
-                and dsrc3:find('icons[#icons + 1] = { id = "archive-note", icon = "archive", label = _("Archive note") }', 1, true) ~= nil,
-                "the drawing screen's top bar (a note that's there): Archive and Delete beside ⋮, as an opened note has")
+            -- the drawing screen: nothing in both its top bar and ⋮; Erase page beside the page buttons
+            -- (its module can't be loaded beside the editor's here: the stand-in widget class is one table
+            -- for both, so its functions are cut out of the source and run)
+            ;(function()
+                local function ids(list) local o = {} for _i, t in ipairs(list) do o[#o + 1] = t.id end return table.concat(o, ",") end
+                local a = dsrc3:find("function DrawScreen:topIcons()", 1, true)
+                local b = a and dsrc3:find("\nend\n", a, true)
+                local NoteBar = { noteIcons = function() return { { "photos", "photos" }, { "tag", "tag" }, { "space", "space" }, { "visibility", "vis-private" } } end }
+                local DS = { immich = {} }
+                local env = setmetatable({ DrawScreen = DS, _ = function(t) return t end,
+                    require = function(name) if name == "gzreader_notebar" then return NoteBar end; return require(name) end }, { __index = _G })
+                local fn = a and b and load(dsrc3:sub(a, b + 4), "topIcons", "t", env)
+                if fn then fn() end
+                local note = { note_icons = function() return {} end, note_actions = {} }
+                check(DS.topIcons and ids(DS.topIcons(note)) == "options,note-visibility,note-space,note-tag,paper,pages",
+                    "the drawing screen's top bar (a note that's there): ⋮, who can see it, space, tag, paper, pages; no Archive, Delete or Immich picture")
+                check(DS.topIcons and ids(DS.topIcons({ meta = {} })) == "options,tag,paper,pages", "…a new drawing: ⋮, tag, paper, pages")
+                -- its ⋮: what has no button of its own
+                local o1 = dsrc3:find('elseif which == "options" then', 1, true)
+                local o2 = o1 and dsrc3:find('elseif which == "tags" then', o1, true)
+                local opts = o1 and o2 and dsrc3:sub(o1, o2) or ""
+                local order = {}
+                for id in opts:gmatch('rows%[#rows %+ 1%] = { id = "([%w-]+)"') do order[#order + 1] = id end
+                check(table.concat(order, ",") == "immich,whole,cancel,archive-note,delete-note",
+                    "its ⋮: Picture from Immich, (Whole page when zoomed,) Close without saving, a note's Archive and Delete; no New page, no Erase page " .. table.concat(order, ","))
+                check(dsrc3:find('add({ id = "clear", icon = "erase-page", label = _("Erase page") }, self.frames.erase.x + pad, py + pad, ts, ts, "erase")', 1, true)
+                    and dsrc3:find("self.frames.erase = Geom:new{ x = px - S(10) - ew, y = py, w = ew, h = ew }", 1, true)
+                    and io.open(PLUGIN .. "/icons/draw/erase-page.svg") ~= nil,
+                    "Erase page: a round button of its own left of the page buttons, with its icon")
+            end)()
             -- an opened note under the editor goes when its note is archived or deleted
             local UIMq = require("ui/uimanager")
             local shown_was = UIMq._window_stack

@@ -54,16 +54,13 @@ add({ fn = function(E)
 end, after = 3 })
 add({ shot = "0-drawing-bar", after = 0.5 })
 add({ fn = function(E)
-    -- (in the top bar too, as an opened note has: between the tag and ⋮)
+    -- (not in the top bar: in ⋮ only)
     local bar = {}
     for _i, b in ipairs(screen().buttons) do
-        if b.tool.icon and (b.tool.id == "archive-note" or b.tool.id == "delete-note" or b.tool.id == "options" or b.tool.id == "tag") then
-            bar[b.tool.id] = b.rect
-        end
+        if b.group == "top" then bar[b.tool.id] = b.rect end
     end
-    check(bar["archive-note"] and bar["delete-note"] and bar["archive-note"].y == bar.options.y
-        and bar["archive-note"].x < bar["delete-note"].x and bar["delete-note"].x < bar.options.x,
-        "the drawing screen's top bar (a note that's there): Archive and Delete, left of ⋮")
+    check(bar.options and not bar["archive-note"] and not bar["delete-note"],
+        "the drawing screen's top bar (a note that's there): no Archive or Delete (they're in ⋮)")
     E.tap(button("options"))
 end, after = 2 })
 add({ shot = "1-drawing-options", after = 0.5 })

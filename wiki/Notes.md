@@ -86,9 +86,8 @@ API to `/api` are found too.
   **⋮** and **Restore** instead. (The note editor's **⋮** and, for a note
   that's already there, the drawing screen's **⋮** have **Archive note**
   and **Delete note…** too: Archive saves what you changed first; Delete
-  asks, and drops what wasn't saved. The drawing screen also has both in
-  its top bar, beside **⋮**: a note that is only a drawing opens straight on
-  that screen.) Below it, the text
+  asks, and drops what wasn't saved. On the drawing screen they are in
+  **⋮** only.) Below it, the text
   in the note editor's font (the sticky notes on the
   Notes tab stay handwritten, in Patrick Hand) and formatted as Memos shows
   it: bold, italic, struck words, `code` and links (underlined), quotes
@@ -335,11 +334,13 @@ API to `/api` are found too.
     lie over it and fold away.
   - **At the top:** **✕** (close; when you drew something it asks **Save**,
     **Discard changes** or **Keep drawing**), the drawing's name, then
-    (left to right) **All pages**, **Paper**, and the note's icons, as in the
-    note editor: a picture from Immich (put on the page), a tag, its space
-    and who can see it; then **⋮ Options** (**New page**, **Picture from Immich…** when Immich is
-    connected, **Erase page**, **Close without saving**)
-    and **Done** (keeps the drawings with the note). The small tab under the
+    (left to right) **All pages**, **Paper**, a tag, the note's space
+    and who can see it; then **⋮ Options** and **Done**. **⋮** holds only what
+    has no button of its own: **Picture from Immich…** (when Immich is
+    connected), **Close without saving**, and for a note that's already
+    there **Archive note** and **Delete note…**. **Erase page** is the round
+    button at the bottom, left of the page buttons (Undo brings the page
+    back); a new page is the page buttons' **+**. **Done** (keeps the drawings with the note). The small tab under the
     bar **folds the bar away** so you can draw on the top of the page; the
     tab stays at the top edge to bring it back. **Pull down** from the bar
     (folded away: from the very top edge) for the [quick

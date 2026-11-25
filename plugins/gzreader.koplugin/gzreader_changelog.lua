@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Drawing: nothing twice in the top bar and ⋮; Erase page beside the page buttons", text = "The drawing screen's top bar keeps All pages, Paper, the tag, the space and who can see it. Its ⋮ menu has only what has no button: Picture from Immich, Close without saving, and a note's Archive and Delete (no longer also in the bar). New page is the + of the page buttons, and Erase page is a round button of its own at the bottom, left of the page buttons; Undo brings an erased page back." },
+        },
+    },
+    {
         version = "2026.11.22",
         changes = {
             { short = "Colour Kindles: Immich photos in colour", text = "On a Kindle Colorsoft or Scribe Colorsoft, the pictures from your Immich album (the sleep screen and the Home wallpaper) are kept in colour instead of being made grey. Pictures already on the Kindle stay grey until they are swapped for others from the album (about half each time GZreader gets new pictures)." },
