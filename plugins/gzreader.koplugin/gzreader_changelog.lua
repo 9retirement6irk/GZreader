@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Journal: choosing a feeling no longer flashes the whole window", text = "In the journal's lists of feelings, causes, activities and goals, each tap closed the window and showed it again, so all of it flashed. Now only the word you tapped is redrawn, with its tick on or off." },
+        },
+    },
+    {
         version = "2026.11.22",
         changes = {
             { short = "Colour Kindles: Immich photos in colour", text = "On a Kindle Colorsoft or Scribe Colorsoft, the pictures from your Immich album (the sleep screen and the Home wallpaper) are kept in colour instead of being made grey. Pictures already on the Kindle stay grey until they are swapped for others from the album (about half each time GZreader gets new pictures)." },
