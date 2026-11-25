@@ -9550,9 +9550,11 @@ print("Notes (Memos v0.31)")
                 local fn = a and b and load(dsrc3:sub(a, b + 4), "topIcons", "t", env)
                 if fn then fn() end
                 local note = { note_icons = function() return {} end, note_actions = {} }
-                check(DS.topIcons and ids(DS.topIcons(note)) == "options,note-visibility,note-space,note-tag,paper,pages",
-                    "the drawing screen's top bar (a note that's there): ⋮, who can see it, space, tag, paper, pages; no Archive, Delete or Immich picture")
-                check(DS.topIcons and ids(DS.topIcons({ meta = {} })) == "options,tag,paper,pages", "…a new drawing: ⋮, tag, paper, pages")
+                check(DS.topIcons and ids(DS.topIcons(note)) == "options,note-visibility,note-space,note-tag,note-photos,paper,pages",
+                    "the drawing screen's top bar (a note that's there): ⋮, who can see it, space, tag, a picture from Immich, paper, pages; no Archive or Delete")
+                check(DS.topIcons and ids(DS.topIcons({ meta = {} })) == "options,tag,immich,paper,pages", "…a new drawing, Immich connected: ⋮, tag, picture, paper, pages")
+                DS.immich = nil
+                check(DS.topIcons and ids(DS.topIcons({ meta = {} })) == "options,tag,paper,pages", "…without Immich: no picture icon")
                 -- its ⋮: what has no button of its own
                 local o1 = dsrc3:find('elseif which == "options" then', 1, true)
                 local o2 = o1 and dsrc3:find('elseif which == "tags" then', o1, true)
@@ -9560,7 +9562,10 @@ print("Notes (Memos v0.31)")
                 local order = {}
                 for id in opts:gmatch('rows%[#rows %+ 1%] = { id = "([%w-]+)"') do order[#order + 1] = id end
                 check(table.concat(order, ",") == "immich,whole,cancel,archive-note,delete-note",
-                    "its ⋮: Picture from Immich, (Whole page when zoomed,) Close without saving, a note's Archive and Delete; no New page, no Erase page " .. table.concat(order, ","))
+                    "its ⋮: (Picture from Immich, Whole page when zoomed,) Close without saving, a note's Archive and Delete; no New page, no Erase page " .. table.concat(order, ","))
+                check(opts:find('if DrawScreen.immich and not (shown["immich"] or shown["note-photos"]) then', 1, true)
+                    and dsrc3:find("self.top_shown[t.id] = true", 1, true),
+                    "…Picture from Immich is in ⋮ only when its icon didn't fit the top bar")
                 check(dsrc3:find('add({ id = "clear", icon = "erase-page", label = _("Erase page") }, self.frames.erase.x + pad, py + pad, ts, ts, "erase")', 1, true)
                     and dsrc3:find("self.frames.erase = Geom:new{ x = px - S(10) - ew, y = py, w = ew, h = ew }", 1, true)
                     and io.open(PLUGIN .. "/icons/draw/erase-page.svg") ~= nil,

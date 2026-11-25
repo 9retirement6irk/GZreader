@@ -9,7 +9,7 @@ return {
     {
         version = "next",
         changes = {
-            { short = "Drawing: nothing twice in the top bar and ⋮; Erase page beside the page buttons", text = "The drawing screen's top bar keeps All pages, Paper, the tag, the space and who can see it. Its ⋮ menu has only what has no button: Picture from Immich, Close without saving, and a note's Archive and Delete (no longer also in the bar). New page is the + of the page buttons, and Erase page is a round button of its own at the bottom, left of the page buttons; Undo brings an erased page back." },
+            { short = "Drawing: nothing twice in the top bar and ⋮; Erase page beside the page buttons", text = "The drawing screen's top bar keeps All pages, Paper, the picture from Immich, the tag, the space and who can see it. Its ⋮ menu has only what has no button: Close without saving, and a note's Archive and Delete (no longer also in the bar). New page is the + of the page buttons, and Erase page is a round button of its own at the bottom, left of the page buttons; Undo brings an erased page back." },
         },
     },
     {

@@ -334,11 +334,13 @@ API to `/api` are found too.
     lie over it and fold away.
   - **At the top:** **✕** (close; when you drew something it asks **Save**,
     **Discard changes** or **Keep drawing**), the drawing's name, then
-    (left to right) **All pages**, **Paper**, a tag, the note's space
+    (left to right) **All pages**, **Paper**, a picture from Immich (when
+    Immich is connected; put on the page), a tag, the note's space
     and who can see it; then **⋮ Options** and **Done**. **⋮** holds only what
-    has no button of its own: **Picture from Immich…** (when Immich is
-    connected), **Close without saving**, and for a note that's already
-    there **Archive note** and **Delete note…**. **Erase page** is the round
+    has no button of its own: **Close without saving**, and for a note that's
+    already there **Archive note** and **Delete note…** (a drawing not saved
+    yet has no note to archive or delete). On a narrow screen where the
+    picture icon doesn't fit the bar, **Picture from Immich…** is in ⋮. **Erase page** is the round
     button at the bottom, left of the page buttons (Undo brings the page
     back); a new page is the page buttons' **+**. **Done** (keeps the drawings with the note). The small tab under the
     bar **folds the bar away** so you can draw on the top of the page; the

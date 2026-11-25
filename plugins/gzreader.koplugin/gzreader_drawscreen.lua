@@ -666,8 +666,12 @@ function DrawScreen:flyoutRows(which)
             end
         end
     elseif which == "options" then
-        -- (only what has no button of its own: a new page is the page buttons' +, Erase page is beside them)
-        if DrawScreen.immich then rows[#rows + 1] = { id = "immich", row = true, label = _("Picture from Immich…") } end
+        -- (only what has no button of its own: a new page is the page buttons' +, Erase page is beside
+        -- them; a picture from Immich has its icon in the bar, and is here only when that didn't fit)
+        local shown = self.top_shown or {}
+        if DrawScreen.immich and not (shown["immich"] or shown["note-photos"]) then
+            rows[#rows + 1] = { id = "immich", row = true, label = _("Picture from Immich…") }
+        end
         if self.sketch and self.sketch.zoomed then rows[#rows + 1] = { id = "whole", row = true, label = _("Whole page") } end
         rows[#rows + 1] = { id = "cancel", row = true, label = _("Close without saving") }
         -- (a note that's already there: its archive and delete, as in its own menus)
@@ -707,10 +711,10 @@ DrawScreen.SHORTCUT_NAMES = { eraser = _("Eraser"), pen = _("Pen"), pencil = _("
 --- button that folds them into one; the page buttons at the bottom; and a
 --- panel open beside what was tapped. `self.buttons`: { tool, rect, group }.
 --- The top bar's icons, right to left (⋮ first, by Done), as the note editor's
---- (gzreader_notebar.noteIcons): who can see it, its space, a tag; then the
---- drawing's own: paper, all pages. Nothing here is also in ⋮: a picture
---- from Immich, Close without saving, and a note's Archive and Delete are in
---- ⋮ only.
+--- (gzreader_notebar.noteIcons): who can see it, its space, a tag, a picture
+--- from Immich; then the drawing's own: paper, all pages. Nothing here is
+--- also in ⋮ (a picture from Immich only when its icon didn't fit the bar):
+--- Close without saving and a note's Archive and Delete are in ⋮ only.
 function DrawScreen:topIcons()
     local icons = { { id = "options", icon = "more", label = _("Options") } }
     local note = self.note_icons and self.note_icons(self) or nil
@@ -719,10 +723,8 @@ function DrawScreen:topIcons()
         local list = NoteBar.noteIcons(note)
         for i = #list, 1, -1 do
             local ic = list[i]
-          if ic[1] ~= "photos" then -- (a picture from Immich: in ⋮)
             local labels = { photos = _("Picture from Immich…"), tag = _("Tags"), space = _("Space"), visibility = _("Who can see it") }
             icons[#icons + 1] = { id = "note-" .. ic[1], icon = ic[2], label = labels[ic[1]], fn = ic[3] }
-          end
         end
         -- (a new drawing: its tags in the panel, as before)
         if self.meta then
@@ -730,6 +732,9 @@ function DrawScreen:topIcons()
         end
     else
         if self.meta then icons[#icons + 1] = { id = "tag", icon = "tag", label = _("Tags") } end
+        if DrawScreen.immich and not self.journal then
+            icons[#icons + 1] = { id = "immich", icon = "photos", label = _("Picture from Immich…") }
+        end
     end
     icons[#icons + 1] = { id = "paper", icon = "paper", label = _("Paper") }
     icons[#icons + 1] = { id = "pages", icon = "pages", label = _("All pages") }
@@ -774,10 +779,12 @@ function DrawScreen:layoutBar()
         local icons = self:topIcons()
         -- (as many as leave the name room, right to left; the rest are in ⋮)
         local room = require("gzreader_notebar").fit(#icons - 1, x, bh, 0)
+        self.top_shown = {}
         for i, t in ipairs(icons) do
             if i == 1 or i - 1 <= room then
                 x = x - bh - S(2)
                 anchors[t.id] = add(t, x, S(4), bh, bh, "top")
+                self.top_shown[t.id] = true
             end
         end
         -- the drawing's name (a new drawing's: tap to change it)

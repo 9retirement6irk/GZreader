@@ -279,8 +279,8 @@ add({ fn = function(E)
         if b.tool.id == "prev" then prev = b.rect end
     end
     check(erase and prev and erase.y == prev.y and erase.x + erase.w < prev.x, "Erase page: a button of its own left of the page buttons")
-    check(ids("top"):find("options", 1, true) and not ids("top"):find("immich", 1, true) and not ids("top"):find("note", 1, true),
-        "the top bar: no picture, Archive or Delete (" .. ids("top") .. ")")
+    check(ids("top"):find("options", 1, true) and not ids("top"):find("archive", 1, true) and not ids("top"):find("delete", 1, true),
+        "the top bar: no Archive or Delete (" .. ids("top") .. ")")
     tap(E, (button("options")))
 end, after = 3 })
 add({ fn = function(E) tap(E, (button("done"))) end, after = 5 })
