@@ -16,7 +16,7 @@ account uses). When an update is known, it shows at the top of the page.
 | **Audio** | Kindles with a speaker, headphone jack or Bluetooth: [Bluetooth](Bluetooth) first (on or off, the devices), then [read aloud](Audiobooks-and-Read-Aloud), Test audiobook playback, the headphone jack. |
 | **Home and tabs** | Home (widgets, edit mode, presets), Status bar, Tab bar (which tabs, their look, the default tab), Quick panel (which tiles), Downloads tab (layout, covers, folders, books, context menu). |
 | **Reader** | Appearance (status bars), Highlight / Lookup, Gestures and controls, Table of contents, Notes and footnotes, Closing a book (end of book, where the library opens). |
-| **Accounts and services** | One row per service, the server it uses on the right: Books (Grimmory: your account first, who's signed in), Audiobooks (Grimmory or Plex), Music (Plex), Notes (Memos), Calendar (CalDAV), Photos (Immich), House (Home Assistant), Daily paper, AI (one key of your own for handwriting to text and the daily paper's AI edition: [the AI connection](Setup-Page-and-Connections#ai)). |
+| **Accounts and services** | One row per service, the server it uses on the right: Books (Grimmory: your account first, who's signed in), Audiobooks (Grimmory or Plex), Music (Plex), Notes (Memos), Calendar (CalDAV), Photos (Immich), House (Home Assistant). |
 | **Privacy and diagnostics** | Diagnostic logging, Send debug reports automatically, Report a problem, sending or saving the log ([Privacy and diagnostics](Privacy-and-Diagnostics)); Advanced → KOReader settings. |
 
 ## Dark mode in one place
@@ -25,6 +25,14 @@ Settings → Display and light → **Dark mode** has everything that follows dar
 mode: the night mode schedule, Reader themes (how books look in dark and light
 mode), the night accent colour, and whether the Home background and custom
 icons are inverted.
+
+## AI
+
+Accounts and services has an **AI** row, after Notes: one key of your own for everything
+that asks an AI service something (handwriting to text, the daily paper's
+AI edition, and what comes next). It's described under
+[the AI connection](Setup-Page-and-Connections#ai). Kindles without Wi‑Fi
+don't have the row.
 
 ## Each service's page
 
