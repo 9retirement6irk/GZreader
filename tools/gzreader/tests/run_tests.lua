@@ -1131,6 +1131,142 @@ print("House tab (Home Assistant): connecting, rooms, switching, Settings, the p
     AsyncMod.sync, NetM.usb, plugin.save = T0.sync, T0.usb, T0.save
 end)()
 
+print("Setup page: the AI tab (the service and its keys), and handwriting to text (where it's read)")
+;(function()
+    local Touch = require("gzreader_touch")
+    local was_on, was_save, was_hw, was_ai = Touch.on, plugin.save, plugin.store.handwriting, plugin.store.ai
+    Touch.on = function() return true end
+    plugin.store.handwriting, plugin.store.ai = nil, nil
+    local PS = require("gzreader_pairscreen")
+    local orig_ps = PS.new
+    local scr
+    PS.new = function(_self, o) scr = o; return o end
+    local Phone = require("gzreader_phone")
+    local Log = require("gzreader_log")
+    local AI = require("gzreader_ai")
+    local Hw = require("gzreader_handwriting")
+    local was_info, logged = Log.info, {}
+    Log.info = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    local closed
+    Phone.open(plugin, { section = "ai", on_close = function(ch) closed = ch end })
+    local P = "http://127.0.0.1:" .. UI.zmqs[1].port .. scr.url:match("(/phone/%x+)")
+    local function post(path, fields)
+        local args = { "-L" }
+        for _i, kv in ipairs(fields) do args[#args + 1] = "--data-urlencode '" .. kv .. "'" end
+        return phone(table.concat(args, " ") .. " '" .. P .. path .. "'")
+    end
+    local c, b = phone("'" .. P .. "'")
+    check(c == 200 and b:find('<section id="ai" class="tab"><h2>AI</h2>', 1, true) and b:find('data-tab="ai">AI', 1, true) and b:find('"ai";', 1, true)
+        and b:find("Not set up", 1, true) and b:find('name="claude_key" type="password"', 1, true), "setup page: AI has a tab of its own, opening there; not set up")
+    check(b:find('<h2 id="handwriting"', 1, true) and b:find("read <b>on the Kindle</b>", 1, true) and b:find('value="ai" disabled', 1, true)
+        and b:find('first give a key in the <a href="#ai">AI tab</a>', 1, true) and select(2, b:gsub('name="claude_key"', "")) == 1,
+        "the Notes tab keeps Handwriting to text: where it's read; the key is the AI tab's (With AI is off until there's one)")
+    c, b = post("/handwriting", { "engine=ai" })
+    check(c == 200 and b:find("needs a key first", 1, true) and Hw.engine(plugin) == "kindle", "handwriting with AI before a key: the page says so, nothing changes")
+    c, b = post("/ai", { "provider=claude" })
+    check(c == 200 and b:find("Claude needs its API key.", 1, true) and AI.provider(plugin) == nil, "Claude without a key: the page says so, nothing changes")
+    c, b = post("/ai", { "provider=claude", "claude_key=sk-ant-example-secret", "claude_model=" })
+    check(c == 200 and AI.provider(plugin) == "claude" and plugin.store.handwriting.claude.key == "sk-ant-example-secret"
+        and b:find("Set up: <b>Claude</b>", 1, true) and b:find("Used for: nothing yet", 1, true), "a Claude key pasted: saved; AI is Claude, used for nothing yet")
+    check(Hw.engine(plugin) == "kindle", "a key alone doesn't send your writing anywhere: handwriting is still read on the Kindle")
+    check(not b:find("sk-ant-example-secret", 1, true) and b:find("Claude API key (set: leave empty to keep it)", 1, true),
+        "the page never shows the key back: it says it's set")
+    c, b = post("/ai", { "provider=claude", "claude_key=", "claude_model=claude-example-model" })
+    check(plugin.store.handwriting.claude.key == "sk-ant-example-secret" and plugin.store.handwriting.claude.model == "claude-example-model",
+        "saving again with the key field empty keeps the key")
+    c, b = post("/handwriting", { "engine=ai" })
+    check(c == 200 and Hw.engine(plugin) == "claude" and plugin.store.handwriting.engine == "ai" and b:find("with AI: <b>Claude</b>", 1, true)
+        and b:find("Used for: Handwriting to text", 1, true), "handwriting switched to AI: read by Claude, and the AI tab says what uses the key")
+    c, b = post("/ai", { "provider=openai", "openai_url=http://example.com/v1", "openai_key=sk-example", "openai_model=vision" })
+    check(b:find("must start with https://", 1, true) and AI.provider(plugin) == "claude" and plugin.store.handwriting.openai.key == nil,
+        "a plain http:// address on the internet: refused, nothing saved")
+    c, b = post("/ai", { "provider=openai", "openai_url=https://llm.example.com/v1", "openai_key=sk-example", "openai_model=" })
+    check(b:find("needs its key and a model", 1, true) and AI.provider(plugin) == "claude", "the online service without a model: the page says so")
+    c, b = post("/ai", { "provider=openai", "openai_url=https://llm.example.com/v1", "openai_key=sk-example", "openai_model=vision" })
+    local o = plugin.store.handwriting.openai
+    check(AI.provider(plugin) == "openai" and o.url == "https://llm.example.com/v1" and o.key == "sk-example" and o.model == "vision"
+        and plugin.store.handwriting.claude.key == "sk-ant-example-secret", "the online service: address, key and model saved; Claude's key kept")
+    check(Hw.engine(plugin) == "openai", "handwriting follows the AI connection's service")
+    c, b = post("/handwriting", { "engine=kindle" })
+    check(c == 200 and b:find("read <b>on the Kindle</b>", 1, true) and Hw.engine(plugin) == "kindle" and AI.provider(plugin) == "openai", "handwriting back on the Kindle: the keys stay")
+    post("/handwriting", { "engine=ai" })
+    c, b = post("/ai", { "clear=1" })
+    check(AI.provider(plugin) == nil and Hw.engine(plugin) == "kindle" and plugin.store.handwriting.claude.key == nil and plugin.store.handwriting.openai.key == nil
+        and b:find("keys are removed", 1, true), "Remove the keys: both gone, writing read on the Kindle again")
+    Log.info = was_info
+    local log = table.concat(logged, "\n")
+    check(log:find("ai: set on the setup page", 1, true) and log:find("handwriting: set on the setup page", 1, true)
+        and not log:find("sk-ant-example-secret", 1, true) and not log:find("sk-example", 1, true), "the log says what was set, never a key")
+    scr.on_cancel()
+    check(closed and closed.ai and closed.handwriting, "closed: the caller hears AI and handwriting changed")
+    PS.new, Touch.on, plugin.save, plugin.store.handwriting, plugin.store.ai = orig_ps, was_on, was_save, was_hw, was_ai
+end)()
+
+print("The AI connection (gzreader_ai.lua): one key, asked the same way by everything")
+;(function()
+    local AI = require("gzreader_ai")
+    local Json = require("gzreader_json")
+    local was_hw, was_ai = plugin.store.handwriting, plugin.store.ai
+    plugin.store.handwriting, plugin.store.ai = nil, nil
+    check(AI.provider(plugin) == nil and AI.ready(plugin) == false and AI.snapshot(plugin) == nil and AI.name(nil) == "not set up", "nothing set up: no service, nothing to ask with")
+    local s = AI.settings(plugin)
+    s.openai.key = "sk-example"
+    check(AI.provider(plugin) == nil and not AI.ready(plugin, "openai"), "an OpenAI-style service needs a model too")
+    s.openai.model = "example-model"
+    check(AI.provider(plugin) == "openai" and AI.name("openai") == "Online service", "…with its model: it is the service")
+    s.claude.key = "sk-ant-example"
+    check(AI.provider(plugin) == "claude", "both set up, none chosen: Claude")
+    check(AI.setProvider(plugin, "openai") == true and AI.provider(plugin) == "openai" and AI.setProvider(plugin, "other") == false, "the one chosen is used")
+    s.openai.key = nil
+    check(AI.provider(plugin) == "claude", "the chosen one loses its key: the other")
+    local Secrets = require("gzreader_secrets")
+    local kept = {}
+    for _i, pth in ipairs(Secrets.PATHS) do kept[table.concat(pth, ".")] = true end
+    check(kept["handwriting.claude.key"] and kept["handwriting.openai.key"] and AI.settings(plugin).claude == plugin.store.handwriting.claude,
+        "the keys stay where they were, with the sign-ins kept off the USB drive")
+    local snap = AI.snapshot(plugin)
+    check(snap.provider == "claude" and snap.cfg.key == "sk-ant-example" and snap.cfg ~= s.claude, "a job gets a copy of what it needs")
+    -- a question in words (the daily paper), with standing instructions
+    local url, headers, rq = AI.request("claude", snap.cfg, { system = "You summarise.", text = "A story.", max_tokens = 300 })
+    local q = Json.decode(rq)
+    check(url == "https://api.anthropic.com/v1/messages" and headers["x-api-key"] == "sk-ant-example" and q.model == AI.CLAUDE_MODEL and q.max_tokens == 300
+        and q.system == "You summarise." and #q.messages[1].content == 1 and q.messages[1].content[1].text == "A story.", "Claude, words only: the Messages API, instructions in system")
+    url, headers, rq = AI.request("openai", { url = "https://llm.example.com/v1/", key = "sk-example", model = "m" }, { system = "You summarise.", text = "A story." })
+    q = Json.decode(rq)
+    check(url == "https://llm.example.com/v1/chat/completions" and headers["Authorization"] == "Bearer sk-example" and q.model == "m"
+        and q.messages[1].role == "system" and q.messages[2].content[1].text == "A story." and #q.messages[2].content == 1, "an OpenAI-style service, words only: Chat Completions, a system message first")
+    -- asked inside a job
+    local sent
+    local text, why = AI.complete(snap, { text = "A story." }, function(u, h, bd) sent = { u, h, bd }; return 200, '{"content":[{"type":"text","text":" A summary. "}]}' end)
+    check(text == "A summary." and why == nil and sent[1] == AI.CLAUDE_URL, "complete: the answer's text")
+    text, why = AI.complete(snap, { text = "x" }, function() return 401, '{"error":{"message":"bad key"}}' end)
+    check(text == nil and why:find("key was refused", 1, true), "a refused key: said so")
+    text, why = AI.complete(snap, { text = "x" }, function() return nil, "timeout" end)
+    check(text == nil and why == "it took too long", "no answer in time: said so")
+    text, why = AI.complete(nil, { text = "x" }, function() error("not asked") end)
+    check(text == nil and why == "no AI key", "nothing set up: nothing is asked")
+    local called = false
+    text, why = AI.complete({ provider = "openai", cfg = { url = "http://example.com/v1", key = "k", model = "m" } }, { text = "x" }, function() called = true; return 200, "{}" end)
+    check(text == nil and not called and why:find("https://", 1, true), "a plain http:// address on the internet: the key isn't sent")
+    check(AI.safeUrl("https://llm.example.com/v1") and AI.safeUrl("http://192.168.1.5:11434/v1") and not AI.safeUrl("http://example.com") and not AI.safeUrl("ftp://x") and not AI.safeUrl(nil),
+        "https, or http on your own network only")
+    -- the settings page
+    plugin.store.handwriting.engine = "ai"
+    local rows = AI.settingsItems(plugin)
+    local names = {}
+    for _i, r in ipairs(rows) do names[#names + 1] = r.text or r.text_func() end
+    local list = table.concat(names, "|")
+    check(list:find("Set up from your browser (QR code)|Claude|Online service (OpenAI-style)|Claude key: set|", 1, true) and list:find("|Try it|Used for: Handwriting to text|Remove the keys", 1, true),
+        "Settings → Accounts and services → AI: " .. list)
+    check(not list:find("sk-ant-example", 1, true), "the key is never shown")
+    check(rows[2].checked_func() == true and rows[3].enabled_func() == false, "Claude is ticked; the service can't be chosen until it's set up")
+    AI.clear(plugin)
+    check(AI.provider(plugin) == nil and plugin.store.handwriting.claude.key == nil and require("gzreader_handwriting").engine(plugin) == "kindle" and #AI.uses(plugin) == 0,
+        "keys removed: nothing uses AI; handwriting is read on the Kindle")
+    check(type(plugin.aiSettingsItems) == "function" and #plugin:aiSettingsItems() == #rows, "the Settings row opens it")
+    plugin.store.handwriting, plugin.store.ai = was_hw, was_ai
+end)()
+
 print("Catalog: the Audiobooks page (search, All audiobooks, Authors, Shelves, Series)")
 ;(function()
     local saved_audio = require("gzreader_touch").audio

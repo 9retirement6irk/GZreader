@@ -165,12 +165,12 @@ do
     end
     view.no_wifi = false
     local con = accounts()
-    check(con:find("|Photos|House|Daily paper|$") ~= nil, "Accounts and services: House (Home Assistant), then the daily paper, last " .. con)
+    check(con:find("|Photos|House|Daily paper|AI|$") ~= nil, "Accounts and services: House (Home Assistant), the daily paper, then AI, last " .. con)
     check(not con:find("Copy to or from another GZreader", 1, true) and not con:find("Sync through a computer", 1, true),
         "Accounts and services: no Copy or Sync through a computer (General → Transfer) " .. con)
     view.no_wifi = true
     con = accounts()
-    check(con ~= "" and not con:find("House", 1, true), "Accounts and services: no House on a Kindle without Wi-Fi " .. con)
+    check(con ~= "" and not con:find("House", 1, true) and not con:find("|AI|", 1, true), "Accounts and services: no House and no AI on a Kindle without Wi-Fi " .. con)
     view.no_wifi = false
 end
 

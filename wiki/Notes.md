@@ -725,18 +725,18 @@ for the text tool's **Write by hand** and the lasso's **To text**:
   digits; joined-up writing much less well. The reader, its small model and
   its word list are [Ink Away](https://github.com/EmirErtorer/ink-away.koplugin)'s
   (MIT License; its notices are in the plugin's `data/handwriting/NOTICE.md`).
-- **Claude**: Anthropic's Claude reads it, joined-up writing too. Give it an
-  API key from console.anthropic.com (**Claude key**; paid by use, a few
-  words cost a tiny fraction of a cent). **Claude model** is
-  `claude-haiku-5-5` unless you change it.
-- **Online service (OpenAI-style)**: any service that reads pictures
-  through OpenAI's Chat Completions API: OpenAI, or a model you run
-  yourself. Give its **address** (`https://…/v1`; plain `http://` only to a
-  computer on your network), a **key** and a **model** that reads pictures.
+- **With AI**: the AI service you set up reads it, joined-up writing too.
+  It can be chosen once the [AI connection](Setup-Page-and-Connections#ai)
+  has a key. The row says which service that is (**With AI: Claude**).
 
-Online, only the writing being read is sent, as a black-and-white picture:
-never the page, its pictures or your other notes. Wi‑Fi turns on for it. The
-keys are kept with GZreader's other sign-ins, off the Kindle's USB drive,
-and never written to the log. If a reading fails, the writing stays as you
-wrote it and a message says why.
+The key isn't here any more: it is the AI connection's, under **Settings →
+Accounts and services → AI** (the row **AI key and service** in this menu
+opens the same page), and on the setup page's **AI** tab. The setup page's
+Notes tab still has **Handwriting to text**, to choose between the Kindle and
+AI. A key by itself sends nothing: your writing is read with AI only after
+you choose **With AI** here.
+
+With AI, only the writing being read is sent, as a black-and-white picture:
+never the page, its pictures or your other notes. Wi‑Fi turns on for it. If
+a reading fails, the writing stays as you wrote it and a message says why.
 

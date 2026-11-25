@@ -425,92 +425,32 @@ function NoteSettings.handwritingItem(plugin, icon)
     if okt and Touch.on and not Touch.on() then return nil end
     local Hw = require("gzreader_handwriting")
     local s = Hw.settings(plugin)
+    local AI = require("gzreader_ai")
     local function save() if plugin.save then plugin:save() end end
-    local function ask(title, value, hint, password, on_done)
-        local InputDialog = require("ui/widget/inputdialog")
-        local d
-        d = InputDialog:new{ title = title, input = value or "", input_hint = hint, text_type = password and "password" or nil,
-            buttons = { { { text = _("Cancel"), id = "close", callback = function() UIManager:close(d) end },
-                { text = _("Save"), is_enter_default = true, callback = function()
-                    local v = (d:getInputText() or ""):gsub("^%s+", ""):gsub("%s+$", "")
-                    UIManager:close(d)
-                    on_done(v)
-                end } } } }
-        UIManager:show(d)
-        d:onShowKeyboard()
-    end
     local function engineName()
         local e = Hw.engine(plugin)
-        return e == "claude" and "Claude" or e == "openai" and _("Online service") or _("On the Kindle")
+        return e == "kindle" and _("On the Kindle") or AI.name(e)
     end
     local function choose(id)
         s.engine = id
         save()
-        Log.info("handwriting: read", id == "kindle" and "on the Kindle" or ("with " .. id))
+        Log.info("handwriting: read", id == "kindle" and "on the Kindle" or ("with AI (" .. tostring(AI.provider(plugin)) .. ")"))
     end
-    local function keyLabel(k) return (k or "") ~= "" and _("set") or _("not set") end
     local sub = {
         { text = _("On the Kindle"), radio = true,
           help_text = _("Nothing leaves the Kindle and no Wi-Fi is needed. Best with printed writing: letters apart, English words and digits. (The reader, its model and word list are Ink Away's, MIT License.)"),
           checked_func = function() return Hw.engine(plugin) == "kindle" end, callback = function() choose("kindle") end },
-        { text = "Claude", radio = true,
-          help_text = _("Anthropic's Claude reads your writing, joined-up too. Needs an API key from console.anthropic.com (paid by use: a few words cost a tiny fraction of a cent). Only the writing being read is sent, as a black-and-white picture."),
-          enabled_func = function() return (s.claude.key or "") ~= "" end,
-          checked_func = function() return Hw.engine(plugin) == "claude" end, callback = function() choose("claude") end },
-        { text = _("Online service (OpenAI-style)"), radio = true,
-          help_text = _("Any service that reads pictures through OpenAI's Chat Completions API: OpenAI itself, or a model you run yourself. Needs its address, a key and a model's name."),
-          enabled_func = function() return (s.openai.key or "") ~= "" and (s.openai.model or "") ~= "" end,
-          checked_func = function() return Hw.engine(plugin) == "openai" end, callback = function() choose("openai"); end,
+        { text_func = function()
+              local p = AI.provider(plugin)
+              return p and T(_("With AI: %1"), AI.name(p)) or _("With AI (needs a key)")
+          end, radio = true,
+          help_text = _("The AI service you set up under Settings → Accounts and services → AI reads your writing, joined-up too. Only the writing being read is sent, as a black-and-white picture: never the page or your other notes."),
+          enabled_func = function() return AI.ready(plugin) end,
+          checked_func = function() return Hw.engine(plugin) ~= "kindle" end, callback = function() choose("ai") end,
           separator = true },
-        { text_func = function() return T(_("Claude key: %1"), keyLabel(s.claude.key)) end, keep_menu_open = true,
-          callback = function(tm)
-              ask(_("Claude API key"), "", "sk-ant-…", true, function(v)
-                  s.claude.key = v ~= "" and v or nil
-                  if v ~= "" then s.engine = "claude" end
-                  save()
-                  if tm then tm:updateItems() end
-              end)
-          end },
-        { text_func = function() return T(_("Claude model: %1"), (s.claude.model or "") ~= "" and s.claude.model or Hw.CLAUDE_MODEL) end,
-          keep_menu_open = true,
-          callback = function(tm)
-              ask(_("Claude model"), s.claude.model or Hw.CLAUDE_MODEL, Hw.CLAUDE_MODEL, false, function(v)
-                  s.claude.model = v ~= "" and v or nil
-                  save()
-                  if tm then tm:updateItems() end
-              end)
-          end, separator = true },
-        { text_func = function() return T(_("Service address: %1"), (s.openai.url or "") ~= "" and s.openai.url or Hw.OPENAI_URL) end,
-          keep_menu_open = true,
-          callback = function(tm)
-              ask(_("Service address"), s.openai.url or Hw.OPENAI_URL, "https://…/v1", false, function(v)
-                  if v ~= "" and not Hw.safeUrl(v) then
-                      return UIManager:show(require("ui/widget/infomessage"):new{ timeout = 4,
-                          text = _("The address must start with https:// (http:// only for a computer on this network).") })
-                  end
-                  s.openai.url = v ~= "" and v or nil
-                  save()
-                  if tm then tm:updateItems() end
-              end)
-          end },
-        { text_func = function() return T(_("Service key: %1"), keyLabel(s.openai.key)) end, keep_menu_open = true,
-          callback = function(tm)
-              ask(_("Service key"), "", "sk-…", true, function(v)
-                  s.openai.key = v ~= "" and v or nil
-                  save()
-                  if tm then tm:updateItems() end
-              end)
-          end },
-        { text_func = function() return T(_("Service model: %1"), (s.openai.model or "") ~= "" and s.openai.model or _("not set")) end,
-          keep_menu_open = true,
-          callback = function(tm)
-              ask(_("Model"), s.openai.model or "", _("the model's name, e.g. one that reads pictures"), false, function(v)
-                  s.openai.model = v ~= "" and v or nil
-                  if v ~= "" and (s.openai.key or "") ~= "" then s.engine = "openai" end
-                  save()
-                  if tm then tm:updateItems() end
-              end)
-          end },
+        { text_func = function() return T(_("AI key and service: %1"), AI.name(AI.provider(plugin))) end,
+          help_text = _("The same as Settings → Accounts and services → AI: one key for handwriting and whatever uses AI next."),
+          sub_item_table_func = function() return AI.settingsItems(plugin) end },
     }
     local item = {
         text_func = function() return T(_("Handwriting to text: %1"), engineName()) end,

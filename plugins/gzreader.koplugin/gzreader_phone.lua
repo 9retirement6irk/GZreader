@@ -198,6 +198,24 @@ local function state(S, flash)
     st.access = { enabled = ac.enabled == true, key = ac.key, hosts = ac.hosts, auto = auto, cf_id = ac.cf_id,
         cf_secret_set = ac.cf_secret ~= nil, rule = ac.key and Access.ruleExpression(plugin) or nil,
         error = sec == "access" and flash.error or nil }
+    -- the AI connection (gzreader_ai.lua): whether each key is set, never the key.
+    -- Not on the Kindles without Wi-Fi.
+    local AI = require("gzreader_ai")
+    if not require("gzreader_usbsync").noWifi() then
+        local ai = AI.settings(plugin)
+        local provider = AI.provider(plugin)
+        st.ai = { provider = provider, name = provider and AI.name(provider) or nil, chosen = provider or "claude", uses = AI.uses(plugin),
+            claude_set = (ai.claude.key or "") ~= "", claude_model = ai.claude.model, claude_default = AI.CLAUDE_MODEL,
+            openai_set = (ai.openai.key or "") ~= "", openai_url = ai.openai.url, openai_model = ai.openai.model,
+            openai_default = AI.OPENAI_URL, error = sec == "ai" and flash.error or nil }
+    end
+    -- handwriting to text (the drawing screen's Write and To text): touch Kindles
+    if require("gzreader_touch").on() then
+        local Hw = require("gzreader_handwriting")
+        local provider = AI.provider(plugin)
+        st.handwriting = { engine = Hw.engine(plugin), chosen = Hw.settings(plugin).engine, ai_name = provider and AI.name(provider) or nil,
+            error = sec == "handwriting" and flash.error or nil }
+    end
     -- Home Assistant (the House tab): not on the Kindles without Wi-Fi
     if not require("gzreader_usbsync").noWifi() then
         local hs = store.homeassistant or {}
@@ -593,6 +611,57 @@ function Phone.open(plugin, opts)
         plugin:save()
         Log.info("access: key", ac.enabled and "on" or "off", "service token", ac.cf_id and "set" or "none")
         return back({ ok = true, text = _("Saved."), section = "access" })
+    end
+    -- The AI connection: the service and its keys (an empty key field keeps the one
+    -- saved; keys are never logged, nor sent back to the page)
+    routes["/ai"] = function(form)
+        local AI = require("gzreader_ai")
+        local s = AI.settings(plugin)
+        local function trim(v) return (tostring(v or ""):gsub("^%s+", ""):gsub("%s+$", "")) end
+        local function saved(text)
+            plugin:save()
+            S.changes.ai = true
+            Log.info("ai: set on the setup page: service", tostring(AI.provider(plugin)),
+                "· Claude key", (s.claude.key or "") ~= "" and "set" or "none", "· service key", (s.openai.key or "") ~= "" and "set" or "none")
+            return back({ ok = true, text = text, section = "ai" })
+        end
+        if form.clear == "1" then
+            AI.clear(plugin)
+            return saved(_("The AI keys are removed."))
+        end
+        local provider = form.provider == "openai" and "openai" or "claude"
+        local ckey, cmodel = trim(form.claude_key), trim(form.claude_model)
+        local url, okey, omodel = trim(form.openai_url), trim(form.openai_key), trim(form.openai_model)
+        local function fail(err) return back({ section = "ai", error = err }) end
+        if url ~= "" and not AI.safeUrl(url) then
+            return fail(_("The service address must start with https:// (http:// only for a computer on your own network)."))
+        end
+        if provider == "claude" and ckey == "" and (s.claude.key or "") == "" then return fail(_("Claude needs its API key.")) end
+        if provider == "openai" and ((okey == "" and (s.openai.key or "") == "") or omodel == "") then
+            return fail(_("The online service needs its key and a model's name."))
+        end
+        if ckey ~= "" then s.claude.key = ckey end
+        s.claude.model = cmodel ~= "" and cmodel or nil
+        s.openai.url = url ~= "" and url or nil
+        if okey ~= "" then s.openai.key = okey end
+        s.openai.model = omodel ~= "" and omodel or nil
+        AI.setProvider(plugin, provider)
+        return saved(provider == "claude" and _("Saved: AI is Claude.") or _("Saved: AI is the online service."))
+    end
+    -- Handwriting to text: read on the Kindle, or with the AI connection
+    routes["/handwriting"] = function(form)
+        local Hw = require("gzreader_handwriting")
+        local AI = require("gzreader_ai")
+        local s = Hw.settings(plugin)
+        if form.engine == "ai" and not AI.ready(plugin) then
+            return back({ section = "handwriting", error = _("Reading with AI needs a key first: see the AI tab.") })
+        end
+        s.engine = form.engine == "ai" and "ai" or "kindle"
+        plugin:save()
+        S.changes.handwriting = true
+        Log.info("handwriting: set on the setup page: read", Hw.engine(plugin) == "kindle" and "on the Kindle" or ("with AI (" .. Hw.engine(plugin) .. ")"))
+        return back({ ok = true, section = "handwriting",
+            text = Hw.engine(plugin) == "kindle" and _("Saved: your writing is read on the Kindle.") or T(_("Saved: your writing is read with AI (%1)."), AI.name(Hw.engine(plugin))) })
     end
     -- Home Assistant (gzreader_homeassistant.lua): address and long-lived token
     routes["/house"] = function(form)
@@ -1025,6 +1094,17 @@ function Phone.afterClose(S)
     if ch.paper then
         lines[#lines + 1] = require("gzreader_daily").enabled(plugin) and _("Daily paper: on, its feeds as you set them.") or _("Daily paper: off.")
         pcall(function() require("common/gz_view").redrawHome() end)
+    end
+    if ch.ai then
+        local AI = require("gzreader_ai")
+        local p = AI.provider(plugin)
+        lines[#lines + 1] = p and T(_("AI: set up (%1)."), AI.name(p)) or _("AI: not set up.")
+    end
+    if ch.handwriting or ch.ai then
+        local e = require("gzreader_handwriting").engine(plugin)
+        if ch.handwriting or e ~= "kindle" then
+            lines[#lines + 1] = e == "kindle" and _("Handwriting to text: read on the Kindle.") or T(_("Handwriting to text: read with AI (%1)."), require("gzreader_ai").name(e))
+        end
     end
     if ch.house then
         local hs = plugin.store.homeassistant or {}

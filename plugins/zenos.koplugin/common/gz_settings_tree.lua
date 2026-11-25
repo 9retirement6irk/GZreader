@@ -148,7 +148,14 @@ function M.accountsItems(opts)
             "tab_house", opts.plugin_root) or nil,
         -- GZreader: the daily paper (its feeds, fetched once a day; read on Home: the owner, 2026-11-18)
         row(_("Daily paper"), _("Feeds"), "dailySettingsItems", "history"),
-    }, 8)
+        -- GZreader: the AI connection (one key for handwriting to text, the daily paper's AI edition
+        -- and what comes next: the owner, 2026-11-24). Not on the Kindles without Wi-Fi.
+        opts.wifi and icon({ text = _("AI"), mandatory_func = function()
+            local ok, AI = pcall(require, "gzreader_ai")
+            local g = opts.gzreader and opts.gzreader()
+            return ok and g and AI.name(AI.provider(g)) or ""
+        end, sub_item_table_func = page("aiSettingsItems") }, "connect") or nil,
+    }, 9)
 end
 
 --- Software update's value: the version waiting, if one is known.
