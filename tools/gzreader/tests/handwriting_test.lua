@@ -70,7 +70,7 @@ do
     local b = dkjson.decode(body)
     local c = b.messages[1].content
     check(url == "https://api.anthropic.com/v1/messages" and h["x-api-key"] == "sk-ant-test-key" and h["anthropic-version"] == "2023-06-01"
-        and b.model == Hw.CLAUDE_MODEL and c[1].type == "image" and c[1].source.media_type == "image/png" and c[1].source.data == "QUJD"
+        and b.model == require("gzreader_ai").CLAUDE_MODEL and c[1].type == "image" and c[1].source.media_type == "image/png" and c[1].source.data == "QUJD"
         and c[2].type == "text" and c[2].text:find("Transcribe", 1, true),
         "Claude: the Messages API, the key in x-api-key, the picture then what to do with it (" .. b.model .. ")")
     local _u2, _h2, body2 = Hw.claudeRequest({ key = "k", model = "claude-sonnet-5-5" }, "QUJD")
@@ -103,14 +103,20 @@ do
     local plugin = { store = {} }
     check(Hw.engine(plugin) == "kindle" and plugin.store.handwriting.engine == "kindle", "on the Kindle until a service is set up")
     local s = Hw.settings(plugin)
-    s.engine = "claude"
-    check(Hw.engine(plugin) == "kindle", "Claude chosen without a key: still on the Kindle")
-    s.claude.key = "sk-ant-secret-key"
-    check(Hw.engine(plugin) == "claude", "…with its key: Claude")
-    s.engine, s.openai.key = "openai", "sk-openai-secret"
+    local AI = require("gzreader_ai")
+    s.engine = "ai"
+    check(Hw.engine(plugin) == "kindle", "AI chosen without a key: still on the Kindle")
+    s.openai.key = "sk-openai-secret"
     check(Hw.engine(plugin) == "kindle", "an OpenAI-style service without a model: on the Kindle")
     s.openai.model = "vision-1"
     check(Hw.engine(plugin) == "openai", "…with its model: the service")
+    s.claude.key = "sk-ant-secret-key"
+    AI.setProvider(plugin, "claude")
+    check(Hw.engine(plugin) == "claude", "the AI connection set to Claude: Claude")
+    s.engine = "claude"
+    check(Hw.settings(plugin).engine == "ai" and Hw.engine(plugin) == "claude", "anything but \"kindle\" kept as the choice means the AI connection")
+    AI.setProvider(plugin, "openai")
+    check(Hw.engine(plugin) == "openai", "handwriting follows the service the AI connection uses")
     local src = io.open(PLUGIN .. "/gzreader_secrets.lua"):read("*a")
     check(src:find('{ "handwriting", "claude", "key" }, { "handwriting", "openai", "key" }', 1, true) ~= nil,
         "the keys are kept with the other sign-ins, off the USB drive (gzreader_secrets.lua)")

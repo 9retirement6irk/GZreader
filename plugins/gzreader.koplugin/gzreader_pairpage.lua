@@ -246,43 +246,70 @@ local function grimmorySection(st, base)
 end
 
 -- Handwriting to text (gzreader_handwriting.lua), in the Notes tab: where it's
--- read, and the keys for reading it online. A key saved on the Kindle is never
--- sent back to the page: it says "set", and a field left empty keeps it.
+-- read. The key for reading it with AI is the AI tab's.
 local function handwritingPart(st, base)
     local h = st.handwriting
     if not h then return "" end
-    local function choice(value, label)
+    local ai = h.ai_name
+    local function choice(value, label, off)
         return '<label class="check"><input type="radio" name="engine" value="' .. value .. '"' .. (h.chosen == value and " checked" or "")
+            .. (off and " disabled" or "") .. "> " .. label .. "</label>"
+    end
+    local parts = { '<h2 id="handwriting" style="margin-top:22px">Handwriting to text</h2>',
+        '<p class="what">While drawing, the text tool\'s Write and the lasso\'s To text turn your writing into typed text. It can be read on the Kindle (nothing leaves it), or with AI: then only the writing being read is sent, as a black-and-white picture, never the page or your other notes.</p>',
+        status(h.engine ~= "kindle", "Your writing is read " .. (h.engine == "kindle" and "<b>on the Kindle</b>" or ("with AI: <b>" .. esc(ai or "") .. "</b>"))) }
+    if h.error then parts[#parts + 1] = '<p class="err">' .. esc(h.error) .. "</p>" end
+    parts[#parts + 1] = form(base .. "/handwriting",
+        choice("kindle", "On the Kindle") .. choice("ai", ai and ("With AI: " .. esc(ai)) or "With AI", not ai)
+        .. '<p class="note">' .. (ai and "The AI service and its key are in the <a href=\"#ai\">AI tab</a>."
+            or "To read it with AI, first give a key in the <a href=\"#ai\">AI tab</a>.") .. "</p>"
+        .. '<button type="submit">Save</button>', "Saving…")
+    return table.concat(parts)
+end
+
+-- The AI connection (gzreader_ai.lua): one key for everything that uses AI.
+-- A key saved on the Kindle is never sent back to the page: it says "set",
+-- and a field left empty keeps it.
+local function aiSection(st, base)
+    local a = st.ai
+    if not a then return "" end
+    local function choice(value, label)
+        return '<label class="check"><input type="radio" name="provider" value="' .. value .. '"' .. (a.chosen == value and " checked" or "")
             .. "> " .. esc(label) .. "</label>"
     end
     local function key(id, name, label, set, hint)
         return '<label for="' .. id .. '">' .. esc(label) .. (set and " (set: leave empty to keep it)" or "") .. '</label><input id="' .. id
             .. '" name="' .. name .. '" type="password" placeholder="' .. esc(set and "••••••••" or hint) .. '" ' .. NAME_ATTRS .. ">"
     end
-    local reads = h.engine == "claude" and "by Claude" or h.engine == "openai" and "by an online service" or "on the Kindle"
-    local parts = { '<h2 id="handwriting" style="margin-top:22px">Handwriting to text</h2>',
-        '<p class="what">While drawing, the text tool\'s Write and the lasso\'s To text turn your writing into typed text. It can be read on the Kindle (nothing leaves it), or online with a key of your own: then only the writing being read is sent, as a black-and-white picture, never the page or your other notes.</p>',
-        status(h.engine ~= "kindle", "Your writing is read " .. (h.engine == "kindle" and "<b>on the Kindle</b>" or (esc(reads:match("^by ") and "by " or "") .. "<b>" .. esc((reads:gsub("^by ", ""))) .. "</b>"))) }
-    if h.error then parts[#parts + 1] = '<p class="err">' .. esc(h.error) .. "</p>" end
-    parts[#parts + 1] = form(base .. "/handwriting",
-        choice("kindle", "On the Kindle") .. choice("claude", "Claude (Anthropic)") .. choice("openai", "An online service (OpenAI-style)")
-        .. '<details' .. ((h.chosen == "claude" or not h.claude_set) and " open" or "") .. '><summary>Claude</summary><div style="margin-top:10px">'
-        .. key("hw_ckey", "claude_key", "Claude API key", h.claude_set, "sk-ant-…")
-        .. input("hw_cmodel", "claude_model", "Model (empty: " .. h.claude_default .. ")", h.claude_model, 'placeholder="' .. esc(h.claude_default) .. '" ' .. NAME_ATTRS)
-        .. '<p class="note">An API key from console.anthropic.com → API keys. Paid by use: reading a few words costs a tiny fraction of a cent.</p>'
+    local parts = { '<section id="ai" class="tab"><h2>AI</h2>',
+        '<p class="what">One key of your own for everything on the Kindle that asks an AI service something: reading your handwriting (Notes), and whatever comes next. Nothing is sent until you switch a use on, and then only what it needs: the writing being read, as a picture.</p>',
+        status(a.provider ~= nil, a.provider and ("Set up: <b>" .. esc(a.name) .. "</b>") or "Not set up") }
+    if a.provider then
+        local uses = {}
+        for _i, u in ipairs(a.uses or {}) do uses[#uses + 1] = esc(u) end
+        parts[#parts + 1] = '<p class="note">Used for: ' .. (#uses > 0 and table.concat(uses, ", ") or "nothing yet (switch it on in the Notes tab)") .. ".</p>"
+    end
+    if a.error then parts[#parts + 1] = '<p class="err">' .. esc(a.error) .. "</p>" end
+    parts[#parts + 1] = form(base .. "/ai",
+        choice("claude", "Claude (Anthropic)") .. choice("openai", "An online service (OpenAI-style)")
+        .. '<details' .. ((a.chosen == "claude" or not a.claude_set) and " open" or "") .. '><summary>Claude</summary><div style="margin-top:10px">'
+        .. key("ai_ckey", "claude_key", "Claude API key", a.claude_set, "sk-ant-…")
+        .. input("ai_cmodel", "claude_model", "Model (empty: " .. a.claude_default .. ")", a.claude_model, 'placeholder="' .. esc(a.claude_default) .. '" ' .. NAME_ATTRS)
+        .. '<p class="note">An API key from console.anthropic.com → API keys. Paid by use: reading a few handwritten words costs a fraction of a cent.</p>'
         .. "</div></details>"
-        .. '<details' .. (h.chosen == "openai" and " open" or "") .. '><summary>An online service (OpenAI-style)</summary><div style="margin-top:10px">'
-        .. input("hw_url", "openai_url", "Service address (empty: " .. h.openai_default .. ")", h.openai_url, 'placeholder="' .. esc(h.openai_default) .. '" ' .. URL_ATTRS)
-        .. key("hw_okey", "openai_key", "Service key", h.openai_set, "sk-…")
-        .. input("hw_omodel", "openai_model", "Model", h.openai_model, 'placeholder="a model that reads pictures" ' .. NAME_ATTRS)
-        .. '<p class="note">Any service that reads pictures through OpenAI\'s Chat Completions API: OpenAI itself, or a model you run yourself (http:// only for a computer on your own network).</p>'
+        .. '<details' .. (a.chosen == "openai" and " open" or "") .. '><summary>An online service (OpenAI-style)</summary><div style="margin-top:10px">'
+        .. input("ai_url", "openai_url", "Service address (empty: " .. a.openai_default .. ")", a.openai_url, 'placeholder="' .. esc(a.openai_default) .. '" ' .. URL_ATTRS)
+        .. key("ai_okey", "openai_key", "Service key", a.openai_set, "sk-…")
+        .. input("ai_omodel", "openai_model", "Model", a.openai_model, 'placeholder="the model\'s name" ' .. NAME_ATTRS)
+        .. '<p class="note">Any service that speaks OpenAI\'s Chat Completions API: OpenAI itself, or a model you run yourself (http:// only for a computer on your own network). For handwriting the model must read pictures.</p>'
         .. "</div></details>"
         .. '<button type="submit">Save</button>', "Saving…")
-    if h.claude_set or h.openai_set then
-        parts[#parts + 1] = form(base .. "/handwriting",
+    if a.claude_set or a.openai_set then
+        parts[#parts + 1] = form(base .. "/ai",
             '<input type="hidden" name="clear" value="1"><button class="danger" type="submit"'
-            .. confirmJs("Remove the handwriting keys from the Kindle? Writing is then read on the Kindle.") .. ">Remove the keys</button>", "Removing…")
+            .. confirmJs("Remove the AI keys from the Kindle? Handwriting is then read on the Kindle.") .. ">Remove the keys</button>", "Removing…")
     end
+    parts[#parts + 1] = "</section>"
     return table.concat(parts)
 end
 
@@ -726,6 +753,7 @@ function PairPage.hub(st)
         { "calendar", "Calendar", (st.caldav or {}).connected or #((st.links or {}).list or {}) > 0 or (st.holidays or {}).enabled } }
     if st.house then tabs[#tabs + 1] = { "house", "House", st.house.connected } end
     if st.paper then tabs[#tabs + 1] = { "paper", "Daily paper", st.paper.enabled } end
+    if st.ai then tabs[#tabs + 1] = { "ai", "AI", st.ai.provider ~= nil } end
     if st.plex then tabs[#tabs + 1] = { "music", "Music", st.plex.connected } end
     tabs[#tabs + 1] = { "immich", "Immich", (st.immich or {}).connected }
     tabs[#tabs + 1] = { "books", "Send books" }
@@ -749,6 +777,7 @@ function PairPage.hub(st)
         '<p class="note">This page works while setup is open on the Kindle\'s screen; press Back (or Done) there when you\'re done.</p>',
         houseSection(st, base), -- (after the note: one tab at a time with JavaScript; below the rest without)
         paperSection(st, base),
+        aiSection(st, base),
         "</div></div>",
         '<script>(function(){var A=', alias, ';function show(id){id=A[id]||id;var s=document.getElementById(id);if(!s||!/\\btab\\b/.test(s.className))id="', ({ handwriting = "notes", caldav = "calendar", links = "calendar" })[st.start or ""] or st.start or "grimmory", '";',
         '[].forEach.call(document.querySelectorAll("section.tab"),function(e){e.className=e.id==id?"tab on":"tab"});',

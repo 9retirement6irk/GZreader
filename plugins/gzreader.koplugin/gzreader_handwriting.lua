@@ -7,21 +7,20 @@ Two ways to read (Settings → Notes → Handwriting to text):
   Away's reader (gzreader_hwr.lua, its small character model and English
   word list, see data/handwriting/NOTICE.md). It reads printed writing best:
   letters apart, English words and digits.
-- **Online**, with a key of your own: **Claude** (Anthropic's Messages API)
-  or any service that takes pictures through **OpenAI's Chat Completions**
-  API (OpenAI, a self-hosted model…). Only the writing being read is sent, as
-  a black-on-white picture: never the page, its pictures or other notes. Much
-  better with joined-up writing. Off until a key is given; the key is kept
-  with GZreader's other sign-ins, off the USB drive (gzreader_secrets.lua),
-  and never written to the log.
+- **With AI**, through GZreader's AI connection (gzreader_ai.lua; Settings →
+  Accounts and services → AI): Claude, or any service that takes pictures
+  through OpenAI's Chat Completions API. Only the writing being read is sent,
+  as a black-on-white picture: never the page, its pictures or other notes.
+  Much better with joined-up writing. Off until the connection has a key and
+  this is chosen.
 
 Used by the drawing screen: the lasso's **To text** (the chosen writing,
 checked before it becomes a text box) and the text tool's **Write** (a text
 box you write into with the pen, each word turned into typed text a moment
 after the pen lifts, as on the Apple Newton).
 
-  store.handwriting = { engine = "kindle" | "claude" | "openai",
-    claude = { key, model }, openai = { url, key, model } }
+  store.handwriting = { engine = "kindle" | "ai" }
+  (the AI connection's keys are kept beside it: gzreader_ai.lua)
 ]]
 
 local Log = require("gzreader_log")
@@ -31,10 +30,6 @@ local Hw = {
     TIMEOUT = 60, -- (s) an online reading at most
     MAX_SIDE = 1600, -- (px) the picture sent, at most this wide or high
     PAD = 24, -- (px) white round the writing in the picture
-    CLAUDE_URL = "https://api.anthropic.com/v1/messages",
-    CLAUDE_MODEL = "claude-haiku-5-5",
-    CLAUDE_VERSION = "2023-06-01",
-    OPENAI_URL = "https://api.openai.com/v1",
     PROMPT = "Transcribe the handwriting in this image exactly as written. Reply with only the text: no quotes, "
         .. "no explanations, no formatting. Keep its line breaks where the writer started a new line. "
         .. "If nothing in it can be read, reply with nothing.",
@@ -42,36 +37,29 @@ local Hw = {
 
 -- -------------------------------------------------------------- settings
 
+local function AI() return require("gzreader_ai") end
+
+--- { engine = "kindle" | "ai", claude, openai }: the table kept (the AI
+--- connection's keys live in it too: gzreader_ai.lua).
 function Hw.settings(plugin)
     local store = plugin and plugin.store
     if not store then return { engine = "kindle", claude = {}, openai = {} } end
-    local s = type(store.handwriting) == "table" and store.handwriting or {}
-    store.handwriting = s
-    s.claude = type(s.claude) == "table" and s.claude or {}
-    s.openai = type(s.openai) == "table" and s.openai or {}
-    if s.engine ~= "claude" and s.engine ~= "openai" then s.engine = "kindle" end
+    AI().settings(plugin)
+    local s = store.handwriting
+    -- (anything but "on the Kindle" is the AI connection)
+    s.engine = (s.engine == nil or s.engine == "kindle") and "kindle" or "ai"
     return s
 end
 
---- The way writing is read now: "kindle", or "claude" / "openai" when chosen and set up.
+--- The way writing is read now: "kindle", or the AI connection's service
+--- ("claude" / "openai") when AI is chosen and the connection is set up.
 function Hw.engine(plugin)
     local s = Hw.settings(plugin)
-    if s.engine == "claude" and (s.claude.key or "") ~= "" then return "claude" end
-    if s.engine == "openai" and (s.openai.key or "") ~= "" and (s.openai.model or "") ~= "" then return "openai" end
+    if s.engine == "ai" then return AI().provider(plugin) or "kindle" end
     return "kindle"
 end
 
---- Is `url` one a key may be sent to? HTTPS; plain HTTP only to this network
---- (a model on your own computer).
-function Hw.safeUrl(url)
-    if type(url) ~= "string" then return false end
-    if url:match("^https://[%w%.%-]+") then return true end
-    local host = url:match("^http://([%w%.%-]+)")
-    if not host then return false end
-    return host == "localhost" or host:match("^127%.") ~= nil or host:match("^10%.") ~= nil
-        or host:match("^192%.168%.") ~= nil or host:match("^172%.1[6-9]%.") ~= nil
-        or host:match("^172%.2%d%.") ~= nil or host:match("^172%.3[01]%.") ~= nil
-end
+function Hw.safeUrl(url) return AI().safeUrl(url) end
 
 -- -------------------------------------------------------------- strokes
 
@@ -207,104 +195,25 @@ end
 
 --- Claude: url, headers, body (JSON) for reading the picture `b64` (a PNG's base64).
 function Hw.claudeRequest(cfg, b64)
-    local Json = require("gzreader_json")
-    local body = Json.encode({
-        model = (cfg.model or "") ~= "" and cfg.model or Hw.CLAUDE_MODEL,
-        max_tokens = 1024,
-        messages = { {
-            role = "user",
-            content = {
-                { type = "image", source = { type = "base64", media_type = "image/png", data = b64 } },
-                { type = "text", text = Hw.PROMPT },
-            },
-        } },
-    })
-    return Hw.CLAUDE_URL, {
-        ["x-api-key"] = cfg.key,
-        ["anthropic-version"] = Hw.CLAUDE_VERSION,
-        ["content-type"] = "application/json",
-    }, body
+    return AI().request("claude", cfg, { text = Hw.PROMPT, png = b64, max_tokens = 1024 })
 end
 
 --- An OpenAI-style service (Chat Completions with a picture): url, headers, body.
 function Hw.openaiRequest(cfg, b64)
-    local Json = require("gzreader_json")
-    local base = ((cfg.url or "") ~= "" and cfg.url or Hw.OPENAI_URL):gsub("/+$", "")
-    local url = base:match("/chat/completions$") and base or (base .. "/chat/completions")
-    local body = Json.encode({
-        model = cfg.model,
-        max_tokens = 1024,
-        messages = { {
-            role = "user",
-            content = {
-                { type = "text", text = Hw.PROMPT },
-                { type = "image_url", image_url = { url = "data:image/png;base64," .. b64 } },
-            },
-        } },
-    })
-    return url, { ["Authorization"] = "Bearer " .. tostring(cfg.key), ["Content-Type"] = "application/json" }, body
+    return AI().request("openai", cfg, { text = Hw.PROMPT, png = b64, max_tokens = 1024 })
 end
 
 --- The text in a service's answer (`code`, `body`), or nil and a reason a person can read.
-function Hw.answerText(engine, code, body)
-    local Json = require("gzreader_json")
-    local ok, data = pcall(Json.decode, body or "")
-    data = ok and type(data) == "table" and data or nil
-    if code ~= 200 then
-        local msg = data and type(data.error) == "table" and data.error.message
-        if code == 401 or code == 403 then return nil, "the key was refused (" .. tostring(code) .. ")" end
-        if code == 404 then return nil, "no such model or address (404)" end
-        if code == 429 then return nil, "too many requests for now (429)" end
-        return nil, "the service answered " .. tostring(code) .. (msg and (": " .. tostring(msg):sub(1, 120)) or "")
-    end
-    if not data then return nil, "the answer wasn't readable" end
-    local text
-    if engine == "claude" then
-        local parts = {}
-        for _i, c in ipairs(type(data.content) == "table" and data.content or {}) do
-            if type(c) == "table" and c.type == "text" and type(c.text) == "string" then parts[#parts + 1] = c.text end
-        end
-        text = table.concat(parts)
-    else
-        local ch = type(data.choices) == "table" and data.choices[1]
-        local m = type(ch) == "table" and ch.message
-        text = type(m) == "table" and m.content
-        if type(text) == "table" then -- (content as parts)
-            local parts = {}
-            for _i, c in ipairs(text) do if type(c) == "table" and type(c.text) == "string" then parts[#parts + 1] = c.text end end
-            text = table.concat(parts)
-        end
-    end
-    if type(text) ~= "string" then return nil, "the answer had no text" end
-    text = text:gsub("^%s+", ""):gsub("%s+$", "")
-    -- (a model that wraps its answer anyway: quotes or a code fence off)
-    text = text:gsub("^```%w*\n(.-)\n```$", "%1"):gsub('^"(.*)"$', "%1")
-    return text
-end
+function Hw.answerText(engine, code, body) return AI().answerText(engine, code, body) end
 
 --- POST `body` to `url` (in the background process): code, body or nil, why.
-function Hw.post(url, headers, body)
-    local ltn12 = require("ltn12")
-    local socketutil = require("socketutil")
-    local https = url:match("^https:") and require("ssl.https") or require("socket.http")
-    local chunks = {}
-    headers["Content-Length"] = tostring(#body)
-    socketutil:set_timeout(20, Hw.TIMEOUT)
-    local ok, r, code = pcall(https.request, {
-        url = url, method = "POST", headers = headers,
-        source = ltn12.source.string(body), sink = ltn12.sink.table(chunks),
-    })
-    socketutil:reset_timeout()
-    if not ok then return nil, tostring(r) end
-    if r == nil then return nil, tostring(code) end
-    return tonumber(code), table.concat(chunks)
-end
+function Hw.post(url, headers, body) return AI().post(url, headers, body, Hw.TIMEOUT) end
 
 --- Reads `flat` online (the engine chosen): on_done(text) or on_done(nil, why). In the background.
 function Hw.readOnline(plugin, flat, on_done, radius)
     local engine = Hw.engine(plugin)
-    local s = Hw.settings(plugin)
-    local cfg = engine == "claude" and s.claude or s.openai
+    local cfg = AI().settings(plugin)[engine]
+    if not cfg then return on_done(nil, "no AI key") end
     local png, err = Hw.png(flat, radius)
     if not png then return on_done(nil, err) end
     local url, headers, body
