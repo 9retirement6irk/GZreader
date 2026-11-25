@@ -1,8 +1,8 @@
--- Settings → About: GZreader's version tapped seven times opens the 15
--- puzzle (as Android's easter egg). Taps on a touch Kindle, the 5-way on
--- the others; solved, it says in how many moves; Back closes it.
+-- Settings → About: GZreader's version tapped seven times plays an
+-- animation (as Android's easter egg): a book whose pages turn, writing
+-- "GZreader" a letter a turn. A tap or Back closes it.
 --   GZ_EMU_MODEL=pw3|k3 GZ_EMU_TREE=<tree>/koreader run.sh easter_egg.lua <out>
--- Checks go to <out>/easter-egg-checks.txt; shots 1-puzzle, 2-solved.
+-- Checks go to <out>/easter-egg-checks.txt; shots 1-first-letter, 2-page-turning, 3-last-page.
 local MODEL = os.getenv("GZ_EMU_MODEL") or "pw3"
 local TOUCH = MODEL == "pw3" or MODEL == "kt" or MODEL == "scribe"
 local s = { start = 14 }
@@ -27,48 +27,35 @@ add({ fn = function(E)
     check(game() == nil, "six taps: not yet")
     E.row.callback()
 end, after = 3 })
-add({ shot = "1-puzzle", after = 0.5 })
-add({ fn = function(E)
+add({ fn = function()
     local g = game()
-    check(g ~= nil and not Egg().solved(g.board) and g.board.moves == 0, "the seventh: the 15 puzzle, shuffled")
-    -- set two moves from solved, to check winning (the gap where the 15 was, the 15 left of it… the 11 above)
-    local b = Egg().new()
-    Egg().slideDir(b, "right"); Egg().slideDir(b, "down")
-    b.moves = 0
-    g.board = b
+    check(g ~= nil and g.n >= 1 and g.n < Egg().FRAMES, "the seventh: the animation, playing")
+end, after = 2.2 })
+add({ shot = "1-first-letter", after = 0.1 })
+add({ fn = function()
+    local g = game()
+    check(g ~= nil and g.n > 4, "it plays by itself (frame " .. tostring(g and g.n) .. ")")
+    -- on to a page in the air mid-word, then the last page, to look at them
+    UIM():unschedule(g.tick)
+    g.n = 13
     UIM():setDirty(g, "ui")
-end, after = 2 })
-if TOUCH then
-    add({ fn = function(E)
-        local g = game()
-        local r = g:cellRect(g.board.gap + 4) -- (the tile below the gap)
-        E.tap({ r.x + math.floor(r.w / 2), r.y + math.floor(r.h / 2) })
-    end, after = 2 })
-    add({ fn = function(E)
-        local g = game()
-        check(g.board.moves == 1, "a tap on the tile below the gap: it slides up (1 move)")
-        local r = g:cellRect(g.board.gap + 1)
-        E.tap({ r.x + math.floor(r.w / 2), r.y + math.floor(r.h / 2) })
-    end, after = 2 })
-else
-    add({ key = "Up", after = 2 })
-    add({ fn = function() check(game().board.moves == 1, "▲: the tile below the gap slides up (1 move)") end, after = 0.5 })
-    add({ key = "Left", after = 2 })
-end
-add({ shot = "2-solved", after = 0.5 })
-add({ fn = function(E)
+end, after = 1.5 })
+add({ shot = "2-page-turning", after = 0.5 })
+add({ fn = function()
     local g = game()
-    check(g.won and Egg().solved(g.board) and g.board.moves == 2, "…and the last one: solved in 2 moves")
-    check(G_reader_settings:readSetting(Egg().BEST) == 2, "…the best kept")
-    G_reader_settings:delSetting(Egg().BEST)
-end, after = 1 })
+    g.n, g.loop = Egg().FRAMES, Egg().LOOPS
+    UIM():setDirty(g, "ui")
+    g:advance()
+    check(g.n == Egg().FRAMES, "after its last time through it rests on the last page")
+end, after = 1.5 })
+add({ shot = "3-last-page", after = 0.5 })
 if TOUCH then
-    add({ fn = function(E) local r = game().close_rect; E.tap({ r.x + math.floor(r.w / 2), r.y + math.floor(r.h / 2) }) end, after = 3 })
+    add({ fn = function(E) E.tap({ 200, 300 }) end, after = 3 })
 else
     add({ key = "Back", after = 3 })
 end
 add({ fn = function(E)
-    check(game() == nil, TOUCH and "✕ closes it" or "Back closes it")
+    check(game() == nil, TOUCH and "a tap closes it" or "Back closes it")
     local f = io.open(E.out .. "/easter-egg-checks.txt", "w")
     f:write(table.concat(lines, "\n") .. "\n"); f:close()
     for _i, l in ipairs(lines) do E.say("check", l) end

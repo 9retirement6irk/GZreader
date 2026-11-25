@@ -203,9 +203,7 @@ notes: [Notes](Notes)):
 ## A secret
 
 As on an Android phone, tap GZreader's version in **Settings → About**
-seven times (from the fourth tap it counts down). A game opens: the
-**15 puzzle**. Slide the tiles back into order: tap a tile in the gap's
-row or column (it and any between slide over), or on a Kindle without a
-touch screen use the 5-way (▲ slides the tile below the gap up, and so
-on). Tiles in their right place turn grey. It counts your moves and keeps
-your best; ✕ (or Back) closes it.
+seven times (from the fourth tap it counts down). An animation plays: an
+open book whose pages turn by themselves, each turn writing the next letter
+of "GZreader". It plays three times and rests on its last page. A tap, Back
+or the 5-way's Press closes it.

@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Settings → About's secret is an animation now", text = "Tapping GZreader's version seven times in Settings → About used to open a sliding-tile game (its title, GZreader 15, was the 15 puzzle's name, not a version). It now plays a short animation: a book whose pages turn by themselves and write GZreader a letter at a time. A tap or Back closes it." },
+        },
+    },
+    {
         version = "2026.11.22",
         changes = {
             { short = "Colour Kindles: Immich photos in colour", text = "On a Kindle Colorsoft or Scribe Colorsoft, the pictures from your Immich album (the sleep screen and the Home wallpaper) are kept in colour instead of being made grey. Pictures already on the Kindle stay grey until they are swapped for others from the album (about half each time GZreader gets new pictures)." },
