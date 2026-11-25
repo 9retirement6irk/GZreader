@@ -487,18 +487,21 @@ API to `/api` are found too.
     punched holes), **Vertical ruled** (and **with margin**),
     **Graph**, **Dotted**, **Checklist**, **Daily planner**, **Weekly
     planner**, **Monthly planner**, **Habit tracker**, **Storyboard** and
-    **Music**, then your own. It opens in a window over the drawing (in a
-    journal entry's drawing too). The page's paper has a thick border. Tap
-    one to choose it, then **Done** to put the page on it (**Cancel**, or a
-    tap outside the window, leaves the page as it was); where there are more
-    rows than fit, scroll with a finger. **A new drawing asks which paper
-    first,** in the same window over the Notes tab: tap one, then **Create**. New pages start on
+    **Music**, then your own. The page's paper has a thick border. Tap one
+    to put the page on it; where there are more rows than fit, scroll with a
+    finger. **A new drawing asks which paper first,** in a window over the
+    Notes tab: tap one, then **Create** (**Cancel**, or a tap outside the
+    window, goes back). New pages start on
     the paper you chose last. The paper goes to Memos with the drawing as its
     background, as Memos' own drawing editor keeps one (a locked picture
     under everything), so Memos shows and keeps it; on the Kindle it's grey.
     **Your own paper:** put a PNG file in `GZreader/app/settings/gzreader-notepaper`
     on the Kindle (at most 1440 pixels on its longer side and 600 KB); it's
     offered after the others, named after the file.
+    While you draw, **Paper** opens in the same window as a new drawing's,
+    over the drawing (in a journal entry's drawing too): tap a paper to
+    choose it, then **Done** to put the page on it; **Cancel**, or a tap
+    outside the window, leaves the page as it was.
     On a paper the ink goes on the screen a little more slowly than on a
     blank page, so it stays solid where it crosses the paper's lines. The
     same over a photo or a sticker, but only where the stroke crosses it:
