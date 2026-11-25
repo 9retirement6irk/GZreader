@@ -242,6 +242,31 @@ if okb then
         "…and still there after the page refreshes")
     check(not texts(srows):find("CBZ", 1, true) and not rt:find("CBZ", 1, true), "no Flash on every CBZ page turn")
     -- the Settings page builds Screen's rows again from KOReader's on a refresh: GZreader's rows come back too
+    do -- KOReader settings leaves a trace in the log before each part is gathered (a freeze there said nothing)
+        local GS = require("common/gz_settings")
+        local saved_log = package.loaded["gzreader_log"]
+        local lines = {}
+        package.loaded["gzreader_log"] = { infoNow = function(sync, ...) local t = { ... } for i = 1, #t do t[i] = tostring(t[i]) end
+            lines[#lines + 1] = (sync and "sync " or "") .. table.concat(t, " ") end }
+        local gathered = 0
+        local native = { settingsItems = function(scope, id, opts)
+            return { { text = "Tools", sub_item_table_func = function() gathered = gathered + 1; return { { text = "row" } } end }, { text = "Plain" } }
+        end }
+        local item = GS.koreaderMenuItem(nil, native)
+        local roots = item.sub_item_table_func()
+        check(#roots == 2 and lines[1] == "sync settings: KOReader settings: gathering KOReader's menu" and lines[2] == "sync settings: KOReader settings: 2 sections",
+            "KOReader settings: the log says it's gathering KOReader's menu, written to the storage at once, then how many sections")
+        local rows = roots[1].sub_item_table_func()
+        check(#rows == 1 and gathered == 1 and lines[3] == "sync settings: KOReader settings: opening Tools" and #lines == 3,
+            "…and each section says it's opening before its rows are gathered (a quick one says nothing more)")
+        GS.traced(roots)
+        roots[1].sub_item_table_func()
+        check(lines[4] == "sync settings: KOReader settings: opening Tools" and #lines == 4, "…wrapped once however often it's asked for")
+        native.settingsItems = function() error("boom") end
+        local none = GS.koreaderMenuItem(nil, native).sub_item_table_func()
+        check(#none == 0 and lines[6]:find("could not be gathered", 1, true), "…a failure is said too, and the list is empty")
+        package.loaded["gzreader_log"] = saved_log
+    end
     local again = require("common/gz_settings").withFlashRows(setmetatable({ { id = "screen_eink_opt", text = "E-ink settings", sub_item_table = { { text = "Full refresh rate" } } },
         _zen_refresh = function() return { { id = "screen_eink_opt", text = "E-ink settings", sub_item_table = { { text = "Full refresh rate" }, { text = "Flash keyboard" } } } } end }, nil),
         { { text = "A" } })
