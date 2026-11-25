@@ -414,14 +414,15 @@ function Mealie.saveList(list)
     if type(list) ~= "table" or type(list.items) ~= "table" then return end
     pcall(function()
         writeJson(ensureDir() .. "/list.json", { v = 1, at = list.at, total = list.total, pages = list.pages,
-            items = JSON.list(list.items) })
+            items = JSON.list(list.items), cats = type(list.cats) == "table" and JSON.list(list.cats) or nil })
     end)
 end
 
 function Mealie.loadList()
     local data = readJson(Mealie.cacheDir() .. "/list.json")
     if not data or data.v ~= 1 or type(data.items) ~= "table" then return nil end
-    return { at = tonumber(data.at), total = tonumber(data.total), pages = tonumber(data.pages) or 1, page = 1, items = data.items }
+    return { at = tonumber(data.at), total = tonumber(data.total), pages = tonumber(data.pages) or 1, page = 1, items = data.items,
+        cats = type(data.cats) == "table" and data.cats or nil }
 end
 
 --- A recipe's file name: its slug, when that is a plain one (Mealie's are).
