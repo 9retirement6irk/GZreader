@@ -13,7 +13,8 @@ Recipes tab, or Settings → Home and tabs → Tab bar → Tabs).
   More recipes                          50 of 340        ›
 
 A recipe opens as a page of text: what it makes and how long it takes, the
-ingredients, the numbered steps, the notes.
+ingredients, the numbered steps, the notes. In the Bookshelf view it's an
+index card instead (gzreader_recipecard.lua).
 
 The list shown at once is the last one kept on the Kindle; it's fetched
 again when the tab opens (when Wi-Fi is on, or may be turned on by itself)
@@ -328,6 +329,13 @@ end
 --- A recipe's page: its name on top, the text below (KOReader's text
 --- window: page keys and swipes turn its pages).
 function Recipes.showRecipe(r, note)
+    -- the Bookshelf view: an index card from the recipe box (gzreader_recipecard.lua)
+    local ok, card = pcall(function()
+        local Card = require("gzreader_recipecard")
+        return Card.applies() and Card.show(r) or nil
+    end)
+    if ok and card then return card end
+    if not ok then Log.warn("recipe card:", tostring(card)) end
     local TextViewer = require("ui/widget/textviewer")
     local text = M().pageText(r)
     if note then text = note .. "\n\n" .. text end

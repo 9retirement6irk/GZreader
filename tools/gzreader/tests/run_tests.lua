@@ -1855,6 +1855,102 @@ print("Recipes tab in the Bookshelf view: the recipe box (dividers, where things
     check(distinct, "the recipe box: the dividers' three tab colours differ, and so do their greys")
 end)()
 
+print("A recipe in the Bookshelf view: the index card (its lines, cards, where things go)")
+;(function()
+    local saved_w = {}
+    local widget_mods = { "ui/widget/container/inputcontainer", "ui/widget/container/widgetcontainer", "ui/gesturerange", "ui/font", "ffi/blitbuffer" }
+    for _i, wm in ipairs(widget_mods) do
+        saved_w[wm] = package.loaded[wm]
+        if type(saved_w[wm]) ~= "table" then package.loaded[wm] = setmetatable({ extend = function(_s, o) return o or {} end }, { __index = function() return function() end end }) end
+    end
+    local Card = require("gzreader_recipecard")
+    local Shop = require("gzreader_bookshop")
+    for _i, wm in ipairs(widget_mods) do package.loaded[wm] = saved_w[wm] end
+    local Mealie = require("gzreader_mealie")
+    local one = function(x) return x end
+    check(table.concat(Card.wrapChars("Rub the butter into the flour and rest it", 16), "|") == "Rub the butter|into the flour|and rest it"
+        and table.concat(Card.wrapChars("one\ntwo three", 20), "|") == "one|two three" and #Card.wrapChars("", 10) == 0
+        and Card.wrapChars("Supercalifragilistic x", 5)[1] == "Supercalifragilistic", "the recipe card: text cut into lines at words (a long word stays whole)")
+    local r = Mealie.recipe({ slug = "apple-pie", name = "Apple pie", description = "A classic pie.", recipeServings = 8, totalTime = "1 hour",
+        recipeCategory = { { name = "Baking" }, { name = "Dessert" } },
+        recipeIngredient = { { title = "Crust", display = "2 cups flour" }, { display = "1 cup butter, cold and cut into small cubes" }, { title = "Filling", display = "6 apples" } },
+        recipeInstructions = { { title = "Crust", text = "Rub the butter into the flour and rest the dough." }, { text = "Roll out." }, { title = "Filling", text = "Toss the apples." } },
+        notes = { { title = "Apples", text = "Tart ones." } } })
+    check(r.cats and table.concat(r.cats, ",") == "Baking,Dessert", "a recipe keeps its categories' names (the card's divider)")
+    local wrap = function(text, indent) return Card.wrapChars(text, indent and 20 or 26) end
+    local rows = Card.rows(r, wrap)
+    local d = {}
+    for _i, row in ipairs(rows) do
+        d[#d + 1] = row.kind .. (row.first and "!" or "") .. (row.ing and ("#" .. row.ing) or "") .. (row.n and ("n" .. row.n) or "") .. (row.keep and "k" or "")
+    end
+    check(table.concat(d, " ") == "text! blank headk sectionk ing!#1 ing!#2 ing#2 ing#2 sectionk ing!#3 blank headk sectionk step!n1 stepn1 stepn1 step!n2 sectionk step!n1 blank headk sectionk note!",
+        "the recipe card: its lines in order: the description, the ingredients under their sections (numbered for crossing off), the steps numbered from 1 in each section, the notes (" .. table.concat(d, " ") .. ")")
+    check(rows[5].text == "2 cups flour" and rows[6].text == "1 cup butter, cold" and rows[7].text == "and cut into small" and rows[14].text == "Rub the butter into",
+        "the recipe card: a long ingredient or step runs over the next lines, behind its circle or number")
+    local empty = Card.rows(Mealie.recipe({ slug = "x", name = "X" }), wrap)
+    check(#empty == 1 and empty[1].text == "This recipe has no ingredients or steps yet.", "the recipe card: a recipe with nothing in it says so")
+
+    -- the cards
+    local function cardsText(cards)
+        local t = {}
+        for _i, c in ipairs(cards) do t[#t + 1] = c.first .. "-" .. c.last end
+        return table.concat(t, " ")
+    end
+    check(cardsText(Card.paginate(rows, 30, 30)) == "1-23", "the recipe card: everything on one card when it fits")
+    local cards = Card.paginate(rows, 10, 6)
+    check(cardsText(cards) == "1-10 12-17 18-23", "the recipe card: what doesn't fit goes on the next card; a card doesn't start with an empty line (" .. cardsText(cards) .. ")")
+    local cut = Card.paginate(rows, 13, 12)
+    check(cardsText(cut) == "1-10 12-23" , "the recipe card: a heading is never the last line of a card: it goes to the next one with what it heads (" .. cardsText(cut) .. ")")
+    local all_ok = true
+    for first = 1, 24 do
+        for nxt = 1, 24 do
+            local cs = Card.paginate(rows, first, nxt)
+            local seen, prev = {}, 0
+            for k, c in ipairs(cs) do
+                if c.first <= prev or c.last < c.first or c.last - c.first + 1 > math.max(1, k == 1 and first or nxt) or rows[c.first].kind == "blank" then all_ok = false end
+                for i = c.first, c.last do seen[i] = true end
+                prev = c.last
+            end
+            for i, row in ipairs(rows) do if row.kind ~= "blank" and not seen[i] then all_ok = false end end
+        end
+    end
+    check(all_ok, "the recipe card: at any card size every line is on one card, in order, none twice, none lost, no card over its size")
+    check(cardsText(Card.paginate({}, 5, 5)) == "1-0", "the recipe card: nothing to write: one empty card")
+
+    -- where things go
+    local fine = true
+    for _i, size in ipairs({ { 600, 800 }, { 1072, 1448 }, { 758, 1024 }, { 1860, 2480 }, { 824, 1200 } }) do
+        local L = Card.layout(size[1], size[2], one)
+        fine = fine and L.fits and L.card.x >= 0 and L.card.x + L.card.w <= size[1] and L.card.y + L.card.h < L.tags.y and L.tags.y + L.tags.h <= size[2]
+            and L.first.rows < L.next.rows and L.first.y + L.first.rows * L.row_h <= L.card.y + L.card.h and L.next.y + L.next.rows * L.row_h <= L.card.y + L.card.h
+            and L.text_x > L.card.x and L.text_x + L.text_w < L.card.x + L.card.w and L.tab.x + L.tab.w <= L.card.x + L.card.w and L.tab.y + L.tab.h <= L.card.y
+    end
+    check(fine, "the recipe card: at every screen size the lines are inside the card, the tags under it, the divider's tab behind its top")
+    check(Card.layout(600, 800, one).first.rows == 18 and Card.layout(600, 800, one).next.rows == 19 and not Card.layout(600, 240, one).fits,
+        "the recipe card: 18 lines on a Kindle 3's first card, 19 on the others; a screen too short gets the page of text")
+
+    -- when
+    local was_shelf = Shop.bookshelf
+    local Scr = require("device").screen
+    local was = { scale = Scr.scaleBySize, w = Scr.getWidth, h = Scr.getHeight }
+    Scr.scaleBySize = function(_s, px) return px end
+    Scr.getWidth, Scr.getHeight = function() return 600 end, function() return 800 end
+    Shop.bookshelf = function() return true end
+    local yes = Card.applies()
+    Shop.bookshelf = function() return false end
+    local no = Card.applies()
+    Shop.bookshelf = was_shelf
+    Scr.scaleBySize, Scr.getWidth, Scr.getHeight = was.scale, was.w, was.h
+    check(yes == true and no == false, "the recipe card: in the Bookshelf view; the other views keep the page of text")
+    local src = io.open(PLUGIN .. "/gzreader_recipes.lua", "rb"):read("*a")
+    check(src:find('local Card = require("gzreader_recipecard")', 1, true) and src:find("Card.applies() and Card.show(r)", 1, true),
+        "a recipe opens as the card when it applies, as the page of text otherwise (or if the card fails)")
+    local csrc = io.open(PLUGIN .. "/gzreader_recipecard.lua", "rb"):read("*a")
+    check(csrc:find("Box().fillWith(bb, self.colour, Box().PAL.card", 1, true) and csrc:find('self.colour = require("gzreader_colour").enabled()', 1, true)
+        and csrc:find("fill(bb, self.colour, Card.HEAD", 1, true) and csrc:find("fill(bb, self.colour, PAL.rule", 1, true),
+        "the recipe card: cream card, blue lines and a red rule on a colour screen (the box's colour painter), greys elsewhere")
+end)()
+
 print("Catalog: the Music page (CD cases on the shelves)")
 ;(function()
     local Tab = require("gzreader_musictab")
