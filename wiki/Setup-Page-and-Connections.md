@@ -154,6 +154,8 @@ it there). One key of your own for everything in GZreader that asks an AI
 service something:
 
 - [handwriting to text](Notes#handwriting-to-text) on Kindles that draw;
+- the daily paper's [AI edition](Daily-Paper#the-ai-edition): a summary of
+  each story;
 - whatever uses AI next.
 
 Two kinds of service:
@@ -172,9 +174,10 @@ one word, to check the key, the model and the address. **Used for** lists
 what uses the key now. **Remove the keys** takes both off the Kindle.
 
 A key by itself sends nothing. Each use is switched on where it lives
-(handwriting: Settings → Notes → Handwriting to text → With AI), and then
-only what it needs is sent: the writing being read, as a black-and-white
-picture. Wi‑Fi turns on for it.
+(handwriting: Settings → Notes → Handwriting to text → With AI; the paper:
+Daily paper → AI edition), and then only what it needs is sent: the writing
+being read, as a black-and-white picture, or a news story's headline and
+text for its summary. Wi‑Fi turns on for it.
 
 The setup page never shows a saved key back: it says the key is set, and a
 key field left empty keeps it. Keys are kept with GZreader's other sign-ins,

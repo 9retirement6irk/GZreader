@@ -282,12 +282,12 @@ local function aiSection(st, base)
             .. '" name="' .. name .. '" type="password" placeholder="' .. esc(set and "••••••••" or hint) .. '" ' .. NAME_ATTRS .. ">"
     end
     local parts = { '<section id="ai" class="tab"><h2>AI</h2>',
-        '<p class="what">One key of your own for everything on the Kindle that asks an AI service something: reading your handwriting (Notes), and whatever comes next. Nothing is sent until you switch a use on, and then only what it needs: the writing being read, as a picture.</p>',
+        '<p class="what">One key of your own for everything on the Kindle that asks an AI service something: reading your handwriting (Notes), the daily paper\'s AI edition, and whatever comes next. Nothing is sent until you switch a use on, and then only what it needs: the writing being read, as a picture, or a news story\'s headline and text for its summary.</p>',
         status(a.provider ~= nil, a.provider and ("Set up: <b>" .. esc(a.name) .. "</b>") or "Not set up") }
     if a.provider then
         local uses = {}
         for _i, u in ipairs(a.uses or {}) do uses[#uses + 1] = esc(u) end
-        parts[#parts + 1] = '<p class="note">Used for: ' .. (#uses > 0 and table.concat(uses, ", ") or "nothing yet (switch it on in the Notes tab)") .. ".</p>"
+        parts[#parts + 1] = '<p class="note">Used for: ' .. (#uses > 0 and table.concat(uses, ", ") or "nothing yet (switch it on in the Notes tab or the Daily paper tab)") .. ".</p>"
     end
     if a.error then parts[#parts + 1] = '<p class="err">' .. esc(a.error) .. "</p>" end
     parts[#parts + 1] = form(base .. "/ai",
@@ -307,7 +307,7 @@ local function aiSection(st, base)
     if a.claude_set or a.openai_set then
         parts[#parts + 1] = form(base .. "/ai",
             '<input type="hidden" name="clear" value="1"><button class="danger" type="submit"'
-            .. confirmJs("Remove the AI keys from the Kindle? Handwriting is then read on the Kindle.") .. ">Remove the keys</button>", "Removing…")
+            .. confirmJs("Remove the AI keys from the Kindle? Handwriting is then read on the Kindle, and the daily paper is the ordinary one.") .. ">Remove the keys</button>", "Removing…")
     end
     parts[#parts + 1] = "</section>"
     return table.concat(parts)
@@ -381,6 +381,13 @@ local function paperSection(st, base)
         tick("full", p.full, "Whole stories (each short story's own page is fetched too)"),
         tick("pictures", p.pictures, "With pictures (in opened stories, and a few on the pages)"),
         tick("calendar", p.calendar, "Today's calendar events on the front page") }
+    if p.ai_ready or p.ai then
+        rows[#rows + 1] = tick("ai", p.ai, "AI edition: a summary of each story, and pages of articles with their pictures")
+            .. '<p class="note" style="margin:-4px 0 10px">Each story\'s headline and text are sent to the AI service of the <a href="#ai">AI tab</a> when the paper is fetched; nothing about you is.'
+            .. (p.ai_ready and "" or " <b>The AI tab has no key yet.</b>") .. "</p>"
+    else
+        rows[#rows + 1] = '<p class="note" style="margin:0 0 10px">An AI edition (a summary of each story, pages of articles with their pictures) can be switched on here once the <a href="#ai">AI tab</a> has a key.</p>'
+    end
     local wx = p.weather or {}
     rows[#rows + 1] = tick("weather", wx.on, "Weather on the front page")
     if wx.source == "ha" then

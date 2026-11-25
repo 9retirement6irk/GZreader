@@ -5,6 +5,8 @@ setup page's AI tab.
 
 Used by:
 - handwriting to text (gzreader_handwriting.lua): a picture of the writing;
+- the daily paper's AI edition (gzreader_daily.lua): a story's headline and
+  text, for its summary;
 - whatever comes next: `AI.ask` (from the screen, in the background) or
   `AI.complete` (inside a background job).
 
@@ -250,6 +252,8 @@ function AI.uses(plugin)
     local out = {}
     local okh, Hw = pcall(require, "gzreader_handwriting")
     if okh and Hw.engine(plugin) ~= "kindle" then out[#out + 1] = _("Handwriting to text") end
+    local okd, D = pcall(require, "gzreader_daily")
+    if okd and D.aiOn(plugin) then out[#out + 1] = _("The daily paper's AI edition") end
     return out
 end
 
@@ -362,16 +366,16 @@ function AI.settingsItems(plugin)
               local uses = AI.uses(plugin)
               return #uses == 0 and _("Used for: nothing yet") or T(_("Used for: %1"), table.concat(uses, ", "))
           end,
-          help_text = _("Handwriting to text: Settings → Accounts and services → Notes → Handwriting to text."),
+          help_text = _("Handwriting to text: Settings → Accounts and services → Notes → Handwriting to text. The daily paper's AI edition: Settings → Accounts and services → Daily paper → AI edition."),
           keep_menu_open = true,
           callback = function()
-              note(_("Switch each on where it lives:\n\n• Handwriting to text: Notes → Handwriting to text\n\nOnly what's needed is sent: the writing being read, as a picture."))
+              note(_("Switch each on where it lives:\n\n• Handwriting to text: Notes → Handwriting to text\n• The daily paper's AI edition: Daily paper → AI edition\n\nOnly what's needed is sent: the writing being read, as a picture, or a news story's headline and text for its summary."))
           end },
         { text = _("Remove the keys"),
           enabled_func = function() return (s.claude.key or "") ~= "" or (s.openai.key or "") ~= "" end, keep_menu_open = true,
           callback = function(tm)
               UIManager:show(require("ui/widget/confirmbox"):new{
-                  text = _("Remove the AI keys from this Kindle? Handwriting is then read on the Kindle."),
+                  text = _("Remove the AI keys from this Kindle? Handwriting is then read on the Kindle, and the daily paper is the ordinary one."),
                   ok_text = _("Remove"),
                   ok_callback = function()
                       AI.clear(plugin)
