@@ -152,15 +152,25 @@ function Paper.pictureWidget(path, w, max_h)
         return RenderImage:scaleBlitBuffer(src, tw, th, true)
     end)
     if not ok or not bb then return nil end
-    local h = math.min(bb:getHeight(), max_h)
-    local off = math.floor((bb:getHeight() - h) / 3)
-    local pic = drawn(w, h, function(out, x, y)
+    local full = bb:getHeight()
+    local h = math.min(full, max_h)
+    local off = math.floor((full - h) / 3)
+    local pic
+    pic = drawn(w, h, function(out, x, y)
         if not bb then return end
         out:blitFrom(bb, x, y, 0, off, w, h)
         out:paintBorder(x, y, w, h, 1, Blitbuffer.COLOR_GRAY)
     end)
     pic.free = function()
         if bb then bb:free(); bb = nil end
+    end
+    -- (the AI edition fits its columns: more of the picture shown, up to all of it)
+    pic.full_h = full
+    pic.setHeight = function(_self, to)
+        h = math.max(1, math.min(full, to))
+        off = math.floor((full - h) / 3)
+        pic.dimen.h = h
+        return h
     end
     return pic
 end
@@ -686,6 +696,51 @@ function Paper.fill(start, n, cols, col_h, gap, height)
     return placed, i
 end
 
+--[[ Fit a column exactly (the AI edition): `blocks` = { { h, grow } } top to
+bottom, `h` a story's height and `grow` how much taller its picture can be
+made; `gap` the space between two stories. What's left of `col_h` goes to
+the pictures first, shared by how much each can grow, then evenly between
+the stories. Returns { { y, add } }: where each story starts and how much
+taller its picture is; the last story ends at `col_h` when there are two or
+more, or a picture took the rest. A column too full already is left as it
+is. ]]
+function Paper.fit(col_h, gap, blocks)
+    local n = #blocks
+    local used, room = 0, 0
+    for _i, b in ipairs(blocks) do used = used + b.h; room = room + math.max(0, b.grow or 0) end
+    local left = col_h - used - gap * math.max(0, n - 1)
+    local out = {}
+    local adds = {}
+    local given = 0
+    if left > 0 and room > 0 then
+        local share = math.min(left, room)
+        for i, b in ipairs(blocks) do
+            adds[i] = math.floor(share * math.max(0, b.grow or 0) / room)
+            given = given + adds[i]
+        end
+        -- (the pixels the rounding left, to the first pictures that can still take one)
+        local i = 1
+        while given < share and i <= n do
+            if (blocks[i].grow or 0) > adds[i] then adds[i] = adds[i] + 1; given = given + 1 else i = i + 1 end
+        end
+    end
+    left = math.max(0, left - given)
+    local between = n > 1 and math.floor(left / (n - 1)) or 0
+    local odd = n > 1 and left - between * (n - 1) or 0
+    local y = 0
+    for i, b in ipairs(blocks) do
+        out[i] = { y = y, add = adds[i] or 0 }
+        y = y + b.h + (adds[i] or 0) + gap + between + (i <= odd and 1 or 0)
+    end
+    return out
+end
+
+--- How tall the AI edition's story pictures start (a column `w` wide, a
+--- page `page_h` tall) and how tall they may be made to fill a column.
+function Paper.aiPicture(w, page_h)
+    return math.min(math.floor(w * 0.34), math.floor(page_h * 0.22)), math.min(math.floor(w * 0.8), math.floor(page_h * 0.42))
+end
+
 --- Today's calendar events wanted on the front page? (On unless unticked.)
 function Paper.calendarOn(plugin)
     return Daily().store(plugin).calendar ~= false
@@ -844,9 +899,11 @@ local function pageClass()
             byline_h = parts[#parts].widget:getSize().h
         end
         local pic_path = D.pictures(self.plugin) and (feature or D.pagePicture(story.item)) and D.picturePath(story.item)
-        local pic_h = feature and math.min(math.floor(w * 0.42), math.floor(self.dimen.h * 0.26)) or math.floor(w * (lead and 0.3 or 0.5))
+        local pic_low, pic_high = Paper.aiPicture(w, self.dimen.h)
+        local pic_h = feature and pic_low or math.floor(w * (lead and 0.3 or 0.5))
         local pic = pic_path and Paper.pictureWidget(pic_path, w, pic_h)
-        if pic then add(pic, S(4)) end
+        local pic_at
+        if pic then add(pic, S(4)); pic_at = #parts end
         local summary = feature and type(story.item.summary) == "string" and story.item.summary ~= "" and story.item.summary or nil
         local text = summary or Paper.excerpt(story.item.text, (lead or feature) and 700 or 420)
         if text ~= "" and text ~= story.item.title then
@@ -860,7 +917,21 @@ local function pageClass()
             end
             add(body)
         end
-        return { parts = parts, h = h, story = story, byline_y = byline_y, byline_h = byline_h, summary = summary ~= nil }
+        -- (how much taller its picture can be shown, for Paper.fit)
+        local grow = 0
+        if feature and pic and pic.full_h then grow = math.max(0, math.min(pic.full_h, pic_high) - pic:getSize().h) end
+        return { parts = parts, h = h, story = story, byline_y = byline_y, byline_h = byline_h, summary = summary ~= nil,
+            pic_at = pic_at, grow = grow }
+    end
+
+    --- Make block `b`'s picture `add` taller: what's under it moves down.
+    function PaperPage:growPicture(b, add)
+        local part = b.pic_at and b.parts[b.pic_at]
+        if not part or add <= 0 or not part.widget.setHeight then return end
+        local before = part.widget:getSize().h
+        local got = part.widget:setHeight(before + add) - before
+        for k = b.pic_at + 1, #b.parts do b.parts[k].y = b.parts[k].y + got end
+        b.h = b.h + got
     end
 
     --- Lay the current page out: the nameplate, the stories in columns.
@@ -996,11 +1067,36 @@ local function pageClass()
                 built[i] = built[i] or self:block(stories[i], col_w, false, ai)
                 return built[i].h
             end)
+            if ai then
+                -- each column that has stories after it fills its height exactly:
+                -- its pictures taller, then the stories spaced evenly (Paper.fit)
+                local by_col = {}
+                for _i, p in ipairs(placed) do
+                    by_col[p.col] = by_col[p.col] or {}
+                    table.insert(by_col[p.col], p)
+                end
+                local last_col = placed[#placed] and placed[#placed].col
+                for col, list in pairs(by_col) do
+                    if col < last_col or nxt <= self.n then
+                        local hs = {}
+                        for k, p in ipairs(list) do hs[k] = { h = built[p.i].h, grow = built[p.i].grow } end
+                        for k, f in ipairs(Paper.fit(col_h, gap, hs)) do
+                            self:growPicture(built[list[k].i], f.add)
+                            list[k].y = f.y
+                        end
+                        for k = 2, #list do
+                            local above = list[k - 1]
+                            list[k].rule_up = math.floor((list[k].y - (above.y + built[above.i].h)) / 2)
+                        end
+                    end
+                end
+            end
             for _i, p in ipairs(placed) do
                 local b = built[p.i]
                 b.x, b.y, b.w = margin + (p.col - 1) * (col_w + gutter), y + p.y, col_w
                 b.clip = math.min(b.h, col_h - p.y)
                 b.rule = p.y > 0 -- (a hairline above every story but a column's first)
+                b.rule_up = p.rule_up -- (a fitted column: halfway to the story above)
                 self.blocks[#self.blocks + 1] = b
             end
             for c = 1, cols - 1 do
@@ -1107,7 +1203,7 @@ local function pageClass()
         if self.message then self.message.widget:paintTo(bb, x + self.message.x, y + self.message.y) end
         for _i, r in ipairs(self.col_rules) do bb:paintRect(x + r.x, y + r.y, 1, r.h, Blitbuffer.COLOR_GRAY) end
         for i, b in ipairs(self.blocks) do
-            if b.rule then bb:paintRect(x + b.x, y + b.y - S(5), b.w, 1, Blitbuffer.COLOR_GRAY) end
+            if b.rule then bb:paintRect(x + b.x, y + b.y - (b.rule_up or S(5)), b.w, 1, Blitbuffer.COLOR_GRAY) end
             for _j, part in ipairs(b.parts) do
                 if not b.clip or part.y + part.widget:getSize().h <= b.clip then
                     part.widget:paintTo(bb, x + b.x, y + b.y + part.y)
