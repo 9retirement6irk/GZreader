@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Mark up page: draw on a book's page, kept as a note in Memos", text = "Reading: the quick panel in a book has Mark up page (touch Kindles, while Memos is connected). It takes the page as it is on the screen and opens the drawing screen on it, the page under your ink. Save sends it to Memos as a new note that says which book and page it was. The book itself isn't changed." },
+        },
+    },
+    {
         version = "2026.11.22",
         changes = {
             { short = "Colour Kindles: Immich photos in colour", text = "On a Kindle Colorsoft or Scribe Colorsoft, the pictures from your Immich album (the sleep screen and the Home wallpaper) are kept in colour instead of being made grey. Pictures already on the Kindle stay grey until they are swapped for others from the album (about half each time GZreader gets new pictures)." },

@@ -3158,6 +3158,8 @@ function Notes.edit(plugin, memo, opts)
                 end
                 Notes.dropAttachments(plugin, memo, atts.drop)
             else
+                -- (a book's page marked up: the line saying which book and page goes first)
+                if opts and opts.content_with then content = opts.content_with(content) end
                 local list = {}
                 for _i, d in ipairs(drawings or {}) do
                     if d.path then list[#list + 1] = { path = d.path, filename = d.filename } end
