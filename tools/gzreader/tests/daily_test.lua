@@ -242,9 +242,71 @@ local function fetchn(url)
 end
 e2 = Daily.build(big, NOW, fetchn)
 check(#e2.sections[1].items == Daily.PER_SECTION, "a section holds " .. Daily.PER_SECTION .. " stories at most … " .. #e2.sections[1].items)
-local front = Daily.front(ed, 4)
+local front
+do
+    local ed_mix = ed.order
+    ed.order = nil
+    front = Daily.front(ed, 4)
+    ed.order = ed_mix
+end
 check(#front == 4 and front[1].title == "A1" and front[2].title == "S last week" and front[3].title == "U1" and front[4].title == "B1",
-    "the front page: each section's first story, then their seconds")
+    "the front page of an edition without a mix (an older one): each section's first story, then their seconds")
+;(function()
+-- the stories mixed through the paper: every one once, a topic's own in their order, the same all day
+local function mixTitles(e)
+    local t = {}
+    for _i, st in ipairs(Daily.ordered(e)) do t[#t + 1] = st.item.title end
+    return table.concat(t, ",")
+end
+check(type(ed.order) == "table" and #ed.order == Daily.count(ed), "the edition is mixed when it's made: every story in it")
+local seen_t, keeps_order, last_world = {}, true, 0
+for _i, st in ipairs(Daily.ordered(ed)) do
+    seen_t[st.item.title] = true
+    if st.topic == "World" then
+        if st.i < last_world then keeps_order = false end
+        last_world = st.i
+    end
+end
+local n_seen = 0
+for _k in pairs(seen_t) do n_seen = n_seen + 1 end
+check(n_seen == Daily.count(ed) and keeps_order, "…each story once, a topic's stories in their own order")
+local again = { sections = ed.sections, order = Daily.mix(ed, ed.day) }
+check(mixTitles(again) == mixTitles(ed) and Daily.front(ed, 4)[1].title == Daily.ordered(ed)[1].item.title,
+    "…the same mix all day; the front page is the paper's first stories (" .. mixTitles(ed) .. ")")
+local function runs(e)
+    local n, last = 0, nil
+    for _i, st in ipairs(Daily.ordered(e)) do if st.topic == last then n = n + 1 end; last = st.topic end
+    return n
+end
+-- a paper with good news: it leads, and there's more of it in the first half
+local function section(topic, n, tag)
+    local items = {}
+    for i = 1, n do items[i] = { title = tag .. i } end
+    return { topic = topic, items = items }
+end
+local gp = { sections = { section("World", 8, "W"), section("Technology", 8, "T"), section("Science", 8, "S"), section("Good news", 8, "G") } }
+local first_half, second_half, leads = 0, 0, 0
+for d = 1, 40 do
+    gp.order = Daily.mix(gp, "2026-12-" .. d)
+    local list = Daily.ordered(gp)
+    if list[1].topic == "Good news" then leads = leads + 1 end
+    for k, st in ipairs(list) do
+        if st.topic == "Good news" then if k <= 16 then first_half = first_half + 1 else second_half = second_half + 1 end end
+    end
+end
+check(leads == 40 and first_half > second_half * 2, "good news leads the paper, and more of it comes in the first half ("
+    .. first_half .. " to " .. second_half .. " over 40 days)")
+gp.order = Daily.mix(gp, "2026-12-01")
+check(runs(gp) == 0, "…never the same topic twice running while another has stories left")
+local lone = { sections = { section("World", 3, "W") } }
+lone.order = Daily.mix(lone, "x")
+check(mixTitles(lone) == "W1,W2,W3", "one topic: its stories as they were")
+-- an order that leaves stories out (an older one, or the AI's): those after, nothing twice
+local part = { sections = gp.sections, order = { { s = 4, i = 2 }, { s = 4, i = 2 }, { s = 9, i = 1 }, { s = 1, i = 1 } } }
+local pl = Daily.ordered(part)
+check(#pl == 32 and pl[1].item.title == "G2" and pl[2].item.title == "W1" and pl[3].item.title == "W2",
+    "an order with stories left out (or twice, or none such): the rest after it, each once")
+end)()
 check(#Daily.front(nil, 3) == 0 and #Daily.front(ed, 0) == 0 and #Daily.front(ed, 99) == Daily.count(ed), "the front page of nothing; never more than there is")
 check(Daily.count(ed) == 10, "stories counted … " .. Daily.count(ed))
 
@@ -487,6 +549,12 @@ check(Paper.statusText(plugin, os.time() + 2 * 86400):match("^from %a+, %a+ %d+$
 local stories = Paper.stories(Daily.edition)
 check(#stories == 4 and stories[1].kicker == true and stories[2].kicker == false and stories[1].topic == Daily.OWN_TOPIC
     and stories[1].item.title == "First story & more", "the paper's stories in reading order, a section's first one marked for its heading")
+do
+local ks = Paper.stories({ sections = { { topic = "World", items = { { title = "w1" }, { title = "w2" } } }, { topic = "Science", items = { { title = "s1" } } } },
+    order = { { s = 1, i = 1 }, { s = 2, i = 1 }, { s = 1, i = 2 } } })
+check(#ks == 3 and ks[2].item.title == "s1" and ks[1].kicker and ks[2].kicker and ks[3].kicker,
+    "mixed: the paper's order, each story with its topic over it when the topic changes")
+end
 check(#Paper.stories(nil) == 0, "no edition: no stories")
 do
     -- colour: each section's heading, the nameplate's rule
