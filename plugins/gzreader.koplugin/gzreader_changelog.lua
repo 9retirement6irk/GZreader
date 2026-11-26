@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Daily paper: a story no longer shows a page's embed code, folded captions or the byline lines over it", text = "Daily paper: an opened story fetched from its own page could start with the site's section, \"By\" and the writer's name on lines of their own, then the headline again, then the page's Embed box as code (<iframe src=…>), and carry picture captions ending in \"hide caption\". Those are left out now, in new papers and in the one already fetched." },
+        },
+    },
+    {
         version = "2026.11.22",
         changes = {
             { short = "Colour Kindles: Immich photos in colour", text = "On a Kindle Colorsoft or Scribe Colorsoft, the pictures from your Immich album (the sleep screen and the Home wallpaper) are kept in colour instead of being made grey. Pictures already on the Kindle stay grey until they are swapped for others from the album (about half each time GZreader gets new pictures)." },

@@ -1170,7 +1170,10 @@ function Paper.articleText(item)
     local by = item.source or ""
     if item.at then by = by .. (by ~= "" and " · " or "") .. Paper.dateText(item.at) .. ", " .. Paper.timeText(item.at) end
     if by ~= "" then parts[#parts + 1] = by end
-    if item.text and item.text ~= "" then parts[#parts + 1] = item.text end
+    -- (a story fetched from its page by an earlier build: the same tidying as Article.extract's)
+    local text = item.text
+    if item.full and text and text ~= "" then text = require("gzreader_article").tidyText(text, item.title) end
+    if text and text ~= "" then parts[#parts + 1] = text end
     if item.link then
         parts[#parts + 1] = item.full and _("From the story's own page. QR code shows its link for your phone.")
             or (not item.text or #item.text < 600)
