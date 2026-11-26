@@ -56,6 +56,8 @@ pcall(function() require("gzreader_nightguard").install() end)
 pcall(function() require("gzreader_eink").install() end)
 -- Pen Kindles (the Scribe): the pen and the touch screen kept apart (a palm drew).
 pcall(function() require("gzreader_peninput").install(require("device").input) end)
+-- The display stopping to finish its updates: logged, and started again (gzreader_einkwatch.lua).
+pcall(function() require("gzreader_einkwatch").install() end)
 
 local Grimmory = WidgetContainer:extend{
     name = "gzreader",

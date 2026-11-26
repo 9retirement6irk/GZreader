@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "When the screen stops redrawing: logged, and started again", text = "A Scribe stopped redrawing while searching a book: every screen update waited for the display's own 5-second limit and nothing showed until a restart. GZreader now logs each update the display doesn't finish (what kind, and where on the screen), and after two in a row turns the Scribe's pen mode off and refreshes the whole screen, at most once a minute." },
+        },
+    },
+    {
         version = "2026.11.22",
         changes = {
             { short = "Colour Kindles: Immich photos in colour", text = "On a Kindle Colorsoft or Scribe Colorsoft, the pictures from your Immich album (the sleep screen and the Home wallpaper) are kept in colour instead of being made grey. Pictures already on the Kindle stay grey until they are swapped for others from the album (about half each time GZreader gets new pictures)." },
