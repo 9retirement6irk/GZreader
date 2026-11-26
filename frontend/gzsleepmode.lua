@@ -53,7 +53,7 @@ function M.pictureDirs(settings, prefix, kindle)
     return dirs
 end
 
---- The sleep screen chosen, as Settings → Sleep and wallpaper → Sleep → Wallpaper's
+--- The sleep screen chosen, as Settings → Sleep and wallpaper → Wallpaper's
 --- tiles name them: "auto" (cover while reading, a picture from the folder
 --- elsewhere), "immich_auto" (the same with an Immich picture), "immich" (an
 --- Immich picture always), or KOReader's screensaver_type ("cover",

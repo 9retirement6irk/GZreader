@@ -154,13 +154,65 @@ function M.aiLink(copy)
     }
 end
 
+---------------------------------------------------------------- fewer taps
+
+--- Sleep and wallpaper → Sleep was a page of its own for most of the section:
+--- its rows (wallpaper, its options, the sleep message, automatic suspend…)
+--- now are Sleep and wallpaper's own, the Home background after them. On a
+--- device without a sleep screen, only the Home background.
+function M.flatSleep(root)
+    local _ = gettext()
+    local sec, rows = M.section(root, "sleep")
+    local sleep, at = M.find(rows, _("Sleep"))
+    if not at then return end
+    table.remove(rows, at)
+    local rest = rows
+    sec.sub_item_table = nil
+    sec.sub_item_table_func = function(...)
+        local list = {}
+        local on = type(sleep.enabled_func) ~= "function" or sleep.enabled_func()
+        if on and sleep.enabled ~= false then
+            for _i, it in ipairs(M.rowsOf(sleep, ...)) do list[#list + 1] = it end
+        end
+        if list[#list] then list[#list].separator = true end
+        for _i, it in ipairs(rest) do list[#list + 1] = it end
+        if list[#list] then list[#list].separator = nil end
+        return list
+    end
+end
+
+--- Display and light's Font and "Size of menus and text" are one row, Menu
+--- text: the size of everything first, then the font and its own size.
+function M.menuText(root)
+    local _ = gettext()
+    local _sec, rows = M.section(root, "display")
+    local font = M.find(rows, _("Font"))
+    local size = M.take(rows, function(it) return M.startsWith(it, _("Size of menus and text")) end)
+    if not (font and size) then
+        -- (one of them alone: put back as it was)
+        if size and rows then rows[#rows + 1] = size end
+        return
+    end
+    local font_rows = font.sub_item_table
+    local font_func = font.sub_item_table_func
+    font.text, font.text_func = _("Menu text"), nil
+    font.help_text = _("The type of menus, lists and GZreader's own pages: how big everything is (the screen is laid out again for it), then the font and its size.")
+    font.sub_item_table, font.sub_item_table_func = nil, function(...)
+        local list = { size }
+        size.separator = true
+        local inner = type(font_rows) == "table" and font_rows or (type(font_func) == "function" and font_func(...)) or {}
+        for _i, it in ipairs(inner) do list[#list + 1] = it end
+        return list
+    end
+end
+
 ---------------------------------------------------------------- all of it
 
 --- Settings' first page (gz_settings_tree.build's) made simpler. `opts`:
 --- { gzreader = function() → GZreader's plugin or nil }.
 function M.apply(root, opts)
     opts = opts or {}
-    for _i, step in ipairs({ M.noImmichCopy, M.aiOnce }) do
+    for _i, step in ipairs({ M.noImmichCopy, M.aiOnce, M.flatSleep, M.menuText }) do
         local ok, err = pcall(step, root, opts)
         if not ok then
             pcall(function() require("logger").warn("GZreader settings: a tidying step failed:", tostring(err)) end)

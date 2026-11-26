@@ -564,7 +564,7 @@ local function sleepSection(st, base)
         radios[#radios + 1] = radio("mode", "immich", SLEEP_LABELS.immich, mode == "immich")
     end
     if not SLEEP_LABELS[mode or ""] then
-        radios[#radios + 1] = '<p class="note" style="margin:0 0 12px">Now: another sleep screen, chosen on the Kindle (Settings → Sleep and wallpaper → Sleep → Wallpaper).</p>'
+        radios[#radios + 1] = '<p class="note" style="margin:0 0 12px">Now: another sleep screen, chosen on the Kindle (Settings → Sleep and wallpaper → Wallpaper).</p>'
     end
     parts[#parts + 1] = form(base .. "/sleep/mode", table.concat(radios) .. '<button class="alt small" type="submit">Use this sleep screen</button>', "Saving…")
     -- adding pictures (made here: the Kindle's size, grey (in colour for a colour screen), PNG)

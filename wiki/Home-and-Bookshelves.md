@@ -212,7 +212,7 @@ Daily paper**. → [Daily paper](Daily-Paper)
 While a book is open: its cover. From Home and menus: a random picture from
 the USB drive's `screensavers` folder (created by the setup guide), falling
 back to the Kindle's own sleep pictures. Chosen in the setup guide, or in
-**Settings → Sleep and wallpaper → Sleep → Wallpaper**: each sleep screen is a tile
+**Settings → Sleep and wallpaper → Wallpaper**: each sleep screen is a tile
 showing what it looks like (this one, the last book's cover, a picture from
 the screensavers folder, reading progress, book status, or the screen left
 as it is); tap one, or press its letter on a Kindle with keys. The cover's
@@ -249,7 +249,7 @@ in your phone's browser; Kindles without Wi‑Fi on the
   you; photos only, no videos).
 - **Sleep screen**: *Book cover while reading, an Immich picture elsewhere*,
   or *An Immich picture, always*. These are also two more tiles in
-  **Settings → Sleep and wallpaper → Sleep → Wallpaper** once an album is chosen. With no
+  **Settings → Sleep and wallpaper → Wallpaper** once an album is chosen. With no
   pictures yet, the screensavers folder's show.
 - **Home wallpaper**: a picture from the album behind Home and the tabs
   (the same as **Settings → Sleep and wallpaper → Home background → Picture from Immich**).

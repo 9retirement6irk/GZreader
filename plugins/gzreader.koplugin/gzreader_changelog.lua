@@ -9,6 +9,7 @@ return {
     {
         version = "next",
         changes = {
+            { short = "Settings: fewer taps to the sleep screen and the menu font", text = "Sleep and wallpaper shows the sleep screen's rows straight away (Wallpaper, Wallpaper options, the sleep message, Automatic suspend), with no Sleep row to open first; the Home background follows them. Display and light's Font and Size of menus and text are one row, Menu text." },
             { short = "Settings: each thing in one place", text = "Settings no longer shows the same page twice. Sleep and wallpaper has no Pictures from Immich row (the Immich connection is Accounts and services → Photos; the sleep screen and Home background still choose Immich pictures), and Notes → Handwriting to text has one AI service row that opens Accounts and services → AI instead of the whole AI page again." },
         },
     },
