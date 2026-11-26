@@ -6,6 +6,9 @@
 --   luajit zen_settings_test.lua <plugins/zenos.koplugin>
 local ZEN = arg[1]
 package.path = ZEN .. "/?.lua;" .. package.path
+-- (the tree as gz_settings_tree.lua builds it: what Settings makes of it afterwards,
+-- common/gz_settings_tidy.lua, is gz_settings_tidy_test.lua's)
+package.loaded["common/gz_settings_tidy"] = { apply = function(root) return root end }
 local function magic()
     local m
     m = setmetatable({}, { __index = function() return m end, __call = function() return m end,
@@ -15,7 +18,6 @@ end
 local real = {
     ["modules/settings/zen_settings"] = true,
     ["common/gz_settings_tree"] = true,
-    ["common/gz_settings_tidy"] = true,
     ["common/gz_settings"] = true,
     ["modules/settings/sections/extras_settings"] = true,
     ["modules/settings/sections/global_settings"] = true,
