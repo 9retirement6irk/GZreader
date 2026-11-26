@@ -144,8 +144,10 @@ Each day's paper comes with three puzzles you do on the Kindle: a
 **Puzzles** at its foot (with keys: move the frame to it with the 5-way and
 press; on a keyboard, **P**). The foot shows how many you've finished (**Puzzles 1/3**).
 
-They are made on the Kindle from the date, so they need no Wi‑Fi and no
-paper to have been fetched, and every Kindle has the same ones that day.
+They are made on the Kindle, so they need no Wi‑Fi. The sudoku and the maze
+come from the date alone. The word search hides **words from the paper's
+stories** when there is a paper (see below), and words of its own when there
+isn't.
 What you've done is kept until the next day's paper (5 in the morning), when
 new ones take their place.
 
@@ -161,6 +163,15 @@ The three are tabs across the top; tap one, or press a page-turn key.
   marks the squares that aren't right with a cut corner; nothing is marked
   until you ask. There is exactly one answer.
 - **Word search**: eight words, across, down, diagonal, and some backwards.
+  With a paper on the Kindle the words are taken from its stories, headline
+  words first: plain words of four to eight letters, without everyday words
+  (*through*, *people*, the days and months), without the news' grim ones,
+  and only one of a family (*votes*, not also *voted*). The line under the
+  letters says when the words are the paper's. The puzzle is made the first
+  time you open it and kept for the day, so fetching the paper again doesn't
+  change one you've started; one you haven't touched is made again from a
+  newer paper. Feeds in other languages give fewer words (letters with
+  accents are left out), and the puzzle's own list fills the gaps.
   Found words are crossed off the list and circled in the letters (on a
   colour Kindle their squares are also tinted, each word its own colour).
   The stroke doesn't have to be exact: it may wobble or run a little past

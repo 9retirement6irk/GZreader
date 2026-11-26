@@ -50,7 +50,11 @@ function Screen_.statusText(kind, info)
         if info.checked then return _("Right so far.") end
         return T(_("%1 squares to go."), info.left)
     end
-    if kind == "words" then return T(_("%1 of %2 found."), info.found, info.of) end
+    if kind == "words" then
+        local line = T(_("%1 of %2 found."), info.found, info.of)
+        if info.news then line = line .. " " .. _("The words are from the paper's stories.") end
+        return line
+    end
     return _("In at the top left, out at the bottom right.")
 end
 
@@ -277,7 +281,7 @@ local function pageClass()
             self.wcur = self.wcur or { 1, 1 }
             local n = 0
             for _k in pairs(found) do n = n + 1 end
-            info = { done = Pz.wordsDone(ws, found), found = n, of = #ws.words }
+            info = { done = Pz.wordsDone(ws, found), found = n, of = #ws.words, news = ws.src ~= nil and ws.src ~= "list" }
             local line_h = self:glyph("A", 11, true):getSize().h + S(6)
             self.list = { y = y + side + S(8), col_w = math.floor(room_w / 4), line_h = line_h, x = margin }
         else
@@ -735,6 +739,8 @@ end
 --- Open the day's puzzles (at one of them: "sudoku", "words", "maze").
 function Screen_.show(plugin, kind)
     if Screen_.instance and not Screen_.instance.closed then return Screen_.instance end
+    -- (a word puzzle not started is made again if the paper has been fetched since)
+    pcall(function() P().freshen(plugin) end)
     local self = pageClass():new{ plugin = plugin, kind = kind or "sudoku" }
     Screen_.instance = self
     UIManager:show(self)

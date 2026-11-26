@@ -1210,6 +1210,8 @@ check(not src:find("Log%.[a-z]+%([^\n]*%f[%w]url%f[%W][^\n]*%)") or not src:find
 print("== the day's puzzles")
 local Pz = require("gzreader_puzzles")
 local Dz = require("gzreader_daily")
+local real_edition = Pz.edition
+Pz.edition = function() return nil end -- (no paper yet: the puzzles' own words; the news' words are tested below)
 local pz_saves, soon = 0, 0
 local pl = { store = { daily = { enabled = true } }, save = function() pz_saves = pz_saves + 1 end, saveSoon = function() soon = soon + 1 end }
 -- chance: the same day, the same run
@@ -1388,6 +1390,70 @@ check(Scr.statusText("sudoku", { left = 47 }) == "47 squares to go." and Scr.sta
 check(Scr.helpText("sudoku", true):find("Tap a square", 1, true) and Scr.helpText("sudoku", false, true):find("Q–O", 1, true) and Scr.helpText("sudoku", false, false):find("Press: the next number", 1, true)
     and Scr.helpText("words", false, true):find("Press on a word's first letter", 1, true) and Scr.helpText("maze", true):find("swipe", 1, true), "how to play, for touch, a keyboard and the 5-way alone")
 check(Scr.tabLabel("sudoku") == "Sudoku" and Scr.tabLabel("words") == "Word search" and Scr.tabLabel("maze") == "Maze", "the three tabs")
+-- words from the paper's stories
+local paper = { day = "2031-06-01", sections = {
+    { topic = "World", items = {
+        { title = "Council votes to keep the old bridge open through the winter",
+          text = "The council voted nine to four. Engineers said the bridge was sound, and the bridge stays. Café owners cheered. Elsewhere three people were killed in a crash. Traffic lights will let one lane cross at a time." },
+        { title = "Harvest festival moved indoors", text = "Rain is forecast for the valley all weekend, the organisers said. Don't forget an umbrella." } } },
+    { topic = "Technology", items = { { title = "A pocket radio that tunes itself", text = "The radio listens for the strongest signal. Its maker calls it a toy; the signal says otherwise." } } },
+} }
+local nw = Pz.newsWords(paper)
+local by, order_ok, plain_ok = {}, true, true
+for i, e in ipairs(nw) do
+    by[e.word] = e
+    if i > 1 then
+        local a = nw[i - 1]
+        if (not a.head and e.head) or (a.head == e.head and a.n < e.n) or (a.head == e.head and a.n == e.n and a.word >= e.word) then order_ok = false end
+    end
+    if not e.word:match("^[A-Z]+$") or #e.word < 4 or #e.word > 8 then plain_ok = false end
+end
+check(by.BRIDGE and by.BRIDGE.head == true and by.BRIDGE.n == 3 and by.COUNCIL and by.HARVEST and by.RADIO and by.RADIO.n == 2 and by.SIGNAL and by.SIGNAL.head == false,
+    "the paper's words: from its headlines and its stories, counted")
+check(order_ok and nw[1].head == true and plain_ok, "headline words first, then the ones seen most, then by the alphabet; plain A–Z words of 4 to 8 letters")
+check(not by.THROUGH and not by.THREE and not by.PEOPLE and not by.SAID and not by.WERE, "everyday words say nothing about a story: left out")
+check(not by.KILLED and not by.CRASH, "grim words aren't put in a puzzle")
+check(by.CAF == nil and by.DON == nil and by.ENGINEERS == nil and by.ORGANISERS == nil, "a word with an accent or an apostrophe isn't cut in two; ones too long are left out")
+check((by.VOTES ~= nil) ~= (by.VOTED ~= nil), "one of a family (VOTES or VOTED), not both")
+check(by.FORECAST.from == "Rain is forecast for the valley all weekend, the organisers said." and by.COUNCIL.from == "Council votes to keep the old bridge open through the winter",
+    "each word remembers the headline or sentence it was read in")
+check(#Pz.newsWords(nil) == 0 and #Pz.newsWords({ sections = { { items = { { title = 5, text = false } } } } }) == 0 and Pz.source(nil) == "list" and Pz.source(paper) == "2031-06-01"
+    and Pz.source({ day = "2031-06-02", sections = { { items = { { title = "Rain" } } } } }) == "list", "no paper, or one with hardly a word: the puzzles' own list")
+local nws = Pz.wordSearch("2031-06-01", nil, nil, { "BRIDGE", "COUNCIL", "HARVEST", "FESTIVAL", "RADIO", "bad", "TOOLONGAWORD", "BRIDGE", "WINTER" })
+local hidden = {}
+for _i, w in ipairs(nws.words) do hidden[w.word] = true end
+check(#nws.words == 8 and hidden.BRIDGE and hidden.COUNCIL and hidden.HARVEST and hidden.FESTIVAL and hidden.RADIO and hidden.WINTER and not hidden.bad,
+    "a word search hides the words it's given first, and fills up from its own list")
+-- the day's word search with a paper
+local pn = { store = { daily = { enabled = true } }, save = function() end, saveSoon = function() end }
+Pz.edition = function() return paper end
+local wsn = Pz.dayWords(pn)
+local from_news = 0
+for _i, w in ipairs(wsn.words) do if by[w.word] then from_news = from_news + 1 end end
+check(wsn.src == "2031-06-01" and #wsn.words == 8 and from_news >= 6 and pn.store.daily.puzzles.words.grid == wsn.grid, "with a paper: its words are hidden (" .. from_news .. " of 8), and the puzzle is kept")
+Pz.edition = function() error("not asked again") end
+local again_ws = Pz.dayWords(pn)
+local same_w = again_ws.grid == wsn.grid and #again_ws.words == #wsn.words
+for i, w in ipairs(wsn.words) do
+    local o = again_ws.words[i]
+    if not o or o.word ~= w.word or o.x ~= w.x or o.y ~= w.y or o.dx ~= w.dx or o.dy ~= w.dy then same_w = false end
+end
+check(same_w, "asked again: the kept puzzle, letter for letter, without reading the paper")
+local paper2 = { day = "2031-06-01", sections = { { topic = "World", items = { { title = "Lighthouse keeper counts seven ships in the northern harbour", text = "The keeper kept a tally. Ships passed all morning." } } } } }
+Pz.edition = function() return paper2 end
+check(Pz.freshen(pn) == false and Pz.dayWords(pn).grid == wsn.grid, "the same day's paper fetched again: the puzzle stays (its paper is the same day's)")
+paper2.day = "2031-06-02"
+check(Pz.freshen(pn) == true and Pz.dayWords(pn).grid ~= wsn.grid and Pz.dayWords(pn).src == "2031-06-02", "a newer paper, the puzzle not started: made again from it")
+Pz.wordFound(pn, 1)
+paper2.day = "2031-06-03"
+local started = Pz.dayWords(pn).grid
+check(Pz.freshen(pn) == false and Pz.dayWords(pn).grid == started and select(2, Pz.dayWords(pn))[1] == true, "once a word is found the puzzle isn't changed under you")
+pn.store.daily.puzzles.words.grid = "abc"
+Pz.edition = function() return nil end
+check(Pz.dayWords(pn).src == "list" and #Pz.dayWords(pn).grid == 100, "a kept puzzle that makes no sense: a new one")
+check(Scr.statusText("words", { found = 2, of = 8, news = true }) == "2 of 8 found. The words are from the paper's stories." and Scr.statusText("words", { found = 2, of = 8 }) == "2 of 8 found.",
+    "the page says when the words are the paper's")
+
 -- circling a word: where a stroke ends, straightened; the ring drawn round a found word
 check(table.concat({ Scr.snap(2, 3, 7, 3, 10) }, ",") == "7,3" and table.concat({ Scr.snap(2, 3, 7, 4, 10) }, ",") == "7,3", "a stroke across, a square off at its end: still across")
 check(table.concat({ Scr.snap(4, 8, 5, 2, 10) }, ",") == "4,2", "a stroke up, a little crooked: straight up")
@@ -1421,6 +1487,7 @@ check(ssrc:find('PzPan = { GestureRange:new{ ges = "pan", range = range } }', 1,
 check(Scr.helpText("words", true):find("Draw along a word to circle it", 1, true) and Scr.helpText("words", true):find("tap its first letter", 1, true), "the word search says so, and the two taps still work")
 check(ssrc:find('PzPanel = { { "Menu" } }', 1, true) and ssrc:find("Paper.pulledDown(ges)", 1, true), "Menu and a swipe from the top are the quick panel there too")
 local dsrc2 = read(PLUGIN .. "/gzreader_dailyscreen.lua")
+Pz.edition = real_edition
 check(dsrc2:find('if what == "puzzles" then', 1, true) and dsrc2:find("if self.foot.puzzles then Paper.puzzles(self.plugin) end", 1, true) and dsrc2:find('foot("puzzles", f.puzzles, S(6))', 1, true),
     "the paper opens them: a tap on Puzzles, or the 5-way to it and Press")
 

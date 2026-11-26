@@ -1,11 +1,16 @@
 --[[--
 The daily paper's puzzles: a sudoku, a word search and a maze, made on the
-Kindle from the day's date (no network; the same day gives the same
-puzzles), and how far you've got with each (kept until the next day's
-paper). The screen is gzreader_puzzlescreen.lua.
+Kindle (no network), and how far you've got with each (kept until the next
+day's paper). The screen is gzreader_puzzlescreen.lua.
+
+The sudoku and the maze come from the day's date alone. The word search
+hides words from the paper's stories when there is a paper (the kept
+edition's headlines first), and from a list of its own otherwise; it is
+made once and kept for the day, so fetching the paper again doesn't change
+a puzzle you've started.
 
 Kept in store.daily.puzzles = { off, day, sudoku = { given, answer, fill },
-words = { found = "1,4" }, maze = { cols, rows, at, seen } }.
+words = { found = "1,4", of, src, grid, placed }, maze = { cols, rows, at, seen } }.
 ]]
 
 local Puzzles = {
@@ -131,6 +136,92 @@ function Puzzles.sudoku(seed)
     return { given = table.concat(given), answer = table.concat(answer) }
 end
 
+---------------------------------------------------------------- words from the news
+
+-- Words that say nothing about a story (they'd be in every paper), 4 letters and up.
+local STOP = {}
+for w in ([[
+about above after again against almost along already also although always among another around because become
+becomes been before behind being below between both came cannot come comes could does doing done down during each
+early either else enough even ever every first five following found four from further gave gets give given gives
+going gone good great half have having here hers herself himself however into itself just keep kept know known
+last late later least less like likely long made make makes many might more most much must near nearly need never
+next none nothing often once only onto other others ours over part past people perhaps said same says seen seven
+several shall should show since some soon still such take taken tell than that their theirs them then there these
+they thing things think this those though three through thus time times told took toward towards under until upon
+used very want wants week weeks well went were what when where whether which while whom whose will with within
+without would year years your yours yesterday today tomorrow monday tuesday wednesday thursday friday saturday sunday
+january february march april june july august september october november december according reported report reports
+news story stories read more click here share email photo photos image images video caption getty reuters editor
+]]):gmatch("%a+") do STOP[w:upper()] = true end
+
+-- News has grim words; a puzzle needn't. (Not hidden in the letters, not asked for in a clue.)
+local GRIM = {}
+for w in ([[
+abuse abused assault attack attacked attacks blast bomb bombs bombing bombed cancer corpse crash crashed dead deadly
+death deaths died dies dying execution fatal fatally funeral grave gunman hostage hostages injured kidnap kill killed
+killer killing kills massacre murder murdered murders rape raped shooting shot slain stabbed stabbing suicide terror
+terrorist torture victim victims wounded
+]]):gmatch("%a+") do GRIM[w:upper()] = true end
+
+local function stem(w)
+    return (w:gsub("ING$", ""):gsub("ED$", ""):gsub("ES$", ""):gsub("S$", ""))
+end
+
+--- The words of an edition worth hiding in a puzzle, most telling first:
+--- { { word = "BRIDGE", head = true (in a headline), n = times seen,
+--- from = where it was read: a headline or the sentence it's in }, … }.
+--- Plain A–Z words of `min` to `max` letters; no everyday words, no grim
+--- ones, one of each family (VOTE, not also VOTES and VOTED). Headline words
+--- first, then the ones seen most, then by the alphabet (so the same paper
+--- always gives the same list).
+function Puzzles.newsWords(edition, min, max)
+    min, max = min or 4, max or 8
+    local seen, order = {}, {}
+    local function take(text, head)
+        if type(text) ~= "string" then return end
+        -- (sentence by sentence, so each word knows the sentence it came in)
+        for sentence in (text .. " "):gmatch("[^%.%?!\n]+[%.%?!\n]?") do
+            for token in sentence:gmatch("[%a'\128-\255]+") do
+                if #token >= min and #token <= max and not token:find("[^%a]") then
+                    local w = token:upper()
+                    if not STOP[w] and not GRIM[w] then
+                        local key = stem(w)
+                        local e = seen[key]
+                        if not e then
+                            e = { word = w, n = 0, head = false, from = (sentence:gsub("^%s+", ""):gsub("%s+$", "")) }
+                            seen[key] = e
+                            order[#order + 1] = e
+                        end
+                        e.n = e.n + 1
+                        if head then e.head = true end
+                    end
+                end
+            end
+        end
+    end
+    for _i, section in ipairs(type(edition) == "table" and type(edition.sections) == "table" and edition.sections or {}) do
+        for _j, item in ipairs(type(section.items) == "table" and section.items or {}) do take(item.title, true) end
+    end
+    for _i, section in ipairs(type(edition) == "table" and type(edition.sections) == "table" and edition.sections or {}) do
+        for _j, item in ipairs(type(section.items) == "table" and section.items or {}) do take(item.text, false) end
+    end
+    table.sort(order, function(a, b)
+        if a.head ~= b.head then return a.head end
+        if a.n ~= b.n then return a.n > b.n end
+        return a.word < b.word
+    end)
+    return order
+end
+
+--- The kept edition, for the puzzles (tests put their own here).
+function Puzzles.edition()
+    local ok, D = pcall(require, "gzreader_daily")
+    if not ok then return nil end
+    local ok2, edition = pcall(D.load)
+    return ok2 and edition or nil
+end
+
 ---------------------------------------------------------------- word search
 
 -- (plain, friendly words of 4 to 8 letters)
@@ -158,12 +249,22 @@ local DIRS = { { 1, 0 }, { 0, 1 }, { 1, 1 }, { 1, -1 }, { -1, 0 }, { 0, -1 } }
 
 --- A day's word search: { size, grid = "size × size letters, row by row",
 --- words = { { word, x, y, dx, dy } } } (x, y from 1: where its first letter is).
-function Puzzles.wordSearch(seed, size, count)
+--- `first`: words to hide before the list's own (the news'), in any order;
+--- the list fills up what they leave.
+function Puzzles.wordSearch(seed, size, count, first)
     size, count = size or Puzzles.WORDS_SIZE, count or Puzzles.WORDS_COUNT
     local R = Puzzles.rng("words:" .. seed)
-    local pool = {}
-    for _i, w in ipairs(Puzzles.WORD_LIST) do if #w >= 4 and #w <= size - 2 then pool[#pool + 1] = w end end
+    local pool, own, has = {}, {}, {}
+    for _i, w in ipairs(first or {}) do
+        if type(w) == "string" and w:match("^[A-Z]+$") and #w >= 4 and #w <= size - 2 and not has[w] then
+            has[w] = true
+            pool[#pool + 1] = w
+        end
+    end
     R.shuffle(pool)
+    for _i, w in ipairs(Puzzles.WORD_LIST) do if #w >= 4 and #w <= size - 2 and not has[w] then own[#own + 1] = w end end
+    R.shuffle(own)
+    for _i, w in ipairs(own) do pool[#pool + 1] = w end
     local cells, words = {}, {}
     local function fits(w, x, y, dx, dy)
         local ex, ey = x + dx * (#w - 1), y + dy * (#w - 1)
@@ -353,17 +454,77 @@ function Puzzles.sudokuClear(plugin)
     keep(plugin)
 end
 
+-- How many of the news' words a word search is offered (more than it hides: not every word fits).
+Puzzles.NEWS_POOL = 24
+
+local function packWords(ws)
+    local out = {}
+    for _i, w in ipairs(ws.words) do out[#out + 1] = table.concat({ w.word, w.x, w.y, w.dx, w.dy }, ":") end
+    return table.concat(out, ",")
+end
+
+local function unpackWords(p)
+    if type(p) ~= "table" or type(p.grid) ~= "string" or type(p.placed) ~= "string" then return nil end
+    local size = math.floor(math.sqrt(#p.grid) + 0.5)
+    if size < 4 or size * size ~= #p.grid or p.grid:find("[^A-Z]") then return nil end
+    local words = {}
+    for word, x, y, dx, dy in p.placed:gmatch("(%u+):(%d+):(%d+):(%-?%d):(%-?%d)") do
+        words[#words + 1] = { word = word, x = tonumber(x), y = tonumber(y), dx = tonumber(dx), dy = tonumber(dy) }
+    end
+    if #words == 0 then return nil end
+    return { size = size, grid = p.grid, words = words, src = p.src }
+end
+
+--- Where the day's word puzzles take their words from now: the kept
+--- edition's day ("2026-11-26") when it has words enough, else "list".
+function Puzzles.source(edition)
+    if type(edition) == "table" and edition.day and #Puzzles.newsWords(edition) >= 4 then return tostring(edition.day) end
+    return "list"
+end
+
 --- The day's word search and which words are found: ws, { [n] = true }.
+--- Made the first time it's asked for, from the paper's words when there is
+--- a paper, and kept for the day (ws.src says which paper, or "list").
 function Puzzles.dayWords(plugin, day)
     local p = Puzzles.state(plugin, day)
-    local ws = Puzzles.wordSearch(p.day)
+    local ws = unpackWords(p.words)
+    if not ws then
+        local edition = Puzzles.edition()
+        local src = Puzzles.source(edition)
+        local first = {}
+        if src ~= "list" then
+            for i, e in ipairs(Puzzles.newsWords(edition, 4, Puzzles.WORDS_SIZE - 2)) do
+                if i > Puzzles.NEWS_POOL then break end
+                first[#first + 1] = e.word
+            end
+        end
+        ws = Puzzles.wordSearch(p.day .. (src ~= "list" and (":" .. src) or ""), nil, nil, first)
+        ws.src = src
+        p.words = { grid = ws.grid, placed = packWords(ws), src = src, of = #ws.words }
+        keep(plugin)
+    end
     local found = {}
-    if type(p.words) == "table" and type(p.words.found) == "string" then
+    if type(p.words.found) == "string" then
         for n in p.words.found:gmatch("%d+") do
             if ws.words[tonumber(n)] then found[tonumber(n)] = true end
         end
     end
     return ws, found
+end
+
+--- A word puzzle not started yet is made again when the paper it would take
+--- its words from has changed (the paper fetched since, or a new day's):
+--- call when the puzzles are opened. Returns true when one will be remade.
+function Puzzles.freshen(plugin, day)
+    local p = Puzzles.state(plugin, day)
+    local src = Puzzles.source(Puzzles.edition())
+    local changed = false
+    if type(p.words) == "table" and p.words.src ~= src and (p.words.found or "") == "" then
+        p.words = nil
+        changed = true
+    end
+    if changed then keep(plugin) end
+    return changed
 end
 
 --- Mark a word found. Returns true when it's new.
@@ -373,7 +534,8 @@ function Puzzles.wordFound(plugin, n)
     found[n] = true
     local list = {}
     for i = 1, #ws.words do if found[i] then list[#list + 1] = i end end
-    Puzzles.state(plugin).words = { found = table.concat(list, ","), of = #ws.words }
+    local w = Puzzles.state(plugin).words
+    w.found, w.of = table.concat(list, ","), #ws.words
     keep(plugin)
     return true
 end
