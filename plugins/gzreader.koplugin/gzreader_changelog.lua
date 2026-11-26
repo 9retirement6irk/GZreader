@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "BookOrbit: positions kept when they're refused, and no Go back to an old one", text = "A reading position BookOrbit doesn't take because of its sync switch, or a firewall in front of it (a 403 that isn't BookOrbit's own: a web application firewall's rules can take the place in the book for a shell command), is no longer thrown away as if the book were gone: it waits on the Kindle and is sent once it gets through, and a message says once which of the two it is. Opening the book doesn't ask to go back to BookOrbit's older position while this Kindle's newer one is still waiting, nor again about one you said Stay here to." },
+        },
+    },
+    {
         version = "2026.11.22",
         changes = {
             { short = "Colour Kindles: Immich photos in colour", text = "On a Kindle Colorsoft or Scribe Colorsoft, the pictures from your Immich album (the sleep screen and the Home wallpaper) are kept in colour instead of being made grey. Pictures already on the Kindle stay grey until they are swapped for others from the album (about half each time GZreader gets new pictures)." },

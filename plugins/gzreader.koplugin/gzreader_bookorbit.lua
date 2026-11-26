@@ -120,6 +120,12 @@ function BookOrbit:authHeaders()
     return { ["x-auth-user"] = tostring(self.store.username or ""), ["x-auth-key"] = tostring((self.store.bookorbit or {}).key or "") }
 end
 
+--- Is a 403's reply BookOrbit's own (its JSON error, with a status code)? A page
+--- from a firewall or proxy in front of it isn't. Pure.
+function BookOrbit.isOwnRefusal(data)
+    return type(data) == "table" and (tonumber(data.statusCode) == 403 or type(data.message) == "string")
+end
+
 --- A signed-in request. `path` is relative to the server. Returns code, data, err, headers
 --- (as the Grimmory client's call does).
 function BookOrbit:call(method, path, opts)
@@ -130,6 +136,12 @@ function BookOrbit:call(method, path, opts)
     for k, v in pairs((opts or {}).headers or {}) do o.headers[k] = v end
     local code, data, headers = Api.rawRequest(method, self.store.server .. path, o)
     if not code then return nil, nil, "unreachable" end
+    if code == 403 and not BookOrbit.isOwnRefusal(data) then
+        -- (not BookOrbit's answer: something in front of it, such as a web application
+        -- firewall that took the page's place in the request for code)
+        Log.warn("a 403 that isn't BookOrbit's (a firewall or proxy in front of it?):", method, path)
+        return code, data, "bookorbit_blocked", headers
+    end
     if code == 401 or code == 403 then
         -- (the password was changed, or sync was switched off for it, in BookOrbit: the
         -- sign-in is kept, so switching it back on there is enough)

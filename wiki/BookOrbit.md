@@ -61,7 +61,8 @@ Signing in to BookOrbit signs this Kindle out of Grimmory (and the other way rou
 ## Reading progress
 
 - Sent while you read (every few pages), when you close the book and when the Kindle sleeps; kept and sent later if Wi-Fi is off.
-- When you open a book, GZreader looks at where BookOrbit has it. Further on: it goes there. Earlier (another device went back): it asks.
+- When you open a book, GZreader looks at where BookOrbit has it. Further on: it goes there. Earlier (another device went back): it asks. It doesn't ask while this Kindle has a newer position still waiting to be sent (BookOrbit is only behind because that hasn't reached it), nor again about a position you said **Stay here** to.
+- A position BookOrbit refuses for a reason that isn't the book (sync switched off, or a firewall in front of it) isn't thrown away: it waits on the Kindle and is sent once it gets through, and a message says why once.
 - Sync now, in the book's quick panel, does the same on request.
 - BookOrbit shows the percentage KOReader shows in its footer.
 
@@ -291,5 +292,6 @@ BookOrbit is its own project, under the GNU AGPL version 3 with additional terms
 
 - **"Wrong user name or password…"**: it wants the KOReader sync ones (above). The same message appears if the address is another server's, such as Grimmory's.
 - **"BookOrbit has sync switched off…"**: switch **Progress sync** on in BookOrbit's Settings → Devices → KOReader.
+- **"Something in front of BookOrbit refused this (HTTP 403)…"**: a firewall or proxy between the Kindle and BookOrbit blocked the request, not BookOrbit. A web application firewall with the OWASP Core Rule Set can take the place in the book that GZreader sends (`/body/DocFragment[4]/body/p[2]/text().0`) for a shell command: rules 932130 and 932235 match it. Let BookOrbit's KOReader sync addresses through: an exception for `/api/v1/koreader/` on its host, or those two rules switched off there.
 - **"That address answered, but not as BookOrbit"**: check the address; an old BookOrbit may not have the e-reader catalog.
 - Send the diagnostic log (Settings → Privacy and diagnostics) if it's something else: look for lines starting `BookOrbit`.

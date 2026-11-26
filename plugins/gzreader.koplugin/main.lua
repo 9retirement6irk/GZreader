@@ -903,6 +903,7 @@ local ERRORS = {
     usb = _("This Kindle syncs with Grimmory through a computer: Menu → Sync with computer."),
     -- (the name goes in as an argument: gettext.lua turns "KOReader" in a message into "GZreader")
     bookorbit_credentials = T(_("Wrong user name or password. BookOrbit wants the %1 sync user name and password (BookOrbit: Settings → Devices → %1), not the ones you sign in to its website with. Also check that the address is BookOrbit's."), "KOReader"),
+    bookorbit_blocked = _("Something in front of BookOrbit refused this (HTTP 403): not BookOrbit itself, but a firewall or proxy, such as a web application firewall that takes the book's place in the request for code. Let BookOrbit's KOReader sync addresses (/api/v1/koreader/…) through it."),
     bookorbit_sync_off = T(_("BookOrbit has sync switched off for this %1 user. Switch “Progress sync” on in BookOrbit: Settings → Devices → %1."), "KOReader"),
     bookorbit_refused = T(_("BookOrbit didn't accept this Kindle's sign-in. If you changed the %1 sync password in BookOrbit, connect again."), "KOReader"),
     bookorbit_not_found = _("That address answered, but not as BookOrbit (or its BookOrbit is too old for e-readers). Check the address."),
@@ -1853,6 +1854,7 @@ function Grimmory:flushPending()
     if #sessions > 0 then self:save() end
     require("gzreader_async").run(self.api, function(api)
         local sent, dropped, n_sessions, cfis = {}, {}, 0, {}
+        local refused -- (BookOrbit: sync switched off for the KOReader user; everything waits)
         for book_id, body in pairs(progress) do
             -- the exact place (CFI) for the web reader, made here, off the screen's thread
             local fp = body.fileProgress
@@ -1860,12 +1862,14 @@ function Grimmory:flushPending()
                 local cfi = require("gzreader_sync").cfiInFile(body.gz_file, body.gz_xp)
                 if cfi then fp.positionData = cfi; cfis[book_id] = cfi end
             end
-            local ok, _, code = api:putProgress(book_id, body)
+            local ok, perr, code = api:putProgress(book_id, body)
             if ok then sent[#sent + 1] = book_id
+            elseif perr == "bookorbit_sync_off" or perr == "bookorbit_blocked" then refused = perr; break -- (not the book: kept to send later)
             elseif code == 404 or code == 400 or code == 403 then dropped[#dropped + 1] = book_id -- the book is gone
             else break end -- still offline; try again later
         end
         for _i, body in ipairs(sessions) do
+            if refused then break end
             local ok, code
             if (body.gz_tries or 0) > 1 and api:hasSession(body) then
                 ok = true -- already saved by an earlier attempt whose reply was lost
@@ -1882,10 +1886,19 @@ function Grimmory:flushPending()
             local ok, _, code = api:putRating(book_id, Ratings.toGrimmory(stars))
             if ok or code == 400 or code == 403 or code == 404 then rated[book_id] = ok and "ok" or "dropped" else break end
         end
-        return { sent = sent, dropped = dropped, sessions = n_sessions, cfis = cfis, rated = rated }
+        return { sent = sent, dropped = dropped, sessions = n_sessions, cfis = cfis, rated = rated, refused = refused }
     end, function(res)
         self.flushing = nil
         if type(res) ~= "table" then return end
+        if res.refused then
+            -- (said once a run: the positions wait on the Kindle until it's switched back on)
+            Log.warn("sync: the positions weren't taken (" .. tostring(res.refused) .. "); kept to send later")
+            if not Grimmory.told_refused then
+                Grimmory.told_refused = true
+                UIManager:show(InfoMessage:new{ icon = "notice-warning", timeout = 8,
+                    text = self:describeError(res.refused) .. "\n\n" .. _("Your reading positions wait on this Kindle and are sent once they get through.") })
+            end
+        end
         for _i, book_id in ipairs(res.sent or {}) do
             local body = progress[book_id]
             -- only clear it if nothing newer was queued meanwhile
