@@ -7,8 +7,8 @@ the top of the screen. Square tiles, in two groups:
   Home       Manage “book” (the one highlighted), Continue, Connect,
              Search, History, View, Sort, Quick note, Music, Audiobook
   This book  Sync with Grimmory, Contents, Bookmark, Bookmarks, Go to page,
-             Search book, Font, Layout, Fit pictures, Read aloud, Story so far,
-             Quick note, Music, Audiobook
+             Search book, Font, Layout, Fit pictures, Read aloud, Quick note,
+             Music, Audiobook
 
 Quick note is there while Memos is connected (the Notes tab): a new note in
 the full-page editor over whatever is on screen; Save sends it in the
