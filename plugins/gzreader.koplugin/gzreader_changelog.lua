@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Read-along books: their own narration, the sentence highlighted", text = "A narrated EPUB (BookOrbit's read-along books sent with their narration, or any EPUB 3 with media overlays) plays its narration on a Kindle with sound: Quick panel → Narration → Play from this page. The sentence being read is highlighted and the pages turn with it; Pause, Resume and Stop are there too. The audio is copied out of the book the first time it plays and kept in GZreader's cache (removed after 60 days unplayed, or when the cache is over 2 GB). BookOrbit's setup advice no longer tells a Kindle with sound to turn narrated delivery off." },
+        },
+    },
+    {
         version = "2026.11.22",
         changes = {
             { short = "Colour Kindles: Immich photos in colour", text = "On a Kindle Colorsoft or Scribe Colorsoft, the pictures from your Immich album (the sleep screen and the Home wallpaper) are kept in colour instead of being made grey. Pictures already on the Kindle stay grey until they are swapped for others from the album (about half each time GZreader gets new pictures)." },

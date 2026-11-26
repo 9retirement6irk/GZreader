@@ -804,7 +804,7 @@ BookOrbit.KEY_NEEDS = "Access: Read and write. Libraries: all (or the ones with 
 
 --- How BookOrbit is set to deliver this sync sign-in's read-aloud EPUBs (nil: Automatic,
 --- text-only when it can; "audioless_epub"; "original": with the narration, which a
---- Kindle can't play and which makes the files much bigger). Read with the API key when
+--- Kindle with sound plays (gzreader_narration.lua) and which makes the files much bigger). Read with the API key when
 --- it may see the sync sign-in (its "KOReader sync" permission); kept as
 --- store.bookorbit.delivery, false when it couldn't be read. A sign-in GZreader makes
 --- itself is left on BookOrbit's defaults: progress sync on, audiobook-only books hidden
@@ -836,10 +836,18 @@ function BookOrbit:keyAbilities()
     return out
 end
 
+--- This Kindle plays sound (a narrated EPUB's narration too).
+function BookOrbit.canPlayNarration()
+    local ok, yes = pcall(function() return require("gzreader_touch").player() end)
+    return ok and yes and true or false
+end
+
 --- A line for the user when a BookOrbit setting works against the Kindle, or nil.
 function BookOrbit:settingsAdvice()
     local b = self.store.bookorbit
-    if type(b) == "table" and b.delivery == "original" then return "delivery_original" end
+    -- (with the narration: a Kindle with sound plays it, Quick panel → Narration, gzreader_narration.lua;
+    -- one without only gets bigger files)
+    if type(b) == "table" and b.delivery == "original" and not BookOrbit.canPlayNarration() then return "delivery_original" end
     return nil
 end
 

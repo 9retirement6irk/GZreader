@@ -212,6 +212,7 @@ function Panel.catalog()
             { id = "searchbook", label = _("Search book") },
             { id = "font", label = _("Font"), note = _("books that reflow") },
             { id = "layout", label = _("Layout") },
+            { id = "narration", label = _("Narration"), note = _("narrated EPUBs (EPUB 3 read-along books)"), available = Touch.player },
             { id = "fitpictures", label = _("Fit pictures"), note = _("EPUBs") },
             { id = "readaloud", label = _("Read aloud"), available = Touch.tts },
             { id = "note", label = _("Quick note"), note = _("while Memos is connected") },
@@ -537,6 +538,11 @@ function Panel.bookTiles(plugin, ui)
         list[#list + 1] = { id = "font", icon = "font", label = _("Font"), run = function() Panel.showFonts(ui) end }
     end
     list[#list + 1] = { id = "layout", icon = "layout", label = _("Layout"), run = function() Panel.showLayout(ui) end }
+    -- (a narrated EPUB: its own narration, the sentence highlighted: gzreader_narration.lua)
+    if Touch.player() then
+        local okn, nt = pcall(function() return require("gzreader_narration").tile(plugin, ui) end)
+        if okn and nt then list[#list + 1] = nt end
+    end
     if ui.document and not ui.document.info.has_pages and ui.styletweak then
         local PB = require("gzreader_picturebook")
         local item = PB.menuItem(ui)
