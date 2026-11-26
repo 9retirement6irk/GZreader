@@ -2,8 +2,10 @@ Books whose pages are pictures (scanned pages, comics as EPUB) are fitted to the
 
 ## Fit pictures and its options
 
-In a book, the quick panel's **Fit pictures** fits the book's pictures to the
-screen when they aren't. When they are, it opens its options:
+In a book, **Fit pictures** in reader controls' **Layout** (the quick
+panel's Reader controls, or a swipe up from the bottom) fits the book's
+pictures to the screen when it's on, and puts the book back when it's off.
+Hold it for its options:
 
 - **Bigger when the bars are hidden** (on unless turned off): when a tap
   hides the title bar and the status bar, the pictures grow into the room
@@ -31,7 +33,7 @@ text back on the page.
 GZreader then adds a book style tweak (`img { height: 100%; width: auto;
 max-width: 100% }`, no margins/padding), sets the book's page margins to 0
 and turns on smooth image scaling, keeping the old settings for when it's
-turned off (the quick panel → Fit pictures, in a book). Checked with the
+turned off (reader controls → Layout → Fit pictures, in a book). Checked with the
 Kindle's own crengine.
 
 `100%` is the page area between the top and bottom margins (ZenOS adds its

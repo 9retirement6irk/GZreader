@@ -20,9 +20,10 @@ keep each tile under an inch wide (seven on a Scribe, eight turned sideways).
   **Music** and **Audiobook** while one plays or is
   paused (they open its player: music and audiobooks are browsed in the
   Catalog tab), and **Downloads (N)** while something downloads.
-- **This book** (while reading): Sync with Grimmory, Contents, Bookmark,
-  Bookmarks, Go to page, Search book, Font (the list of fonts), Layout (size,
-  margins, spacing: KOReader's bottom panel), Fit pictures, Read aloud,
+- **This book** (while reading): Sync with Grimmory, **Reader controls**
+  (what a swipe up from the bottom of the page opens: contents, bookmarks, go
+  to page, the font, the layout with Fit pictures, themes), Bookmark, Search
+  book, Read aloud,
   **Quick note** while [Memos](Notes) is connected, and Music and Audiobook
   while one plays or is paused.
 
@@ -112,7 +113,8 @@ The Kindle 2 and DX have a number row, so 1–9 switch the tabs there too.
 | KOReader's menus | Alt + Q, W, E, … | Switch the menu's tabs. |
 | Home / lists | Menu | The quick panel (Controls and Home tiles; see *The quick panel*). Each tile has a letter. Menu or Back closes it. |
 | Home / Downloads, book highlighted | Menu → Q | Manage book: Open, Delete from this Kindle (asks first; Grimmory keeps it), then ZenOS's book menu (without its Edit submenu: Delete is already there). |
-| Reading | Menu | The quick panel with This book: sync, contents, bookmark, bookmarks, go to page, search, font, layout, fit pictures, read aloud, music. |
+| Reading | Menu | The quick panel with This book: sync, reader controls, bookmark, search, read aloud, music. |
+| Reader controls | 1, 2, 3… · F, L, T | 1, 2, 3… the tabs along the bottom, counted from the left; F Font, L Layout, T Themes (C, P, D on a PDF: Contrast, Page, Document). The 5-way moves and changes a setting, Press chooses, Back closes. A line under the controls says so. |
 | Reading | AA | Fonts and layout. |
 | Reading | Shift + Sym | Read aloud / stop. |
 | Reading | Back | Return from a followed link or TOC jump; otherwise go to Home. |

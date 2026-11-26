@@ -104,6 +104,7 @@
 2 plugins/zenos.koplugin/modules/menu/network_switcher.lua
 5 plugins/zenos.koplugin/modules/menu/patches/app_launcher.lua
 8 plugins/zenos.koplugin/modules/menu/patches/quick_settings.lua
+4 plugins/zenos.koplugin/modules/menu/patches/reader_controls.lua
 1 plugins/zenos.koplugin/modules/menu/patches/zen_mode.lua
 3 plugins/zenos.koplugin/modules/reader/annotation_viewer.lua
 2 plugins/zenos.koplugin/modules/reader/end_book.lua

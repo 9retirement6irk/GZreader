@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Reading: one Reader controls tile; Fit pictures in its Layout", text = "In a book, the quick panel's Contents, Bookmarks, Go to page, Font, Layout and Fit pictures tiles are one tile, Reader controls, which opens what a swipe up from the bottom of the page opens. Fit pictures is in reader controls' Layout tab (on or off; hold it for its options). On a Kindle with a keyboard, reader controls show their keys on a line under them: 1, 2, 3… the tabs along the bottom, F, L, T Font, Layout, Themes." },
+        },
+    },
+    {
         version = "2026.11.22",
         changes = {
             { short = "Colour Kindles: Immich photos in colour", text = "On a Kindle Colorsoft or Scribe Colorsoft, the pictures from your Immich album (the sleep screen and the Home wallpaper) are kept in colour instead of being made grey. Pictures already on the Kindle stay grey until they are swapped for others from the album (about half each time GZreader gets new pictures)." },

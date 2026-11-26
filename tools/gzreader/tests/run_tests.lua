@@ -2732,19 +2732,38 @@ do
         "kept as group:tile, only the hideable ones")
     check(Panel.isShown("book", "music") and not Panel.isShown("home", "sort"), "Music in a book is its own tick (Home's Music is separate)")
     local fakeui = { handleEvent = function() end, view = {}, document = { info = { has_pages = true } } }
-    Panel.setShown("book", "gotopage", false)
-    check(not labels(Panel.bookTiles(hplug, fakeui)):match("Go to page") and labels(Panel.bookTiles(hplug, fakeui)):match("|Contents|"),
+    local bt = labels(Panel.bookTiles(hplug, fakeui))
+    check(bt:match("|Reader controls|") and not bt:match("|Contents|") and not bt:match("|Bookmarks|") and not bt:match("Go to page")
+        and not bt:match("|Font|") and not bt:match("|Layout|") and not bt:match("Fit pictures") and bt:match("|Bookmark|") and bt:match("|Search book|"),
+        "a book's tiles: Reader controls in place of Contents, Bookmarks, Go to page, Font, Layout and Fit pictures " .. bt)
+    Panel.setShown("book", "searchbook", false)
+    check(not labels(Panel.bookTiles(hplug, fakeui)):match("Search book") and labels(Panel.bookTiles(hplug, fakeui)):match("|Reader controls|"),
         "a book's tiles hidden too")
-    -- Layout opens KOReader's bottom menu with force: ZenOS's Zen mode blocks a
-    -- plain ShowConfigMenu on touch Kindles (the tile did nothing on a Paperwhite)
+    -- Reader controls: ZenOS's, as the swipe up from the bottom opens them; without them, KOReader's
+    -- bottom menu with force (ZenOS's Zen mode blocks a plain ShowConfigMenu on touch Kindles)
+    local shown_rc = 0
+    local rcui = { handleEvent = function() end, view = {}, document = { info = { has_pages = true } },
+        menu = { onShowReaderControls = function() shown_rc = shown_rc + 1; return true end } }
+    for _i, t in ipairs(Panel.bookTiles(hplug, rcui)) do if t.id == "controls" then t.run() end end
+    check(shown_rc == 1, "Reader controls tile: ZenOS's reader controls")
     local forced, sent = nil, {}
     local layoutui = { handleEvent = function(_s, ev) sent[#sent + 1] = ev.handler end, view = {},
         document = { info = { has_pages = true } },
         config = { onShowConfigMenu = function(_s, force) forced = force; return true end } }
     for _i, t in ipairs(Panel.bookTiles(hplug, layoutui)) do
-        if t.id == "layout" then t.run() end
+        if t.id == "controls" then t.run() end
     end
-    check(forced == true and #sent == 0, "Layout tile: the layout menu opened with force (Zen mode on a touch Kindle doesn't block it)")
+    check(forced == true and #sent == 0, "…without them: KOReader's bottom menu, opened with force (Zen mode on a touch Kindle doesn't block it)")
+    -- in reader controls: Fit pictures in Layout; the keys on a Kindle with a keyboard
+    local rcsrc = io.open(PLUGIN .. "/../zenos.koplugin/modules/menu/patches/reader_controls.lua"):read("*a")
+    check(rcsrc:find('rows[#rows + 1] = { text = _("Fit pictures"), name = "gz_fit_pictures", toggle = PB.isOn(ui) == true,', 1, true)
+        and rcsrc:find('if PB.isOn(ui) then PB.set(ui, false) else PB.menuItem(ui).callback() end', 1, true)
+        and rcsrc:find('option("embedded_fonts")', 1, true) < rcsrc:find('_("Fit pictures")', 1, true),
+        "reader controls → Layout: Fit pictures, on or off (its options on a hold)")
+    check(rcsrc:find("if Device:hasKeyboard() and not Device:isTouchDevice() then", 1, true)
+        and rcsrc:find("local t = key and refs.gz_tab_keys and refs.gz_tab_keys[tonumber(key.key) or 0]", 1, true)
+        and rcsrc:find("if key and key.key == sec.letter and refs.select_section then refs.select_section(sec.section); return true end", 1, true),
+        "…a Kindle with a keyboard: numbers pick the tabs, letters the sections, and a line says so")
     -- Music and Audiobook: only while one plays (or is paused), in both groups; they open its player
     do
         local saved_audio = require("gzreader_touch").audio

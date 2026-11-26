@@ -38,6 +38,19 @@ return function(plugin)
     local BD = require("ui/bidi")
     local Blitbuffer = require("ffi/blitbuffer")
     local InputContainer = require("ui/widget/container/inputcontainer")
+    -- GZreader: on a Kindle with a keyboard, the controls' keys, on a line under them: a number
+    -- picks a tab at the bottom, a letter a section (Font, Layout, Themes…)
+    local function gz_keysHint(refs)
+        local parts = {}
+        local n = refs.gz_tab_keys and #refs.gz_tab_keys or 0
+        if n > 1 then parts[#parts + 1] = require("ffi/util").template(_("1–%1 tabs"), n)
+        elseif n == 1 then parts[#parts + 1] = _("1 tab") end
+        for _i, sec in ipairs(refs.gz_sections or {}) do parts[#parts + 1] = sec.letter .. " " .. sec.name end
+        parts[#parts + 1] = _("arrows move and change")
+        parts[#parts + 1] = _("Enter chooses")
+        parts[#parts + 1] = _("Back closes")
+        return table.concat(parts, " · ")
+    end
     local ZenSlider = require("common/ui/zen_slider")
     local Accent = require("common/ui/accent")
     local ZenIconButton = require("common/ui/zen_icon_button")
@@ -248,6 +261,17 @@ return function(plugin)
                 option("rakuyomi_view_mode")
                 option("embedded_css")
                 option("embedded_fonts") -- KOReader enables it only with embedded style and book fonts.
+                -- GZreader: Fit pictures (an EPUB's pictures fitted to the screen, gzreader_picturebook.lua);
+                -- a hold: its options (bigger when the bars are hidden, fit picture books when opened)
+                local okpb, PB = pcall(require, "gzreader_picturebook")
+                if okpb and ui.document and ui.document.info and not ui.document.info.has_pages and ui.styletweak then
+                    rows[#rows + 1] = { text = _("Fit pictures"), name = "gz_fit_pictures", toggle = PB.isOn(ui) == true,
+                        callback = function()
+                            if PB.isOn(ui) then PB.set(ui, false) else PB.menuItem(ui).callback() end
+                            UIManager:nextTick(function() if tm._zen_panel_refs then tm:updateItems(1) end end)
+                        end,
+                        hold = function() if PB.isOn(ui) then PB.showOptions(ui) end end }
+                end
             else
                 option("page_margin", true)
                 option("page_scroll")
@@ -551,6 +575,9 @@ return function(plugin)
                 end
                 if entry.control ~= nil and state.section == entry.control then select() end
                 cell.callback, cell.text = activate, entry.label
+                -- GZreader: a Kindle with a keyboard picks this tab with its number (gz_keys_hint)
+                refs.gz_tab_keys = refs.gz_tab_keys or {}
+                refs.gz_tab_keys[#refs.gz_tab_keys + 1] = { run = activate, label = entry.label }
                 cell.dimen = cell.dimen or cell:getSize():copy()
                 cell.image.dimen = cell.image.dimen or cell.image:getSize():copy()
                 cell._reader_control_id = entry.control or entry.id
@@ -582,9 +609,12 @@ return function(plugin)
             local names = { font = _("Font"), contrast = _("Contrast"),
                 page = group == "copt" and _("Layout") or _("Page"), document = _("Document"), themes = _("Themes") }
             local items, selected = {}, 1
+            refs.gz_sections = {} -- (GZreader: a letter each, on a Kindle with a keyboard)
             for i, section in ipairs(refs.section_order) do
                 if section == state.section then selected = i end
                 items[i] = { text = names[section], callback = function() refs.select_section(section) end }
+                local letter = names[section]:sub(1, 1):upper()
+                refs.gz_sections[#refs.gz_sections + 1] = { letter = letter, name = names[section], section = section }
             end
             refs.section_tabs = ZenTabBar:new{ items = items, selected = selected,
                 max_width = w - pad * 2, cell_height = Screen:scaleBySize(32), font_size = 18,
@@ -998,6 +1028,15 @@ return function(plugin)
             end
             if not painted then table.remove(refs.swipe_zones, i) end
         end
+        -- GZreader: a Kindle with a keyboard (no touch): its keys, on a line under the controls
+        if Device:hasKeyboard() and not Device:isTouchDevice() then
+            local hint = gz_keysHint(refs)
+            if hint then
+                panel[#panel + 1] = CenterContainer:new{ dimen = Geom:new{ w = w, h = Screen:scaleBySize(26) },
+                    TextWidget:new{ text = hint, face = Font:getFace("cfont", 13), fgcolor = Blitbuffer.COLOR_DARK_GRAY,
+                        max_width = w - Screen:scaleBySize(16) } }
+            end
+        end
         panel:resetLayout()
         refs.view, refs.view_page = state.section, state.page -- Content swaps need a color clean refresh.
         return LeftContainer:new{ dimen = Geom:new{ w = w, h = panel:getSize().h }, panel }
@@ -1085,6 +1124,28 @@ return function(plugin)
     end
 
     local TouchMenu = require("ui/widget/touchmenu")
+    -- GZreader: a Kindle with a keyboard: a number picks one of the controls' tabs, a letter a section
+    -- (frontend/ui/widget/touchmenu.lua: numbers and letters there pick a menu's tabs and entries)
+    local gz_tab_by_key, gz_select_by_key = TouchMenu.onGzTabByShortcut, TouchMenu.onGzSelectByShortcut
+    function TouchMenu:onGzTabByShortcut(args, key)
+        local refs = self.item_table and self.item_table.id == "reader_controls" and self._zen_panel_refs
+        if refs then
+            local t = key and refs.gz_tab_keys and refs.gz_tab_keys[tonumber(key.key) or 0]
+            if t then t.run() end
+            return true
+        end
+        if gz_tab_by_key then return gz_tab_by_key(self, args, key) end
+    end
+    function TouchMenu:onGzSelectByShortcut(args, key)
+        local refs = self.item_table and self.item_table.id == "reader_controls" and self._zen_panel_refs
+        if refs then
+            for _i, sec in ipairs(refs.gz_sections or {}) do
+                if key and key.key == sec.letter and refs.select_section then refs.select_section(sec.section); return true end
+            end
+            return true
+        end
+        if gz_select_by_key then return gz_select_by_key(self, args, key) end
+    end
     local paint = TouchMenu.paintTo
     function TouchMenu:paintTo(bb, x, y)
         if self.item_table and self.item_table.id == "reader_controls" then
