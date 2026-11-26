@@ -1798,7 +1798,7 @@ function Paper.browserSetup(plugin)
     end, { reason = "setting up the daily paper" })
 end
 
---- Settings → Home and tabs → Daily paper.
+--- Settings → Accounts and services → Daily paper.
 function Paper.settingsItems(plugin)
     local D = Daily()
     local usb = D.noWifi()
