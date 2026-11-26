@@ -81,4 +81,36 @@ add({ fn = function(E)
 end, after = 4 })
 add({ shot = "explain-5-translated" })
 add({ fn = function(E) E.say("translated:", (tostring(top().text):gsub("\n", " / "))) end, after = 1 })
+-- an answer kept as a note: a real selection (two points on the page), Explain, Save as a note on this text
+add({ fn = function(E)
+    press(top(), "Close")
+    local h = reader().highlight
+    local Screen = require("device").screen
+    local w, y = Screen:getWidth(), math.floor(Screen:getHeight() * 0.74)
+    local sel = reader().document:getTextFromPositions({ x = math.floor(w * 0.2), y = y }, { x = math.floor(w * 0.6), y = y })
+    E.say("selected:", tostring(sel and sel.text), "placed:", tostring(sel and sel.pos0 ~= nil and sel.pos1 ~= nil))
+    E.notes_before = #reader().annotation.annotations
+    h.selected_text = sel
+    pcall(h.onShowHighlightMenu, h)
+    require("gzreader_ai").ask = function(_p, _q, cb) cb("The speaker remembers a winter journey as a time of freedom.") end
+    for _i, row in ipairs(h.highlight_dialog.buttons) do
+        for _k, b in ipairs(row) do if b.id == "gz_highlight_explain" then b.callback() end end
+    end
+end, after = 5 })
+add({ shot = "explain-6-save-button" })
+add({ fn = function(E)
+    local w = top()
+    E.say("Save pressed:", tostring(press(w, "Save as a note on this text")))
+end, after = 4 })
+add({ shot = "explain-7-saved" })
+add({ fn = function(E)
+    local list = reader().annotation.annotations
+    local a = list[#list]
+    E.say("annotations:", E.notes_before, "->", #list, "note:", (tostring(a and a.note):gsub("\n", " / ")), "on:", tostring(a and a.text), "drawer:", tostring(a and a.drawer))
+    for i = #UIM()._window_stack, 1, -1 do
+        local w = UIM()._window_stack[i].widget
+        if w.buttons_table then UIM():close(w) end
+    end
+end, after = 3 })
+add({ shot = "explain-8-highlight-on-page" })
 return s

@@ -201,6 +201,15 @@ The window then shows the new answer first, with what you asked over it, and
 the earlier ones under **Earlier**. Each new question goes with the
 conversation so far, so "it" is understood.
 
+**Keeping an answer.** Under those is **Save as a note on this text**: the
+text you selected becomes a highlight and the newest answer its note, signed
+as an AI's (a question you typed is kept over its answer). From an existing
+highlight's menu the button is **Add to the highlight's note**, and the
+answer goes under the note that's there. Another answer in the same window
+can be added under the first with the same button. The note is an ordinary one from then on: it
+shows in the book, and goes to BookOrbit or Grimmory with your other
+highlights and notes.
+
 **Translate with AI.** With a key set up, the selection menu's **Translate**
 opens a list of languages: GZreader's own language first (or the one you
 picked last), then fourteen others. The translation comes from your AI
@@ -211,7 +220,7 @@ before.
 Sent, only when you tap one of these: the selected text (its first
 3,000 characters or so), the book's title and author, and that window's own
 questions and answers. Nothing else of the book. Nothing asked or answered
-is kept once the window closes, or written to the log. An AI wrote the
+is kept once the window closes (unless you saved it as a note), or written to the log. An AI wrote the
 answers and they can be wrong; the window says so. Without a key there is no
 question mark, and Translate is KOReader's own.
 
