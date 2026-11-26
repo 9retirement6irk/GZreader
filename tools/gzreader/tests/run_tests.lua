@@ -15016,6 +15016,68 @@ print("Settings → Storage")
     check(again[2] and again[2].text == "Books", "storage settings: shown at once the next time (measured again behind)")
     pending({ disk = { total = 1, available = 1 } })
     check(spage.updated == 1, "storage settings: a page showing other rows isn't redrawn")
+    -- a book, an audiobook or an album tapped: deleted, asked first
+    local function sub(part, name) for _i, r in ipairs(part.sub_item_table) do if r.text == name then return r end end end
+    check(sub(by.Books, "The Big Book").callback ~= nil and sub(by.Books, "The Big Book").select_enabled == nil
+        and sub(by.Audiobooks, "A Walk in the Woods").callback ~= nil and by.Music.sub_item_table[1].callback ~= nil
+        and by.Notes.sub_item_table[1].callback == nil and by.Notes.sub_item_table[1].select_enabled == false,
+        "storage: books, audiobooks and music can be tapped to delete; notes' lines can't")
+    check(a.items[1].id == "90" and m.items[1].dir == lib .. "/.music/album-1" and b.items[1].path == lib .. "/Big Book.epub",
+        "storage: each knows what to delete (the book's file, the audiobook's id, the album's folder)")
+    St._background = function(fn, done) pending = done end
+    St.last = nil
+    local dlist = St.settingsItems(fake, spage)
+    spage.item_table, spage._closed = dlist, nil
+    local measured = { disk = { total = 4 * 1024 ^ 3, available = 1000 }, books = b, audiobooks = a, music = m }
+    pending(measured)
+    -- an audiobook: asked, with its size; Delete deletes its folder and refreshes the page
+    local box
+    local real_confirm = package.loaded["ui/widget/confirmbox"]
+    package.loaded["ui/widget/confirmbox"] = { new = function(_, o) box = o; return o end }
+    local AB = require("gzreader_audiobook")
+    local real_abdel = AB.delete
+    local ab_deleted
+    AB.delete = function(_p, id) ab_deleted = id end
+    pending = nil
+    St.confirmDelete("audiobooks", a.items[1])
+    check(box and box.text:find("A Walk in the Woods", 1, true) and box.text:find("13 KB", 1, true) and box.ok_text == "Delete" and ab_deleted == nil,
+        "storage: tapping an audiobook asks first, with its size")
+    box.ok_callback()
+    check(ab_deleted == "90" and #a.items == 1 and a.count == 1 and a.bytes == 3050 and measured.disk.available == 1000 + 13000
+        and pending ~= nil, "storage: …Delete: it's deleted, gone from the page at once (its size freed), and measured again")
+    AB.delete = real_abdel
+    -- music: the album's folder deleted, in GZreader/music as in the old .music
+    box = nil
+    local Music = require("gzreader_music")
+    local real_root = Music.root
+    Music.root = function() return lib .. "/music" end
+    St.confirmDelete("music", m.items[1])
+    check(box and box.text:find("6 KB", 1, true), "storage: tapping an album asks first, with its size")
+    box.ok_callback()
+    check(require("lfs").attributes(lib .. "/.music/album-1", "mode") == nil and #m.items == 0,
+        "storage: …Delete: the album's folder deleted")
+    package.loaded["ui/widget/confirmbox"] = real_confirm
+    put(lib .. "/music/album-2/01.mp3", 100)
+    put(lib .. "/elsewhere/keep.mp3", 100)
+    Music.delete(fake, { dir = lib .. "/music/album-2" })
+    Music.delete(fake, { dir = lib .. "/elsewhere" })
+    Music.root = real_root
+    check(require("lfs").attributes(lib .. "/music/album-2", "mode") == nil and require("lfs").attributes(lib .. "/elsewhere/keep.mp3", "mode") == "file",
+        "music: deleting an album works in the GZreader folder's music too (it did nothing there), never outside it")
+    -- a book: Home's own Delete (its settings, history, downloads list), then the page
+    local HM = require("gzreader_homemenu")
+    local real_hm = HM.deleteBook
+    local asked_path, after_fn
+    HM.deleteBook = function(_p, path, after) asked_path, after_fn = path, after end
+    St.confirmDelete("books", b.items[1])
+    check(asked_path == lib .. "/Big Book.epub" and type(after_fn) == "function", "storage: tapping a book deletes it as Home does")
+    after_fn()
+    check(b.items[1].name ~= "The Big Book" and b.count == 3, "storage: …once deleted, gone from the page")
+    HM.deleteBook = real_hm
+    local hsrc = io.open(PLUGIN .. "/gzreader_homemenu.lua"):read("*a")
+    local _n, afters = hsrc:gsub("if after then after%(%) end", "")
+    check(afters == 2 and hsrc:find("function HomeMenu.deleteBook(plugin, path, after)", 1, true) ~= nil,
+        "Home's Delete: says when it's done (a book and an audiobook's tile)")
     St._background, St.last = saved_bg, saved_last
     os.execute("rm -rf '" .. lib .. "'")
 end)()

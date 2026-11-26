@@ -5,7 +5,8 @@ Books (the GZreader folder: book files and their KOReader settings),
 audiobooks (.audiobooks), music (.music), notes (the offline copy and the
 attachments kept), the calendar (its offline copy), and covers and saved
 lists (caches: rebuilt when needed). Books, audiobooks, music and notes open
-on their largest ones. The free space is the Kindle's own.
+on their largest ones; a book, an audiobook or an album tapped there is
+deleted from the Kindle (asked first). The free space is the Kindle's own.
 
 Measured in a background process (walking the folders takes a while on a
 Kindle 3): the page shows "Measuring…" until it's done.
@@ -125,7 +126,7 @@ function Storage.audiobooks(plugin, lib)
             if name ~= "." and name ~= ".." and lfs.attributes(p, "mode") == "directory" then
                 local e = known[name] or known[tonumber(name) or name] or {}
                 items[#items + 1] = { name = type(e.title) == "string" and e.title or T(_("Audiobook %1"), name),
-                    bytes = (Storage.dirSize(p)) }
+                    bytes = (Storage.dirSize(p)), id = name }
             end
         end
     end
@@ -149,7 +150,7 @@ function Storage.music(plugin, lib)
                 if okc and type(c) == "table" and type(c.title) == "string" then
                     label = c.title .. ((type(c.artist) == "string" and c.artist ~= "") and (" · " .. c.artist) or "")
                 end
-                items[#items + 1] = { name = label, bytes = (Storage.dirSize(p)) }
+                items[#items + 1] = { name = label, bytes = (Storage.dirSize(p)), dir = p }
             end
         end
     end
@@ -247,8 +248,14 @@ function Storage.items(r, extra)
         if g.items then
             local sub = {}
             for _i, it in ipairs(g.items) do
-                sub[#sub + 1] = iconed(key, { text = it.name, mandatory = Storage.size(it.bytes), select_enabled = false,
+                local row = iconed(key, { text = it.name, mandatory = Storage.size(it.bytes), select_enabled = false,
                     keep_menu_open = true })
+                if Storage.deletable(key, it) then
+                    -- (a tap: delete it, asked first)
+                    row.select_enabled = nil
+                    row.callback = function() Storage.confirmDelete(key, it) end
+                end
+                sub[#sub + 1] = row
             end
             if #sub == 0 then sub[1] = iconed(key, { text = none, select_enabled = false, keep_menu_open = true }) end
             entry.sub_item_table = sub
@@ -275,6 +282,67 @@ function Storage.items(r, extra)
     group("calendar", _("Calendar"))
     group("caches", _("Covers and saved lists"))
     return items
+end
+
+--- Can a part's item be deleted from the page? Books (a file), audiobooks
+--- (their folder's id) and music (an album's or playlist's folder).
+function Storage.deletable(key, it)
+    if key == "books" then return type(it.path) == "string" end
+    if key == "audiobooks" then return it.id ~= nil end
+    if key == "music" then return type(it.dir) == "string" end
+    return false
+end
+
+--- After `it` of part `key` was deleted: it's taken out of the last
+--- measurement (its size off the part, onto the free space), at once.
+function Storage.dropItem(r, key, it)
+    local g = r and r[key]
+    if not g then return end
+    for i = #(g.items or {}), 1, -1 do
+        if g.items[i] == it then table.remove(g.items, i) end
+    end
+    g.bytes = math.max(0, (g.bytes or 0) - (it.bytes or 0))
+    if g.count then g.count = math.max(0, g.count - 1) end
+    if r.disk and r.disk.available then r.disk.available = r.disk.available + (it.bytes or 0) end
+end
+
+--- Deletes `it` of part `key` (asked first), then the page shows it gone
+--- and measures again. Books: as from Home (its settings, history and
+--- downloads list too); audiobooks and music: their folder and stand-in.
+function Storage.confirmDelete(key, it)
+    local plugin = Storage.plugin
+    if not plugin then return end
+    local UIManager = require("ui/uimanager")
+    local function done()
+        Storage.dropItem(Storage.last, key, it)
+        require("gzreader_log").info("storage: deleted", key, Storage.size(it.bytes))
+        if Storage.refresh then Storage.refresh() end
+    end
+    if key == "books" then
+        return require("gzreader_homemenu").deleteBook(plugin, it.path, done)
+    end
+    local text
+    if key == "audiobooks" then
+        text = T(_("Delete the audiobook “%1” from this Kindle? (%2)\n\nGrimmory keeps it and your listening position."), it.name, Storage.size(it.bytes))
+    else
+        text = T(_("Delete “%1” from this Kindle? (%2)\n\nIt stays on your server, to download again."), it.name, Storage.size(it.bytes))
+    end
+    UIManager:show(require("ui/widget/confirmbox"):new{
+        text = text,
+        ok_text = _("Delete"),
+        ok_callback = function()
+            if key == "audiobooks" then
+                require("gzreader_audiobook").delete(plugin, it.id)
+            else
+                local Music = require("gzreader_music")
+                local c = Music.load(it.dir, { any = true }) or { dir = it.dir }
+                Music.delete(plugin, c)
+            end
+            pcall(function() require("gzreader_homemenu").refreshViews(it.dir or "") end)
+            done()
+            UIManager:show(require("ui/widget/infomessage"):new{ text = T(_("Deleted “%1”."), it.name), timeout = 2 })
+        end,
+    })
 end
 
 --- The services' own storage rows, for their parts of the page: Notes (what's
@@ -336,6 +404,7 @@ end
 --- them: the rows are filled in there when measured (the last measurement,
 --- or "Measuring…", until then).
 function Storage.settingsItems(plugin, page)
+    Storage.plugin = plugin
     local list = {}
     local function fill(items)
         for i = #list, 1, -1 do list[i] = nil end
@@ -361,6 +430,12 @@ function Storage.settingsItems(plugin, page)
             Storage.last = r
             fill(Storage.items(r, Storage.serviceRows(plugin)))
         end)
+    end
+    -- (something deleted from the page: shown gone at once, then measured again)
+    Storage.refresh = function()
+        if Storage.last then fill(Storage.items(Storage.last, Storage.serviceRows(plugin))) end
+        tries = 0
+        run()
     end
     run()
     return list
