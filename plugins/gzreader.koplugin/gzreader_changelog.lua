@@ -9,6 +9,7 @@ return {
     {
         version = "next",
         changes = {
+            { short = "Picture books: a fitted book is no longer laid out several times over as it opens", text = "Picture books: a book with fitted pictures was laid out again every time KOReader said its status bar had changed, which it says several times while a book opens: a 264 MB book was laid out six times in a minute on a Scribe. The calls are now gathered for a fifth of a second and the book is laid out once for them, and after that only when a bar really was hidden or shown." },
             { short = "Fixed-layout books and magazines fill the screen properly", text = "A fixed-layout EPUB made from a PDF gives each page its own size in pixels. Fitted, its picture was held to that width (leaving margins, or stretched) on a bigger screen, or pushed to the right and cut off on a smaller one. That size is now dropped, and the pages are fitted by whichever side fills the screen: a page wider than the screen's shape is as wide as the screen, a narrower one as tall, and it follows when a tap hides or shows the bars. Books fitted before are fitted again once." },
             { short = "Fixed-layout magazines: no page of text after each page", text = "A fixed-layout EPUB made from a PDF (each page a picture with an invisible text layer over it) could show as the page's picture, then a page of the same text. GZreader hides that layer, but only found it when the book's style rules were in a CSS file; it now also finds it when the converter wrote the rules into each page." },
         },

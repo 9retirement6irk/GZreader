@@ -13487,13 +13487,54 @@ print("Fit pictures: bigger when the bars are hidden, and its options")
     -- the title bar alone hidden (Hide on tap: top): the book laid out again
     local events = {}
     local ui = { document = { configurable = { b_page_margin = 4 } }, handleEvent = function(_, ev) events[#events + 1] = ev end }
+    local settle_was, top_was = PB.BARS_SETTLE, gsettings.zen_top_bar_tap_hidden
+    PB.BARS_SETTLE = 0 -- (at once, for these checks)
+    gsettings.zen_top_bar_tap_hidden = true
     H.topToggled({ ui = ui })
     check(#events == 1 and events[1].name == "SetPageBottomMargin" and events[1].args[1] == 4,
         "title bar hidden or shown with a tap: margins set again (for a fitted book)")
     fitted = false
+    gsettings.zen_top_bar_tap_hidden = nil
     H.topToggled({ ui = ui })
     PB.onBarsChanged(ui)
     check(#events == 1, "…not for other books")
+    -- told several times that the bars changed (KOReader does while a book opens): one layout, and none when they're as they were
+    ;(function()
+        fitted = true
+        local laid = {}
+        local foot = { mode_list = { off = 0 }, mode = 1 }
+        local book = { document = { configurable = { b_page_margin = 4 } }, view = { footer = foot }, handleEvent = function(_, ev) laid[#laid + 1] = ev.name end }
+        for _k = 1, 5 do PB.onBarsChanged(book) end
+        check(#laid == 1 and PB.barsState(book) == "0 0", "a book just opened: told five times, laid out once (how its margins were set isn't known)")
+        foot.mode = 0
+        for _k = 1, 5 do PB.onBarsChanged(book) end
+        check(#laid == 2 and PB.barsState(book) == "1 0", "the status bar hidden: laid out once, however often it's told")
+        foot.mode = 1
+        PB.onBarsChanged(book)
+        check(#laid == 3, "…shown again: once more")
+        book.tearing_down = true
+        foot.mode = 0
+        PB.onBarsChanged(book)
+        check(#laid == 3, "a book being closed isn't laid out")
+        book.tearing_down = nil
+        -- gathered: with the wait on, several calls leave one piece of work waiting
+        local UIM = require("ui/uimanager")
+        local real_in, real_un, waiting, dropped = UIM.scheduleIn, UIM.unschedule, {}, 0
+        UIM.scheduleIn = function(_s, secs, fn) waiting[#waiting + 1] = { secs = secs, fn = fn } end
+        UIM.unschedule = function(_s, fn)
+            for k = #waiting, 1, -1 do if waiting[k].fn == fn then table.remove(waiting, k); dropped = dropped + 1 end end
+        end
+        PB.BARS_SETTLE = 0.2
+        for _k = 1, 5 do PB.onBarsChanged(book) end
+        check(#waiting == 1 and waiting[1].secs == 0.2 and dropped == 4 and #laid == 3, "five calls in a row wait as one, a fifth of a second")
+        waiting[1].fn()
+        check(#laid == 4 and PB.barsLater == nil, "…then the book is laid out, once")
+        UIM.scheduleIn, UIM.unschedule = real_in, real_un
+        PB.checkFitLater = nil
+        fitted = false
+    end)()
+    PB.BARS_SETTLE = settle_was
+    gsettings.zen_top_bar_tap_hidden = top_was
     PB.fillsHiddenBars = orig_fills
     -- PB.fillsHiddenBars itself: the open book's style, or its saved one while it's set up
     local ds = { d = {} }

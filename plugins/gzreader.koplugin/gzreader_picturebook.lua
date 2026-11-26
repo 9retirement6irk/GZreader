@@ -783,13 +783,49 @@ function PB.fillsHiddenBars(ui)
         and css:find(MARK_BEGIN, 1, true) ~= nil
 end
 
---- The bars were hidden or shown: the book's margins set again, so the
---- pictures grow into their room or make room for them.
+--- Which of the open book's bars are hidden with a tap: "status bar title bar",
+--- as "1 0" (the status bar hidden, the title bar shown).
+function PB.barsState(ui)
+    local footer = ui and ui.view and ui.view.footer
+    local bottom = footer and footer.mode_list and footer.mode == footer.mode_list.off
+    local top = G_reader_settings:isTrue("zen_top_bar_tap_hidden")
+    return (bottom and "1" or "0") .. " " .. (top and "1" or "0")
+end
+
+--[[ The bars were hidden or shown: the book's margins set again, so the
+pictures grow into their room or make room for them.
+
+KOReader says "the status bar's visibility changed" several times while a
+book opens (five on the owner's Scribe, in one second), and each one laid
+the whole book out again: six layouts of a 264 MB book in a minute. So the
+calls are gathered for PB.BARS_SETTLE seconds, and the book is laid out
+only when the bars aren't as they were at this reader's last layout (once
+after it opens, whatever they are). ]]
+PB.BARS_SETTLE = 0.2
 function PB.onBarsChanged(ui)
     if not (ui and ui.document and ui.document.configurable and ui.handleEvent) then return end
     if not PB.fillsHiddenBars(ui) then return end
+    if PB.barsLater then pcall(function() UIManager:unschedule(PB.barsLater) end) end
+    PB.barsLater = function()
+        PB.barsLater = nil
+        pcall(PB.applyBars, ui)
+    end
+    if (PB.BARS_SETTLE or 0) <= 0 then return PB.barsLater() end
+    UIManager:scheduleIn(PB.BARS_SETTLE, PB.barsLater)
+end
+
+--- The bars as they are now, against the last layout's: the margins set
+--- again when they differ. True when the book was laid out again.
+function PB.applyBars(ui)
+    if not (ui and ui.document and ui.document.configurable and ui.handleEvent) or ui.tearing_down then return false end
+    if not PB.fillsHiddenBars(ui) then return false end
+    local state = PB.barsState(ui)
+    -- (a reader just made, also when the book was reloaded: how its margins
+    -- were set isn't known, so the first time always lays it out)
+    if state == ui._gz_bars_laid then return false end
+    ui._gz_bars_laid = state
     local Event = require("ui/event")
-    Log.info("picture book: bars hidden or shown, pictures laid out again")
+    Log.info("picture book: bars hidden or shown (" .. state .. "), pictures laid out again")
     ui:handleEvent(Event:new("SetPageBottomMargin", ui.document.configurable.b_page_margin))
     -- the room's shape changed with the bars: a page that filled its height
     -- may now fill its width (a letter page on a 3:4 screen), or back. Looked
@@ -799,6 +835,7 @@ function PB.onBarsChanged(ui)
         PB.checkFitLater = function() pcall(PB.checkFit, ui) end
         UIManager:scheduleIn(0.3, PB.checkFitLater)
     end)
+    return true
 end
 
 --- The open, fitted book's pages fitted by the side that fills the room as
