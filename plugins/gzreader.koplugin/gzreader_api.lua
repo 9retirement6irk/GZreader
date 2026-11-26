@@ -155,6 +155,7 @@ Access headers worked out again for the new host (gzreader_access.lua), and
 never from https to http. ]]
 Api.REDIRECTS = { [301] = true, [302] = true, [303] = true, [307] = true, [308] = true }
 Api.MAX_REDIRECTS = 5
+Api.HELPER_BODY_MAX = 64 * 1024 -- a bigger body than this isn't sent through the request helper
 Api.SAFE_ON_REDIRECT = { ["accept"] = true, ["accept-encoding"] = true, ["accept-language"] = true,
     ["user-agent"] = true, ["range"] = true }
 
@@ -262,7 +263,10 @@ local function rawRequest(method, full_url, opts)
     end
     -- the request helper (gzreader_reqhelper.lua: opt-in), as an HTTP proxy on 127.0.0.1
     local helper_port, helper_token
-    if pooled then
+    -- (an upload goes straight to the server: through the helper nothing comes
+    -- back until the helper has sent all of it on, and the wait for that first
+    -- byte ran out while the upload was still going)
+    if pooled and not (body and #body > Api.HELPER_BODY_MAX) then
         local okh, Helper = pcall(require, "gzreader_reqhelper")
         if okh then helper_port, helper_token = Helper.endpoint() end
     end

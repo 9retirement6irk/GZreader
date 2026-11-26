@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Notes: a drawing is no longer added to its note again and again, with everything after it stuck", text = "Notes: a big drawing could be added to its note over and over while the Kindle still called it not sent, and every change made after it (a journal entry's edit, say) waited behind it. The Kindle gave up on the upload after 15 seconds, though Memos had kept the file, and each retry sent it again. Uploads now wait up to a minute for the connection to move (five in all) and go straight to Memos, a retry first looks whether the note has the drawing already, and the extra identical copies are taken off the note." },
+        },
+    },
+    {
         version = "2026.11.22",
         changes = {
             { short = "Colour Kindles: Immich photos in colour", text = "On a Kindle Colorsoft or Scribe Colorsoft, the pictures from your Immich album (the sleep screen and the Home wallpaper) are kept in colour instead of being made grey. Pictures already on the Kindle stay grey until they are swapped for others from the album (about half each time GZreader gets new pictures)." },

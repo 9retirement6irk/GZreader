@@ -414,6 +414,13 @@ function Memos:download(att, dest)
     return nil, code and ("http_" .. code) or "unreachable"
 end
 
+--[[ How long an upload may wait: 60 s without a byte moving, 5 minutes in
+all. It was 15 s: a drawing of a megabyte or two took longer than that to
+reach Memos and be answered, the Kindle gave up, Memos kept the file, and
+every retry added the same drawing to the note again (four copies on the
+owner's Scribe, and everything queued after it waited behind it). ]]
+Memos.UPLOAD_TIMEOUTS = { 60, 300 }
+
 --- Upload the file at `path` as an attachment named `filename` (`mime`:
 --- image/png by default), on note `memo_name` ("memos/…") when given: Memos
 --- links it to that note. Returns the attachment ({ name, filename, type })
@@ -425,7 +432,7 @@ function Memos:uploadAttachment(path, filename, memo_name, mime)
     f:close()
     local body = { filename = filename, type = mime or "image/png",
         content = require("ffi/sha2").bin_to_base64(data), memo = memo_name }
-    local _, att, err = self:request("POST", "/attachments", body, nil, { timeouts = { 15, 120 } })
+    local _, att, err = self:request("POST", "/attachments", body, nil, { timeouts = Memos.UPLOAD_TIMEOUTS })
     if err then return nil, err end
     if type(att) ~= "table" or not att.name then return nil, "http_200" end
     return { name = att.name, filename = att.filename, type = att.type }
@@ -455,7 +462,7 @@ function Memos:replaceAttachment(att_name, path, filename, memo_name, mime)
             body.spec = { attachment = { filename = filename, type = mime or "image/png" }, total_size = #data,
                 replace_attachment = att_name }
         end
-        local code, res, err = self:request("POST", "/attachments:upload", body, nil, { timeouts = { 15, 120 } })
+        local code, res, err = self:request("POST", "/attachments:upload", body, nil, { timeouts = Memos.UPLOAD_TIMEOUTS })
         if err then
             if id == nil and (code == 404 or code == 400 or code == 405 or code == 501) then
                 -- (no replacing in this Memos: add the new one, then drop the old)
@@ -495,13 +502,53 @@ end
 
 --- Uploads `q`'s drawings onto note `name`, in order. Returns true, or nil,
 --- err and how many went before it stopped. (A drawing whose file is gone
---- is skipped: nothing left to send.)
-function Memos:uploadDrawings(q, name)
-    for i, d in ipairs(Memos.queuedDrawings(q)) do
-        local att, err = self:uploadAttachment(d.path, d.filename, name, d.type) -- (a photo: its own type)
-        if not att and err ~= "missing_file" then return nil, err, i - 1 end
+--- is skipped: nothing left to send.) A drawing the note has already (an
+--- earlier try's upload that Memos kept though its answer never came) isn't
+--- sent again, and extra copies of it are taken off the note. `fresh`: the
+--- note was made just now, so it has nothing yet.
+function Memos:uploadDrawings(q, name, fresh)
+    local list = Memos.queuedDrawings(q)
+    -- what the note has already: an upload whose answer never came back is there
+    local have = {}
+    for _i, d in ipairs(list) do
+        if not fresh and Memos.isDrawingFile(d.filename) then
+            local memo, gerr = self:get(name)
+            if not memo and (gerr == "unreachable" or gerr == "unauthorized") then return nil, gerr, 0 end
+            have = memo and type(memo.attachments) == "table" and memo.attachments or {}
+            break
+        end
+    end
+    for i, d in ipairs(list) do
+        local there = Memos.isDrawingFile(d.filename) and Memos.sameFile(have, d.filename, lfs.attributes(d.path or "", "size")) or {}
+        if there[1] then
+            -- (sent before: kept, and the copies the retries added taken off the note)
+            require("gzreader_log").info("notes: a drawing was in Memos already,", #there - 1, "extra copies removed")
+            for k = 2, #there do self:deleteAttachment(there[k].name) end
+        else
+            local att, err = self:uploadAttachment(d.path, d.filename, name, d.type) -- (a photo: its own type)
+            if not att and err ~= "missing_file" then return nil, err, i - 1 end
+        end
     end
     return true
+end
+
+--- Whether `filename` is one of GZreader's drawings (named by the second it
+--- was made, so no two share a name).
+function Memos.isDrawingFile(filename)
+    return type(filename) == "string" and filename:match("%.canvas%.png$") ~= nil
+end
+
+--- Those of `atts` (a note's attachments) that are the file `filename` of
+--- `size` bytes (any size when Memos or the file doesn't say), oldest
+--- first: Memos lists the newest first.
+function Memos.sameFile(atts, filename, size)
+    local out = {}
+    for i = #(atts or {}), 1, -1 do
+        local a = atts[i]
+        local asize = tonumber(a.size)
+        if a.filename == filename and (not size or not asize or asize == size) then out[#out + 1] = a end
+    end
+    return out
 end
 
 --- Note `atts` (its attachments, as Memos lists them) in the order of
@@ -553,7 +600,7 @@ end
 function Memos:createWithDrawing(q)
     local memo, err = self:create(q.content or "", q.visibility, q.space, q.attachments, q.location)
     if not memo then return nil, err end
-    local ok, aerr, sent = self:uploadDrawings(q, memo.name)
+    local ok, aerr, sent = self:uploadDrawings(q, memo.name, true)
     if not ok then return nil, aerr, memo.name, sent end
     return memo
 end
