@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Auto-download shelf: Mirror the shelf, Keep books up to date", text = "Two new choices under Settings → Accounts and services → Books → Auto-download shelf, both off until ticked. Mirror the shelf: a book the shelf brought that you take off it moves to a “Taken off the shelf” folder in the books folder, with its reading position, and back again if you put it back (nothing is deleted; books you downloaded yourself are never moved). Keep books up to date: a shelf book whose title or authors change on the server gets them on the Kindle too, and one whose file changes there is downloaded again over the old one, keeping your place." },
+        },
+    },
+    {
         version = "2026.11.22",
         changes = {
             { short = "Colour Kindles: Immich photos in colour", text = "On a Kindle Colorsoft or Scribe Colorsoft, the pictures from your Immich album (the sleep screen and the Home wallpaper) are kept in colour instead of being made grey. Pictures already on the Kindle stay grey until they are swapped for others from the album (about half each time GZreader gets new pictures)." },
