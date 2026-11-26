@@ -42,6 +42,19 @@ while there are others, and a section's own stories in their order. **Good
 news** leads the paper and comes more often in its first half. The mix is
 the same all day (a new one each morning).
 
+**Settings → Accounts and services → Daily paper → Story order** chooses
+how the stories follow one another:
+
+- **Mixed, good news first** (the usual): as above.
+- **Mixed**: mixed the same way, but good news comes up as often as any other
+  section.
+- **By section**: each section's stories together, the sections in the
+  order of the feeds list, as a printed paper has them.
+- **The AI chooses the order** (AI edition only; on as it comes): see
+  [The AI edition](Daily-Paper#the-ai-edition).
+
+A change applies to today's paper at once, on Home and in an open paper.
+
 - **More pages**: swipe left, press a page-turn key, or tap the arrow at the
   foot of the page.
 - **A story**: tap it (with keys: move the frame with the 5-way and press).
@@ -140,7 +153,9 @@ The AI also chooses the paper's **order**, as an editor would: it opens
 with good, hopeful news, keeps plenty of it near the front, mixes the
 sections and puts what matters most early. The summaries then go to the
 paper's first stories. When it gives no usable order, the paper keeps the
-ordinary mix.
+order chosen in Story order. To use that order instead, untick **Story
+order → The AI chooses the order**: the AI is then not asked. It is asked
+to put good news first only while Story order is *Mixed, good news first*.
 
 - **What's sent:** when the paper is fetched, each story's headline and the
   first part of its text (about a thousand words at most) go to the AI

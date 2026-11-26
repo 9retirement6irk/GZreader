@@ -2110,6 +2110,58 @@ function Paper.browserSetup(plugin)
     end, { reason = "setting up the daily paper" })
 end
 
+--- After the order's settings change: today's paper in the new order, on Home and open.
+function Paper.reorder(plugin)
+    pcall(Daily().rearrange, plugin)
+    if Paper.instance and not Paper.instance.closed then Paper.instance:reload() end
+    pcall(function() require("common/gz_view").redrawHome() end)
+end
+
+--- Settings → Daily paper → Story order: how the stories follow one another.
+function Paper.orderItems(plugin)
+    local D = Daily()
+    local names = {
+        mixed_good = { _("Mixed, good news first"), _("The sections' stories mixed through the paper, never the same section twice running, with good news leading and more of it in the first half. The same order all day.") },
+        mixed = { _("Mixed"), _("The sections' stories mixed through the paper, never the same section twice running; good news comes up as often as any other section.") },
+        sections = { _("By section"), _("Each section's stories together, the sections in the order of the feeds list (Settings → Daily paper → Feeds), as a printed paper has them.") },
+    }
+    local items = {}
+    for _i, k in ipairs(D.ORDER_STYLES) do
+        items[#items + 1] = {
+            text = names[k][1], help_text = names[k][2], radio = true,
+            checked_func = function() return D.orderStyle(plugin) == k end,
+            callback = function()
+                local st = D.store(plugin)
+                st.order = k ~= "mixed_good" and k or nil
+                plugin:save()
+                Paper.reorder(plugin)
+            end,
+        }
+    end
+    items[#items].separator = true
+    items[#items + 1] = {
+        text = _("The AI chooses the order"),
+        help_text = _("In the AI edition, the AI service also puts the day's stories in the order it thinks reads best (asked once when the paper is fetched: the headlines, sections and how each story begins). Off, or when it gives no usable order, the order above is used. The AI is asked to put good news first only with Mixed, good news first chosen above."),
+        enabled_func = function() return D.aiOn(plugin) end,
+        checked_func = function() return D.aiOn(plugin) and D.aiOrders(plugin) end,
+        callback = function()
+            local st = D.store(plugin)
+            if st.ai_order == false then st.ai_order = nil else st.ai_order = false end
+            plugin:save()
+            Paper.reorder(plugin)
+        end,
+    }
+    return items
+end
+
+--- Story order's row: its choice in the menu.
+function Paper.orderText(plugin)
+    local D = Daily()
+    local label = ({ mixed_good = _("Mixed, good news first"), mixed = _("Mixed"), sections = _("By section") })[D.orderStyle(plugin)]
+    if D.aiOn(plugin) and D.aiOrders(plugin) then label = _("the AI's") end
+    return T(_("Story order: %1"), label)
+end
+
 --- Settings → Accounts and services → Daily paper.
 function Paper.settingsItems(plugin)
     local D = Daily()
@@ -2171,6 +2223,13 @@ function Paper.settingsItems(plugin)
             sub_item_table_func = function() return Paper.fontItems(plugin) end,
         },
         {
+            text = _("Story order"),
+            text_func = function() return Paper.orderText(plugin) end,
+            help_text = _("How the day's stories follow one another: mixed with good news first (the usual), mixed, or by section; and in the AI edition, whether the AI chooses. A change applies to today's paper at once."),
+            enabled_func = on,
+            sub_item_table_func = function() return Paper.orderItems(plugin) end,
+        },
+        {
             text = _("Whole stories"),
             help_text = _("Many feeds carry only a sentence or two of each story. With this on, such a story's own web page is fetched with the paper and the article taken out of it, as a browser's reader view does, so the paper reads whole with Wi-Fi off. It makes the day's fetch longer (a page a story, up to five minutes in all on a slow Kindle, in the background). Stories behind a paywall, or on pages built by scripts, keep the feed's summary. A story's page can be on another site than its feed (Hacker News links anywhere); that site then also sees this Kindle's internet address."),
             enabled_func = on,
@@ -2192,7 +2251,8 @@ function Paper.settingsItems(plugin)
                 st.ai = (not D.aiWanted(plugin)) or nil
                 plugin:save()
                 require("gzreader_log").info("daily paper: AI edition", st.ai and "on" or "off")
-                if Paper.instance and not Paper.instance.closed then Paper.instance:reload() end
+                -- (the AI's order goes with it; Paper.reorder reloads an open paper)
+                Paper.reorder(plugin)
             end,
         },
         {
@@ -2249,7 +2309,7 @@ function Paper.settingsItems(plugin)
             if t == _("Whole stories") then
                 it.help_text = _("Many feeds carry only a sentence or two of each story. With this on, the sync page also tries each such story's own page and GZreader takes the article out of it. Only pages whose sites let a web page read them come this way; the others keep the feed's summary.")
             end
-            if t ~= _("Pictures") and t ~= _("Weather") and t ~= _("Set up from a browser (QR code)") and not it.text_func then
+            if t ~= _("Pictures") and t ~= _("Weather") and t ~= _("Set up from a browser (QR code)") and not (it.text_func and it.callback) then
                 out[#out + 1] = it
             end
         end

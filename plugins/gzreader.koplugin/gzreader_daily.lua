@@ -376,10 +376,13 @@ local function rng(seed)
     local h = 5381
     for i = 1, #tostring(seed or "") do h = (h * 33 + tostring(seed):byte(i)) % 2147483647 end
     local state = h % 2147483646 + 1
-    return function()
+    local function step()
         state = (state * 16807) % 2147483647
         return (state - 1) / 2147483646
     end
+    -- (seeds a day apart start close together: a few draws first spread them out)
+    for _i = 1, 4 do step() end
+    return step
 end
 
 --- The edition's stories mixed: { { s, i } } (section, story in it), every story once.
@@ -387,7 +390,8 @@ end
 --- same mix all day), in proportion to how many it has left, Good news GOOD_WEIGHT
 --- times as likely in the first half and leading the paper; never the same topic
 --- twice running while another has stories left. Pure.
-function Daily.mix(edition, seed)
+function Daily.mix(edition, seed, good)
+    local good_first = good ~= false
     local secs = type(edition) == "table" and edition.sections or {}
     local next_i, total = {}, 0
     for s, sec in ipairs(secs) do next_i[s] = 1; total = total + #sec.items end
@@ -399,7 +403,7 @@ function Daily.mix(edition, seed)
             local left = #sec.items - next_i[s] + 1
             if left > 0 then
                 local w = left
-                if sec.topic == Daily.GOOD_TOPIC and #out < total / 2 then w = w * Daily.GOOD_WEIGHT end
+                if good_first and sec.topic == Daily.GOOD_TOPIC and #out < total / 2 then w = w * Daily.GOOD_WEIGHT end
                 cands[#cands + 1] = { s = s, w = w }
             end
         end
@@ -408,7 +412,7 @@ function Daily.mix(edition, seed)
             for k = #cands, 1, -1 do if cands[k].s == last then table.remove(cands, k) end end
         end
         local pick
-        if #out == 0 then
+        if #out == 0 and good_first then
             for _k, c in ipairs(cands) do if secs[c.s].topic == Daily.GOOD_TOPIC then pick = c end end
         end
         if not pick then
@@ -425,6 +429,60 @@ function Daily.mix(edition, seed)
         last = pick.s
     end
     return out
+end
+
+---------------------------------------------------------------- the paper's order
+
+--- How the stories are ordered (Settings → Daily paper → Story order): "mixed_good"
+--- (mixed, good news first: the usual), "mixed", "sections" (each section's stories
+--- together, in the feeds list's order).
+Daily.ORDER_STYLES = { "mixed_good", "mixed", "sections" }
+
+function Daily.orderStyle(plugin)
+    local v = Daily.store(plugin).order
+    for _i, k in ipairs(Daily.ORDER_STYLES) do if v == k then return v end end
+    return "mixed_good"
+end
+
+--- Does the AI edition's AI choose the order? (On unless turned off.)
+function Daily.aiOrders(plugin)
+    return Daily.store(plugin).ai_order ~= false
+end
+
+--- What Daily.arrange takes: { style, ai }.
+function Daily.how(plugin)
+    -- (the AI's order only while the AI edition is ticked)
+    return { style = Daily.orderStyle(plugin), ai = Daily.aiWanted(plugin) and Daily.aiOrders(plugin) }
+end
+
+--- Put `edition` in the order `how` asks for ({ style, ai }): the AI's order when
+--- `how.ai` and the AI gave one (edition.ai_order), else the style's: a mix with
+--- or without good news first, or none (the sections one after another). The same
+--- mix all day. Returns the edition. Pure.
+function Daily.arrange(edition, how)
+    if type(edition) ~= "table" or type(edition.sections) ~= "table" then return edition end
+    how = type(how) == "table" and how or {}
+    if how.ai ~= false and type(edition.ai_order) == "table" and #edition.ai_order > 0 then
+        edition.order, edition.ordered_by_ai = edition.ai_order, true
+        return edition
+    end
+    edition.ordered_by_ai = nil
+    if how.style == "sections" then
+        edition.order = nil
+    else
+        edition.order = Daily.mix(edition, edition.day, how.style ~= "mixed")
+    end
+    return edition
+end
+
+--- After a change to the order's settings: today's kept paper put in the new order.
+function Daily.rearrange(plugin)
+    local edition = Daily.load()
+    if not edition then return end
+    Daily.arrange(edition, Daily.how(plugin))
+    Daily.keep(edition)
+    Log.info("daily paper: order", Daily.orderStyle(plugin), Daily.aiOrders(plugin) and "(the AI's when it chose)" or "(not the AI's)")
+    Daily.changed()
 end
 
 --- The edition's stories in reading order: { item, topic, s, i } (its mix when it has one,
@@ -629,16 +687,22 @@ Daily.ORDER_SYSTEM = "You are the editor of a small daily newspaper read on an e
     .. "keep plenty of good news near the front, mix the sections so the same one doesn't run on, "
     .. "and put what matters or interests most early. Every story once. "
     .. "Reply with JSON only: {\"order\":[numbers]}."
+-- (Story order without good news first: the same, without putting good news forward)
+Daily.ORDER_SYSTEM_PLAIN = "You are the editor of a small daily newspaper read on an e-reader. "
+    .. "You are given the day's stories, numbered, each with its section and how it begins. "
+    .. "Put them in the order the paper should print them: mix the sections so the same one doesn't run on, "
+    .. "and put what matters or interests most early. Every story once. "
+    .. "Reply with JSON only: {\"order\":[numbers]}."
 
 --- What to ask for the paper's order (`list`: Daily.ordered's, numbered from 1): the
 --- headlines, sections and how each begins; nothing of yours. Pure.
-function Daily.orderQuestion(list)
+function Daily.orderQuestion(list, good)
     local lines = {}
     for n, st in ipairs(list) do
         local start = Feeds.cut(tostring(st.item.text or ""):gsub("%s+", " "), 160)
         lines[#lines + 1] = string.format("%d. [%s] %s: %s", n, tostring(st.topic or ""), tostring(st.item.title or ""), start)
     end
-    return { system = Daily.ORDER_SYSTEM, max_tokens = 400, timeout = 60,
+    return { system = good == false and Daily.ORDER_SYSTEM_PLAIN or Daily.ORDER_SYSTEM, max_tokens = 400, timeout = 60,
         text = "The stories:\n" .. table.concat(lines, "\n") }
 end
 
@@ -662,14 +726,15 @@ function Daily.orderFrom(text, list)
 end
 
 --- The AI edition: the AI puts the paper in order (the mix stays when it can't).
---- `ask(question)` → text, or nil and why. Returns true, or false and why.
-function Daily.aiOrder(edition, ask)
+--- `ask(question)` → text, or nil and why; `good` false: without good news first.
+--- Kept as edition.ai_order too (Daily.arrange). Returns true, or false and why.
+function Daily.aiOrder(edition, ask, good)
     local list = Daily.ordered(edition)
     if #list < 3 then return false, "too few stories" end
-    local okc, text, err = pcall(ask, Daily.orderQuestion(list))
+    local okc, text, err = pcall(ask, Daily.orderQuestion(list, good))
     local order = okc and Daily.orderFrom(text, list) or nil
     if not order then return false, okc and (err or "no order in the answer") or "an error" end
-    edition.order, edition.ordered_by_ai = order, true
+    edition.order, edition.ai_order, edition.ordered_by_ai = order, order, true
     return true
 end
 
@@ -882,9 +947,12 @@ function Daily.refresh(plugin, on_done)
     local full = Daily.fullStories(plugin)
     -- (the AI edition: what a job needs to ask, copied now; nil when it's off)
     local ai = Daily.aiOn(plugin) and require("gzreader_ai").snapshot(plugin) or nil
+    -- (the order asked for: Settings → Daily paper → Story order)
+    local how = Daily.how(plugin)
     require("gzreader_async").run({}, function()
         local edition, err = Daily.build(feeds, now, Daily.fetch)
         if not edition then return nil, err end
+        Daily.arrange(edition, how)
         -- (the day's weather, for the front page's box: gzreader_weather.lua)
         if weather_plan then
             local okw, weather = pcall(require("gzreader_weather").fetch, weather_plan, now)
@@ -908,8 +976,10 @@ function Daily.refresh(plugin, on_done)
             local AI = require("gzreader_ai")
             local why
             -- (first the order the AI chooses: the summaries then go to the paper's first stories)
-            local ordered, owhy = Daily.aiOrder(edition, function(q) return AI.complete(ai, q) end)
-            if not ordered then Log.warn("daily paper: the AI's order wasn't used:", tostring(owhy)) end
+            if how.ai then
+                local ordered, owhy = Daily.aiOrder(edition, function(q) return AI.complete(ai, q) end, how.style == "mixed_good")
+                if not ordered then Log.warn("daily paper: the AI's order wasn't used:", tostring(owhy)) end
+            end
             edition.summaries, edition.summaries_asked, why = Daily.addSummaries(edition, function(q) return AI.complete(ai, q) end)
             edition.ai = ai.provider
             if why then Log.warn("daily paper: a summary wasn't given:", tostring(why)) end
@@ -1079,6 +1149,7 @@ function Daily.fromComputer(plugin, from, d, on_done)
         Daily.addPictures(edition, Daily.pictureDir(), function() return nil end)
         Daily.clearPictures()
         Daily.last_error = nil
+        Daily.arrange(edition, Daily.how(plugin))
         Daily.keep(edition)
         Log.info("daily paper (from the computer):", Daily.count(edition), "stories in", #edition.sections, "sections;",
             #(edition.failed or {}), "feeds not readable;", tonumber(edition.full) or 0, "whole stories")
