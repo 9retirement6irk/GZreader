@@ -1388,8 +1388,37 @@ check(Scr.statusText("sudoku", { left = 47 }) == "47 squares to go." and Scr.sta
 check(Scr.helpText("sudoku", true):find("Tap a square", 1, true) and Scr.helpText("sudoku", false, true):find("Q–O", 1, true) and Scr.helpText("sudoku", false, false):find("Press: the next number", 1, true)
     and Scr.helpText("words", false, true):find("Press on a word's first letter", 1, true) and Scr.helpText("maze", true):find("swipe", 1, true), "how to play, for touch, a keyboard and the 5-way alone")
 check(Scr.tabLabel("sudoku") == "Sudoku" and Scr.tabLabel("words") == "Word search" and Scr.tabLabel("maze") == "Maze", "the three tabs")
+-- circling a word: where a stroke ends, straightened; the ring drawn round a found word
+check(table.concat({ Scr.snap(2, 3, 7, 3, 10) }, ",") == "7,3" and table.concat({ Scr.snap(2, 3, 7, 4, 10) }, ",") == "7,3", "a stroke across, a square off at its end: still across")
+check(table.concat({ Scr.snap(4, 8, 5, 2, 10) }, ",") == "4,2", "a stroke up, a little crooked: straight up")
+check(table.concat({ Scr.snap(2, 2, 6, 5, 10) }, ",") == "6,6" and table.concat({ Scr.snap(6, 6, 2, 3, 10) }, ",") == "2,2", "a stroke nearer a diagonal: the diagonal, as long as the stroke was")
+check(table.concat({ Scr.snap(8, 8, 10, 11, 10) }, ",") == "10,10" and table.concat({ Scr.snap(3, 2, 0, -1, 10) }, ",") == "2,1", "a diagonal that would leave the letters stops at the edge")
+check(table.concat({ Scr.snap(5, 5, 5, 5, 10) }, ",") == "5,5", "no stroke at all: the same square")
+local ring = Scr.ringPoints(100, 100, 300, 100, 20)
+local rx1, rx2, ry1, ry2, on_ring = 1e9, -1e9, 1e9, -1e9, true
+for _i, pt in ipairs(ring) do
+    rx1, rx2, ry1, ry2 = math.min(rx1, pt[1]), math.max(rx2, pt[1]), math.min(ry1, pt[2]), math.max(ry2, pt[2])
+    -- (every point is 20 from the line between the two middles)
+    local nearest = math.max(100, math.min(300, pt[1]))
+    local d = math.sqrt((pt[1] - nearest) ^ 2 + (pt[2] - 100) ^ 2)
+    if math.abs(d - 20) > 0.01 then on_ring = false end
+end
+check(on_ring and math.abs(rx1 - 80) < 0.5 and math.abs(rx2 - 320) < 0.5 and math.abs(ry1 - 80) < 0.5 and math.abs(ry2 - 120) < 0.5 and #ring > 400,
+    "the ring round a found word: two sides and two round ends, all the same way off its letters (" .. #ring .. " points)")
+local diag = Scr.ringPoints(0, 0, 100, 100, 10)
+local off_diag = true
+for _i, pt in ipairs(diag) do
+    local tpar = math.max(0, math.min(100, (pt[1] + pt[2]) / 2))
+    if math.abs(math.sqrt((pt[1] - tpar) ^ 2 + (pt[2] - tpar) ^ 2) - 10) > 0.01 then off_diag = false end
+end
+check(off_diag and #Scr.ringPoints(50, 50, 50, 50, 10) > 16, "…round a diagonal word too, and round a single square without dividing by nothing")
 local psrc, ssrc = read(PLUGIN .. "/gzreader_puzzles.lua"), read(PLUGIN .. "/gzreader_puzzlescreen.lua")
 check(not psrc:find("math.random", 1, true) and not psrc:find("socket", 1, true) and not psrc:find("Api", 1, true), "made on the Kindle from the date: no network, not the Kindle's own random numbers")
+check(ssrc:find('PzPan = { GestureRange:new{ ges = "pan", range = range } }', 1, true) and ssrc:find('PzHoldPan = { GestureRange:new{ ges = "hold_pan", range = range } }', 1, true)
+    and ssrc:find('PzPanRelease = { GestureRange:new{ ges = "pan_release", range = range } }', 1, true) and ssrc:find('PzHoldRelease = { GestureRange:new{ ges = "hold_release", range = range } }', 1, true)
+    and ssrc:find("self:circle(ges.pos.x - self.dimen.x, ges.pos.y - self.dimen.y, ges.end_pos.x - self.dimen.x, ges.end_pos.y - self.dimen.y)", 1, true),
+    "a word can be drawn along quickly (a swipe), slowly (a pan) or after a pause (a hold and pan)")
+check(Scr.helpText("words", true):find("Draw along a word to circle it", 1, true) and Scr.helpText("words", true):find("tap its first letter", 1, true), "the word search says so, and the two taps still work")
 check(ssrc:find('PzPanel = { { "Menu" } }', 1, true) and ssrc:find("Paper.pulledDown(ges)", 1, true), "Menu and a swipe from the top are the quick panel there too")
 local dsrc2 = read(PLUGIN .. "/gzreader_dailyscreen.lua")
 check(dsrc2:find('if what == "puzzles" then', 1, true) and dsrc2:find("if self.foot.puzzles then Paper.puzzles(self.plugin) end", 1, true) and dsrc2:find('foot("puzzles", f.puzzles, S(6))', 1, true),

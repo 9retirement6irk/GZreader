@@ -125,6 +125,29 @@ add({ fn = function(E)
     check(E, pz.found[1] == true and pz.info.found == 1, "a word's first and last letter: found (" .. w.word .. ")")
     local l = pz.list
     check(E, l.y + l.line_h * 2 <= pz.status.y and l.y >= b.y + b.h, "the words fit under the letters")
+    if not KEYS then
+        -- drawn along: the third word slowly (pan, then release a little past its last letter), the
+        -- fourth quickly (a swipe), then a stroke that is no word
+        local function mid(cx, cy) return pz.dimen.x + b.x + (cx - 1) * b.cell + math.floor(b.cell / 2), pz.dimen.y + b.y + (cy - 1) * b.cell + math.floor(b.cell / 2) end
+        local w3, w4 = pz.ws.words[3], pz.ws.words[4]
+        local x1, y1 = mid(w3.x, w3.y)
+        local x2, y2 = mid(w3.x + w3.dx * (#w3.word - 1), w3.y + w3.dy * (#w3.word - 1))
+        pz:onPzPan(nil, { start_pos = { x = x1, y = y1 }, pos = { x = math.floor((x1 + x2) / 2), y = math.floor((y1 + y2) / 2) } })
+        pz:onPzPanRelease(nil, { pos = { x = x2 + math.floor(b.cell * 0.3) * w3.dx, y = y2 + math.floor(b.cell * 0.3) * w3.dy } })
+        check(E, pz.found[3] == true, "a word drawn along slowly, ending a little past its last letter: found (" .. w3.word .. ")")
+        x1, y1 = mid(w4.x + w4.dx * (#w4.word - 1), w4.y + w4.dy * (#w4.word - 1))
+        x2, y2 = mid(w4.x, w4.y)
+        pz:onPzSwipe(nil, { direction = "west", pos = { x = x1, y = y1 }, end_pos = { x = x2, y = y2 } })
+        check(E, pz.found[4] == true and pz.kind == "words", "a word swiped along backwards: found, and the page didn't change puzzle (" .. w4.word .. ")")
+        local before = pz.info.found
+        pz:onPzSwipe(nil, { direction = "east", pos = { x = pz.dimen.x + b.x + 3, y = pz.dimen.y + b.y + 3 }, end_pos = { x = pz.dimen.x + b.x + b.cell * 2, y = pz.dimen.y + b.y + 3 } })
+        check(E, pz.info.found == before and pz.kind == "words" and pz.note ~= nil and pz.status.widget.text:find("isn't one of the words", 1, true) ~= nil,
+            "a stroke that isn't a word: nothing found, and the page says so")
+        pz:onPzSwipe(nil, { direction = "west", pos = { x = pz.dimen.x + 5, y = pz.foot.y - 4 }, end_pos = { x = pz.dimen.x + 200, y = pz.foot.y - 4 } })
+        check(E, pz.kind == "maze", "a swipe off the letters still changes puzzle")
+        pz:show("words")
+        b = pz.board
+    end
     -- a first letter chosen, for the picture
     local w2 = pz.ws.words[2]
     if KEYS then pz.wcur = { w2.x, w2.y }; pz:onPzPress() else tap(pz, b.x + (w2.x - 1) * b.cell + 5, b.y + (w2.y - 1) * b.cell + 5) end
