@@ -89,7 +89,7 @@ if okb then
     -- Home and tabs: Home (its own rows), Status bar, Tab bar, Quick panel, Downloads tab
     local ht = sub(items, "Home and tabs")
     local htt = texts(ht)
-    check(htt == "|Home|Daily paper|Tab bar|Downloads tab|", "Home and tabs: Home, Daily paper, (Status bar, Quick panel: stubs here,) Tab bar, Downloads tab " .. htt)
+    check(htt == "|Home|Tab bar|Downloads tab|", "Home and tabs: Home, (Status bar, Quick panel: stubs here,) Tab bar, Downloads tab " .. htt)
     local home_rows = texts(sub(ht, "Home"))
     check(home_rows == "|Widgets ▸|Edit mode|Presets|Show on Home|",
         "Home: its own rows; with no Status bar section, Show top status bar stays in Home as Show on Home " .. home_rows)
@@ -168,7 +168,7 @@ do
     end
     view.no_wifi = false
     local con = accounts()
-    check(con:find("|Photos|House|$") ~= nil, "Accounts and services: House (Home Assistant) last (the daily paper is in Home and tabs) " .. con)
+    check(con:find("|Photos|House|Daily paper|$") ~= nil, "Accounts and services: House (Home Assistant), then the daily paper, last " .. con)
     check(not con:find("Copy to or from another GZreader", 1, true) and not con:find("Sync through a computer", 1, true),
         "Accounts and services: no Copy or Sync through a computer (General → Transfer) " .. con)
     view.no_wifi = true
