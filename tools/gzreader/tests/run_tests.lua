@@ -12534,8 +12534,19 @@ print("Flashcards: cards made by the AI service, kept in Memos, and a quiz")
         "the cards read back from Q: and A: lines (an answer over two lines; lines that aren't a card left out)")
     local deck = { title = "Moby-Dick", part = "Chapter 16", cards = { { q = "What is a lay?", a = "A share." }, { q = "Who?", a = "Ishmael." } } }
     local note = Cards.noteText(deck)
-    check(note == "#flashcards\n**Flashcards: Moby-Dick** \u{00B7} Chapter 16\n\nQ: What is a lay?\nA: A share.\n\nQ: Who?\nA: Ishmael." and #Cards.parse(note) == 2,
-        "a deck as a Memos note: tagged, titled, and read back the same")
+    check(note == "#flashcards\n**Flashcards: Moby-Dick** \u{00B7} Chapter 16\n\n<details>\n<summary>What is a lay?</summary>\n\nA share.\n\n</details>\n\n"
+        .. "<details>\n<summary>Who?</summary>\n\nIshmael.\n\n</details>",
+        "a deck as a Memos note: tagged, titled, each card a folded section (its question the title, its answer inside)")
+    local back = Cards.parse(note)
+    check(#back == 2 and back[1].q == "What is a lay?" and back[1].a == "A share." and back[2].q == "Who?" and back[2].a == "Ishmael.",
+        "…read back the same")
+    local mixed = Cards.parse("#flashcards\n<details><summary>Fish &amp; chips?</summary>\n\nFood.\nHot.\n\n</details>\n\n"
+        .. "<details open>\n<summary>Empty?</summary>\n\n</details>\nQ: Why salt?\nA: Against precomputed hashes.")
+    check(#mixed == 2 and mixed[1].q == "Fish & chips?" and mixed[1].a == "Food.\nHot." and mixed[2].q == "Why salt?",
+        "…and a deck edited in Memos: sections (the summary on the same line, an empty one left out) and Q:/A: lines together")
+    local amp = Cards.noteText({ title = "T", cards = { { q = "A < B & C?", a = "Yes" } } })
+    check(amp:find("<summary>A &lt; B &amp; C?</summary>", 1, true) and Cards.parse(amp)[1].q == "A < B & C?",
+        "…a question with < or & in it kept as written")
     -- the question
     local q = Cards.question("Moby-Dick", "Herman Melville", "Chapter 16", "Call me Ishmael.", 10)
     check(q.text:find('The book: "Moby-Dick" by Herman Melville\nThe part: Chapter 16\n\nThe text:\nCall me Ishmael.\n\nWrite 10 flashcards', 1, true)

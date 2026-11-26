@@ -23,13 +23,18 @@ private note in Memos, tagged `#flashcards`:
 #flashcards
 **Flashcards: Moby-Dick** · Loomings
 
-Q: Who tells the story?
-A: Ishmael.
+<details>
+<summary>Who tells the story?</summary>
+
+Ishmael.
+
+</details>
 ```
 
-You can read and edit the deck in Memos' web app. To use the cards in Anki,
-copy the note's lines into a text file and import it there with `Q:` and `A:`
-as the field names, or ask for a separate export.
+Each card is a folded section: Memos' web app (and the note on the Kindle)
+shows the question with › beside it, and a tap opens its answer, so you can
+test yourself there too. You can edit the deck in Memos; cards written as
+`Q:` and `A:` lines (decks made before) are read too.
 
 Not yet: cards from a whole book, or answers to a test's questions from a
 book.

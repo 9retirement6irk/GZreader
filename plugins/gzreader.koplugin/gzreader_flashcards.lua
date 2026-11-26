@@ -15,10 +15,16 @@ A deck is a Memos note, so it's in Memos' web app to read and edit:
     #flashcards
     **Flashcards: Moby-Dick** · Chapter 16
 
-    Q: What is a lay?
-    A: A sailor's share of the voyage's profit.
+    <details>
+    <summary>What is a lay?</summary>
 
-(the lines are `Q:` and `A:`; Flashcards.parse reads them back). The Kindle
+    A sailor's share of the voyage's profit.
+
+    </details>
+
+(each card a folded section, its question the title: Memos' web app and the
+note on the Kindle show the question, and a tap opens its answer.
+Flashcards.parse reads them back, and `Q:` / `A:` lines too). The Kindle
 keeps its own copy of the decks it made, so the quiz works with Wi-Fi off.
 
 The quiz (the same tile, **Quiz me**): a card at a time, large; tap **Show
@@ -55,11 +61,39 @@ local function cut(text, max)
 end
 Cards.cut = cut
 
---- The cards in `text`: { { q, a } } from lines "Q: …" and "A: …" (an
---- answer may run on over the next lines, until a blank line or the next Q). Pure.
+--- The cards in `text`: { { q, a } } from folded sections (`<details>`, the
+--- question its `<summary>`, the answer inside) and from lines "Q: …" and
+--- "A: …" (an answer may run on over the next lines, until a blank line or
+--- the next Q). Pure.
 function Cards.parse(text)
     local out, cur, in_answer = {}, nil, false
-    for line in (tostring(text or "") .. "\n"):gmatch("([^\n]*)\n") do
+    local lines = {}
+    for line in (tostring(text or "") .. "\n"):gmatch("([^\n]*)\n") do lines[#lines + 1] = line end
+    local Blocks = require("gzreader_blocks")
+    local i = 1
+    while i <= #lines do
+        local line = lines[i]
+        -- a folded section: its title (on this line or the next) the question, what's in it the answer
+        local sec
+        if line:match("^[ \t]*<details[^>]*>[ \t]*$") and lines[i + 1] and lines[i + 1]:match("^[ \t]*<summary>") then
+            sec = Blocks.sectionStart(line .. "\n" .. lines[i + 1])
+            if sec then i = i + 1 end
+        elseif line:match("^[ \t]*<details") then
+            sec = Blocks.sectionStart(line)
+        end
+        if sec then
+            local body = {}
+            i = i + 1
+            while i <= #lines and not lines[i]:match("^[ \t]*</details>[ \t]*$") do
+                body[#body + 1] = (lines[i]:gsub("^%s+", ""):gsub("%s+$", ""))
+                i = i + 1
+            end
+            local a = table.concat(body, "\n"):gsub("^\n+", ""):gsub("\n+$", ""):gsub("\n\n+", "\n")
+            if sec.title:match("%S") and a:match("%S") then out[#out + 1] = { q = sec.title, a = a } end
+            cur, in_answer = nil, false
+            line = ""
+        end
+        i = i + 1
         local q = line:match("^%s*[Qq]%s*[:.]%s*(.-)%s*$")
         local a = line:match("^%s*[Aa]%s*[:.]%s*(.-)%s*$")
         if q and q ~= "" then
@@ -87,9 +121,14 @@ function Cards.noteText(deck)
     local head = T("**%1**", T(_("Flashcards: %1"), tostring(deck.title or _("a book"))))
     if deck.part and deck.part ~= "" then head = head .. " \u{00B7} " .. deck.part end
     local out = { "#" .. Cards.TAG, head, "" }
+    -- (each card a folded section, its question the title, as Memos' web app writes one)
+    local Blocks = require("gzreader_blocks")
     for _i, c in ipairs(deck.cards) do
-        out[#out + 1] = "Q: " .. c.q
-        out[#out + 1] = "A: " .. c.a
+        out[#out + 1] = Blocks.sectionMarkdown((tostring(c.q):gsub("\n", " ")))
+        out[#out + 1] = ""
+        out[#out + 1] = c.a
+        out[#out + 1] = ""
+        out[#out + 1] = "</details>"
         out[#out + 1] = ""
     end
     return (table.concat(out, "\n"):gsub("\n+$", ""))

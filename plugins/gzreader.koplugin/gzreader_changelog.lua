@@ -9,7 +9,7 @@ return {
     {
         version = "next",
         changes = {
-            { short = "Flashcards: cards from a chapter or selected text, kept in Memos, and a quiz", text = "Reading: with an AI key set up, the quick panel's Flashcards makes question-and-answer cards from the chapter you're in, and Flashcards (AI) in the selection menu from selected text. You check them, then Save keeps them on the Kindle and as a #flashcards note in Memos. Quiz me shows a card at a time: Show answer, then Again or Got it; cards you know come back after 1, 3, 7 and 14 days." },
+            { short = "Flashcards: cards from a chapter or selected text, kept in Memos, and a quiz", text = "Reading: with an AI key set up, the quick panel's Flashcards makes question-and-answer cards from the chapter you're in, and Flashcards (AI) in the selection menu from selected text. You check them, then Save keeps them on the Kindle and as a #flashcards note in Memos. Quiz me shows a card at a time: Show answer, then Again or Got it; cards you know come back after 1, 3, 7 and 14 days. Each card in the Memos note is a folded section: the question shows, and a tap opens its answer." },
         },
     },
     {
