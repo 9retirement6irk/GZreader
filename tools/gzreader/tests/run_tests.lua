@@ -15762,12 +15762,9 @@ end
 print("Mark up a book's page: the page as a drawing's background, the note in Memos")
 ;(function()
     local BM = require("gzreader_bookmarkup")
-    check(BM.reference("Moby-Dick", "Herman Melville", 12, 300) == "Marked up in *Moby-Dick* by Herman Melville, page 12 of 300."
-        and BM.reference("Moby-Dick", nil, 12, nil) == "Marked up in *Moby-Dick*, page 12."
-        and BM.reference(nil, "", nil, nil) == "Marked up in *a book*.", "the note's line: the book, its author and the page (what's known)")
-    local ref = BM.reference("T", nil, 3, 9)
-    check(BM.content(ref, "") == ref and BM.content(ref, "  ") == ref and BM.content(ref, "my thoughts") == ref .. "\n\nmy thoughts"
-        and BM.content(ref, "x\n" .. ref) == "x\n" .. ref, "the note's text: the line first, then what was typed (not twice)")
+    check(BM.title("Moby-Dick", "Chapter 36. The Quarter-Deck") == "Moby-Dick — Chapter 36. The Quarter-Deck"
+        and BM.title("Moby-Dick", nil) == "Moby-Dick" and BM.title(nil, "  ") == "A book" and BM.title("A\nB", " Ch 1 ") == "A B — Ch 1",
+        "the drawing's name: the book and the chapter (what's known)")
     -- the page
     local paging = { paging = { current_page = 7 }, document = { getPageCount = function() return 20 end } }
     local rolling = { document = { getCurrentPage = function() return 41 end, getPageCount = function() return 250 end } }
@@ -15778,12 +15775,13 @@ print("Mark up a book's page: the page as a drawing's background, the note in Me
     local Notes = require("gzreader_notes")
     local was_can, was_edit = BM.canDraw, Notes.edit
     BM.canDraw = function() return false end
-    local ui = { document = rolling.document, view = {}, doc_props = { display_title = "Moby-Dick", authors = "Herman Melville" } }
+    local ui = { document = rolling.document, view = {}, doc_props = { display_title = "Moby-Dick", authors = "Herman Melville" },
+        toc = { getTocTitleByPage = function(_t, pg) return pg == 41 and "Chapter 36. The Quarter-Deck" or nil end } }
     check(BM.tile(plugin, ui) == nil, "no drawing here (Memos not connected, or a Kindle without touch): no tile")
     BM.canDraw = function() return true end
     local tile = BM.tile(plugin, ui)
-    check(tile and tile.id == "markup" and tile.icon == "markup" and tile.label == "Mark up page"
-        and io.open(PLUGIN .. "/icons/panel/markup.svg") ~= nil, "Memos connected on a touch Kindle: Mark up page, with its icon")
+    check(tile and tile.id == "markup" and tile.icon == "markup" and tile.label == "Mark up"
+        and io.open(PLUGIN .. "/icons/panel/markup.svg") ~= nil, "Memos connected on a touch Kindle: Mark up, with its icon")
     -- tapped: the page taken, the drawing screen opened on it in a new note
     local was_snap, was_scene = BM.snapshot, require("gzreader_pdfmarkup").scene
     local shot
@@ -15795,7 +15793,8 @@ print("Mark up a book's page: the page as a drawing's background, the note in Me
     local pg = opened and opened.opts.markup_pages[1]
     check(opened and opened.memo == nil and pg and pg.new and pg.modified and pg.scene.w == 600 and pg.scene.from == shot and pg.book_page == 41
         and io.open(shot) == nil, "tapped: the page becomes a new note's first drawing page (the picture made on the way removed)")
-    check(opened.opts.content_with("") == "Marked up in *Moby-Dick* by Herman Melville, page 41 of 250.", "…the note is said to be from this book and page")
+    check(opened.opts.markup_title == "Moby-Dick — Chapter 36. The Quarter-Deck" and opened.opts.content_with == nil,
+        "…named for the book and the chapter the page is in")
     BM.snapshot = function() return nil, "no screen" end
     local shown = {}
     local UIM = require("ui/uimanager")
@@ -15807,7 +15806,7 @@ print("Mark up a book's page: the page as a drawing's background, the note in Me
     check(BM.start(plugin, ui) == false and opened == nil and #shown == 2 and shown[1].text == "Couldn't take this page.", "the page couldn't be taken: said so, nothing opened")
     UIM.show, package.loaded["ui/widget/infomessage"] = was_show, was_im
     BM.snapshot, require("gzreader_pdfmarkup").scene = was_snap, was_scene
-    -- Notes.edit: a new note's text goes through content_with before it's queued
+    -- Notes.edit: the editor opens straight on the drawing, named, Done saving it (no text after); no Paper icon
     Notes.edit = was_edit
     local NE = require("gzreader_noteeditor")
     local was_show_ne = NE.show
@@ -15817,10 +15816,17 @@ print("Mark up a book's page: the page as a drawing's background, the note in Me
     local was_enqueue, was_soon, was_reload = Notes.enqueue, Notes.sendSoon, Notes.reloadBoard
     Notes.enqueue = function(_p, q) queued = q; q.id = "q1"; return q end
     Notes.sendSoon, Notes.reloadBoard = function() end, function() end
-    Notes.edit(plugin, nil, { markup_pages = {}, content_with = function(t) return BM.content("Marked up in *T*.", t) end })
-    got.on_save("my thoughts", "PRIVATE", false, nil, false, nil, nil, nil)
-    check(queued and queued.op == "create" and queued.content == "Marked up in *T*.\n\nmy thoughts", "saved: the note made with the book's line over what was typed")
+    Notes.edit(plugin, nil, { markup_pages = {}, markup_title = "T — Ch 1" })
+    check(got and got.markup_title == "T — Ch 1", "…the editor is given the drawing's name")
+    got.on_save("# T — Ch 1\n\n#reading", "PRIVATE", false, nil, false, nil, nil, nil)
+    check(queued and queued.op == "create" and queued.content == "# T — Ch 1\n\n#reading", "saved: the note is the drawing's name and the tags chosen")
     NE.show = was_show_ne
+    local nesrc = io.open(PLUGIN .. "/gzreader_noteeditor.lua"):read("*a")
+    check(nesrc:find("if opts.markup_title and e.drawing_first then", 1, true) and nesrc:find("e.popup_only, e.covers_fullscreen = true, false", 1, true)
+        and nesrc:find("no_paper = self.markup_title ~= nil or nil", 1, true), "…opened as a new drawing is: Done saves with the top bar's name and tags")
+    local DSm = require("gzreader_drawscreen")
+    local function has(list, id) for _i, t in ipairs(list) do if t.id == id then return true end end return false end
+    check(has(DSm.topIcons({}), "paper") and not has(DSm.topIcons({ no_paper = true }), "paper"), "…no Paper icon (the book's page is the paper)")
     Notes.enqueue, Notes.sendSoon, Notes.reloadBoard = was_enqueue, was_soon, was_reload
     BM.canDraw = was_can
     local Touch = require("gzreader_touch")
@@ -15838,7 +15844,7 @@ print("Mark up a book's page: the page as a drawing's background, the note in Me
     for _i, g in ipairs(require("gzreader_panel").catalog()) do
         if g.id == "book" then for _j, t in ipairs(g.tiles) do if t.id == "markup" then found = true end end end
     end
-    check(found, "Settings → Quick panel lists Mark up page under This book")
+    check(found, "Settings → Quick panel lists Mark up under This book")
 end)()
 
 print("Immich: an album's pictures for the sleep screen and the Home wallpaper")

@@ -1,7 +1,7 @@
 -- Mark up a book's page (gzreader_bookmarkup.lua): a book (GZ_EMU_BOOK), the
--- quick panel's Mark up page, the drawing screen on the page, a line drawn,
--- Done, Save: the note in Memos (the test suite's mock_memos.py on 18390)
--- with the page under the ink and the book's line in its text.
+-- quick panel's Mark up, the drawing screen on the page (named for the book
+-- and chapter, no Paper icon), a line drawn, Done: the note saved to Memos at
+-- once (the test suite's mock_memos.py on 18390), the page under the ink.
 --   python3 -I demo/mock_memos.py 18390 &
 --   GZ_EMU_MODEL=scribe GZ_EMU_BOOK=<epub> GZ_EMU_TREE=<tree>/koreader run.sh book_markup.lua <out>
 -- Checks go to <out>/book-markup-checks.txt.
@@ -28,7 +28,7 @@ add({ fn = function(E)
     local tiles = Panel.bookTiles(reader().gzreader, reader())
     local tile
     for _i, t in ipairs(tiles) do if t.id == "markup" then tile = t end end
-    check(tile ~= nil, "the quick panel in a book has Mark up page")
+    check(tile ~= nil and tile.label == "Mark up", "the quick panel in a book has Mark up")
     if tile then tile.run() end
 end, after = 6 })
 add({ shot = "markup-1-page" })
@@ -38,6 +38,10 @@ add({ fn = function(E)
     local pic
     for _i, el in ipairs(d and d.sketch.locked or {}) do if el.type == "image" then pic = el end end
     check(pic ~= nil and pic.locked == true, "…with the book's page under it as a locked picture")
+    local paper = false
+    for _i, t in ipairs(d and d:topIcons() or {}) do if t.id == "paper" then paper = true end end
+    E.say("named:", tostring(d and d.meta and d.meta.title))
+    check(d and d.meta and (d.meta.title or ""):find("%S") and not paper, "…named for the book and chapter, no Paper icon")
     -- a line drawn with the pen
     if d then
         local c = d.canvas
@@ -59,11 +63,9 @@ add({ fn = function(E)
     end
     if done then E.penTap(done) end
 end, after = 5 })
-add({ shot = "markup-3-note" })
-add({ fn = function(E)
-    local e = editor()
-    check(e ~= nil, "Done: the new note's page")
-    if e then pcall(e.save, e) end
+add({ shot = "markup-3-done" })
+add({ fn = function()
+    check(editor() == nil, "Done: no note text to write (saved at once)")
 end, after = 12 })
 add({ fn = function(E)
     local p = reader() and reader().gzreader or require("apps/filemanager/filemanager").instance.gzreader
@@ -71,9 +73,9 @@ add({ fn = function(E)
     E.say("queue:", #q, tostring(q[1] and q[1].op), tostring(q[1] and q[1].content))
     local page = require("gzreader_memos"):new(p.store.memos):list()
     local note
-    for _i, m in ipairs(page and page.memos or {}) do if (m.content or ""):find("Marked up in", 1, true) then note = m end end
+    for _i, m in ipairs(page and page.memos or {}) do if (m.content or ""):find("^# ") then note = m end end
     E.say("note:", tostring(note and note.content), "attachments:", tostring(note and #(note.attachments or {})))
-    check(note ~= nil and note.content:find("Marked up in *", 1, true) ~= nil, "Save: the note in Memos says which book and page")
+    check(note ~= nil, "the note in Memos is named for the book and chapter")
     check(note ~= nil and #(note.attachments or {}) >= 1, "…with the drawing attached")
     local f = io.open(E.out .. "/book-markup-checks.txt", "w")
     f:write(table.concat(lines, "\n") .. "\n"); f:close()

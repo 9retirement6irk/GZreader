@@ -1699,6 +1699,7 @@ function Editor:openDrawing(page)
         title = self:heading(),
         -- (a new drawing: named and tagged from the drawing screen's top bar, as the Kindle Scribe's notebooks)
         meta = self.popup_only and { title = self.draw_title or "", tags = self.draw_tags or {}, offered = self.tags } or nil,
+        no_paper = self.markup_title ~= nil or nil, -- (a book's page marked up: it's the paper)
         immich = self.immich,
         -- (the note's photo, tag, space and who can see it, as in the editor's bar)
         note_icons = function(screen) return self:noteIconActions(screen) end,
@@ -1987,11 +1988,17 @@ function NoteEditor.show(opts)
         spaces = opts.spaces, space = opts.space, space_title = opts.space_title, can_draw = opts.can_draw,
         immich = opts.immich, photo_atts = opts.photo_atts, -- (the Photos chip; the note's photos)
         drawing_atts = atts, extra_pages = opts.extra_pages, pictures = opts.pictures }
+    -- (markup_title: a book's page marked up, gzreader_bookmarkup.lua)
     -- (Draw, Edit on drawings: the drawing screen goes up with the editor, so
     -- only it is drawn; the text page shows when Done or Cancel goes back to it)
     e.drawing_first = opts.open_drawing and e:canDraw() or nil
     -- a new drawing: Done opens the New drawing window, the note's page never shows
     if opts.new_drawing and e.drawing_first then e.popup_only, e.covers_fullscreen = true, false end
+    -- a book's page marked up: named for the book and chapter, tagged in the top bar; Done saves it (no text after)
+    if opts.markup_title and e.drawing_first then
+        e.popup_only, e.covers_fullscreen = true, false
+        e.markup_title, e.draw_title, e.draw_tags = opts.markup_title, opts.markup_title, {}
+    end
     if opts.drawing_note and opts.memo and e.drawing_first then
         e.popup_only, e.covers_fullscreen, e.drawing_note = true, false, true
         e.draw_title, e.draw_tags = require("gzreader_newdrawing").parse(opts.memo.content)

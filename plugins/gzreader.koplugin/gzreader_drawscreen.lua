@@ -732,7 +732,7 @@ function DrawScreen:topIcons()
             icons[#icons + 1] = { id = "immich", icon = "photos", label = _("Picture from Immich…") }
         end
     end
-    icons[#icons + 1] = { id = "paper", icon = "paper", label = _("Paper") }
+    if not self.no_paper then icons[#icons + 1] = { id = "paper", icon = "paper", label = _("Paper") } end
     icons[#icons + 1] = { id = "pages", icon = "pages", label = _("All pages") }
     if self.note_actions then
         -- (a note that's already there: Archive and Delete in the bar, as an opened note has; also in ⋮)
@@ -3576,6 +3576,7 @@ function DrawScreen.show(opts)
         journal = opts.journal, -- { under }: a journal entry's drawing, in `pane` under its prompt (the entry: `under`)
         note_actions = opts.note_actions, -- { archive(screen), delete(screen) }: a note that's already there
         note_icons = opts.note_icons, -- fn(screen) → the note's icons' actions (gzreader_notebar.noteIcons)
+        no_paper = opts.no_paper, -- (a book's page marked up: the page is the paper, no Paper icon)
         on_done = on_done and function(res)
             for _i, p in ipairs(gone) do res[#res + 1] = p end
             -- (a journal entry's: what comes next, "entry", "typing" or "save")

@@ -123,13 +123,13 @@ API to `/api` are found too.
   as you draw (in colour on a colour Kindle), Memos in its colours. Each page is a picture of at most 1440 pixels on its longer
   side (smaller for a busy scan), so very small print is best zoomed in Memos.
 - **Mark up a book's page** (touch Kindles, Memos over Wi‑Fi): in a book,
-  the quick panel's **Mark up page** takes the page as it is on the screen
+  the quick panel's **Mark up** takes the page as it is on the screen
   (its highlights and status bars too) and opens the drawing screen on it,
-  the page under your ink like a notepaper. Draw, write, circle; **Done**
-  goes to the new note's text and **Save** sends it to Memos. The note starts
-  with a line saying which book and page it was ("Marked up in *Moby-Dick*
-  by Herman Melville, page 12 of 300."), added when it's saved, over anything
-  you typed. The book itself isn't changed. The page is a picture of at most
+  the page under your ink like a notepaper (so there's no Paper icon). The
+  drawing is named for the book and its chapter ("Moby-Dick — Chapter 36.
+  The Quarter-Deck"; change it in the top bar if you like). Draw, write,
+  circle, pick tags with the tag icon; **Done** saves it to Memos straight
+  away, with no note text to write. The book itself isn't changed. The page is a picture of at most
   1440 pixels on its longer side, in colour on a colour Kindle.
 - **Notes from Memos' rich editor** (Memos 26.11 and newer): its empty
   paragraphs (`&nbsp;`), characters written as codes (`&amp;`, `&#124;`) and

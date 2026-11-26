@@ -1,10 +1,10 @@
 --[[--
-Mark up a book's page: in a book, the quick panel's **Mark up page** takes
-the page as it's on the screen, makes it the background of a new drawing
-(as a PDF's page is: gzreader_pdfmarkup.lua), and opens the drawing screen
-on it. Draw, write, circle; **Done** goes to the new note's text and **Save**
-sends it to Memos, the page under your ink, with a line saying which book
-and page it was.
+Mark up a book's page: in a book, the quick panel's **Mark up** takes the
+page as it's on the screen, makes it the background of a new drawing (as a
+PDF's page is: gzreader_pdfmarkup.lua), and opens the drawing screen on it,
+named for the book and chapter. Draw, write, circle, choose tags in the top
+bar; **Done** saves it to Memos at once (no note text after), the page under
+your ink. No Paper icon: the book's page is the paper.
 
 - The page is taken as drawn on the screen (the book's own page, its
   highlights, the status bars), in colour on a colour Kindle, at Memos'
@@ -49,22 +49,19 @@ function BookMarkup.pageOf(ui)
     return tonumber(page), tonumber(total)
 end
 
---- The line at the top of the note: which book and page. Pure.
-function BookMarkup.reference(title, authors, page, total)
-    local name = (type(title) == "string" and title:match("%S")) and title or _("a book")
-    local by = (type(authors) == "string" and authors:match("%S")) and (" " .. T(_("by %1"), (authors:gsub("\n", ", ")))) or ""
-    local where = ""
-    if page then where = total and (", " .. T(_("page %1 of %2"), page, total)) or (", " .. T(_("page %1"), page)) end
-    return T(_("Marked up in *%1*%2%3."), name, by, where)
+--- The drawing's name: the book's title and the chapter (when known). Pure.
+function BookMarkup.title(book, chapter)
+    local name = (type(book) == "string" and book:match("%S")) and (book:gsub("[\r\n]+", " ")) or _("A book")
+    if type(chapter) == "string" and chapter:match("%S") then
+        return T(_("%1 — %2"), name, (chapter:gsub("[\r\n]+", " "):gsub("^%s+", ""):gsub("%s+$", "")))
+    end
+    return name
 end
 
---- The note's text: the reference line first, then what was typed (or the
---- line alone). Pure.
-function BookMarkup.content(reference, typed)
-    typed = tostring(typed or "")
-    if typed:find(reference, 1, true) then return typed end
-    if not typed:match("%S") then return reference end
-    return reference .. "\n\n" .. typed
+--- The chapter `page` is in (the book's contents), or nil.
+function BookMarkup.chapterOf(ui, page)
+    local ok, t = pcall(function() return ui.toc:getTocTitleByPage(page) end)
+    return ok and type(t) == "string" and t ~= "" and t or nil
 end
 
 --- The page as on the screen, written as a PNG at `path` at most `max_side`
@@ -118,16 +115,16 @@ function BookMarkup.start(plugin, ui)
     end
     local props = ui.doc_props or {}
     local page, total = BookMarkup.pageOf(ui)
-    local reference = BookMarkup.reference(props.display_title or props.title, props.authors, page, total)
+    local title = BookMarkup.title(props.display_title or props.title, page and BookMarkup.chapterOf(ui, page))
     Log.info("book markup: page", tostring(page), "of", tostring(total), "taken,", w .. "x" .. h)
     return Notes.edit(plugin, nil, { markup_pages = { { new = true, modified = true, scene = scene, book_page = page } },
-        content_with = function(typed) return BookMarkup.content(reference, typed) end })
+        markup_title = title })
 end
 
 --- The quick panel's tile in a book (nil when it can't be used).
 function BookMarkup.tile(plugin, ui)
     if not BookMarkup.available(plugin, ui) then return nil end
-    return { id = "markup", icon = "markup", label = _("Mark up page"), run = function() BookMarkup.start(plugin, ui) end }
+    return { id = "markup", icon = "markup", label = _("Mark up"), run = function() BookMarkup.start(plugin, ui) end }
 end
 
 return BookMarkup

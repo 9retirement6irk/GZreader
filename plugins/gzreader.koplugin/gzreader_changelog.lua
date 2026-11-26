@@ -9,7 +9,7 @@ return {
     {
         version = "next",
         changes = {
-            { short = "Mark up page: draw on a book's page, kept as a note in Memos", text = "Reading: the quick panel in a book has Mark up page (touch Kindles, while Memos is connected). It takes the page as it is on the screen and opens the drawing screen on it, the page under your ink. Save sends it to Memos as a new note that says which book and page it was. The book itself isn't changed." },
+            { short = "Mark up: draw on a book's page, saved as a note in Memos", text = "Reading: the quick panel in a book has Mark up (touch Kindles, while Memos is connected). It takes the page as it is on the screen (highlights and status bars too) and opens the drawing screen on it, the page under your ink. The drawing is named for the book and its chapter, and you pick its tags in the top bar; Done saves it to Memos at once, with no note text to write. There's no Paper icon there: the book's page is the paper. The book itself isn't changed. The page is kept at most 1440 pixels on its longer side, in colour on a colour Kindle." },
         },
     },
     {
