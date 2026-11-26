@@ -1996,6 +1996,8 @@ function Grimmory:setupReader()
             return true
         end
     end
+    -- darker text while reading (Kindles, when chosen: gzreader_darktext.lua)
+    pcall(function() require("gzreader_darktext").onReading() end)
 end
 
 function Grimmory:onKeyPress(key)
@@ -2174,6 +2176,7 @@ end
 
 function Grimmory:onSuspend()
     pcall(function() require("gzreader_autolight").onSuspend() end) -- (no looks at the sensor while asleep)
+    pcall(function() require("gzreader_darktext").onSuspend() end) -- (the screen's own temperature while asleep)
     if Grimmory.save_soon or Grimmory.recent_written then pcall(self.saveFull, self) end
     local Music = package.loaded["gzreader_music"]
     if Music then pcall(Music.pauseAll) end
@@ -2196,6 +2199,7 @@ Grimmory.WAKE_SYNC_AFTER = 15 * 60 -- Wi-Fi only when needed: sync on wake after
 
 function Grimmory:onResume()
     pcall(function() require("gzreader_autolight").onResume() end) -- (the light set for the room at once)
+    pcall(function() require("gzreader_darktext").onResume() end) -- (darker text again, in a book)
     pcall(function() require("gzreader_remote").onResume() end)
     Net.onResume()
     UIManager:scheduleIn(5, function() self:flushPending() end)
@@ -2234,6 +2238,7 @@ function Grimmory:onCloseDocument()
     nookChange()
     if self.tts then self.tts:stop(); self.tts = nil end
     self.bookmarks = nil
+    pcall(function() require("gzreader_darktext").onClosed() end) -- (the screen's own temperature again)
     if self.annotations then
         pcall(self.annotations.onClose, self.annotations)
         self.annotations = nil

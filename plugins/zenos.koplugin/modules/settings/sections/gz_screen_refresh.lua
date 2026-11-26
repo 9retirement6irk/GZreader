@@ -3,6 +3,7 @@
 -- Screen refresh):
 --   Flash on every page turn       (the Kindles' page turns; gzreader_eink)
 --   Flash when the screen changes  (Kindles without REAGL only; gzreader_eink)
+--   Darker text (experimental)     (Kindles, while reading; gzreader_darktext)
 --   Partial pages refresh          (ZenOS: a library page that isn't full)
 -- ZenOS's "Flash on every CBZ page turn" isn't offered: KOReader's "Always
 -- flash on pages with images" covers comics too (reader_flash_cbz.lua).
@@ -41,6 +42,12 @@ function M.build(ctx)
             callback = function() Eink.setEnabled(not Eink.enabled()) end,
         }, icons.refresh)
     end
+
+    -- Kindles: darker text while reading, by a colder panel temperature (gzreader_darktext)
+    local ok_dark, DarkText = pcall(require, "gzreader_darktext")
+    local dark = ok_dark and type(DarkText) == "table" and type(DarkText.available) == "function"
+        and DarkText.available() == true and DarkText.menuItem()
+    if dark then items[#items + 1] = IconItem.decorate(dark, icons.display) end
 
     items[#items + 1] = IconItem.decorate({
         text = _("Partial pages refresh"),

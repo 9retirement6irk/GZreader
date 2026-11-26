@@ -7,6 +7,13 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Darker text while reading (experimental)", text = "Kindles: Settings → Display and light → Screen → E-ink settings → Darker text tells the screen it's colder than it is (A little darker, Darker, Darkest), so it drives the ink harder: darker text and less of the last page left behind, with slower page turns and a longer flash. Only while a book is open; closing it, or the Kindle sleeping, puts the screen's own setting back. Experimental: if the screen misbehaves, choose Off or restart the Kindle." },
+            { short = "Auto light follows a light moved another way", text = "Auto light now reads where the front light really is before each change, so when something else moved it (the Kindle's own brightness), it carries on from there instead of jumping back." },
+        },
+    },
+    {
         version = "2026.11.22",
         changes = {
             { short = "Colour Kindles: Immich photos in colour", text = "On a Kindle Colorsoft or Scribe Colorsoft, the pictures from your Immich album (the sleep screen and the Home wallpaper) are kept in colour instead of being made grey. Pictures already on the Kindle stay grey until they are swapped for others from the album (about half each time GZreader gets new pictures)." },

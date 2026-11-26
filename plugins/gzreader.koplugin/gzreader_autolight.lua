@@ -122,6 +122,30 @@ local function range()
     return powerd, powerd.fl_min or 0, powerd.fl_max or 24
 end
 
+--- The light's level as the Kindle has it now (read from the light itself),
+--- not only as KOReader last set it: something else (the Kindle's own
+--- brightness, a button) may have moved it since. KOReader's own idea is put
+--- right when they differ, so the next change starts from where it really is.
+function AutoLight.realLevel(powerd, min, max)
+    local kept = powerd:frontlightIntensity() or min
+    -- (through powerd's lipc, as the Kindle's own software has it: in the same steps;
+    -- the kernel's file uses other numbers, so without lipc there's nothing better)
+    if powerd.lipc_handle == nil and not AutoLight.read_level then return kept end
+    local ok, hw = pcall(function()
+        if AutoLight.read_level then return AutoLight.read_level() end -- (tests, the emulator)
+        return powerd:frontlightIntensityHW()
+    end)
+    hw = ok and tonumber(hw) or nil
+    if not hw or hw < min or hw > max then return kept end
+    hw = math.floor(hw + 0.5)
+    if hw ~= kept then
+        AutoLight.drift = (AutoLight.drift or 0) + 1
+        log("auto brightness: the light was at", hw, "not", kept, "(moved by something else)")
+        pcall(function() powerd.fl_intensity = hw end)
+    end
+    return hw
+end
+
 --- One look: the light moved towards what the room wants. Returns the level set, or nil.
 function AutoLight.look()
     if not AutoLight.isOn() then return nil end
@@ -131,7 +155,7 @@ function AutoLight.look()
     local powerd, min, max = range()
     -- (the light turned off by you stays off: auto brightness moves it only while it's on)
     if powerd:isFrontlightOff() then return nil end
-    local cur = powerd:frontlightIntensity() or min
+    local cur = AutoLight.realLevel(powerd, min, max)
     local want = AutoLight.target(lux, min, max, setting(AutoLight.OFFSET) or 0, setting(AutoLight.LOWEST), setting(AutoLight.HIGHEST))
     local v = AutoLight.next(cur, want, min, max, AutoLight.SPEEDS[AutoLight.speed()].step)
     if v then
