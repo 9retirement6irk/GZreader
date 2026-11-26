@@ -239,6 +239,9 @@ function Grimmory:init()
             -- downloaded music: Downloads → Music (on the bookshelf, a CD player)
             pcall(function() require("gzreader_musicfolder").start(self) end)
         end
+        -- narrated books ask how to open: read, with narration, or listen (gzreader_narratedopen.lua;
+        -- only with sound, which can come later: Bluetooth)
+        pcall(function() require("gzreader_narratedopen").install() end)
         -- Home's "Daily paper" widget (ZenOS registers Home's widgets when it
         -- starts, after GZreader: a tick later)
         UIManager:nextTick(function() pcall(self.installDailyPaper, self) end)
@@ -794,6 +797,8 @@ function Grimmory:sectionItems(section)
             keep_menu_open = true, -- the test's messages show over Settings
             callback = function() require("gzreader_audioengine").test() end,
         })
+        -- (narrated books: their own narration or the Kindle's voice, and how they open)
+        items[#items + 1] = icon("vocabulary", require("gzreader_narration").settingsItem())
         if not Mod.Touch.audio() then return items end -- (Bluetooth Kindles: no headphone jack)
         items[#items + 1] = icon("check", {
             text = _("Pause when headphones are unplugged"),
@@ -2598,6 +2603,13 @@ function Grimmory:downloadAndOpen(book, menu, opts)
         for k, v in pairs(opts) do again[k] = v end
         again.gz_net = true
         return Net.run(function() self:downloadAndOpen(book, menu, again) end, { reason = "downloading a book" })
+    end
+    -- BookOrbit: a narrated book asks with or without its narration (and the sizes) first
+    if self:backend() == "bookorbit" and not opts.gz_asked and not book.gz_variant and (menu or opts.no_open) then
+        local again = {}
+        for k, v in pairs(opts) do again[k] = v end
+        again.gz_asked = true
+        return require("gzreader_narratedopen").chooseDownload(self, book, function(b) self:downloadAndOpen(b, menu, again) end)
     end
     if opts.no_open then
         local quiet = {}

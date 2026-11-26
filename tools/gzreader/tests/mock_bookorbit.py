@@ -152,7 +152,17 @@ def list_item(b):
             "addedAt": b["addedAt"], "updatedAt": b["updatedAt"]}
 
 
-def detail(b):
+# (a read-along book: its EPUB has narration. Asked for with ?variant=original it comes
+# with it (bigger); otherwise without, and the size of that copy is only known once
+# BookOrbit has made it: STATE["audioless_made"])
+NARRATED = {104}
+
+
+def narrated_data(b):
+    return b["data"] + b"narration " * 2000
+
+
+def detail(b, variant=None):
     d = list_item(b)
     p = STATE["progress"].get(b["hash"])
     d.update({"subtitle": None, "description": "About %s." % b["title"], "publisher": "Example House",
@@ -166,6 +176,17 @@ def detail(b):
                          "downloadUrl": "/api/v1/koreader/plugin/catalog/files/%d/download" % b["fileId"],
                          "devicePath": "%s/%s.%s" % (b["authors"][0], b["title"], b["format"])}],
               "relatedSections": []})
+    if b["id"] in NARRATED:
+        f = d["files"][0]
+        f["sourceMediaOverlayAvailable"] = True
+        f["sourceSizeBytes"] = len(narrated_data(b))
+        if variant == "original":
+            f.update({"sizeBytes": len(narrated_data(b)), "narrationPlaybackAvailable": True,
+                      "downloadUrl": f["downloadUrl"] + "?variant=original&selection=sel-original"})
+        elif variant == "audioless_epub":
+            f.update({"downloadVariant": "audioless_epub",
+                      "sizeBytes": len(b["data"]) if STATE.get("audioless_made") else None,
+                      "downloadUrl": f["downloadUrl"] + "?variant=audioless_epub&selection=sel-audioless"})
     return d
 
 
@@ -1031,7 +1052,7 @@ class Handler(BaseHTTPRequestHandler):
         m = re.match(r"^books/(\d+)$", p)
         if m:
             b = next((b for b in BOOKS if b["id"] == int(m.group(1))), None)
-            return self.send(200, detail(b)) if b else self.error(404, "Book not found")
+            return self.send(200, detail(b, q.get("variant"))) if b else self.error(404, "Book not found")
         m = re.match(r"^books/(\d+)/thumbnail$", p)
         if m:
             if not any(b["id"] == int(m.group(1)) for b in BOOKS):
@@ -1044,6 +1065,12 @@ class Handler(BaseHTTPRequestHandler):
             b = next((b for b in BOOKS if b["fileId"] == int(m.group(1))), None)
             if not b:
                 return self.error(404, "File not found")
+            variant = q.get("variant")
+            STATE["last_download_variant"] = variant
+            if b["id"] in NARRATED and variant == "original":
+                return self.send(200, narrated_data(b), "application/epub+zip")
+            if b["id"] in NARRATED and variant == "audioless_epub":
+                STATE["audioless_made"] = True
             return self.send(200, b["data"], "application/epub+zip" if b["format"] == "epub" else "application/pdf",
                              {"Content-Disposition": 'attachment; filename="%s.%s"' % (b["title"], b["format"])})
         return self.error(404, "Not Found")

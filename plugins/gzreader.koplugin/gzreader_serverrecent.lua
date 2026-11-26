@@ -91,6 +91,21 @@ function Recent.combine(books, audio)
             end
         end
     end
+    -- (BookOrbit: a book and its audiobook, "a<id>" (a narrated book, or one with an
+    -- audiobook beside it), are one: tapped, it asks Read or Listen)
+    local by_id = {}
+    for _i, it in ipairs(items) do if not it.audio then by_id[it.id] = it end end
+    local merged = {}
+    for _i, it in ipairs(items) do
+        local twin = it.audio and by_id[it.id:match("^a(%d+)$") or ""]
+        if twin then
+            twin.listen = it.book
+            twin.at = math.max(twin.at or 0, it.at or 0)
+        else
+            merged[#merged + 1] = it
+        end
+    end
+    items = merged
     table.sort(items, function(a, b)
         local ta, tb = a.at or 0, b.at or 0
         if ta ~= tb then return ta > tb end
@@ -354,11 +369,42 @@ function Recent.open(plugin, key)
         require("gzreader_audiobook").choose(plugin, it.book)
         return true
     end
+    if it.listen then return Recent.openBoth(plugin, it, path) end
     if path then
         plugin:openBook(path)
         return true
     end
     require("gzreader_browser"):new(plugin):onBook(it.book)
+    return true
+end
+
+--- A book with an audiobook (one item on Home): a narrated book on the Kindle
+--- asks as it opens (Read, Read with narration, Listen: gzreader_narratedopen);
+--- otherwise Read (open, or its page to download it) or Listen (the
+--- audiobook: played when it's downloaded, else offered for download).
+function Recent.openBoth(plugin, it, path)
+    local okn, Open = pcall(require, "gzreader_narratedopen")
+    if path and okn and Open.wants(path) then
+        plugin:openBook(path)
+        return true
+    end
+    local _ = require("gettext")
+    local UIManager = require("ui/uimanager")
+    local d
+    d = require("ui/widget/buttondialog"):new{
+        title = it.title,
+        buttons = {
+            { { text = path and _("Read") or _("Read (download the book)"), callback = function()
+                UIManager:close(d)
+                if path then plugin:openBook(path) else require("gzreader_browser"):new(plugin):onBook(it.book) end
+            end } },
+            { { text = _("Listen as audiobook"), callback = function()
+                UIManager:close(d)
+                require("gzreader_audiobook").choose(plugin, it.listen)
+            end } },
+        },
+    }
+    UIManager:show(d)
     return true
 end
 

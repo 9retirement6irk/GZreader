@@ -10,6 +10,7 @@ return {
         version = "next",
         changes = {
             { short = "Read-along books: their own narration, the sentence highlighted", text = "A narrated EPUB (BookOrbit's read-along books sent with their narration, or any EPUB 3 with media overlays) plays its narration on a Kindle with sound: Quick panel → Narration → Play from this page. The sentence being read is highlighted and the pages turn with it; Pause, Resume and Stop are there too. The audio is copied out of the book the first time it plays and kept in GZreader's cache (removed after 60 days unplayed, or when the cache is over 2 GB). BookOrbit's setup advice no longer tells a Kindle with sound to turn narrated delivery off." },
+            { short = "Narrated books: Read, Read with narration, or Listen", text = "Opening a narrated EPUB asks Read, Read with narration or Listen as audiobook (the audiobook player with the book's chapters: BookOrbit's audiobook of it when downloaded, otherwise the book's own narration, nothing to download). Where you were carries over between the two. The quick panel's Read aloud plays a narrated book's own narration (one tile: the Kindle's voice for other books). Downloading a BookOrbit read-along book asks Narrated book (its size) or Book only, and Home shows a book and its audiobook once. Settings → Audio → Narrated books." },
         },
     },
     {

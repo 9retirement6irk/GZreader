@@ -68,7 +68,7 @@ add({ fn = function(E)
     local N = require("gzreader_narration")
     check(E.at_ch2 == 5 and E.lit[#E.lit] ~= nil and table.concat(E.lit, ","):find("c2s1", 1, true) ~= nil and E.ch2_on_page,
         "past chapter 1's narration: chapter 2's first sentence highlighted, its page turned to")
-    check(#E.plays == 2 and E.plays[2].offset_ms == 0, "chapter 2's audio started from its own place")
+    check(#E.plays == 1, "the audio carried on into chapter 2 (one file, not started again)")
     N.stop("the tour's end")
     check(N.current == nil, "stopped")
     local f = io.open(E.out .. "/narration-checks.txt", "w")
