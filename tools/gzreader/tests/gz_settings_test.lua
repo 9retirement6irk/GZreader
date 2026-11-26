@@ -190,13 +190,13 @@ if okb then
     local im = accounts and find(accounts.sub_item_table, "Photos")
     local okim, imitems = pcall(function() return im.sub_item_table_func() end)
     -- (gzreader_usbsync is a stub here: a Kindle without Wi-Fi, so no House; zen_settings_test.lua has it)
-    check(cl == "|Books|Notes|Calendar|Photos|" and im.mandatory == "Immich" and okim
+    check(cl == "|Books|Notes|Calendar|Photos|" and im.mandatory_func() == "Not connected" and okim
             and texts(imitems) == "|Connect with QR code|Connect by typing|",
         "Accounts and services: Books, Notes, Calendar, Photos (Immich, GZreader's rows in it); the daily paper is in Home and tabs " .. cl)
     check(find(find(items, "Home and tabs").sub_item_table, "Daily paper") ~= nil, "…Home and tabs → Daily paper")
-    check(find(accounts.sub_item_table, "Books").mandatory == "Grimmory" and find(accounts.sub_item_table, "Notes").mandatory == "Memos"
-            and find(accounts.sub_item_table, "Calendar").mandatory == "CalDAV",
-        "each row says the service it uses on the right")
+    -- (nothing is connected here: gz_settings_tidy.lua says so on the right, gz_settings_tidy_test.lua has the rest)
+    check(find(accounts.sub_item_table, "Books").mandatory_func() == "Not connected" and find(accounts.sub_item_table, "Notes").mandatory_func() == "Not connected",
+        "each row says on the right that its service isn't connected yet")
     -- KOReader settings: KOReader's whole menu, nothing left out
     local ko = find(advanced.sub_item_table, "KOReader settings")
     local asked

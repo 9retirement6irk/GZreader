@@ -165,7 +165,11 @@ function M.build(ctx)
     end
 
     local navbar_tab_items = {
-        { id = "books",       text = _("Library")      },
+        -- GZreader: the tab's own name (Downloads, or the one chosen for it), as the tab bar has it
+        { id = "books",       text_func = function()
+            local l = config.navbar.books_label
+            return (type(l) == "string" and l ~= "") and _(l) or _("Downloads")
+        end },
         { id = "folder",      text_func = get_folder_tab_label },
         { id = "kindle",      text = _("Kindle Library") },
         { id = "manga",       text = _("Manga")         },
@@ -938,6 +942,29 @@ function M.build(ctx)
 
     local function build_default_tab_items()
         local items = {}
+        -- GZreader: only the tabs in the tab bar, in its order (not every tab ZenOS knows)
+        local shown, shown_set = {}, {}
+        for _i, id in ipairs(type(config.navbar.tab_order) == "table" and config.navbar.tab_order or {}) do
+            if config.navbar.show_tabs[id] == true and is_known_tab(id) and is_tab_available(id) and not shown_set[id] then
+                shown_set[id] = true
+                shown[#shown + 1] = id
+            end
+        end
+        if #shown > 0 then
+            for _i, tab_id in ipairs(shown) do
+                local tid = tab_id
+                items[#items + 1] = {
+                    text = get_default_tab_label(tid),
+                    radio = true,
+                    checked_func = function() return (config.navbar.default_tab or "books") == tid end,
+                    callback = function()
+                        config.navbar.default_tab = tid
+                        save_and_apply_navbar()
+                    end,
+                }
+            end
+            return items
+        end
         for _i, tab_id in ipairs(default_tab_ids) do
             if is_tab_available(tab_id) then
                 local tid = tab_id

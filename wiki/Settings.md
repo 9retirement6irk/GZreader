@@ -36,6 +36,14 @@ Each thing has one place, and as few taps as it takes. Where rows moved:
 | General → Performance | Privacy and diagnostics → Advanced → Performance |
 | Display and light → Screen → Notifications | Privacy and diagnostics → Advanced → Notifications |
 | Accounts and services → Daily paper | Home and tabs → Daily paper (it has no account and is read on Home) |
+| Home and tabs → Status bar | Home and tabs → **Home's status bar** (the reader's are in Reader → Appearance) |
+| Reader: Zen quick lookup, Zen highlight menu, Zen page browser, Zen end of book, Zen Presets | Quick lookup, Highlight menu, Page browser, End-of-book page, Presets |
+
+Also: **Tab bar → Default tab** lists only the tabs in your tab bar, by
+their own names (the Downloads tab was "Library" there). Accounts and
+services' rows say **Not connected** on the right until their service is;
+Daily paper says On or Off. The reader's status bar's custom text starts
+as "GZreader".
 
 ## Dark mode in one place
 
