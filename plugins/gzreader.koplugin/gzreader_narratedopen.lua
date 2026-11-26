@@ -385,7 +385,7 @@ end
 function Open.chooseDownload(p, book, cont)
     if not (p and p.api and p.api.readAloudChoices) or book.gz_variant then return cont(book) end
     require("gzreader_async").run(p.api, function(api) return api:readAloudChoices(book.id) end, function(info)
-        if type(info) ~= "table" or not info.narrated then return cont(book) end
+        if type(info) ~= "table" or not info.has then return cont(book) end
         Open.askDownload(book.title, info, function(v)
             local b = {}
             for k, val in pairs(book) do b[k] = val end
@@ -396,6 +396,91 @@ function Open.chooseDownload(p, book, cont)
             cont(b)
         end)
     end, "read-aloud choices")
+end
+
+--- `book` to download as `variant`, with that copy's size (from `info`, readAloudChoices').
+function Open.asVariant(book, info, variant)
+    local b = {}
+    for k, val in pairs(book) do b[k] = val end
+    b.gz_variant = variant
+    local bytes = info and (variant == "original" and info.narrated or info.text)
+    b.fileSizeKb = bytes and math.ceil(bytes / 1024) or (variant == "original" and book.fileSizeKb or nil)
+    return b
+end
+
+--- The book page's two choices for a narrated book (gzreader_bookpage.lua):
+--- { { variant, label } ×2 }, with the sizes when known. Pure.
+function Open.pageChoices(info)
+    local narrated, text = mb(info and info.narrated), mb(info and info.text)
+    return {
+        { variant = "original", label = narrated and T(_("With narration · %1"), narrated) or _("With narration") },
+        { variant = "audioless_epub", label = text and T(_("Book only · %1"), text) or _("Book only (smaller)") },
+    }
+end
+
+---------------------------------------------------------------- a downloaded book: its narration after all
+
+--- The BookOrbit id of the downloaded book at `path`, or nil.
+function Open.downloadedId(p, path)
+    for id, e in pairs(p and p.store and p.store.downloads or {}) do
+        if type(e) == "table" and e.path == path then return id, e end
+    end
+end
+
+--- Whether a book's hold menu offers Download with narration: a BookOrbit
+--- EPUB on the Kindle whose copy has no narration (BookOrbit is asked when tapped).
+function Open.canAddNarration(p, path)
+    if not (p and type(path) == "string" and path:lower():match("%.epub$")) then return false end
+    local okb, backend = pcall(function() return p:backend() end)
+    if not okb or backend ~= "bookorbit" then return false end
+    local id = Open.downloadedId(p, path)
+    if not id or tostring(id):sub(1, #require("gzreader_bookorbit").AUDIO_PREFIX) == require("gzreader_bookorbit").AUDIO_PREFIX then return false end
+    return require("gzreader_narration").quickCheck(path) ~= true
+end
+
+--- The hold menu's Download with narration: asks BookOrbit, then the narrated
+--- copy replaces the one at `path` (same file: its place, highlights and
+--- notes on the Kindle stay).
+function Open.addNarration(p, path)
+    local InfoMessage = require("ui/widget/infomessage")
+    local id, e = Open.downloadedId(p, path)
+    if not id then return end
+    local RUI = require("apps/reader/readerui").instance
+    if RUI and RUI.document and RUI.document.file == path then
+        return UIManager():show(InfoMessage:new{ text = _("Close the book first: its copy can't be replaced while it's open.") })
+    end
+    local title = e.title or path:match("([^/]+)%.[^.]+$")
+    local authors
+    if type(e.authors) == "string" then
+        authors = {}
+        for a in e.authors:gmatch("[^\n]+") do authors[#authors + 1] = a end
+    end
+    local book = { id = tonumber(id) or id, title = title, authors = authors, primaryFileType = "epub",
+        primaryFileId = e.file_id }
+    require("gzreader_net").run(function()
+        require("gzreader_async").run(p.api, function(api) return api:readAloudChoices(book.id) end, function(info)
+            if type(info) ~= "table" or not info.has then
+                return UIManager():show(InfoMessage:new{ text = T(_("BookOrbit has no narration for “%1”."), title) })
+            end
+            local size = mb(info.narrated)
+            UIManager():show(require("ui/widget/confirmbox"):new{
+                text = T(_("Download “%1” with its narration%2?\n\nIt replaces the copy on this Kindle. Your place, highlights and notes stay."),
+                    title, size and (" (" .. size .. ")") or ""),
+                ok_text = _("Download"),
+                ok_callback = function()
+                    Log.info("narration: downloading the narrated copy over the one on the Kindle")
+                    p:downloadAndOpen(Open.asVariant(book, info, "original"), nil, { no_open = true, gz_asked = true, gz_path = path })
+                end,
+            })
+        end, "read-aloud choices")
+    end, { reason = "a book's narration" })
+end
+
+--- The hold menu's row for `path` (gzreader_homemenu.lua), or nil.
+function Open.manageRow(path)
+    local p = plugin()
+    if not Open.canAddNarration(p, path) then return nil end
+    return { text = _("Download with narration"), callback = function() Open.addNarration(p, path) end }
 end
 
 return Open

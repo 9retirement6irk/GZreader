@@ -14976,7 +14976,10 @@ print("Narrated EPUBs (gzreader_narration.lua): EPUB 3 media overlays, the sente
     local Async = require("gzreader_async")
     local saved_run = Async.run
     Async.run = function(api, fn, done) done(fn(api)) end
-    local fake = { api = { readAloudChoices = function(_a, id) if id == 104 then return { narrated = 5 * 1048576 } end end } }
+    local fake = { api = { readAloudChoices = function(_a, id)
+        if id == 104 then return { has = true, narrated = 5 * 1048576 } end
+        if id == 105 then return { has = true } end -- (narrated, no sizes given)
+    end } }
     local got_b, got_plain
     Open.chooseDownload(fake, { id = 101, title = "Plain" }, function(b) got_plain = b end)
     Open.chooseDownload(fake, { id = 104, title = "Night Trains" }, function(b) got_b = b end)
@@ -14986,6 +14989,68 @@ print("Narrated EPUBs (gzreader_narration.lua): EPUB 3 media overlays, the sente
     check(got_plain and got_plain.gz_variant == nil and table.concat(qlabels, "|") == "Narrated book (5 MB)|Book only (smaller)|Cancel"
         and got_b and got_b.gz_variant == "original" and got_b.fileSizeKb == 5120,
         "downloading a narrated BookOrbit book: Narrated book (its size) or Book only; other books not asked")
+    local got_nosize
+    shown_d = nil
+    Open.chooseDownload(fake, { id = 105, title = "No sizes" }, function(b) got_nosize = b end)
+    check(shown_d and shown_d.buttons[1][1].text == "Narrated book" and got_nosize == nil,
+        "…asked even when BookOrbit gives no sizes (it wasn't: the question never came)")
+    -- the book page: the choice over Download, with the sizes
+    local ch = Open.pageChoices({ has = true, narrated = 48 * 1048576, text = 2 * 1048576 })
+    local ch2 = Open.pageChoices({ has = true })
+    check(ch[1].variant == "original" and ch[1].label == "With narration · 48 MB" and ch[2].variant == "audioless_epub"
+        and ch[2].label == "Book only · 2 MB" and ch2[1].label == "With narration" and ch2[2].label == "Book only (smaller)",
+        "the book page: With narration or Book only, with their sizes when known")
+    local av = Open.asVariant({ id = 104, title = "Night Trains", fileSizeKb = 900 }, { has = true, narrated = 5 * 1048576, text = 1048576 }, "audioless_epub")
+    local av2 = Open.asVariant({ id = 104, fileSizeKb = 900 }, { has = true }, "original")
+    check(av.gz_variant == "audioless_epub" and av.fileSizeKb == 1024 and av.title == "Night Trains" and av2.fileSizeKb == 900,
+        "…the copy chosen downloads with its own size")
+    local bsrc = io.open(PLUGIN .. "/gzreader_bookpage.lua"):read("*a")
+    check(bsrc:find("api:readAloudChoices(book.id)", 1, true) and bsrc:find('require("gzreader_narratedopen").asVariant(book, self.narr, self.variant or "original")', 1, true),
+        "the book page asks BookOrbit and downloads the copy chosen (no question after)")
+    -- a downloaded book without narration: its hold menu's Download with narration
+    local nb = WORK .. "/narr-hold/Plain Copy.epub"
+    os.execute("mkdir -p '" .. WORK .. "/narr-hold'")
+    local fh0 = io.open(nb, "wb"); fh0:write("PK not narrated"); fh0:close()
+    local fp = { store = { downloads = { ["104"] = { path = nb, title = "Night Trains", authors = "A. Writer\nB. Writer", file_id = 9 } } },
+        backend = function() return "bookorbit" end, api = fake.api }
+    local saved_qc = N.quickCheck
+    N.quickCheck = function() return false end
+    local can1 = Open.canAddNarration(fp, nb)
+    N.quickCheck = function() return true end
+    local can2 = Open.canAddNarration(fp, nb)
+    N.quickCheck = function() return false end
+    local grim = { store = fp.store, backend = function() return "grimmory" end }
+    check(can1 and not can2 and not Open.canAddNarration(grim, nb) and not Open.canAddNarration(fp, WORK .. "/elsewhere.epub"),
+        "hold menu: Download with narration on a BookOrbit book whose copy has none (not with narration, not Grimmory's, not other files)")
+    local Net = require("gzreader_net")
+    local saved_netrun = Net.run
+    Net.run = function(fn) fn() end
+    local confirm, info_text
+    local saved_cb, saved_im = package.loaded["ui/widget/confirmbox"], package.loaded["ui/widget/infomessage"]
+    package.loaded["ui/widget/confirmbox"] = { new = function(_, o) confirm = o; return o end }
+    package.loaded["ui/widget/infomessage"] = { new = function(_, o) info_text = o.text; return o end }
+    local dl_book, dl_opts
+    fp.downloadAndOpen = function(_s, b, _m, o) dl_book, dl_opts = b, o end
+    Async.run = function(api, fn, done) done(fn(api)) end
+    Open.addNarration(fp, nb)
+    check(confirm and confirm.text:find("Night Trains", 1, true) and confirm.text:find("5 MB", 1, true), "…asks, with the narrated copy's size")
+    confirm.ok_callback()
+    check(dl_book and dl_book.id == 104 and dl_book.gz_variant == "original" and dl_book.authors[2] == "B. Writer" and dl_book.primaryFileId == 9
+        and dl_opts.gz_path == nb and dl_opts.no_open and dl_opts.gz_asked,
+        "…and the narrated copy downloads over the one on the Kindle (the same file: its place and notes stay)")
+    fp.store.downloads = { ["101"] = { path = nb, title = "Plain" } }
+    confirm = nil
+    Open.addNarration(fp, nb)
+    check(confirm == nil and tostring(info_text):find("no narration", 1, true), "…a book BookOrbit has no narration for: says so")
+    Async.run = saved_run
+    Net.run = saved_netrun
+    N.quickCheck = saved_qc
+    package.loaded["ui/widget/confirmbox"], package.loaded["ui/widget/infomessage"] = saved_cb, saved_im
+    local msrc = io.open(PLUGIN .. "/main.lua"):read("*a")
+    local hsrc = io.open(PLUGIN .. "/gzreader_homemenu.lua"):read("*a")
+    check(msrc:find('if type(opts.gz_path) == "string" then path = opts.gz_path end', 1, true)
+        and select(2, hsrc:gsub('require%("gzreader_narratedopen"%)%.manageRow', "")) == 2,
+        "the download goes to the copy's own place; the hold menu (both kinds) offers it")
     Async.run = saved_run
     package.loaded["ui/widget/buttondialog"] = saved_bd
     Touch.player = saved_player
@@ -16417,7 +16482,7 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
     local t_ok = plugin.api:downloadToFile(104, nfile, true, "audioless_epub")
     local tsize, tvar = lfs.attributes(nfile, "size"), bctl("/_mock/state").last_download_variant
     local rc2 = plugin.api:readAloudChoices(104)
-    check(rc1 and rc1.narrated and rc1.narrated > 20000 and rc1.text == nil and plugin.api:readAloudChoices(101) == nil
+    check(rc1 and rc1.has and rc1.narrated and rc1.narrated > 20000 and rc1.text == nil and plugin.api:readAloudChoices(101) == nil
         and plugin.api:readAloudChoices("a201") == nil, "a read-along book: its size with narration; without, not known yet; other books: none")
     check(n_ok and nsize == rc1.narrated and nvar == "original" and t_ok and tvar == "audioless_epub" and tsize < nsize
         and rc2 and rc2.text == tsize, "…downloaded with its narration or without, as asked; the size without is known once made")

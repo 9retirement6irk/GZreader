@@ -618,14 +618,18 @@ local function detail(self, book_id, variant)
 end
 
 --- Whether a book has narration, and its sizes with and without:
---- { narrated = bytes, text = bytes (nil until BookOrbit has made that copy once) },
---- or nil (no narration, or not known).
+--- { has = true, narrated = bytes or nil, text = bytes (nil until BookOrbit has
+--- made that copy once) }, or nil (no narration, or not known).
 function BookOrbit:readAloudChoices(book_id)
     if BookOrbit.isAudioId(tostring(book_id)) then return nil end
     local d = detail(self, book_id, "original")
     local f = d and BookOrbit.pickFile(d)
-    if not (f and f.sourceMediaOverlayAvailable == true) then return nil end
-    local out = { narrated = n(f.sourceSizeBytes) or n(f.sizeBytes) }
+    -- (the log says what BookOrbit answered: a book the Kindle wasn't asked about shows why)
+    Log.info("bookorbit: narration of book", tostring(book_id), d == nil and "(no answer)"
+        or (f == nil and "(no file to download)") or ("overlay " .. tostring(f.sourceMediaOverlayAvailable)
+        .. ", playback " .. tostring(f.narrationPlaybackAvailable) .. ", " .. tostring(f.format)))
+    if not (f and (f.sourceMediaOverlayAvailable == true or f.narrationPlaybackAvailable == true)) then return nil end
+    local out = { has = true, narrated = n(f.sourceSizeBytes) or n(f.sizeBytes) }
     local t = detail(self, book_id, "audioless_epub")
     local tf = t and BookOrbit.pickFile(t)
     out.text = tf and n(tf.sizeBytes) or nil

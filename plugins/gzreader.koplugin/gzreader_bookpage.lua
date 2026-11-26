@@ -2,7 +2,9 @@
 A Grimmory book's page (the Grimmory tab, a book not on the Kindle yet):
 a small cover beside its title, subtitle, authors, series, Goodreads rating,
 genres and the facts (pages, year, format, size), its description below
-(scrolls: page keys, a swipe), and Download / Download & open.
+(scrolls: page keys, a swipe), and Download / Download & open. A BookOrbit
+book with its own narration has a choice over them: With narration or Book
+only, each with its size (gzreader_narratedopen.lua).
 
 What the list already has shows at once; the rest (description, genres,
 rating…) comes from Grimmory's book page (/api/v1/app/books/{id}) in the
@@ -190,6 +192,17 @@ function BookPage:build()
         -- no Wi-Fi: the next sync with the computer brings it (gzreader_usbsync.lua)
         busy = false
         buttons[1] = { { text = _("Add to sync queue"), callback = function() self:download(false) end } }
+    elseif self.narr then
+        -- a narrated book: which copy, over the download buttons
+        local row = {}
+        for _i, c in ipairs(require("gzreader_narratedopen").pageChoices(self.narr)) do
+            local on = (self.variant or "original") == c.variant
+            row[#row + 1] = { text = (on and "● " or "○ ") .. c.label, callback = function()
+                self.variant = c.variant
+                self:refresh()
+            end }
+        end
+        table.insert(buttons, 1, row)
     end
     self.buttontable = ButtonTable:new{ width = inner, buttons = buttons, zero_sep = true, show_parent = self }
     -- the description takes the rest
@@ -228,6 +241,10 @@ function BookPage:download(open)
     UIManager:close(self)
     local b = self.browser
     local book = self.book
+    if self.narr then
+        -- (the copy chosen on the page: not asked again)
+        book = require("gzreader_narratedopen").asVariant(book, self.narr, self.variant or "original")
+    end
     if open then
         b.plugin:downloadAndOpen(book, b.menu)
     else
@@ -276,6 +293,14 @@ function BookPage.fetch(page, browser, book)
         if type(detail) == "table" then page.detail = detail else page.failed = true end
         page:refresh()
     end)
+    -- BookOrbit: does it have its own narration? (the choice and the sizes)
+    if browser.api.readAloudChoices and not require("gzreader_net").usb then
+        Async.run(browser.api, function(api) return api:readAloudChoices(book.id) end, function(info)
+            if page.closed or type(info) ~= "table" or not info.has then return end
+            page.narr = info
+            page:refresh()
+        end, "read-aloud choices")
+    end
     -- not on the Kindle yet: into the list's cover cache (the list then
     -- has it too)
     local Covers = require("gzreader_covers")

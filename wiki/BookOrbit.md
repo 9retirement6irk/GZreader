@@ -131,9 +131,15 @@ A narrated EPUB (BookOrbit's read-along books sent with their narration, or
 any EPUB 3 with "media overlays") plays its own narration on a Kindle with
 sound.
 
-- **Downloading one** (from its page or the Catalog) asks **Narrated book**
-  (with its size) or **Book only** (the text and pictures: much smaller;
-  its size shows once BookOrbit has made that copy).
+- **Downloading one**: its page has **With narration** (with its size) and
+  **Book only** (the text and pictures: much smaller; its size shows once
+  BookOrbit has made that copy) over Download; pick one, then Download.
+  Downloading from elsewhere (the Catalog's lists) asks **Narrated book** or
+  **Book only**.
+- **Already on the Kindle without its narration**: hold the book on Home or
+  in Downloads → **Download with narration**. BookOrbit's narrated copy
+  replaces the one on the Kindle, in the same place, so your page,
+  highlights and notes stay. (Close the book first.)
 - **Opening one** asks **Read**, **Read with narration** or **Listen as
   audiobook**:
   - *Read with narration*: the book, its narration playing from where you
