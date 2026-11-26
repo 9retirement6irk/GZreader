@@ -1480,8 +1480,11 @@ function DrawScreen:picture(el, w, h)
     local b64 = type(url) == "string" and url:match("^data:image/[%w.+-]+;base64,(.+)$")
     local bb
     if b64 then
-        local ok, data = pcall(require("ffi/sha2").base64_to_bin, b64)
-        if ok and data then
+        -- (gzreader_b64: KOReader's own decoder took seconds for a photo)
+        local t0 = Log.enabled and DrawScreen.clock() or nil
+        local data = require("gzreader_b64").decode(b64)
+        local t1 = t0 and DrawScreen.clock()
+        if data then
             local okr, img = pcall(function()
                 -- (0 x 0: as it is, for a zoomed page's part)
                 if w == 0 then return require("ui/renderimage"):renderImageData(data, #data, false) end
@@ -1492,6 +1495,12 @@ function DrawScreen:picture(el, w, h)
                     img = require("ui/renderimage"):scaleBlitBuffer(img, w, h, true)
                 end
                 bb = img
+            end
+            -- (for the log, the first few: where a slow page's time goes)
+            self._pic_reads = (self._pic_reads or 0) + 1
+            if t0 and self._pic_reads <= DrawScreen.DIAG_REDRAWS then
+                Log.info(string.format("drawing: a picture read for the page: %d KB, unpacked in %.0f ms, drawn at %dx%d in %.0f ms",
+                    math.floor(#data / 1024), (t1 - t0) * 1000, w, h, (DrawScreen.clock() - t1) * 1000))
             end
         end
     end
@@ -3239,7 +3248,7 @@ function DrawScreen:addPictures(files)
     local sizes = {}
     for i, f in ipairs(files) do sizes[i] = { w = f.w, h = f.h } end
     local places = Sketch.placePictures(sizes, view)
-    local b64 = require("ffi/sha2").bin_to_base64
+    local b64 = require("gzreader_b64").encode
     local added, els = 0, {}
     for i, f in ipairs(files) do
         local fh = io.open(f.path, "rb")

@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Drawings with a photo: zooming, turning pages and opening are much quicker", text = "Drawings: a page with a photo on it was slow to open, zoom and turn to (5 to 9 seconds each on a Scribe for a drawing of 34 strokes), because the photo was unpacked from the drawing by a slow routine each time the page was drawn afresh. It's now unpacked in a few milliseconds. Saving a drawing with photos or stickers and sending drawings to Memos use the same quicker routine." },
+        },
+    },
+    {
         version = "2026.11.22",
         changes = {
             { short = "Colour Kindles: Immich photos in colour", text = "On a Kindle Colorsoft or Scribe Colorsoft, the pictures from your Immich album (the sleep screen and the Home wallpaper) are kept in colour instead of being made grey. Pictures already on the Kindle stay grey until they are swapped for others from the album (about half each time GZreader gets new pictures)." },

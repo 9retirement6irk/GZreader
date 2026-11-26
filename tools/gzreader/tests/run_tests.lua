@@ -17338,6 +17338,41 @@ print("Immich photos for notes and drawings (gzreader_immichpick.lua): the Memos
     local fetched = table.concat(st.immich_fetched or {}, ",")
     check(fetched:find("preview " .. p1.photos[2].id, 1, true) and not fetched:find("original", 1, true),
         "…Immich's preview, not the original (a Kindle's size; quick on its Wi-Fi)")
+    -- base64 through LuaSocket's C codec (KOReader's own, in Lua, took seconds for a photo in a drawing)
+    ;(function()
+        local B64 = require("gzreader_b64")
+        local sha2 = require("ffi/sha2")
+        local same = true
+        for n = 0, 40 do
+            local bytes = {}
+            for k = 1, n do bytes[k] = string.char((k * 37 + n * 11) % 256) end
+            local raw = table.concat(bytes)
+            if B64.encode(raw) ~= sha2.bin_to_base64(raw) or B64.decode(B64.encode(raw)) ~= raw then same = false end
+        end
+        local big = string.rep("\0\255GZ\n", 200000)
+        local t0 = os.clock()
+        local enc = B64.encode(big)
+        local back = B64.decode(enc)
+        local took = os.clock() - t0
+        check(same, "base64: the same text as KOReader's own for every length, and back again")
+        check(back == big and not enc:find("\n", 1, true) and took < 1, "…a megabyte there and back in well under a second, no line breaks (" .. string.format("%.3f", took) .. " s)")
+        check(B64.decode(nil) == nil and B64.decode("") == "" and B64.encode("") == "" and B64.encode(nil) == "", "…nothing in, nothing out")
+        local was = B64._mime
+        B64._mime = false
+        check(B64.encode("picture") == "cGljdHVyZQ==" and B64.decode("cGljdHVyZQ==") == "picture", "without LuaSocket's codec: KOReader's own, as before")
+        B64._mime = was
+        local function has(file, text)
+            local fh = io.open(PLUGIN .. "/" .. file); local src = fh:read("*a"); fh:close()
+            return src:find(text, 1, true) ~= nil, src
+        end
+        local d_ok, dsrc = has("gzreader_drawscreen.lua", 'require("gzreader_b64").decode(b64)')
+        local m_ok, msrc = has("gzreader_memos.lua", 'content = require("gzreader_b64").encode(data)')
+        check(d_ok and m_ok and not dsrc:find('require("ffi/sha2")', 1, true) and not msrc:find('require("ffi/sha2")', 1, true)
+            and has("gzreader_stickers.lua", 'require("gzreader_b64").encode(data)') and has("gzreader_notepaper.lua", 'require("gzreader_b64").encode(data)')
+            and has("gzreader_pdfmarkup.lua", 'require("gzreader_b64").encode(data)'),
+            "a drawing's pictures, its saved file, uploads to Memos, papers and stickers all use it")
+        check(dsrc:find("drawing: a picture read for the page: %d KB, unpacked in %.0f ms", 1, true) ~= nil, "the log says how long a page's picture took to read")
+    end)()
     -- the photos go with a note: queued as its attachments, sent as JPEGs
     local c = Memos:new(plugin.store.memos)
     local note = c:create("Garden visit", "PRIVATE")
