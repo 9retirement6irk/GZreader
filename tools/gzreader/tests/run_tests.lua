@@ -17270,6 +17270,76 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
     plugin:writeManifest()
 end)()
 
+print("The pen's eraser removes highlights in a book (gzreader_peneraser.lua)")
+;(function()
+    local Eraser = require("gzreader_peneraser")
+    local UIManager = require("ui/uimanager")
+    local saved_stack, saved_setting = UIManager._window_stack, gsettings.gzreader_pen_eraser_highlights
+    -- which highlights a point is on
+    local boxes = { { index = 1, rect = { x = 0, y = 0, w = 10, h = 10 } }, { index = 1, rect = { x = 5, y = 0, w = 10, h = 10 } },
+        { index = 3, rect = { x = 20, y = 0, w = 10, h = 10 } } }
+    check(table.concat(Eraser.hits(boxes, { x = 7, y = 5 }), ",") == "1" and #Eraser.hits(boxes, { x = 17, y = 5 }) == 0
+        and table.concat(Eraser.hits(boxes, { x = 17, y = 5 }, 4), ",") == "1,3",
+        "Pen eraser: the highlights under a point, each once; a little wider than the point")
+    -- a book: three highlights, two on screen
+    local function book()
+        local a, b, c, t = { text = "a" }, { text = "b" }, { text = "c" }, { text = "tmp", is_tmp = true }
+        local ui = { annotation = { annotations = { a, b, c, t } } }
+        ui.view = { state = { zoom = 1 }, screenToPageTransform = function(_v, p) return { x = p.x, y = p.y } end,
+            highlight = { visible_boxes = { { index = 1, rect = { x = 0, y = 0, w = 10, h = 10 } },
+                { index = 3, rect = { x = 40, y = 0, w = 10, h = 10 } }, { index = 4, rect = { x = 80, y = 0, w = 10, h = 10 } } } } }
+        ui.highlight = { deleteHighlight = function(_h, k) table.remove(ui.annotation.annotations, k) end }
+        return ui, a, b, c
+    end
+    local ui, a, b, c = book()
+    local n1 = Eraser.eraseAt(ui, 45, 5)
+    local left = ui.annotation.annotations
+    check(n1 == 1 and #left == 3 and left[1] == a and left[2] == b and ui.view.highlight.visible_boxes[1].index == 1,
+        "Pen eraser: the highlight under it removed, the others left")
+    local n2 = Eraser.eraseAt(ui, 5, 5)
+    check(n2 == 1 and left[1] == b, "Pen eraser: the next one in the same stroke, though the first moved the others along")
+    check(Eraser.eraseAt(ui, 85, 5) == 0 and Eraser.eraseAt(ui, 200, 5) == 0 and Eraser.eraseAt({}, 5, 5) == 0,
+        "Pen eraser: a selection being made, and blank page, are left alone")
+    -- the pen's points
+    local Input = { TOOL_TYPE_PEN = 1, TOOL_TYPE_ERASER = 2 }
+    ui = book()
+    Eraser.active, Eraser.stroke = ui, nil
+    UIManager._window_stack = { { widget = ui } }
+    gsettings.gzreader_pen_eraser_highlights = nil
+    local tip = Eraser.onStylus(Input, { tool = 1, id = 5, x = 45, y = 5 })
+    local down = Eraser.onStylus(Input, { tool = 2, id = 5, x = 45, y = 5 })
+    local removed = Eraser.stroke and Eraser.stroke.removed
+    local lift = Eraser.onStylus(Input, { tool = 2, id = -1, x = 45, y = 5 })
+    check(tip == false and down == true and removed == 1 and lift == true and Eraser.stroke == nil and #ui.annotation.annotations == 3,
+        "Pen eraser: the tip left to taps and swipes; the eraser's points taken, a highlight removed")
+    UIManager._window_stack = { { widget = ui }, { widget = { name = "menu" } } }
+    local covered = Eraser.onStylus(Input, { tool = 2, id = 5, x = 5, y = 5 })
+    UIManager._window_stack = { { widget = ui } }
+    gsettings.gzreader_pen_eraser_highlights = false
+    local off = Eraser.onStylus(Input, { tool = 2, id = 5, x = 5, y = 5 })
+    check(covered == false and off == false and #ui.annotation.annotations == 3,
+        "Pen eraser: nothing with a menu (or the drawing screen) over the book, or turned off")
+    gsettings.gzreader_pen_eraser_highlights = nil
+    -- watching for it while a book is open, on a Kindle with a pen only
+    local registered
+    local input = { wacom_protocol = true, registerStylusCallback = function(i, cb) i.stylus_callback = cb; registered = cb end,
+        unregisterStylusCallback = function(i) i.stylus_callback = nil end }
+    local plain = Eraser.install(ui, { model = "KindlePaperWhite3", input = { registerStylusCallback = function() error("no") end } })
+    local scribe = Eraser.install(ui, { model = "KindleScribe", input = input })
+    check(plain == false and scribe == true and registered == Eraser.onStylus and Eraser.active == ui,
+        "Pen eraser: watched for in a book on a Kindle with a pen, not on others")
+    Eraser.uninstall({ input = input })
+    check(input.stylus_callback == nil and Eraser.active == nil, "Pen eraser: the book closed, no longer watched for")
+    -- Settings → Notes
+    local NS = require("gzreader_notesettings")
+    local none = NS.eraserItem(nil, { model = "KindlePaperWhite3", input = {} })
+    local it = NS.eraserItem(nil, { model = "KindleScribe", input = { wacom_protocol = true } })
+    local was = it and it.checked_func()
+    if it then it.callback() end
+    check(none == nil and it and was == true and it.checked_func() == false and gsettings.gzreader_pen_eraser_highlights == false,
+        "Settings → Notes → Pen's eraser removes highlights: a pen Kindle only, on by default")
+    UIManager._window_stack, gsettings.gzreader_pen_eraser_highlights = saved_stack, saved_setting
+end)()
 print("Immich photos for notes and drawings (gzreader_immichpick.lua): the Memos fork's connection, or GZreader's")
 ;(function()
     local Pick = require("gzreader_immichpick")

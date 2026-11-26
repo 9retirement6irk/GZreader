@@ -1978,6 +1978,8 @@ function Grimmory:shelfAddMany(paths, on_change)
 end
 
 function Grimmory:setupReader()
+    -- the pen's eraser removes highlights (a Kindle or Kobo with a pen: gzreader_peneraser.lua)
+    pcall(function() require("gzreader_peneraser").install(self.ui) end)
     -- Read aloud (any reflowable book) and the keyboard Reading menu.
     if Mod.Touch.tts() then self.tts = Mod.TTS.Reader:new(self.ui) end
     local menu = self.ui.menu
@@ -2232,6 +2234,7 @@ function Grimmory:onCloseDocument()
     -- memory as the book closes, and again once Home is back (gzreader_opentiming.lua)
     pcall(function() require("gzreader_opentiming").closed() end)
     nookChange()
+    pcall(function() require("gzreader_peneraser").uninstall() end)
     if self.tts then self.tts:stop(); self.tts = nil end
     self.bookmarks = nil
     if self.annotations then

@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "The pen's eraser removes highlights", text = "In a book on a Kindle Scribe (Premium Pen) or a Kobo with a pen, rub the pen's eraser over a highlight and it's removed, as Delete in its menu would (its note goes with it). The pen's tip works as before. Turn it off in Settings → Notes → Pen's eraser removes highlights." },
+        },
+    },
+    {
         version = "2026.11.22",
         changes = {
             { short = "Colour Kindles: Immich photos in colour", text = "On a Kindle Colorsoft or Scribe Colorsoft, the pictures from your Immich album (the sleep screen and the Home wallpaper) are kept in colour instead of being made grey. Pictures already on the Kindle stay grey until they are swapped for others from the album (about half each time GZreader gets new pictures)." },
