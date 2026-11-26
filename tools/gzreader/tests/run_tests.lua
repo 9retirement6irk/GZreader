@@ -1167,7 +1167,7 @@ print("Setup page: the AI tab (the service and its keys), and handwriting to tex
     check(c == 200 and b:find("Claude needs its API key.", 1, true) and AI.provider(plugin) == nil, "Claude without a key: the page says so, nothing changes")
     c, b = post("/ai", { "provider=claude", "claude_key=sk-ant-example-secret", "claude_model=" })
     check(c == 200 and AI.provider(plugin) == "claude" and plugin.store.handwriting.claude.key == "sk-ant-example-secret"
-        and b:find("Set up: <b>Claude</b>", 1, true) and b:find("Used for: Story so far (the quick panel, in a book)", 1, true), "a Claude key pasted: saved; AI is Claude, used for Story so far (asked when tapped)")
+        and b:find("Set up: <b>Claude</b>", 1, true) and b:find("Used for: nothing yet", 1, true), "a Claude key pasted: saved; AI is Claude, used for nothing yet")
     check(Hw.engine(plugin) == "kindle", "a key alone doesn't send your writing anywhere: handwriting is still read on the Kindle")
     check(not b:find("sk-ant-example-secret", 1, true) and b:find("Claude API key (set: leave empty to keep it)", 1, true),
         "the page never shows the key back: it says it's set")
@@ -1176,7 +1176,7 @@ print("Setup page: the AI tab (the service and its keys), and handwriting to tex
         "saving again with the key field empty keeps the key")
     c, b = post("/handwriting", { "engine=ai" })
     check(c == 200 and Hw.engine(plugin) == "claude" and plugin.store.handwriting.engine == "ai" and b:find("with AI: <b>Claude</b>", 1, true)
-        and b:find("Used for: Handwriting to text, Story so far (the quick panel, in a book)", 1, true), "handwriting switched to AI: read by Claude, and the AI tab says what uses the key")
+        and b:find("Used for: Handwriting to text", 1, true), "handwriting switched to AI: read by Claude, and the AI tab says what uses the key")
     c, b = post("/ai", { "provider=openai", "openai_url=http://example.com/v1", "openai_key=sk-example", "openai_model=vision" })
     check(b:find("must start with https://", 1, true) and AI.provider(plugin) == "claude" and plugin.store.handwriting.openai.key == nil,
         "a plain http:// address on the internet: refused, nothing saved")
@@ -1256,7 +1256,7 @@ print("The AI connection (gzreader_ai.lua): one key, asked the same way by every
     local names = {}
     for _i, r in ipairs(rows) do names[#names + 1] = r.text or r.text_func() end
     local list = table.concat(names, "|")
-    check(list:find("Set up from your browser (QR code)|Claude|Online service (OpenAI-style)|Claude key: set|", 1, true) and list:find("|Try it|Used for: Handwriting to text, Story so far (the quick panel, in a book)|Remove the keys", 1, true),
+    check(list:find("Set up from your browser (QR code)|Claude|Online service (OpenAI-style)|Claude key: set|", 1, true) and list:find("|Try it|Used for: Handwriting to text|Remove the keys", 1, true),
         "Settings → Accounts and services → AI: " .. list)
     check(not list:find("sk-ant-example", 1, true), "the key is never shown")
     check(rows[2].checked_func() == true and rows[3].enabled_func() == false, "Claude is ticked; the service can't be chosen until it's set up")
