@@ -9014,7 +9014,7 @@ print("Notes (Memos v0.31)")
     local known = {}
     for _i, t in ipairs(NS.knownTags(plugin)) do known[t.tag] = t.count end
     check(known.reading == 2 and known.shopping == 1, "the tag list shows tags of notes not on the Kindle too")
-    -- Settings → Notes → Pen's shortcut button: a pen Kindle only; Eraser by default; five choices
+    -- Settings → Notes → Pen's shortcut button: a pen Kindle only; Eraser by default; every writing tool by name (Marker and Shader had none)
     do
         local saved = G_reader_settings:readSetting("gzreader_drawing_shortcut")
         G_reader_settings:delSetting("gzreader_drawing_shortcut")
@@ -9024,7 +9024,7 @@ print("Notes (Memos v0.31)")
         for _i, sub in ipairs(it and it.sub_item_table or {}) do names[#names + 1] = sub.text end
         local before = it and it.text_func()
         it.sub_item_table[4].callback()
-        check(none == nil and before == "Pen's shortcut button: Eraser" and table.concat(names, ",") == "Eraser,Pen,Pencil,Fountain pen,Highlighter"
+        check(none == nil and before == "Pen's shortcut button: Eraser" and table.concat(names, ",") == "Eraser,Pen,Pencil,Fountain pen,Marker,Shader,Highlighter"
             and G_reader_settings:readSetting("gzreader_drawing_shortcut") == "fountain" and it.sub_item_table[4].checked_func()
             and it.text_func() == "Pen's shortcut button: Fountain pen",
             "Settings → Notes → Pen's shortcut button (a pen Kindle only): Eraser by default, or a writing tool")

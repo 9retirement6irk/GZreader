@@ -191,7 +191,7 @@ print("== GZreader's own names and values")
     package.loaded["gzreader_daily"] = { enabled = function() return paper_on end }
     local function page()
         return {
-            { text = "Home and tabs", _zen_settings_root = "home", sub_item_table = { { text = "Home", sub_item_table = { { text = "Presets", sub_item_table = { { text = "Zen Default" } } } } },
+            { text = "Home and tabs", _zen_settings_root = "home", sub_item_table = { { text = "Home", sub_item_table = { { text = "Presets", sub_item_table = { { text = "Zen Default" }, { text_func = function() return "Zen Default" end } } } } },
                 { text = "Status bar" } } },
             { text = "Reader", _zen_settings_root = "reader", sub_item_table = {
                 { text = "Highlight / Lookup", sub_item_table = { { text = "Zen quick lookup" }, { text = "Zen highlight menu" } } },
@@ -214,14 +214,17 @@ print("== GZreader's own names and values")
     check(Tidy.label(bsb) == "Presets" and texts(bsb.sub_item_table) == "Your settings before a preset", "…the bottom status bar's Presets; Backup of Original named for what it is")
     check(texts(Tidy.find(reader, "Closing a book").sub_item_table_func()[1].sub_item_table) == "End-of-book page", "…End of document action: End-of-book page")
     local home = sec(p, "home")
-    check(texts(home) == "Home | Daily paper | Home's status bar" and texts(home[1].sub_item_table[1].sub_item_table) == "Standard",
+    check(texts(home) == "Home | Daily paper | Home's status bar" and texts(home[1].sub_item_table[1].sub_item_table) == "Standard | Standard",
         "Home and tabs: Home's status bar (the reader has its own); Home's preset Standard")
     local acc = sec(p, "accounts")
     local function val(name) return Tidy.find(acc, name).mandatory_func() end
     check(val("Books") == "Not connected" and val("Notes") == "Memos" and val("Calendar") == "Not connected" and val("Photos") == "Not connected",
         "Accounts and services: Not connected on the right until connected, then the service")
     paired = true
-    check(val("Books") == "BookOrbit" and val("AI") == "Claude", "…connected: the service (Books: the one signed in to); AI as it was")
+    check(val("Books") == "BookOrbit", "…connected: the service (Books: the one signed in to)")
+    check(val("AI") == "Not connected", "…AI: Not connected until a key is set up")
+    package.loaded["gzreader_ai"] = { ready = function() return true end }
+    check(val("AI") == "Claude", "…then the service")
     local paper = Tidy.find(home, "Daily paper")
     check(paper.mandatory == nil and paper.mandatory_func() == "Off", "Home and tabs → Daily paper: Off")
     paper_on = true

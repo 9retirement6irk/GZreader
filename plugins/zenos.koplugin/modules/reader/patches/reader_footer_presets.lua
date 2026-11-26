@@ -140,7 +140,7 @@ presets[1] = {
         toc_markers_width = 2,
         wifi_status = false,
     },
-    reader_footer_custom_text = "ZenOS",
+    reader_footer_custom_text = "GZreader", -- GZreader: its own name
     reader_footer_custom_text_repetitions = 1,
     reader_footer_mode = 1,
     chapter_time_format = "full",
@@ -203,7 +203,7 @@ presets[2] = {
         toc_markers_width = 2,
         wifi_status = false,
     },
-    reader_footer_custom_text = "ZenOS",
+    reader_footer_custom_text = "GZreader", -- GZreader: its own name
     reader_footer_custom_text_repetitions = 1,
     reader_footer_mode = 1,
 }
@@ -265,7 +265,7 @@ presets[3] = {
         toc_markers_width = 2,
         wifi_status = false,
     },
-    reader_footer_custom_text = "ZenOS",
+    reader_footer_custom_text = "GZreader", -- GZreader: its own name
     reader_footer_custom_text_repetitions = 1,
     reader_footer_mode = 1,
     chapter_time_format = "full",
@@ -328,7 +328,7 @@ presets[4] = {
         toc_markers_width = 2,
         wifi_status = false,
     },
-    reader_footer_custom_text = "ZenOS",
+    reader_footer_custom_text = "GZreader", -- GZreader: its own name
     reader_footer_custom_text_repetitions = 1,
     reader_footer_mode = 1,
 }
@@ -391,7 +391,7 @@ presets[5] = {
         toc_markers_width = 2,
         wifi_status = false,
     },
-    reader_footer_custom_text = "ZenOS",
+    reader_footer_custom_text = "GZreader", -- GZreader: its own name
     reader_footer_custom_text_repetitions = 1,
     reader_footer_mode = 1,
     chapter_time_format = "full",
@@ -455,7 +455,7 @@ presets[6] = {
         toc_markers_width = 2,
         wifi_status = false,
     },
-    reader_footer_custom_text = "ZenOS",
+    reader_footer_custom_text = "GZreader", -- GZreader: its own name
     reader_footer_custom_text_repetitions = 1,
     reader_footer_mode = 1,
 }

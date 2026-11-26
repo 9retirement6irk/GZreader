@@ -1307,7 +1307,7 @@ function M.build(ctx)
                     return {
                         footer = util.tableDeepCopy(footer_settings),
                         reader_footer_mode = G_reader_settings:readSetting("reader_footer_mode") or 1,
-                        reader_footer_custom_text = G_reader_settings:readSetting("reader_footer_custom_text") or "KOReader",
+                        reader_footer_custom_text = G_reader_settings:readSetting("reader_footer_custom_text") or "GZreader", -- GZreader: its own name
                         reader_footer_custom_text_repetitions =
                             G_reader_settings:readSetting("reader_footer_custom_text_repetitions") or 1,
                         chapter_time_format = type(config.reader_footer) == "table"

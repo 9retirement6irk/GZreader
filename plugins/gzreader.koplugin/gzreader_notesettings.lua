@@ -386,7 +386,7 @@ function NoteSettings._items(plugin)
 end
 
 NoteSettings.SHORTCUT_NAMES = { eraser = _("Eraser"), pen = _("Pen"), pencil = _("Pencil"), fountain = _("Fountain pen"),
-    highlighter = _("Highlighter") }
+    marker = _("Marker"), shader = _("Shader"), highlighter = _("Highlighter") }
 
 --- Pen's shortcut button (a Kindle with a pen: the Scribe's Premium Pen):
 --- what holding its side button switches to while drawing. Nil elsewhere

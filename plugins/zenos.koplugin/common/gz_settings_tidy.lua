@@ -368,6 +368,16 @@ function M.renameAll(list, seen)
             for from, to in pairs(M.RENAMES) do
                 if t == _(from) or t == from then item.text = _(to) end
             end
+            -- (a name its row works out when shown: Home's presets)
+            local tf = rawget(item, "text_func")
+            if t == nil and type(tf) == "function" and not rawget(item, "_gz_renamed_text") then
+                item._gz_renamed_text = true
+                item.text_func = function(...)
+                    local v = tf(...)
+                    local to = type(v) == "string" and M.RENAMES[v]
+                    return to and _(to) or v
+                end
+            end
             if type(item.sub_item_table) == "table" then
                 M.renameAll(item.sub_item_table, seen)
             elseif type(item.sub_item_table_func) == "function" and not rawget(item, "_gz_renamed") then
@@ -401,6 +411,7 @@ function M.connected(text, g)
         [_("Photos")] = function() return require("gzreader_immich"):new(st.immich or {}):isConnected() end,
         [_("House")] = function() return require("gzreader_house").client(g):isConnected() end,
         [_("Recipes")] = function() return require("gzreader_recipes").client(g):isConnected() end,
+        [_("AI")] = function() return require("gzreader_ai").ready(g) end,
     }
     local f = checks[text]
     if not f then return nil end
