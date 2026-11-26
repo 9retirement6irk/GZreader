@@ -1256,7 +1256,7 @@ print("The AI connection (gzreader_ai.lua): one key, asked the same way by every
     local names = {}
     for _i, r in ipairs(rows) do names[#names + 1] = r.text or r.text_func() end
     local list = table.concat(names, "|")
-    check(list:find("Set up from your browser (QR code)|Claude|Online service (OpenAI-style)|Claude key: set|", 1, true) and list:find("|Try it|Used for: Explain and Translate (the question mark and Translate when you select text in a book), Handwriting to text|Remove the keys", 1, true),
+    check(list:find("Set up from your browser (QR code)|Claude|Online service (OpenAI-style)|Claude key: set|", 1, true) and list:find("|Try it|Used for: Explain and Translate (the question mark and Translate when you select text in a book), Dictionary (when you select a word in a book), Handwriting to text|Dictionary with AI|Remove the keys", 1, true),
         "Settings → Accounts and services → AI: " .. list)
     check(not list:find("sk-ant-example", 1, true), "the key is never shown")
     check(rows[2].checked_func() == true and rows[3].enabled_func() == false, "Claude is ticked; the service can't be chosen until it's set up")
@@ -1520,6 +1520,88 @@ print("Explain: the selection menu's question mark asks the AI service about the
     UIM.show, UIM.close, AI.ask = was_show, was_close, was_ask
     package.loaded["ui/widget/infomessage"], package.loaded["ui/widget/textviewer"] = saved_im, saved_tv
     plugin.store.handwriting, plugin.store.ai = was_hw, was_ai
+    -- Dictionary with AI: the word and the sentence it's in, the built-in dictionary one tap away
+    ;(function()
+        local events = {}
+        local dui = { doc_props = { display_title = "Moby-Dick", authors = "Herman Melville" }, annotation = { annotations = { { text = "lay", pos0 = "/p[2].4", pos1 = "/p[2].7" } } },
+            rolling = true, handleEvent = function(_u, ev) events[#events + 1] = ev end }
+        dui.document = { getSelectedWordContext = function(_d, word, n, p0, p1, restore)
+            if (p0 == "/p[1].4" or p0 == "/p[2].4") and restore == true and n == Explain.CONTEXT_WORDS then
+                return "the crew was paid. Every man aboard had his ", ", a share of the voyage's profit. The captain had the"
+            end
+        end }
+        local dadded = {}
+        dui.highlight = { ui = dui, addToHighlightDialog = function(_s, key, fn) dadded[key] = fn end, onClose = function() end }
+        Explain.register(plugin, dui)
+        local dbtn = dadded["14_gz_dictionary"](dui.highlight, nil)
+        local was_dict, was_hw2, was_ai2 = gsettings.gzreader_ai_dictionary, plugin.store.handwriting, plugin.store.ai
+        plugin.store.handwriting, plugin.store.ai = nil, nil
+        AI.settings(plugin).claude.key = "sk-example"
+        gsettings.gzreader_ai_dictionary = nil
+        check(dbtn.text == "Dictionary (AI)" and dbtn.show_in_highlight_dialog_func() == true and Explain.dictionaryOn(plugin),
+            "Dictionary (AI) registered, on with a key unless turned off")
+        gsettings.gzreader_ai_dictionary = false
+        check(dbtn.show_in_highlight_dialog_func() == false, "…turned off: the row's Dictionary is the Kindle's own")
+        gsettings.gzreader_ai_dictionary = nil
+        local q = Explain.question("lay", "Moby-Dick", "Herman Melville", "define", nil, "Every man aboard had his lay.")
+        check(q.text:find("The sentence it is in:\nEvery man aboard had his lay.\n\nThe selected text:\nlay\n\nDefine the selected word", 1, true) and q.what == "explain define",
+            "the question: the sentence it's in, then the word, then what's asked")
+        check(not Explain.question("lay", nil, nil, "define", nil, "lay").text:find("The sentence it is in", 1, true)
+            and not Explain.question("lay", nil, nil, "explain").text:find("The sentence it is in", 1, true), "…no sentence when it's the word itself or none was found")
+        check(#Explain.question("w", nil, nil, "define", nil, ("long sentence "):rep(200)).text < 1200, "…a long sentence cut")
+        check(Explain.sentenceFrom("the crew was paid. Every man had his ", "lay", ", a share. The captain") == "Every man had his lay, a share."
+            and Explain.sentenceFrom("He said \"Go!\" Then she ", "left", " the room") == "Then she left the room"
+            and Explain.sentenceFrom("Chapter 3\nIt was ", "cold", ".\nNext") == "It was cold."
+            and Explain.sentenceFrom(nil, "word", nil) == "word" and Explain.sentenceFrom("e.g. a ", "lay", " is") == "a lay is",
+            "the sentence from the words either side: cut at full stops, ! and ?, and line breaks")
+        local was_show2, was_close2, was_ask2 = UIM.show, UIM.close, AI.ask
+        local saved_im2, saved_tv2 = package.loaded["ui/widget/infomessage"], package.loaded["ui/widget/textviewer"]
+        package.loaded["ui/widget/infomessage"] = { new = function(_c, o) o.kind = "info"; return o end }
+        package.loaded["ui/widget/textviewer"] = { new = function(_c, o) o.kind = "viewer"; return o end }
+        local dshown, dasked, dcb = {}, nil, nil
+        UIM.show = function(_s, w) dshown[#dshown + 1] = w end
+        UIM.close = function(_s, w) w.closed = true end
+        AI.ask = function(_p, question, cb) dasked, dcb = question, cb end
+        dui.highlight.selected_text = { text = "lay", pos0 = "/p[1].4", pos1 = "/p[1].7" }
+        dbtn.callback()
+        check(dasked and dasked.text:find("Every man aboard had his lay, a share", 1, true) and dasked.text:find("The selected text:\nlay", 1, true)
+            and dui.highlight.selected_text.pos0 == "/p[1].4",
+            "tapped: the sentence found by the reader goes with the word (the selection itself unchanged)")
+        dcb("lay (noun): a sailor's share of a whaling voyage's earnings.")
+        local w = dshown[#dshown]
+        local function bt(win, text) for _i, row in ipairs(win.buttons_table or {}) do for _j, b in ipairs(row) do if b.text == text then return b end end end end
+        check(w.title == "Defined by Claude" and w.text:find("\u{25B8} Definition\nlay (noun)", 1, true) and bt(w, "Built-in dictionary") and bt(w, "Simpler"),
+            "the answer: Defined by Claude, with the follow-ups and Built-in dictionary")
+        bt(w, "Simpler").callback()
+        check(dasked.history[1].text:find("The sentence it is in:", 1, true), "a follow-up still has the sentence")
+        dcb("A sailor's pay.")
+        bt(dshown[#dshown], "Built-in dictionary").callback()
+        check(#events == 1 and events[1].name == "LookupWord" and events[1].args[1] == "lay" and dshown[#dshown].closed,
+            "Built-in dictionary: the Kindle's own dictionaries look the word up")
+        -- an existing highlight: its own place's sentence
+        dasked = nil
+        dui.highlight.selected_text = nil
+        dadded["14_gz_dictionary"](dui.highlight, 1).callback()
+        check(dasked and dasked.text:find("a share of the voyage", 1, true), "an existing highlight: the sentence it's in")
+        dui.rolling = false
+        dasked = nil
+        dui.highlight.selected_text = { text = "lay", pos0 = { page = 3 }, pos1 = { page = 3 } }
+        dbtn.callback()
+        check(dasked and not dasked.text:find("The sentence it is in", 1, true), "a PDF (pages, not a flowing book): the word alone")
+        -- the setting and the AI page's use line
+        local items = AI.settingsItems(plugin)
+        local row
+        for _i, it in ipairs(items) do if it.text == "Dictionary with AI" then row = it end end
+        check(row and row.checked_func() == true, "Settings → AI: Dictionary with AI, ticked")
+        row.callback()
+        check(gsettings.gzreader_ai_dictionary == false and row.checked_func() == false and not table.concat(AI.uses(plugin), "|"):find("Dictionary", 1, true), "…untick: off, and no longer listed as a use")
+        row.callback()
+        check(table.concat(AI.uses(plugin), "|"):find("Dictionary (when you select a word in a book)", 1, true), "…tick: on, listed")
+        UIM.show, UIM.close, AI.ask = was_show2, was_close2, was_ask2
+        package.loaded["ui/widget/infomessage"], package.loaded["ui/widget/textviewer"] = saved_im2, saved_tv2
+        gsettings.gzreader_ai_dictionary = was_dict
+        plugin.store.handwriting, plugin.store.ai = was_hw2, was_ai2
+    end)()
     -- ZenOS's icon row shows it as the question mark
     local hsrc = io.open(arg[5] .. "/plugins/zenos.koplugin/modules/reader/patches/highlight_menu.lua"):read("*a")
     check(hsrc:find('find_highlight_button(self, index, "gz_explain")', 1, true) and hsrc:find('resolveLocalIcon(_icons_dir, "lookup_explain")', 1, true)
@@ -1528,6 +1610,8 @@ print("Explain: the selection menu's question mark asks the AI service about the
     check(hsrc:find('find_highlight_button(self, index, "gz_translate")', 1, true) and hsrc:find("if ai_translate then return ai_translate.callback() end", 1, true)
         and hsrc:find("gz_translate = true", 1, true) and hsrc:find("self:translate(index)", 1, true),
         "the icon row's Translate opens GZreader's AI translate when there's a key, KOReader's translator otherwise (and it isn't repeated under More)")
+    check(hsrc:find('find_highlight_button(self, index, "gz_dictionary")', 1, true) and hsrc:find("if ai_dictionary then return ai_dictionary.callback() end", 1, true)
+        and hsrc:find("gz_dictionary = true", 1, true), "the icon row's Dictionary asks the AI service when Dictionary with AI is on")
     local msrc = io.open(arg[5] .. "/plugins/gzreader.koplugin/main.lua"):read("*a")
     check(msrc:find('require("gzreader_explain").register(self, self.ui)', 1, true), "registered when a book opens")
 end)()

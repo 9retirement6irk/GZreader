@@ -126,6 +126,7 @@ local function apply()
         ai_assistant = true,
         gz_explain = true, -- GZreader: its own icon in the row
         gz_translate = true, -- GZreader: behind the row's Translate
+        gz_dictionary = true, -- GZreader: behind the row's Dictionary
     }
 
     local function get_selection_anchor(self, dialog, index)
@@ -220,10 +221,15 @@ local function apply()
             })
         end
 
+        -- GZreader: with an AI key set up and Dictionary with AI on, Dictionary asks that service
+        -- what the word means in its sentence; the answer's window has the built-in dictionary
+        local ai_dictionary = find_highlight_button(self, index, "gz_dictionary")
+        if ai_dictionary and ai_dictionary.show_in_highlight_dialog_func and not ai_dictionary.show_in_highlight_dialog_func() then ai_dictionary = nil end
         table.insert(buttons[1], {
             icon = "lookup.dictionary",
             text = labels and _("Dictionary") or nil,
             callback = function()
+                if ai_dictionary then return ai_dictionary.callback() end
                 self.ui:handleEvent(Event:new("LookupWord", self.selected_text.text, true))
                 self:onClose()
             end,
