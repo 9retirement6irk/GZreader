@@ -167,6 +167,18 @@ Two kinds of service:
   (`https://…/v1`; plain `http://` only to a computer on your network), a
   **key** and a **model**. For handwriting the model must read pictures.
 
+**Story so far** (in a book, the quick panel's tile, with a key set up): asks
+the service who's who and what has happened up to where you are, from what
+it knows of the book, and shows it in a window: the main people and places
+met so far, a line each, then what has happened. Sent: the book's title and
+author, how far through it you are (a percentage) and the chapter's title;
+nothing of the book's text. It's told to stop at your place, and to say so
+when it doesn't know the book (a new or self-published one). The answer is
+kept with the book for that chapter, so it opens at once there; **Ask
+again** asks for where you are now. An AI wrote it and it can be wrong.
+BookOrbit's own story guides can't be shown here: BookOrbit serves them only
+to its iPhone app.
+
 With both set up, the one ticked is used. **Try it** asks the service for
 one word, to check the key, the model and the address. **Used for** lists
 what uses the key now. **Remove the keys** takes both off the Kindle.

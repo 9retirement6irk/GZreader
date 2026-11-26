@@ -1167,7 +1167,7 @@ print("Setup page: the AI tab (the service and its keys), and handwriting to tex
     check(c == 200 and b:find("Claude needs its API key.", 1, true) and AI.provider(plugin) == nil, "Claude without a key: the page says so, nothing changes")
     c, b = post("/ai", { "provider=claude", "claude_key=sk-ant-example-secret", "claude_model=" })
     check(c == 200 and AI.provider(plugin) == "claude" and plugin.store.handwriting.claude.key == "sk-ant-example-secret"
-        and b:find("Set up: <b>Claude</b>", 1, true) and b:find("Used for: nothing yet", 1, true), "a Claude key pasted: saved; AI is Claude, used for nothing yet")
+        and b:find("Set up: <b>Claude</b>", 1, true) and b:find("Used for: Story so far (the quick panel, in a book)", 1, true), "a Claude key pasted: saved; AI is Claude, used for Story so far (asked when tapped)")
     check(Hw.engine(plugin) == "kindle", "a key alone doesn't send your writing anywhere: handwriting is still read on the Kindle")
     check(not b:find("sk-ant-example-secret", 1, true) and b:find("Claude API key (set: leave empty to keep it)", 1, true),
         "the page never shows the key back: it says it's set")
@@ -1176,7 +1176,7 @@ print("Setup page: the AI tab (the service and its keys), and handwriting to tex
         "saving again with the key field empty keeps the key")
     c, b = post("/handwriting", { "engine=ai" })
     check(c == 200 and Hw.engine(plugin) == "claude" and plugin.store.handwriting.engine == "ai" and b:find("with AI: <b>Claude</b>", 1, true)
-        and b:find("Used for: Handwriting to text", 1, true), "handwriting switched to AI: read by Claude, and the AI tab says what uses the key")
+        and b:find("Used for: Handwriting to text, Story so far (the quick panel, in a book)", 1, true), "handwriting switched to AI: read by Claude, and the AI tab says what uses the key")
     c, b = post("/ai", { "provider=openai", "openai_url=http://example.com/v1", "openai_key=sk-example", "openai_model=vision" })
     check(b:find("must start with https://", 1, true) and AI.provider(plugin) == "claude" and plugin.store.handwriting.openai.key == nil,
         "a plain http:// address on the internet: refused, nothing saved")
@@ -1256,7 +1256,7 @@ print("The AI connection (gzreader_ai.lua): one key, asked the same way by every
     local names = {}
     for _i, r in ipairs(rows) do names[#names + 1] = r.text or r.text_func() end
     local list = table.concat(names, "|")
-    check(list:find("Set up from your browser (QR code)|Claude|Online service (OpenAI-style)|Claude key: set|", 1, true) and list:find("|Try it|Used for: Handwriting to text|Remove the keys", 1, true),
+    check(list:find("Set up from your browser (QR code)|Claude|Online service (OpenAI-style)|Claude key: set|", 1, true) and list:find("|Try it|Used for: Handwriting to text, Story so far (the quick panel, in a book)|Remove the keys", 1, true),
         "Settings → Accounts and services → AI: " .. list)
     check(not list:find("sk-ant-example", 1, true), "the key is never shown")
     check(rows[2].checked_func() == true and rows[3].enabled_func() == false, "Claude is ticked; the service can't be chosen until it's set up")
@@ -15894,6 +15894,74 @@ if os.getenv("GZ_SYNC_DUMP") and require("lfs").attributes(os.getenv("GZ_SYNC_DU
         os.remove(require("gzreader_caldav").cachePath())
     end)()
 end
+
+print("Story so far: who's who and what's happened, from the AI service")
+;(function()
+    local Story = require("gzreader_storysofar")
+    local AI = require("gzreader_ai")
+    local q = Story.question("Moby-Dick", "Herman Melville", { pct = 23, chapter = "Chapter 16: The Ship" })
+    check(q.text:find('I am reading "Moby-Dick" by Herman Melville and I am 23% of the way through, in the part titled "Chapter 16: The Ship".', 1, true)
+        and q.text:find("Who's who", 1, true) and q.text:find("So far", 1, true) and q.text:find("say so in one sentence", 1, true)
+        and q.system:find("Never mention or hint at anything that happens after", 1, true) and q.what == "story so far",
+        "the question: the book, how far, the chapter; who's who and so far; no spoilers; says when it doesn't know the book")
+    check(not q.text:find("The selected text", 1, true) and Story.question("T", nil, {}).text:find('reading "T" and I am partway through.', 1, true),
+        "…nothing of the book's text; no author or position: left out")
+    -- kept per chapter
+    local saved = { text = "Who's who\nIshmael - the narrator", pct = 20, chapter = "Chapter 16: The Ship", by = "Claude" }
+    check(Story.kept(saved, { pct = 25, chapter = "Chapter 16: The Ship" }) == saved and Story.kept(saved, { pct = 21, chapter = "Chapter 17" }) == nil,
+        "the answer is kept for the chapter it was asked in")
+    check(Story.kept({ text = "x", pct = 40 }, { pct = 41 }) and not Story.kept({ text = "x", pct = 40 }, { pct = 45 }) and not Story.kept(nil, {}) and not Story.kept({ text = "" }, {}),
+        "…no chapters: within 2%")
+    local r = Story.render(saved)
+    check(r:find("Up to 20% \u{00B7} Chapter 16: The Ship\n\nWho's who", 1, true) and r:find("Written by Claude from what it knows of the book. It can be wrong.", 1, true),
+        "the window: where it's up to, the answer, who wrote it")
+    -- the position
+    local ui = { document = { getCurrentPage = function() return 50 end, getPageCount = function() return 200 end },
+        toc = { getTocTitleByPage = function(_t, p) return p == 50 and "Chapter 9" or nil end }, doc_props = { display_title = "Moby-Dick", authors = "Herman Melville" } }
+    local pos = Story.position(ui)
+    check(pos.pct == 25 and pos.chapter == "Chapter 9" and pos.page == 50, "where you are: 25%, Chapter 9")
+    -- the tile: with an AI key only
+    local was_hw, was_ai = plugin.store.handwriting, plugin.store.ai
+    plugin.store.handwriting, plugin.store.ai = nil, nil
+    check(Story.tile(plugin, ui) == nil, "no AI key: no tile")
+    AI.settings(plugin).claude.key = "sk-example"
+    local tile = Story.tile(plugin, ui)
+    check(tile and tile.id == "storysofar" and tile.label == "Story so far" and io.open(PLUGIN .. "/icons/panel/storysofar.svg") ~= nil, "an AI key: Story so far, with its icon")
+    -- tapped: asked, then shown and kept
+    local store = {}
+    ui.doc_settings = { readSetting = function(_s, k) return store[k] end, saveSetting = function(_s, k, v) store[k] = v end }
+    local UIM = require("ui/uimanager")
+    local was_show, was_close, was_ask = UIM.show, UIM.close, AI.ask
+    local saved_im, saved_tv = package.loaded["ui/widget/infomessage"], package.loaded["ui/widget/textviewer"]
+    package.loaded["ui/widget/infomessage"] = { new = function(_c, o) o.kind = "info"; return o end }
+    package.loaded["ui/widget/textviewer"] = { new = function(_c, o) o.kind = "viewer"; return o end }
+    local shown, asked, cb = {}, 0, nil
+    UIM.show = function(_s, w) shown[#shown + 1] = w end
+    UIM.close = function(_s, w) w.closed = true end
+    AI.ask = function(_p, question, c) asked = asked + 1; cb = c; shown.q = question end
+    tile.run()
+    check(asked == 1 and shown.q.text:find("25% of the way through", 1, true) and shown[1].text == "Asking Claude…", "tapped: asked, with where you are")
+    cb("Who's who\nIshmael - the narrator\n\nSo far\nHe goes to sea.")
+    local w = shown[#shown]
+    check(w.kind == "viewer" and w.title == "The story so far" and w.text:find("Up to 25% \u{00B7} Chapter 9", 1, true)
+        and store.gzreader_story_so_far and store.gzreader_story_so_far.chapter == "Chapter 9" and store.gzreader_story_so_far.by == "Claude",
+        "the answer shown, and kept with the book for this chapter")
+    tile.run()
+    check(asked == 1 and shown[#shown].kind == "viewer", "opened again in the same chapter: shown at once, not asked again")
+    shown[#shown].buttons_table[1][1].callback()
+    check(asked == 2, "Ask again: asked for where you are now")
+    cb(nil, "the key was refused")
+    check(shown[#shown].text == "Claude didn't answer: the key was refused" and store.gzreader_story_so_far.text:find("He goes to sea", 1, true),
+        "no answer: said why; the kept one stays")
+    UIM.show, UIM.close, AI.ask = was_show, was_close, was_ask
+    package.loaded["ui/widget/infomessage"], package.loaded["ui/widget/textviewer"] = saved_im, saved_tv
+    plugin.store.handwriting, plugin.store.ai = was_hw, was_ai
+    local found = false
+    for _i, g in ipairs(require("gzreader_panel").catalog()) do
+        if g.id == "book" then for _j, t in ipairs(g.tiles) do if t.id == "storysofar" then found = true end end end
+    end
+    check(found, "Settings → Quick panel lists Story so far under This book")
+end)()
 
 print("Immich: an album's pictures for the sleep screen and the Home wallpaper")
 ;(function()

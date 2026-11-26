@@ -9,6 +9,12 @@ return {
     {
         version = "next",
         changes = {
+            { short = "Story so far: who's who and what's happened, up to where you are", text = "Reading: with an AI key set up, the quick panel in a book has Story so far. It asks your AI service who's who and what has happened up to where you are, from what it knows of the book, without going past your place. Sent: the title, author, how far through you are and the chapter's title; nothing of the book's text. The answer is kept for that chapter; Ask again asks for where you are now." },
+        },
+    },
+    {
+        version = "next",
+        changes = {
             { short = "AI: one key of its own, in Accounts and services and on the setup page", text = "The AI key is now a connection of its own instead of a setting under Notes: Settings → Accounts and services → AI (after Notes), and an AI tab on the setup page (the QR code page). There you choose the service (Claude, or any OpenAI-style service), give its key and model, try it, see what uses it and remove it. One key serves handwriting to text and whatever uses AI next. Notes → Handwriting to text now offers On the Kindle or With AI. A key you already gave is kept and handwriting goes on being read as before. A key by itself sends nothing: each use is switched on where it lives." },
             { short = "Handwriting to text: keys set from your phone or computer", text = "The setup page's Notes tab has Handwriting to text: choose how your writing is read (on the Kindle, Claude, or an OpenAI-style service) and paste the keys, model and service address from your phone or computer. A saved key is never shown back (the page says it's set; an empty field keeps it), and Remove the keys takes them off. On the Kindle: Settings → Notes → Handwriting to text → Set up from your browser (QR code)." },
         },

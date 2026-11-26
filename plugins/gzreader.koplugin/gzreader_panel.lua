@@ -7,8 +7,8 @@ the top of the screen. Square tiles, in two groups:
   Home       Manage “book” (the one highlighted), Continue, Connect,
              Search, History, View, Sort, Quick note, Music, Audiobook
   This book  Sync with Grimmory, Contents, Bookmark, Bookmarks, Go to page,
-             Search book, Font, Layout, Fit pictures, Read aloud, Quick note,
-             Music, Audiobook
+             Search book, Font, Layout, Fit pictures, Read aloud, Story so far,
+             Quick note, Music, Audiobook
 
 Quick note is there while Memos is connected (the Notes tab): a new note in
 the full-page editor over whatever is on screen; Save sends it in the
@@ -214,6 +214,7 @@ function Panel.catalog()
             { id = "layout", label = _("Layout") },
             { id = "fitpictures", label = _("Fit pictures"), note = _("EPUBs") },
             { id = "readaloud", label = _("Read aloud"), available = Touch.tts },
+            { id = "storysofar", label = _("Story so far"), note = _("who's who and what's happened, from your AI service; with an AI key") },
             { id = "note", label = _("Quick note"), note = _("while Memos is connected") },
             { id = "split", label = _("Notes"), note = _("beside the book, on big screens, while Memos is connected"),
                 available = function() return require("gzreader_splitview").available() end },
@@ -546,6 +547,9 @@ function Panel.bookTiles(plugin, ui)
     if tts and tts:supported() then
         list[#list + 1] = { id = "readaloud", icon = "readaloud", label = _("Read aloud"), on = tts.active == true, run = function() tts:toggle() end }
     end
+    -- (who's who and what's happened so far, from the AI service: gzreader_storysofar.lua)
+    local oks, Story = pcall(require, "gzreader_storysofar")
+    if oks then list[#list + 1] = Story.tile(plugin, ui) end
     list[#list + 1] = quickNoteTile(plugin)
     -- (a big screen: the book in one half, a page for notes in the other)
     list[#list + 1] = require("gzreader_splitview").tile(plugin)

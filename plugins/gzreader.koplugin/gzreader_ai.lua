@@ -250,6 +250,8 @@ function AI.uses(plugin)
     local out = {}
     local okh, Hw = pcall(require, "gzreader_handwriting")
     if okh and Hw.engine(plugin) ~= "kindle" then out[#out + 1] = _("Handwriting to text") end
+    -- (asked only when its tile is tapped)
+    if AI.ready(plugin) then out[#out + 1] = _("Story so far (the quick panel, in a book)") end
     return out
 end
 
