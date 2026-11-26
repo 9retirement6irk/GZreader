@@ -326,6 +326,23 @@ for _i, f in ipairs(Daily.DEFAULT_FEEDS) do
     if not f.url:match("^https://") then https = false end
 end
 check(topics_ok and https, "each has an id of its own, a known topic and an https address")
+do
+    local good, on = {}, 0
+    for _i, f in ipairs(Daily.DEFAULT_FEEDS) do
+        if f.topic == "Good news" then good[#good + 1] = f.name; if not f.off then on = on + 1 end end
+    end
+    check(table.concat(good, ", ") == "Good News Network, Positive News, Reasons to be Cheerful" and on == 2
+        and Daily.TOPICS[#Daily.TOPICS] == "Good news" and Daily.topicLabel("Good news") == "Good news",
+        "a Good news section, last: Good News Network and Positive News on to start with, Reasons to be Cheerful to tick")
+    local Fd = require("gzreader_feeds")
+    check(Fd.withoutPostLine("A dog found its way home. The post A Dog Found Its Way Home appeared first on Good News Network.") == "A dog found its way home."
+        and Fd.withoutPostLine("The post office reopened. The post was late.") == "The post office reopened. The post was late."
+        and Fd.withoutPostLine("") == "" and Fd.withoutPostLine("The post X appeared first on Y.") == "",
+        "the line WordPress feeds end each story with is left out; other sentences about a post stay")
+    local parsed = Fd.parse('<rss version="2.0"><channel><title>G</title><item><title>Seeds</title><link>https://example.com/seeds</link>'
+        .. '<description>&lt;p&gt;A million seeds are kept in the cold.&lt;/p&gt; &lt;p&gt;The post &lt;a href="https://example.com/seeds"&gt;Seeds&lt;/a&gt; appeared first on &lt;a href="https://example.com"&gt;Example&lt;/a&gt;.&lt;/p&gt;</description></item></channel></rss>')
+    check(parsed and parsed.items and parsed.items[1] and parsed.items[1].text == "A million seeds are kept in the cold.", "…in a parsed feed too … " .. tostring(parsed and parsed.items and parsed.items[1] and parsed.items[1].text))
+end
 Daily.setDefaultOn(plugin, Daily.DEFAULT_FEEDS[1], false)
 local optional
 for _i, f in ipairs(Daily.DEFAULT_FEEDS) do if f.off then optional = f end end

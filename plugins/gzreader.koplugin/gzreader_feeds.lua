@@ -301,6 +301,23 @@ local function link(block)
     return nil
 end
 
+--- `text` without the line WordPress feeds end every item with ("The post
+--- <headline> appeared first on <site>."): it isn't the story's.
+function Feeds.withoutPostLine(text)
+    local s = tostring(text or "")
+    local at
+    local from = 1
+    while true do
+        local i = s:find("The post ", from, true)
+        if not i then break end
+        at, from = i, i + 1
+    end
+    if at and s:sub(at):find("^The post .- appeared first on [^\n]-%.?%s*$") then
+        s = s:sub(1, at - 1):gsub("%s+$", "")
+    end
+    return s
+end
+
 --- The longest of an item's texts (the whole article when the feed carries
 --- it, else its summary), as plain text.
 local function body(block, max_text)
@@ -317,6 +334,7 @@ local function body(block, max_text)
             else
                 text = Feeds.text(unxml(raw))
             end
+            text = Feeds.withoutPostLine(text)
             if #text > #best then best = text end
         end
     end

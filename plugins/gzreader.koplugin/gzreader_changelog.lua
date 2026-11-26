@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Daily paper: a Good news section, with Good News Network and Positive News", text = "Daily paper: a new section, Good news, with Good News Network and Positive News (both on to start with) and Reasons to be Cheerful to tick, in Settings → Accounts and services → Daily paper → Feeds. The line such feeds end every story with (\"The post … appeared first on …\") is left out." },
+        },
+    },
+    {
         version = "2026.11.22",
         changes = {
             { short = "Colour Kindles: Immich photos in colour", text = "On a Kindle Colorsoft or Scribe Colorsoft, the pictures from your Immich album (the sleep screen and the Home wallpaper) are kept in colour instead of being made grey. Pictures already on the Kindle stay grey until they are swapped for others from the album (about half each time GZreader gets new pictures)." },

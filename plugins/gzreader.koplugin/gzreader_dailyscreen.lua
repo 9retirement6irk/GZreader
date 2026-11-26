@@ -43,6 +43,7 @@ local function info(text, timeout) UIManager:show(InfoMessage:new{ text = text, 
 Paper.TOPIC_COLORS = {
     World = "#c92a2a", Technology = "#1971c2", Science = "#2f9e44",
     Books = "#7048e8", Curiosities = "#e8590c",
+    ["Good news"] = "#e8a100",
 }
 -- (your own sections: one of these, always the same one for a name)
 Paper.OTHER_COLORS = { "#0c8599", "#d6336c", "#5c940d", "#9c36b5", "#e67700" }

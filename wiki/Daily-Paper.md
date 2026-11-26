@@ -110,7 +110,7 @@ grey (in colour on a colour Kindle). Pictures between a story's paragraphs aren'
 
 **On a colour Kindle** (Colorsoft, Scribe Colorsoft): each section's heading
 is printed in its own colour (World red, Technology blue, Science green,
-Books violet, Curiosities orange; a section of your own gets one of a few
+Books violet, Curiosities orange, Good news amber; a section of your own gets one of a few
 others, always the same one), and the heavy rule under the nameplate, on the
 paper and on Home, is the paper's red. Turning off KOReader's colour rendering
 puts it back in black.
@@ -165,7 +165,8 @@ and remove them. **Save**, then press Back on the Kindle.
 
 - GZreader comes with a few to tick, by section: BBC News (World, Technology,
   Science), NPR, Ars Technica, NASA, Literary Hub, Atlas Obscura, NPR Strange
-  News; Hacker News and NPR Science are there unticked.
+  News, and under Good news, Good News Network and Positive News; Hacker
+  News, NPR Science and Reasons to be Cheerful are there unticked.
 - **Add a feed**: type its address, and if you like a name and a section
   (your feeds go under **Your feeds** otherwise).
 - **Add from feeds.txt**: put a file `feeds.txt` in the GZreader folder (or at

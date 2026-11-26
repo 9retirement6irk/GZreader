@@ -57,7 +57,7 @@ local Daily = {
     PICTURE_SECONDS = 180, -- how long fetching the pictures may take altogether
     MAX_PICTURE_BYTES = 700 * 1024,
     EDITION_HOUR = 5,    -- a day's paper is made from this hour on (the Kindle's clock)
-    TOPICS = { "World", "Technology", "Science", "Books", "Curiosities" },
+    TOPICS = { "World", "Technology", "Science", "Books", "Curiosities", "Good news" },
     OWN_TOPIC = "Your feeds",
 }
 
@@ -74,6 +74,10 @@ Daily.DEFAULT_FEEDS = {
     { id = "lithub", topic = "Books", name = "Literary Hub", url = "https://lithub.com/feed/" },
     { id = "atlas", topic = "Curiosities", name = "Atlas Obscura", url = "https://www.atlasobscura.com/feeds/latest" },
     { id = "npr-strange", topic = "Curiosities", name = "NPR Strange News", url = "https://feeds.npr.org/1146/rss.xml" },
+    -- (happy news: the owner asked for Good News Network and others like it, 2026-11-25)
+    { id = "gnn", topic = "Good news", name = "Good News Network", url = "https://www.goodnewsnetwork.org/feed/" },
+    { id = "positive-news", topic = "Good news", name = "Positive News", url = "https://www.positive.news/feed/" },
+    { id = "reasons-cheerful", topic = "Good news", name = "Reasons to be Cheerful", url = "https://reasonstobecheerful.world/feed/", off = true },
 }
 
 --- A topic's name as shown (the built-in ones are translated).
@@ -83,6 +87,7 @@ function Daily.topicLabel(topic)
     if topic == "Science" then return _("Science") end
     if topic == "Books" then return _("Books") end
     if topic == "Curiosities" then return _("Curiosities") end
+    if topic == "Good news" then return _("Good news") end
     if topic == Daily.OWN_TOPIC then return _("Your feeds") end
     return topic
 end
