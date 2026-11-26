@@ -732,7 +732,7 @@ function DrawScreen:topIcons()
             icons[#icons + 1] = { id = "immich", icon = "photos", label = _("Picture from Immich…") }
         end
     end
-    if not self.no_paper then icons[#icons + 1] = { id = "paper", icon = "paper", label = _("Paper") } end
+    icons[#icons + 1] = { id = "paper", icon = "paper", label = _("Paper") }
     icons[#icons + 1] = { id = "pages", icon = "pages", label = _("All pages") }
     if self.note_actions then
         -- (a note that's already there: Archive and Delete in the bar, as an opened note has; also in ⋮)
@@ -740,6 +740,16 @@ function DrawScreen:topIcons()
         icons[#icons + 1] = { id = "archive-note", icon = "archive", label = _("Archive note") }
     end
     if self.journal then table.insert(icons, 2, { id = "typing", label = _("Aa") }) end -- (back to typing the entry)
+    return icons
+end
+
+-- (a book's page marked up: the page is the paper, no Paper icon; gzreader_bookmarkup.lua)
+local topIconsAll = DrawScreen.topIcons
+function DrawScreen:topIcons()
+    local icons = topIconsAll(self)
+    if self.no_paper then
+        for i = #icons, 1, -1 do if icons[i].id == "paper" then table.remove(icons, i) end end
+    end
     return icons
 end
 
