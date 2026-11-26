@@ -74,6 +74,7 @@ Refresh                       340 recipes · 2 min ago
 Search                                                      ›
 Category                      All                           ›
 Order                         A to Z                        ›
+New recipe                                                  ›
 Apple pie                     1 hour 20 minutes             ›
 Banana bread                  1 hour                        ›
 …
@@ -85,6 +86,7 @@ More recipes                  50 of 340                     ›
   everything again.
 - **Category**: one of your Mealie categories, or All.
 - **Order**: A to Z, or the newest first.
+- **New recipe**: [add one](#adding-a-recipe).
 - The recipes, 50 at a time, each with its total time; **More recipes** at
   the end fetches the next 50.
 
@@ -138,6 +140,34 @@ ingredients, the steps and the notes.
 On a colour Kindle the card is cream with blue lines and a red rule under the
 name.
 
+## Adding a recipe
+
+**New recipe** in the list, or the **+ New card** tag on the recipe box's
+front, adds a recipe to Mealie. There are two ways.
+
+**Write it here** asks for three things, each in a box of its own:
+
+1. its **name**;
+2. its **ingredients**, one a line;
+3. its **steps**, one a line.
+
+A line ending in a colon (`Crust:`) starts a section, as in Mealie. A list
+mark in front of a line (`-`, `*`, `1.`) is dropped, and so are empty lines.
+**Back** goes to the box before, with what you typed still in it. **Save**
+sends the recipe to Mealie and opens it. If a category is open in the tab, the
+new recipe is filed under it.
+
+If Mealie can't be reached, or your account may not add recipes, what you
+typed is kept: **Try again**, or **Edit** to go back to it. Ingredients are
+saved as you typed them (Mealie's free-text ingredients); to split them into
+amounts, units and foods, use Mealie's own editor.
+
+**From a web address** takes the address of a page with a recipe on it; Mealie
+opens the page and reads the recipe itself (its own importer), so it works for
+the sites Mealie can read. This can take up to a minute.
+
+Changing or deleting a recipe is still done in Mealie.
+
 ## Without Wi‑Fi in the kitchen
 
 The list as last fetched is kept on the Kindle and shown at once when the tab
@@ -150,5 +180,5 @@ address, the token and the kept recipes from the Kindle.
 
 ## Not there yet
 
-Pictures, scaling a recipe's amounts, meal plans, shopping lists and editing
-recipes: the tab is for finding and reading.
+Pictures, scaling a recipe's amounts, meal plans, shopping lists, and changing
+or deleting a recipe.

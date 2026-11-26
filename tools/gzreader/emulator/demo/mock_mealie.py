@@ -8,6 +8,11 @@ Mealie's source, mealie/routes):
                                            search, categories (an id or a slug)
   GET    /api/recipes/<slug>               one recipe: ingredients, steps, notes
   GET    /api/organizers/categories        every category
+  POST   /api/recipes                      {name}: 201 with the new recipe's slug
+  PATCH  /api/recipes/<slug>               description, recipeIngredient,
+                                           recipeInstructions, recipeCategory
+  POST   /api/recipes/create/url           {url}: 201 with a slug (400 when the
+                                           address has "nothing" in it)
   POST   /api/users/api-tokens             {name}: 201 with the new token
   DELETE /api/users/api-tokens/<id>
 Single sign-on for apps (not with --old; enableOidc false with --no-oidc):
@@ -25,10 +30,12 @@ Mealie), a session token from single sign-on, or a token made here.
   python3 -I mock_mealie.py PORT [--no-oidc] [--old]
 
 Test helpers: GET /__state (the request log, the tokens made, sign-ons
-started), POST /__reset, POST /__offline?on=1,
-POST /__rename?slug=<slug>&name=<name>.
+started, imports asked for, recipes patched), GET /__recipe?slug=<slug>,
+POST /__reset, POST /__offline?on=1, POST /__rename?slug=<slug>&name=<name>,
+POST /__set?readonly=1 (no adding recipes) or ?no_patch=1 (a new recipe's
+contents are refused).
 """
-import base64, hashlib, json, sys, threading
+import base64, hashlib, json, re, sys, threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, unquote
 
@@ -103,7 +110,20 @@ def initial():
     return recipes
 
 
-STATE = {"recipes": initial(), "log": [], "offline": False, "tokens": {}, "sessions": {}, "pending": {}, "next_id": 1, "sso": []}
+STATE = {"recipes": initial(), "log": [], "offline": False, "tokens": {}, "sessions": {}, "pending": {}, "next_id": 1, "sso": [],
+         "imports": [], "patches": []}
+
+
+def new_recipe(name, **more):
+    """A recipe made through the API: its slug from its name, unlike any other."""
+    base = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "recipe"
+    slug, n = base, 1
+    while any(r["slug"] == slug for r in STATE["recipes"]):
+        slug = "%s-%d" % (base, n)
+        n += 1
+    r = recipe(900 + len(STATE["recipes"]), slug, name, **more)
+    STATE["recipes"].append(r)
+    return r
 
 USER = {"id": "b0000000-0000-4000-8000-000000000001", "username": "sam", "fullName": "Sam Example",
         "email": "sam@example.com", "group": "Home", "household": "Family", "admin": False}
@@ -158,15 +178,26 @@ class H(BaseHTTPRequestHandler):
             # test helpers
             if u.path == "/__state":
                 return self.send(200, {"log": STATE["log"], "sso": STATE["sso"], "sessions": len(STATE["sessions"]),
+                                       "imports": STATE["imports"], "patches": STATE["patches"],
                                        "tokens": [{"id": k, "name": v["name"]} for k, v in sorted(STATE["tokens"].items())],
                                        "recipes": len(STATE["recipes"])})
             if u.path == "/__reset":
                 STATE.update({"recipes": initial(), "log": [], "offline": False, "tokens": {}, "sessions": {}, "pending": {},
-                              "next_id": 1, "sso": []})
+                              "next_id": 1, "sso": [], "imports": [], "patches": [], "readonly": False, "no_patch": False})
                 return self.send(200, {})
             if u.path == "/__offline":
                 STATE["offline"] = q.get("on", ["1"])[0] == "1"
                 return self.send(200, {})
+            if u.path == "/__set":
+                for k in ("readonly", "no_patch"):
+                    if k in q:
+                        STATE[k] = q[k][0] == "1"
+                return self.send(200, {})
+            if u.path == "/__recipe":
+                for r in STATE["recipes"]:
+                    if r["slug"] == q.get("slug", [""])[0]:
+                        return self.send(200, r)
+                return self.send(404, {})
             if u.path == "/__rename":
                 for r in STATE["recipes"]:
                     if r["slug"] == q.get("slug", [""])[0]:
@@ -234,6 +265,48 @@ class H(BaseHTTPRequestHandler):
             if u.path == "/api/organizers/categories" and method == "GET":
                 return self.send(200, {"page": 1, "per_page": -1, "total": len(CATEGORIES), "total_pages": 1,
                                        "items": CATEGORIES, "next": None, "previous": None})
+            if u.path == "/api/recipes" and method == "POST":
+                if STATE.get("readonly"):
+                    return self.send(403, {"detail": "You do not have permission to create recipes."})
+                b = self.body()
+                name = (b.get("name") or "").strip()
+                if not name:
+                    return self.send(422, {"detail": "name"})
+                return self.send(201, new_recipe(name)["slug"])
+            if u.path == "/api/recipes/create/url" and method == "POST":
+                if STATE.get("readonly"):
+                    return self.send(403, {"detail": "You do not have permission to create recipes."})
+                b = self.body()
+                url = b.get("url") or ""
+                STATE["imports"].append({k: v for k, v in b.items() if k != "url"})
+                if "nothing" in url or not url.startswith("http"):
+                    return self.send(400, {"detail": {"message": "No recipe data found", "error": True}})
+                r = new_recipe("Imported soup", orgURL=url, description="Read from a web page.", recipeServings=4,
+                               recipeIngredient=[{"quantity": 2, "unit": None, "food": food("leek", "leeks"), "note": "", "display": "2 leeks"}],
+                               recipeInstructions=[{"title": "", "text": "Simmer."}])
+                return self.send(201, r["slug"])
+            if u.path.startswith("/api/recipes/") and method == "PATCH":
+                slug = unquote(u.path[len("/api/recipes/"):])
+                b = self.body()
+                if STATE.get("no_patch"):
+                    return self.send(500, {"detail": "boom"})
+                for r in STATE["recipes"]:
+                    if r["slug"] == slug:
+                        for ing in b.get("recipeIngredient") or []:
+                            if not isinstance(ing.get("note", ""), str):
+                                return self.send(422, {"detail": "note"})
+                        for st in b.get("recipeInstructions") or []:
+                            if not isinstance(st.get("text"), str):
+                                return self.send(422, {"detail": "text"})
+                        for c in b.get("recipeCategory") or []:
+                            if not all(c.get(k) for k in ("id", "name", "slug")):
+                                return self.send(422, {"detail": "category"})
+                        for k in ("description", "recipeIngredient", "recipeInstructions", "recipeCategory"):
+                            if k in b:
+                                r[k] = b[k]
+                        STATE["patches"].append({"slug": slug, "keys": sorted(b.keys())})
+                        return self.send(200, r)
+                return self.send(404, {"detail": "no such recipe"})
             if u.path == "/api/recipes" and method == "GET":
                 items = list(STATE["recipes"])
                 search = (q.get("search", [""])[0] or "").lower()
@@ -272,6 +345,9 @@ class H(BaseHTTPRequestHandler):
 
     def do_DELETE(self):
         self.handle_all("DELETE")
+
+    def do_PATCH(self):
+        self.handle_all("PATCH")
 
 
 if __name__ == "__main__":

@@ -11,8 +11,8 @@ on the kitchen counter, seen from the front.
   its top edge with the name in handwriting and how long it takes. A page
   holds as many cards as the box is deep, so the pages are this view's own;
 - on the box's front, a brass label holder for Search (it shows the words
-  searched for) and two tags: the order, and More cards while Mealie has
-  more.
+  searched for) and its tags: the order, New card (a new recipe), and More
+  cards while Mealie has more.
 
 On a colour screen the box is wood, the cards cream and the dividers' tabs
 in three colours; greys everywhere else.
@@ -58,7 +58,7 @@ local function clamp(v, lo, hi) return math.max(lo, math.min(hi, v)) end
 ---------------------------------------------------------------- when
 
 --- What each row of the tab's list is in the box: "refresh", "search",
---- "category", "order", "card" (a recipe), "more" (More recipes) or "note"
+--- "category", "order", "new" (New recipe), "card" (a recipe), "more" (More recipes) or "note"
 --- (anything else: Loading…, nothing found, why it couldn't update).
 function View.kinds(items)
     local out = {}
@@ -67,7 +67,8 @@ function View.kinds(items)
         if type(it) == "table" then
             if it.gz_recipe then k = "card"
             elseif it.gz_more then k = "more"
-            elseif it.gz_recipes == "refresh" or it.gz_recipes == "search" or it.gz_recipes == "category" or it.gz_recipes == "order" then
+            elseif it.gz_recipes == "refresh" or it.gz_recipes == "search" or it.gz_recipes == "category" or it.gz_recipes == "order"
+                    or it.gz_recipes == "new" then
                 k = it.gz_recipes
             end
         end
@@ -358,6 +359,7 @@ function Page:paintTo(bb, x, y)
     bb:paintRect(x + w.x + w.w, y + w.y, bw, w.h, Blitbuffer.COLOR_BLACK)
     each("search", self.paintSearch)
     each("order", self.paintTag)
+    each("new", self.paintTag)
     each("more", self.paintTag)
 end
 
@@ -423,7 +425,7 @@ function View.fill(L, n, items, kinds, tab, shortcuts, width_of)
         local a = kinds[idx] == "card" and acts(row)
         out[#out + 1] = { kind = kinds[idx], x = slot.x, y = slot.y, w = slot.w, h = slot.h, entry = row, i = idx, acts = a, letter = a and letter() or nil }
     end
-    -- the front: Search, then the order and More cards side by side
+    -- the front: Search, then the order, New card and More cards side by side
     e, i = rowOf("search")
     if e then
         out[#out + 1] = { kind = "search", x = L.search.x, y = L.search.y, w = L.search.w, h = L.search.h, entry = e, i = i, acts = acts(e), letter = acts(e) and letter() or nil }
@@ -431,6 +433,8 @@ function View.fill(L, n, items, kinds, tab, shortcuts, width_of)
     local tags = {}
     local oe, oi = rowOf("order")
     if oe then tags[#tags + 1] = { kind = "order", entry = oe, i = oi, label = tostring(oe.mandatory or oe.text or "") } end
+    local ne, ni = rowOf("new")
+    if ne then tags[#tags + 1] = { kind = "new", entry = ne, i = ni, label = "+ " .. _("New card") } end
     local me, mi = rowOf("more")
     if me then
         local label = _("More cards")
@@ -441,7 +445,7 @@ function View.fill(L, n, items, kinds, tab, shortcuts, width_of)
     for _t, t in ipairs(tags) do
         t.acts = acts(t.entry)
         t.letter = t.acts and letter() or nil
-        t.w = math.min(width_of(t.label, t.letter ~= nil and shortcuts ~= nil), math.floor((L.front.w - S(24) - tgap) / 2))
+        t.w = math.min(width_of(t.label, t.letter ~= nil and shortcuts ~= nil), math.floor((L.front.w - S(24) - tgap * (#tags - 1)) / #tags))
         total = total + t.w
     end
     total = total + tgap * math.max(0, #tags - 1)
