@@ -424,7 +424,7 @@ function Memos:uploadAttachment(path, filename, memo_name, mime)
     local data = f:read("*a")
     f:close()
     local body = { filename = filename, type = mime or "image/png",
-        content = require("gzreader_b64").encode(data), memo = memo_name }
+        content = require("ffi/sha2").bin_to_base64(data), memo = memo_name }
     local _, att, err = self:request("POST", "/attachments", body, nil, { timeouts = { 15, 120 } })
     if err then return nil, err end
     if type(att) ~= "table" or not att.name then return nil, "http_200" end
@@ -444,7 +444,7 @@ function Memos:replaceAttachment(att_name, path, filename, memo_name, mime)
     if not f then return nil, "missing_file" end
     local data = f:read("*a")
     f:close()
-    local b64 = require("gzreader_b64").encode
+    local b64 = require("ffi/sha2").bin_to_base64
     local id, offset, att = nil, 0
     repeat
         local part = data:sub(offset + 1, offset + Memos.UPLOAD_CHUNK)

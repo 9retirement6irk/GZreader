@@ -17366,11 +17366,10 @@ print("Immich photos for notes and drawings (gzreader_immichpick.lua): the Memos
             return src:find(text, 1, true) ~= nil, src
         end
         local d_ok, dsrc = has("gzreader_drawscreen.lua", 'require("gzreader_b64").decode(b64)')
-        local m_ok, msrc = has("gzreader_memos.lua", 'content = require("gzreader_b64").encode(data)')
-        check(d_ok and m_ok and not dsrc:find('require("ffi/sha2")', 1, true) and not msrc:find('require("ffi/sha2")', 1, true)
+        check(d_ok and not dsrc:find('require("ffi/sha2")', 1, true)
             and has("gzreader_stickers.lua", 'require("gzreader_b64").encode(data)') and has("gzreader_notepaper.lua", 'require("gzreader_b64").encode(data)')
             and has("gzreader_pdfmarkup.lua", 'require("gzreader_b64").encode(data)'),
-            "a drawing's pictures, its saved file, uploads to Memos, papers and stickers all use it")
+            "a drawing's pictures, its saved file, papers and stickers all use it")
         check(dsrc:find("drawing: a picture read for the page: %d KB, unpacked in %.0f ms", 1, true) ~= nil, "the log says how long a page's picture took to read")
     end)()
     -- the photos go with a note: queued as its attachments, sent as JPEGs

@@ -194,7 +194,7 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
   drawing is kept as base64 text. KOReader's own decoder is written in Lua:
   on the Scribe model a 1.9 MB photo took 3.2 s to unpack, 95% of the time
   the page took to draw, and 0.08 s with the C one. Drawings' pictures and
-  saved files, uploads to Memos, papers and stickers use it.
+  saved files, papers and stickers use it.
 - **The library copy on Kindles without Wi‑Fi** (`gzreader_offlineapi.lua`):
   decoded (rapidjson) when the Grimmory tab or a sync needs it, let go a
   minute after its last use and when a book starts to open, instead of
