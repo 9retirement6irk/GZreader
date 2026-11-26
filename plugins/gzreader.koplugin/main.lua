@@ -1985,6 +1985,8 @@ end
 function Grimmory:setupReader()
     -- Read aloud (any reflowable book) and the keyboard Reading menu.
     if Mod.Touch.tts() then self.tts = Mod.TTS.Reader:new(self.ui) end
+    -- (Flashcards (AI) in the selection menu: gzreader_flashcards.lua)
+    pcall(function() require("gzreader_flashcards").register(self, self.ui) end)
     local menu = self.ui.menu
     -- every Kindle: the quick panel (gzreader_panel.lua; More there is the
     -- old Reading menu list)

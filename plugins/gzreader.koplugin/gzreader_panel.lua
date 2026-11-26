@@ -219,6 +219,7 @@ function Panel.catalog()
                 available = function() return require("gzreader_splitview").available() end },
             { id = "music", label = _("Music"), note = _("while it plays"), available = Touch.player },
             { id = "audiobook", label = _("Audiobook"), note = _("while one plays"), available = Touch.player },
+            { id = "flashcards", label = _("Flashcards"), note = _("make cards with your AI service, and quiz yourself") },
         } },
     }
 end
@@ -551,6 +552,9 @@ function Panel.bookTiles(plugin, ui)
     list[#list + 1] = require("gzreader_splitview").tile(plugin)
     list[#list + 1] = musicTile(plugin)
     list[#list + 1] = audiobookTile(plugin)
+    -- (cards made from what you read, and a quiz: gzreader_flashcards.lua)
+    local okf, Cards = pcall(require, "gzreader_flashcards")
+    if okf then list[#list + 1] = Cards.tile(plugin, ui) end
     return shown("book", list)
 end
 
