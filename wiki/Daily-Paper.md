@@ -36,6 +36,12 @@ lead story across the page, and the other stories in columns (two, or three
 on a DX or a Scribe), each with its section, its headline, where it's from
 and how it begins.
 
+The stories are mixed through the paper, not in blocks by section: each
+shows its section over the headline, the same section never twice in a row
+while there are others, and a section's own stories in their order. **Good
+news** leads the paper and comes more often in its first half. The mix is
+the same all day (a new one each morning).
+
 - **More pages**: swipe left, press a page-turn key, or tap the arrow at the
   foot of the page.
 - **A story**: tap it (with keys: move the frame with the 5-way and press).

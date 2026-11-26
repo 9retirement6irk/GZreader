@@ -59,6 +59,8 @@ local Daily = {
     EDITION_HOUR = 5,    -- a day's paper is made from this hour on (the Kindle's clock)
     TOPICS = { "World", "Technology", "Science", "Books", "Curiosities" },
     OWN_TOPIC = "Your feeds",
+    GOOD_TOPIC = "Good news", -- (put forward: more of it near the front; its feeds come with their own PR)
+    GOOD_WEIGHT = 3,          -- … this many times as likely to come next, in the first half of the paper
 }
 
 -- GZreader's own feeds (each can be turned off; `off = true`: there to tick on)
@@ -352,13 +354,105 @@ function Daily.build(feeds, now, fetch)
         if #items > 0 then sections[#sections + 1] = { topic = topic, items = items } end
     end
     if #sections == 0 then return nil, "empty" end
-    return { day = Daily.day(now), at = now, sections = sections, failed = failed }
+    local edition = { day = Daily.day(now), at = now, sections = sections, failed = failed }
+    -- (the topics mixed through the paper, good news near the front; the same all day)
+    edition.order = Daily.mix(edition, edition.day)
+    return edition
 end
 
---- The front page: up to `n` headlines, the sections' first stories first.
+--- A number from `seed` (a string), and a generator of numbers 0 ≤ x < 1 from it. Pure.
+local function rng(seed)
+    local h = 5381
+    for i = 1, #tostring(seed or "") do h = (h * 33 + tostring(seed):byte(i)) % 2147483647 end
+    local state = h % 2147483646 + 1
+    return function()
+        state = (state * 16807) % 2147483647
+        return (state - 1) / 2147483646
+    end
+end
+
+--- The edition's stories mixed: { { s, i } } (section, story in it), every story once.
+--- Inside a topic they keep their order; which topic comes next is drawn (`seed`: the
+--- same mix all day), in proportion to how many it has left, Good news GOOD_WEIGHT
+--- times as likely in the first half and leading the paper; never the same topic
+--- twice running while another has stories left. Pure.
+function Daily.mix(edition, seed)
+    local secs = type(edition) == "table" and edition.sections or {}
+    local next_i, total = {}, 0
+    for s, sec in ipairs(secs) do next_i[s] = 1; total = total + #sec.items end
+    local rand = rng(seed)
+    local out, last = {}, nil
+    while #out < total do
+        local cands, sum = {}, 0
+        for s, sec in ipairs(secs) do
+            local left = #sec.items - next_i[s] + 1
+            if left > 0 then
+                local w = left
+                if sec.topic == Daily.GOOD_TOPIC and #out < total / 2 then w = w * Daily.GOOD_WEIGHT end
+                cands[#cands + 1] = { s = s, w = w }
+            end
+        end
+        -- (not the topic just used, when there's another)
+        if #cands > 1 and last then
+            for k = #cands, 1, -1 do if cands[k].s == last then table.remove(cands, k) end end
+        end
+        local pick
+        if #out == 0 then
+            for _k, c in ipairs(cands) do if secs[c.s].topic == Daily.GOOD_TOPIC then pick = c end end
+        end
+        if not pick then
+            for _k, c in ipairs(cands) do sum = sum + c.w end
+            local r = rand() * sum
+            for _k, c in ipairs(cands) do
+                r = r - c.w
+                if r < 0 then pick = c; break end
+            end
+            pick = pick or cands[#cands]
+        end
+        out[#out + 1] = { s = pick.s, i = next_i[pick.s] }
+        next_i[pick.s] = next_i[pick.s] + 1
+        last = pick.s
+    end
+    return out
+end
+
+--- The edition's stories in reading order: { item, topic, s, i } (its mix when it has one,
+--- else the sections one after another). Pure.
+function Daily.ordered(edition)
+    local out = {}
+    if type(edition) ~= "table" then return out end
+    local secs = edition.sections or {}
+    local seen = {}
+    for _k, o in ipairs(type(edition.order) == "table" and edition.order or {}) do
+        local sec = type(o) == "table" and secs[tonumber(o.s) or 0]
+        local item = sec and sec.items[tonumber(o.i) or 0]
+        local at = tostring(o.s) .. ":" .. tostring(o.i)
+        if item and not seen[at] then
+            seen[at] = true
+            out[#out + 1] = { item = item, topic = sec.topic, s = tonumber(o.s), i = tonumber(o.i) }
+        end
+    end
+    -- (any the order left out, after: an order from an older edition, or the AI's)
+    for s, sec in ipairs(secs) do
+        for i, item in ipairs(sec.items) do
+            if not seen[s .. ":" .. i] then out[#out + 1] = { item = item, topic = sec.topic, s = s, i = i } end
+        end
+    end
+    return out
+end
+
+--- The front page: up to `n` headlines, the paper's first (its mix), or with no mix
+--- the sections' first stories first.
 function Daily.front(edition, n)
     local out = {}
     if type(edition) ~= "table" then return out end
+    if type(edition.order) == "table" and #edition.order > 0 then
+        for _i, st in ipairs(Daily.ordered(edition)) do
+            if #out >= n then break end
+            out[#out + 1] = { title = st.item.title, source = st.item.source, topic = st.topic, item = st.item }
+        end
+        return out
+    end
     local round = 1
     while #out < n do
         local any = false
