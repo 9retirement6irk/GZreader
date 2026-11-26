@@ -16053,86 +16053,6 @@ print("Immich: an album's pictures for the sleep screen and the Home wallpaper")
     plugin.store.immich = nil
 end)()
 
-print("The calendar as the sleep screen (gzreader_sleepcalendar.lua)")
-;(function()
-    local SC = require("gzreader_sleepcalendar")
-    local Cal = require("gzreader_calendar")
-    local saved = { auto = gsettings.gzreader_sleep_auto, kind = gsettings.screensaver_type }
-    local saved_cal = { events = Cal.events, at = Cal.cached_at, range = Cal.range, refresh = Cal.refresh,
-        net = Cal.hasNetSources, src = Cal.hasSources, cursor = Cal.cursor, layout = Cal.layout }
-    -- chosen
-    gsettings.gzreader_sleep_auto = nil
-    gsettings.screensaver_type = "gz_calendar"
-    local c1 = SC.chosen(G_reader_settings)
-    gsettings.gzreader_sleep_auto = false
-    local c2 = SC.chosen(G_reader_settings)
-    gsettings.screensaver_type = "gz_calendar_week"
-    local c3 = SC.chosen(G_reader_settings)
-    gsettings.screensaver_type = "random_image"
-    local c4 = SC.chosen(G_reader_settings)
-    check(c1 == nil and c2 == "agenda" and c3 == "week" and c4 == nil,
-        "Calendar sleep screen: chosen only when it's the sleep screen (not with GZreader's own)")
-    -- chosen through the sleep screen tiles: saved as KOReader's screensaver_type
-    require("gzsleepmode").use(G_reader_settings, "gz_calendar_week")
-    check(gsettings.screensaver_type == "gz_calendar_week" and gsettings.gzreader_sleep_auto == false
-        and require("gzsleepmode").current(G_reader_settings) == "gz_calendar_week",
-        "Calendar sleep screen: its tile saves it as the sleep screen")
-    -- when the events were synced
-    local nine = os.time{ year = 2026, month = 11, day = 26, hour = 9, min = 5 }
-    check(Cal.syncedText(nine, nine + 3600) == "Synced 9:05 AM"
-        and Cal.syncedText(nine - 2 * 86400, nine) == "Synced Tue Nov 24" and Cal.syncedText(nil) == nil,
-        "Calendar sleep screen: says when the events were last synced")
-    -- drawn from the events kept, with no letters to press
-    local today = Cal.dayStart()
-    Cal.events = { { title = "Dentist", start = today + 10 * 3600, finish = today + 11 * 3600, cal = 1 },
-        { title = "Book club", start = Cal.addDays(today, 2) + 19 * 3600, finish = Cal.addDays(today, 2) + 21 * 3600, cal = 1 } }
-    Cal.range = { from = Cal.addDays(today, -7), to = Cal.addDays(today, 30) }
-    Cal.cached_at = os.time()
-    Cal.cursor, Cal.layout = Cal.addDays(today, 40), "month"
-    local ok_a, page_a = pcall(Cal.sleepPage, plugin, "agenda", 600, 800)
-    local ok_w, page_w = pcall(Cal.sleepPage, plugin, "week", 600, 800)
-    -- (drawn in the emulator's tour, calendar_sleep.lua: the harness's screen has no sizes)
-    check(ok_a and ok_w and Cal.sleepPage(plugin, "nonsense", 600, 800) == nil and Cal.sleepPage(nil, "agenda", 600, 800) == nil,
-        "Calendar sleep screen: drawing never stops the Kindle going to sleep")
-    check(Cal.cursor == Cal.addDays(today, 40) and Cal.layout == "month" and Cal.no_badges == nil,
-        "Calendar sleep screen: the tab's own place and layout left as they were")
-    -- the sleep screen asks the plugin's last instance
-    local saved_ss = package.loaded["ui/screensaver"]
-    local fake_ss = {}
-    package.loaded["ui/screensaver"] = fake_ss
-    local asked
-    local real_page = SC.page
-    SC.page = function(p, id, w, h) asked = { p = p, id = id, w = w, h = h }; return "page" end
-    local owner = { last_instance = plugin }
-    local installed = SC.install(owner)
-    local got = fake_ss.gz_screens and fake_ss.gz_screens.gz_calendar_week and fake_ss.gz_screens.gz_calendar_week(600, 800)
-    SC.page = real_page
-    package.loaded["ui/screensaver"] = saved_ss
-    check(installed and got == "page" and asked and asked.p == plugin and asked.id == "gz_calendar_week" and asked.w == 600,
-        "Calendar sleep screen: the sleep screen knows how to draw it")
-    -- the sleep screen falls back to a picture when nothing draws it, and draws it when something does
-    local f = io.open(PLUGIN .. "/../../frontend/ui/screensaver.lua"); local src = f:read("*a"); f:close()
-    check(src:find('self.screensaver_type:match("^gz_")', 1, true) ~= nil and src:find("Screensaver.gz_screens[self.screensaver_type], screen_w, screen_h", 1, true) ~= nil,
-        "Calendar sleep screen: frontend/ui/screensaver.lua draws it, or a picture without the plugin")
-    -- Wi-Fi connecting syncs it when it's old
-    local refreshed = 0
-    Cal.refresh = function() refreshed = refreshed + 1 end
-    gsettings.gzreader_sleep_auto, gsettings.screensaver_type = false, "gz_calendar"
-    Cal.hasNetSources = function() return false end
-    local r1 = SC.onNetworkConnected(plugin)
-    Cal.hasNetSources = function() return true end
-    Cal.cached_at = os.time() - 600
-    local r2 = SC.onNetworkConnected(plugin)
-    Cal.cached_at = os.time() - 2 * 3600
-    local r3 = SC.onNetworkConnected(plugin)
-    gsettings.gzreader_sleep_auto = nil
-    local r4 = SC.onNetworkConnected(plugin)
-    check(r1 == nil and r2 == "fresh" and r3 == "sync" and r4 == nil and refreshed == 1,
-        "Calendar sleep screen: Wi-Fi connecting syncs it when over an hour old, and only when it's the sleep screen")
-    Cal.events, Cal.cached_at, Cal.range, Cal.refresh = saved_cal.events, saved_cal.at, saved_cal.range, saved_cal.refresh
-    Cal.hasNetSources, Cal.hasSources, Cal.cursor, Cal.layout = saved_cal.net, saved_cal.src, saved_cal.cursor, saved_cal.layout
-    gsettings.gzreader_sleep_auto, gsettings.screensaver_type = saved.auto, saved.kind
-end)()
 print("The mock BookOrbit server answers as the real one does, and the probe script (mock_bookorbit_test.py)")
 ;(function()
     local pp = io.popen("python3 -I " .. PLUGIN .. "/../../tools/gzreader/tests/mock_bookorbit_test.py " .. (PORT + 60) .. " 2>&1")
@@ -17516,6 +17436,86 @@ print("Immich photos for notes and drawings (gzreader_immichpick.lua): the Memos
     plugin.store.memos, plugin.store.immich = saved.memos, saved.immich
 end)()
 
+print("The calendar as the sleep screen (gzreader_sleepcalendar.lua)")
+;(function()
+    local SC = require("gzreader_sleepcalendar")
+    local Cal = require("gzreader_calendar")
+    local saved = { auto = gsettings.gzreader_sleep_auto, kind = gsettings.screensaver_type }
+    local saved_cal = { events = Cal.events, at = Cal.cached_at, range = Cal.range, refresh = Cal.refresh,
+        net = Cal.hasNetSources, src = Cal.hasSources, cursor = Cal.cursor, layout = Cal.layout }
+    -- chosen
+    gsettings.gzreader_sleep_auto = nil
+    gsettings.screensaver_type = "gz_calendar"
+    local c1 = SC.chosen(G_reader_settings)
+    gsettings.gzreader_sleep_auto = false
+    local c2 = SC.chosen(G_reader_settings)
+    gsettings.screensaver_type = "gz_calendar_week"
+    local c3 = SC.chosen(G_reader_settings)
+    gsettings.screensaver_type = "random_image"
+    local c4 = SC.chosen(G_reader_settings)
+    check(c1 == nil and c2 == "agenda" and c3 == "week" and c4 == nil,
+        "Calendar sleep screen: chosen only when it's the sleep screen (not with GZreader's own)")
+    -- chosen through the sleep screen tiles: saved as KOReader's screensaver_type
+    require("gzsleepmode").use(G_reader_settings, "gz_calendar_week")
+    check(gsettings.screensaver_type == "gz_calendar_week" and gsettings.gzreader_sleep_auto == false
+        and require("gzsleepmode").current(G_reader_settings) == "gz_calendar_week",
+        "Calendar sleep screen: its tile saves it as the sleep screen")
+    -- when the events were synced
+    local nine = os.time{ year = 2026, month = 11, day = 26, hour = 9, min = 5 }
+    check(Cal.syncedText(nine, nine + 3600) == "Synced 9:05 AM"
+        and Cal.syncedText(nine - 2 * 86400, nine) == "Synced Tue Nov 24" and Cal.syncedText(nil) == nil,
+        "Calendar sleep screen: says when the events were last synced")
+    -- drawn from the events kept, with no letters to press
+    local today = Cal.dayStart()
+    Cal.events = { { title = "Dentist", start = today + 10 * 3600, finish = today + 11 * 3600, cal = 1 },
+        { title = "Book club", start = Cal.addDays(today, 2) + 19 * 3600, finish = Cal.addDays(today, 2) + 21 * 3600, cal = 1 } }
+    Cal.range = { from = Cal.addDays(today, -7), to = Cal.addDays(today, 30) }
+    Cal.cached_at = os.time()
+    Cal.cursor, Cal.layout = Cal.addDays(today, 40), "month"
+    local ok_a, page_a = pcall(Cal.sleepPage, plugin, "agenda", 600, 800)
+    local ok_w, page_w = pcall(Cal.sleepPage, plugin, "week", 600, 800)
+    -- (drawn in the emulator's tour, calendar_sleep.lua: the harness's screen has no sizes)
+    check(ok_a and ok_w and Cal.sleepPage(plugin, "nonsense", 600, 800) == nil and Cal.sleepPage(nil, "agenda", 600, 800) == nil,
+        "Calendar sleep screen: drawing never stops the Kindle going to sleep")
+    check(Cal.cursor == Cal.addDays(today, 40) and Cal.layout == "month" and Cal.no_badges == nil,
+        "Calendar sleep screen: the tab's own place and layout left as they were")
+    -- the sleep screen asks the plugin's last instance
+    local saved_ss = package.loaded["ui/screensaver"]
+    local fake_ss = {}
+    package.loaded["ui/screensaver"] = fake_ss
+    local asked
+    local real_page = SC.page
+    SC.page = function(p, id, w, h) asked = { p = p, id = id, w = w, h = h }; return "page" end
+    local owner = { last_instance = plugin }
+    local installed = SC.install(owner)
+    local got = fake_ss.gz_screens and fake_ss.gz_screens.gz_calendar_week and fake_ss.gz_screens.gz_calendar_week(600, 800)
+    SC.page = real_page
+    package.loaded["ui/screensaver"] = saved_ss
+    check(installed and got == "page" and asked and asked.p == plugin and asked.id == "gz_calendar_week" and asked.w == 600,
+        "Calendar sleep screen: the sleep screen knows how to draw it")
+    -- the sleep screen falls back to a picture when nothing draws it, and draws it when something does
+    local f = io.open(PLUGIN .. "/../../frontend/ui/screensaver.lua"); local src = f:read("*a"); f:close()
+    check(src:find('self.screensaver_type:match("^gz_")', 1, true) ~= nil and src:find("Screensaver.gz_screens[self.screensaver_type], screen_w, screen_h", 1, true) ~= nil,
+        "Calendar sleep screen: frontend/ui/screensaver.lua draws it, or a picture without the plugin")
+    -- Wi-Fi connecting syncs it when it's old
+    local refreshed = 0
+    Cal.refresh = function() refreshed = refreshed + 1 end
+    gsettings.gzreader_sleep_auto, gsettings.screensaver_type = false, "gz_calendar"
+    Cal.hasNetSources = function() return false end
+    local r1 = SC.onNetworkConnected(plugin)
+    Cal.hasNetSources = function() return true end
+    Cal.cached_at = os.time() - 600
+    local r2 = SC.onNetworkConnected(plugin)
+    Cal.cached_at = os.time() - 2 * 3600
+    local r3 = SC.onNetworkConnected(plugin)
+    gsettings.gzreader_sleep_auto = nil
+    local r4 = SC.onNetworkConnected(plugin)
+    check(r1 == nil and r2 == "fresh" and r3 == "sync" and r4 == nil and refreshed == 1,
+        "Calendar sleep screen: Wi-Fi connecting syncs it when over an hour old, and only when it's the sleep screen")
+    Cal.events, Cal.cached_at, Cal.range, Cal.refresh = saved_cal.events, saved_cal.at, saved_cal.range, saved_cal.refresh
+    Cal.hasNetSources, Cal.hasSources, Cal.cursor, Cal.layout = saved_cal.net, saved_cal.src, saved_cal.cursor, saved_cal.layout
+    gsettings.gzreader_sleep_auto, gsettings.screensaver_type = saved.auto, saved.kind
+end)()
 print("Stickers in drawings (gzreader_stickers.lua): the Memos fork's Kid Pix stickers, as PNG pictures")
 ;(function()
     local Stickers = require("gzreader_stickers")
