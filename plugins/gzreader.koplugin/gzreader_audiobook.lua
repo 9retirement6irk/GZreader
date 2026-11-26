@@ -1605,15 +1605,21 @@ function Audiobook.choose(plugin, summary)
             ok_callback = function() Usb.queuedMessage(plugin, summary) end,
         })
     end
-    -- (BookOrbit: its book may have its own narration: the audiobook only, or the narrated
-    -- book, which plays as an audiobook too; with the sizes and the description)
-    local okn, Open = pcall(require, "gzreader_narratedopen")
-    local book_id = okn and Open.bookIdOfAudio(summary.id)
-    if book_id and plugin.backend and plugin:backend() == "bookorbit" then
-        local size = size_kb and string.format("%.0f MB", size_kb / 1024)
-        return Open.chooseBoth(plugin, { id = book_id, title = summary.title, authors = summary.authors, primaryFileType = "epub" },
-            summary, { audio_first = true, describe = true,
-                text = T(_("Audiobook%1"), size and (" \u{00B7} " .. size) or "") })
+    -- its page, as a book's: the cover, who wrote it and reads it, rating, genres, how long,
+    -- the description; with BookOrbit its ebook too (narrated or not), each with its size
+    -- (gzreader_bookpage.lua). Plex's: the box below.
+    if not summary.plex then
+        local okn, Open = pcall(require, "gzreader_narratedopen")
+        local book_id = okn and Open.bookIdOfAudio(summary.id)
+        local its = summary
+        if book_id and plugin.backend and plugin:backend() == "bookorbit" then
+            its = { id = book_id, title = summary.title, authors = summary.authors, primaryFileType = "epub" }
+        end
+        local okp, page = pcall(function()
+            return require("gzreader_bookpage").show(require("gzreader_browser"):new(plugin), its, { audio = summary, start = "audio" })
+        end)
+        if okp and page then return page end
+        Log.warn("audiobook page:", tostring(page))
     end
     UIManager:show(ConfirmBox:new{
         text = T(_("Download the audiobook “%1” to this Kindle?"), summary.title or "")

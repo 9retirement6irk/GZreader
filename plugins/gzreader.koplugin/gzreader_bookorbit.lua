@@ -725,7 +725,36 @@ function BookOrbit:getBookDetail(book_id)
     local m = book.metadata
     return { id = book.id, title = book.title, subtitle = m.subtitle, description = m.description, categories = m.categories,
         pageCount = m.pageCount, publisher = m.publisher, publishedDate = m.publishedDate,
-        seriesName = m.seriesName, seriesNumber = m.seriesNumber }
+        seriesName = m.seriesName, seriesNumber = m.seriesNumber, authors = book.authors,
+        -- (an audiobook's page offers its ebook only when there is one; the rating others gave it)
+        has_ebook = book.primaryFile ~= nil, communityRating = self:communityRating(book.id) }
+end
+
+BookOrbit.RATING_NAMES = { goodreads = "Goodreads", hardcover = "Hardcover", google = "Google Books", amazon = "Amazon",
+    openlibrary = "Open Library", audible = "Audible", storygraph = "StoryGraph" }
+BookOrbit.RATING_ORDER = { "goodreads", "hardcover", "storygraph", "audible", "amazon", "google", "openlibrary" }
+
+--- The rating others gave a book, as BookOrbit fetched it (its communityRatings; the API key's
+--- book page): { provider (its name), rating, count }, Goodreads first, or nil.
+function BookOrbit:communityRating(book_id)
+    if not self:hasApiKey() or BookOrbit.isAudioId(tostring(book_id)) then return nil end
+    local code, data = self:keyCall("GET", "/api/v1/books/" .. tostring(book_id), { timeouts = { 8, 20 } })
+    if code ~= 200 or type(data) ~= "table" then return nil end
+    return BookOrbit.pickRating(data.communityRatings)
+end
+
+--- The rating to show from a communityRatings list. Pure.
+function BookOrbit.pickRating(list_)
+    local by = {}
+    for _i, r in ipairs(list(list_)) do
+        if type(r) == "table" and s(r.provider) and n(r.rating) and r.rating > 0 then by[r.provider:lower()] = r end
+    end
+    local pick
+    for _i, p in ipairs(BookOrbit.RATING_ORDER) do if by[p] then pick = by[p]; break end end
+    if not pick then pick = select(2, next(by)) end
+    if not pick then return nil end
+    local name = BookOrbit.RATING_NAMES[pick.provider:lower()] or pick.provider
+    return { provider = name, rating = pick.rating, count = n(pick.ratingCount) }
 end
 
 ---------------------------------------------------------------- covers and files

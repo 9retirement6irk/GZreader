@@ -15007,46 +15007,46 @@ print("Narrated EPUBs (gzreader_narration.lua): EPUB 3 media overlays, the sente
         "a book and its audiobook: Narrated book, Ebook only, Audiobook only, with the sizes (no narration: ebook or audiobook)")
     check(Open.bookIdOfAudio("a104") == 104 and Open.bookIdOfAudio("104") == nil and Open.bookIdOfAudio(nil) == nil,
         "…an audiobook of BookOrbit's names its book (a104: 104)")
-    -- Home (neither on the Kindle) and the Audiobooks page ask that; the narrated book from the Audiobooks page plays as an audiobook
+    -- one page for every book and audiobook download (gzreader_bookpage.lua): the choices over its buttons
+    local BP = require("gzreader_bookpage")
+    local narr5 = { has = true, narrated = 267 * 1048576, text = 2 * 1048576, text_about = true }
+    local c1, f1 = BP.choices(narr5, { id = "a104" }, 300 * 1048576, true, "audio")
+    local c2, f2 = BP.choices(narr5, { id = "a104" }, nil, true, nil)
+    local c3, f3 = BP.choices(nil, { id = "a7" }, 300 * 1048576, nil, "audio")
+    local c4, f4 = BP.choices(narr5, nil)
+    local c5, f5 = BP.choices(nil, nil)
+    local function ids(list) local t = {}; for _i, c in ipairs(list) do t[#t + 1] = c.id .. "=" .. c.label end; return table.concat(t, "|") end
+    check(ids(c1) == "audio=Audiobook only · 300 MB|original=Narrated book · 267 MB|ebook=Ebook only · \u{2248} 2 MB" and f1 == "audio",
+        "an audiobook whose book has an ebook (the Audiobooks page): audiobook only first, then narrated book and ebook, each with its size")
+    check(f2 == "original" and #c2 == 3 and c2[3].id == "audio" and c2[3].label == "Audiobook only",
+        "…the same from Home: the narrated book first")
+    check(#c3 == 0 and f3 == "audio", "an audiobook with no ebook: no choice, it's the audiobook")
+    check(ids(c4) == "original=With narration · 267 MB|audioless_epub=Book only · \u{2248} 2 MB" and f4 == "original" and #c5 == 0 and f5 == nil,
+        "a narrated book alone: with narration or book only; another book: no choice")
+    -- what the page says: the rating BookOrbit fetched, genres one by one, the audiobook's length and reader
+    local fx = BP.facts({ authors = { "Cory Doctorow" } }, { categories = { "Audiobook;Nonfiction;Technology", "nonfiction" },
+        communityRating = { provider = "Goodreads", rating = 3.876, count = 1234 }, audio = { durationMs = (9 * 60 + 5) * 60000, narrator = "Cory Doctorow" } })
+    check(fx.rating == "Goodreads ★ 3.88 · 1,234 ratings" and fx.genres == "Audiobook · Nonfiction · Technology"
+        and fx.audio == "Audiobook · 9 h 5 min · read by Cory Doctorow",
+        "the page: the community rating, genres one by one (not \"Audiobook;Nonfiction;Technology\"), the audiobook's length and reader")
+    check(require("gzreader_bookorbit").pickRating({ { provider = "google", rating = 4.0, ratingCount = 10 }, { provider = "goodreads", rating = 3.9, ratingCount = 99 } }).provider == "Goodreads"
+        and require("gzreader_bookorbit").pickRating({ { provider = "hardcover", rating = 4.2 } }).provider == "Hardcover"
+        and require("gzreader_bookorbit").pickRating({ { provider = "x", rating = 0 } }) == nil and require("gzreader_bookorbit").pickRating(nil) == nil,
+        "BookOrbit's community ratings: Goodreads first, then the others; none without a rating")
     local rsrc = io.open(PLUGIN .. "/gzreader_serverrecent.lua"):read("*a")
     local asrc = io.open(PLUGIN .. "/gzreader_audiobook.lua"):read("*a")
     local msrc2 = io.open(PLUGIN .. "/main.lua"):read("*a")
-    check(rsrc:find("Open.chooseBoth(plugin, it.book, it.listen)", 1, true) and asrc:find("summary, { audio_first = true, describe = true,", 1, true)
+    check(rsrc:find('require("gzreader_bookpage").show(require("gzreader_browser"):new(plugin), it.book, { audio = it.listen })', 1, true)
+        and asrc:find('require("gzreader_bookpage").show(require("gzreader_browser"):new(plugin), its, { audio = summary, start = "audio" })', 1, true)
         and msrc2:find('if type(opts.gz_after) == "function" then return opts.gz_after(path) end', 1, true),
-        "Home and the Audiobooks page ask Narrated book / Ebook only / Audiobook only")
-    -- the choice from the Audiobooks page: rows, the description over them, each choice doing its own
-    local shown_both
-    local saved_bd2 = package.loaded["ui/widget/buttondialog"]
-    package.loaded["ui/widget/buttondialog"] = { new = function(_c, o) shown_both = o; return o end }
-    local Net2 = require("gzreader_net")
-    local saved_nr = Net2.run
-    Net2.run = function(fn) fn() end
-    local Async2 = require("gzreader_async")
-    local saved_ar = Async2.run
-    Async2.run = function(api, fn, done) done(fn(api)) end
-    local dl = {}
-    local fakeP = { api = { readAloudChoices = function() return { has = true, narrated = 5 * 1048576 } end,
-        getBookDetail = function() return { description = "<p>A long walk.</p>" } end },
-        downloadAndOpen = function(_s, b, _m, o) dl[#dl + 1] = { b = b, o = o } end }
-    Open.chooseBoth(fakeP, { id = 104, title = "Night Trains" }, { id = "a104", fileSizeKb = 2048 }, { audio_first = true, describe = true, text = "Audiobook · 2 MB" })
-    local labels2 = {}
-    for _i, r in ipairs(shown_both.buttons) do labels2[#labels2 + 1] = r[1].text end
-    check(table.concat(labels2, "|") == "Audiobook only · 2 MB|Narrated book · 5 MB|Ebook only|Cancel"
-        and shown_both.title:find("Night Trains\n\nAudiobook · 2 MB\n\nA long walk.", 1, true),
-        "the Audiobooks page: the audiobook first, then the narrated book and the ebook; its size and description over them (" .. table.concat(labels2, "|") .. ")")
-    shown_both.buttons[2][1].callback()
-    shown_both.buttons[3][1].callback()
-    check(dl[1] and dl[1].b.gz_variant == "original" and type(dl[1].o.gz_after) == "function" and dl[1].o.no_open
-        and dl[2] and dl[2].b.gz_variant == "audioless_epub" and dl[2].o.gz_after == nil,
-        "…the narrated book downloads with its narration and then plays as an audiobook; the ebook only without it")
-    package.loaded["ui/widget/buttondialog"] = saved_bd2
-    Net2.run, Async2.run = saved_nr, saved_ar
+        "Home and the Audiobooks page open the same page as the Books page")
     local av = Open.asVariant({ id = 104, title = "Night Trains", fileSizeKb = 900 }, { has = true, narrated = 5 * 1048576, text = 1048576 }, "audioless_epub")
     local av2 = Open.asVariant({ id = 104, fileSizeKb = 900 }, { has = true }, "original")
     check(av.gz_variant == "audioless_epub" and av.fileSizeKb == 1024 and av.title == "Night Trains" and av2.fileSizeKb == 900,
         "…the copy chosen downloads with its own size")
     local bsrc = io.open(PLUGIN .. "/gzreader_bookpage.lua"):read("*a")
-    check(bsrc:find("api:readAloudChoices(book.id)", 1, true) and bsrc:find('require("gzreader_narratedopen").asVariant(book, self.narr, self.variant or "original")', 1, true),
+    check(bsrc:find("api:readAloudChoices(book.id)", 1, true) and bsrc:find('book = Open.asVariant(book, self.narr, self.chosen == "original" and "original" or "audioless_epub")', 1, true)
+        and bsrc:find("if open then return Open.downloadAudio(b.plugin, self.audio) end", 1, true),
         "the book page asks BookOrbit and downloads the copy chosen (no question after)")
     -- a downloaded book without narration: its hold menu's Download with narration
     local nb = WORK .. "/narr-hold/Plain Copy.epub"

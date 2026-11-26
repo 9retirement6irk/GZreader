@@ -390,7 +390,8 @@ function Recent.openBoth(plugin, it, path)
     end
     -- neither on the Kindle (BookOrbit): narrated book, ebook only or audiobook only, with the sizes
     if not path and okn and it.book and it.listen and plugin:backend() == "bookorbit" then
-        Open.chooseBoth(plugin, it.book, it.listen)
+        -- (its page, with the three choices: gzreader_bookpage.lua)
+        require("gzreader_bookpage").show(require("gzreader_browser"):new(plugin), it.book, { audio = it.listen })
         return true
     end
     local _ = require("gettext")

@@ -63,10 +63,21 @@ function BookPage.facts(book, detail)
         out.rating = T(_("Goodreads ★ %1"), string.format("%.2f", r))
             .. (count and count > 0 and (" · " .. T(_("%1 ratings"), thousands(count))) or "")
     end
-    local cats = {}
+    -- (BookOrbit: the community rating it fetched, from Goodreads, Hardcover…)
+    local cr = type(detail.communityRating) == "table" and detail.communityRating
+    if not out.rating and cr and tonumber(cr.rating) and tonumber(cr.rating) > 0 then
+        local count = tonumber(cr.count)
+        out.rating = T(_("%1 ★ %2"), cr.provider or "", string.format("%.2f", tonumber(cr.rating)))
+            .. (count and count > 0 and (" · " .. T(_("%1 ratings"), thousands(count))) or "")
+    end
+    local cats, seen_cat = {}, {}
     if type(detail.categories) == "table" then
         for _k, c in pairs(detail.categories) do
-            if type(c) == "string" and c ~= "" then cats[#cats + 1] = c end
+            -- (one entry may hold several: "Audiobook;Nonfiction;Technology")
+            for one in (type(c) == "string" and c or ""):gmatch("[^;|]+") do
+                one = one:gsub("^%s+", ""):gsub("%s+$", "")
+                if one ~= "" and not seen_cat[one:lower()] then seen_cat[one:lower()] = true; cats[#cats + 1] = one end
+            end
         end
     end
     table.sort(cats)
@@ -85,7 +96,42 @@ function BookPage.facts(book, detail)
     local kb = tonumber(book.fileSizeKb)
     if kb then facts[#facts + 1] = kb >= 1024 and string.format("%.1f MB", kb / 1024) or T("%1 KB", kb) end
     if #facts > 0 then out.facts = table.concat(facts, " · ") end
+    -- the audiobook: how long, who reads it
+    local ai = type(detail.audio) == "table" and detail.audio
+    if ai then
+        local bits = { _("Audiobook") }
+        local ms = tonumber(ai.durationMs)
+        if ms and ms > 0 then
+            local mins = math.floor(ms / 60000 + 0.5)
+            bits[#bits + 1] = mins >= 60 and T(_("%1 h %2 min"), math.floor(mins / 60), mins % 60) or T(_("%1 min"), mins)
+        end
+        if type(ai.narrator) == "string" and ai.narrator ~= "" then bits[#bits + 1] = T(_("read by %1"), ai.narrator) end
+        out.audio = table.concat(bits, " · ")
+    end
     return out
+end
+
+--- The choices over the page's buttons: { { id, label } … } and which is chosen first.
+--- A book that has an audiobook too (`audio`): narrated book (when its EPUB has narration),
+--- ebook only, audiobook only, with their sizes (gzreader_narratedopen.lua); an audiobook
+--- with no ebook: none (it's the audiobook); a narrated book alone: with narration or
+--- book only; another: none. Pure.
+function BookPage.choices(narr, audio, audio_bytes, has_ebook, start)
+    local Open = require("gzreader_narratedopen")
+    local list = {}
+    if audio then
+        if has_ebook ~= true then return {}, "audio" end
+        for _i, c in ipairs(Open.bothChoices(narr, audio_bytes)) do
+            list[#list + 1] = { id = c.how == "narrated" and "original" or c.how == "ebook" and "ebook" or "audio", label = c.label }
+        end
+        if start == "audio" then table.insert(list, 1, table.remove(list)) end
+        return list, list[1].id
+    end
+    if narr and narr.has then
+        for _i, c in ipairs(Open.pageChoices(narr)) do list[#list + 1] = { id = c.variant, label = c.label } end
+        return list, "original"
+    end
+    return list, nil
 end
 
 --- The description as text (Grimmory keeps it as HTML).
@@ -159,6 +205,7 @@ function BookPage:build()
             TextBoxWidget:new{ text = book.title or "?", face = Font:getFace("cfont", 12), width = cw - S(12), alignment = "center" } } }
     local rw = inner - cw - S(14)
     local info = BookPage.facts(book, self.detail)
+    if self.audio then info.audio = BookPage.facts(book, { audio = self.audio_info or {} }).audio end
     local col = VerticalGroup:new{ align = "left" }
     local function line(text, size, opts)
         if not text then return end
@@ -176,15 +223,21 @@ function BookPage:build()
     line(info.rating, 14, { gap = 8 })
     line(info.genres, 14, { gray = true, lines = 2 })
     line(info.facts, 13, { gray = true, lines = 2 })
+    line(info.audio, 13, { gray = true, lines = 2 })
     local head = HorizontalGroup:new{ align = "top", cover, HorizontalSpan:new{ width = S(14) }, col }
     -- the buttons
     local Download = require("gzreader_download")
     local busy = Download.active ~= nil
     local usb = require("gzreader_net").usb
+    local choices, first = BookPage.choices(self.narr, self.audio, self.audio_bytes, self.has_ebook, self.start)
+    -- (what the page starts on, until a choice is tapped: it can change as the details come in)
+    if not self.user_chosen then self.chosen = first end
+    local is_audio = self.chosen == "audio"
+    if is_audio then busy = false end -- (an audiobook downloads on its own)
     local buttons = {
         {
             { text = busy and _("Add to queue") or _("Download"), callback = function() self:download(false) end },
-            not busy and { text = _("Download & open"), callback = function() self:download(true) end } or nil,
+            not busy and { text = is_audio and _("Download & listen") or _("Download & open"), callback = function() self:download(true) end } or nil,
         },
         { { text = _("Close"), callback = function() self:onClose() end } },
     }
@@ -192,17 +245,18 @@ function BookPage:build()
         -- no Wi-Fi: the next sync with the computer brings it (gzreader_usbsync.lua)
         busy = false
         buttons[1] = { { text = _("Add to sync queue"), callback = function() self:download(false) end } }
-    elseif self.narr then
-        -- a narrated book: which copy, over the download buttons
-        local row = {}
-        for _i, c in ipairs(require("gzreader_narratedopen").pageChoices(self.narr)) do
-            local on = (self.variant or "original") == c.variant
-            row[#row + 1] = { text = (on and "● " or "○ ") .. c.label, callback = function()
-                self.variant = c.variant
+    elseif #choices > 0 then
+        -- which copy, over the download buttons: two side by side, three one under another
+        local rows, row = {}, {}
+        for _i, c in ipairs(choices) do
+            local btn = { text = (self.chosen == c.id and "● " or "○ ") .. c.label, callback = function()
+                self.chosen, self.user_chosen = c.id, true
                 self:refresh()
             end }
+            if #choices > 2 then rows[#rows + 1] = { btn } else row[#row + 1] = btn end
         end
-        table.insert(buttons, 1, row)
+        if #row > 0 then rows[#rows + 1] = row end
+        for i = #rows, 1, -1 do table.insert(buttons, 1, rows[i]) end
     end
     self.buttontable = ButtonTable:new{ width = inner, buttons = buttons, zero_sep = true, show_parent = self }
     -- the description takes the rest
@@ -241,9 +295,18 @@ function BookPage:download(open)
     UIManager:close(self)
     local b = self.browser
     local book = self.book
-    if self.narr then
+    local Open = require("gzreader_narratedopen")
+    if self.chosen == "audio" and self.audio then
+        -- the audiobook: downloaded, and played when asked
+        if open then return Open.downloadAudio(b.plugin, self.audio) end
+        local AB = require("gzreader_audiobook")
+        return require("ui/network/manager"):runWhenOnline(function()
+            AB.download(b.plugin, self.audio, function(got, err) if not got then b.plugin:showError(err) end end)
+        end)
+    end
+    if self.narr and self.narr.has then
         -- (the copy chosen on the page: not asked again)
-        book = require("gzreader_narratedopen").asVariant(book, self.narr, self.variant or "original")
+        book = Open.asVariant(book, self.narr, self.chosen == "original" and "original" or "audioless_epub")
     end
     if open then
         b.plugin:downloadAndOpen(book, b.menu)
@@ -271,9 +334,13 @@ function BookPage:onCloseWidget()
     UIManager:setDirty(nil, function() return "ui", self.frame and self.frame.dimen end)
 end
 
---- Show `book`'s page; fetch its details and cover.
-function BookPage.show(browser, book)
-    local page = BookPage:new{ browser = browser, book = book }
+--- Show `book`'s page; fetch its details and cover. opts.audio: its audiobook (the
+--- audiobook's summary, as Audiobook.choose takes it): the page offers it too;
+--- opts.start = "audio": the audiobook chosen to begin with (the Audiobooks page).
+function BookPage.show(browser, book, opts)
+    opts = opts or {}
+    local page = BookPage:new{ browser = browser, book = book, audio = opts.audio, start = opts.start,
+        audio_bytes = opts.audio and tonumber(opts.audio.fileSizeKb) and opts.audio.fileSizeKb * 1024 or nil }
     UIManager:show(page)
     if book.id and browser.api then
         -- (the list opens from what's saved on the Kindle, so Wi-Fi may be off:
@@ -291,8 +358,18 @@ function BookPage.fetch(page, browser, book)
     Async.call(browser.api, "getBookDetail", { book.id }, function(detail)
         if page.closed then return end
         if type(detail) == "table" then page.detail = detail else page.failed = true end
+        if type(detail) == "table" and detail.has_ebook ~= nil then page.has_ebook = detail.has_ebook end
         page:refresh()
     end)
+    -- its audiobook: how big, how long, who reads it
+    if page.audio and browser.api.audiobookInfo and not page.audio.plex then
+        Async.run(browser.api, function(api) return api:audiobookInfo(page.audio.id) end, function(info)
+            if page.closed or type(info) ~= "table" then return end
+            page.audio_info = { durationMs = info.durationMs, narrator = info.narrator }
+            if tonumber(info.totalSizeBytes) and info.totalSizeBytes > 0 then page.audio_bytes = info.totalSizeBytes end
+            page:refresh()
+        end, "audiobook info")
+    end
     -- BookOrbit: does it have its own narration? (the choice and the sizes)
     if browser.api.readAloudChoices and not require("gzreader_net").usb then
         Async.run(browser.api, function(api) return api:readAloudChoices(book.id) end, function(info)

@@ -700,6 +700,17 @@ class Handler(BaseHTTPRequestHandler):
                             if bid in AUDIOBOOKS and 0 < st["percentage"] < 100), reverse=True)
             return self.send(200, {"books": [audio_card(AUDIOBOOKS[bid]) for _at, bid in going[:int(limit)]],
                                    "total": len(going)})
+        m = re.match(r"^books/(\d+)$", p)
+        if m and method == "GET":
+            # the main API's book page (only what GZreader reads: the community ratings)
+            if not self.api_key():
+                return
+            b = next((b for b in BOOKS if b["id"] == int(m.group(1))), None)
+            if not b:
+                return self.error(404, "Book not found")
+            return self.send(200, {"id": b["id"], "title": b["title"], "rating": None, "communityRatings": [
+                {"provider": "goodreads", "rating": 4.05, "ratingCount": 2310, "updatedAt": None},
+                {"provider": "hardcover", "rating": 3.9, "ratingCount": 40, "updatedAt": None}]})
         m = re.match(r"^books/(\d+)/thumbnail$", p)
         if m and method == "GET":
             if not self.api_key():

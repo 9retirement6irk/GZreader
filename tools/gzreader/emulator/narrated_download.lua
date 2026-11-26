@@ -46,7 +46,7 @@ add({ fn = function(E)
 end, after = 2 })
 add({ shot = "narrdl-2-book-only" })
 add({ fn = function()
-    check(page.variant == "audioless_epub", "Book only chosen")
+    check(page.chosen == "audioless_epub", "Book only chosen")
     page:download(false)
 end, after = 1 })
 add({ wait_for = function()
@@ -84,14 +84,20 @@ end, timeout = 40 })
 add({ fn = function()
     require("gzreader_audiobook").choose(plugin(), { id = "a104", title = "Night Trains", fileSizeKb = 300 * 1024 })
 end, after = 6 })
-add({ shot = "narrdl-5-audiobooks" })
+add({ shot = "narrdl-5-audiobooks", after = 1 })
 add({ fn = function()
-    local d = top()
+    local d = top("gzreader book page")
+    local BP = require("gzreader_bookpage")
     local labels = {}
-    for _i, r in ipairs(d and d.buttons or {}) do labels[#labels + 1] = r[1].text end
-    check(#labels == 4 and labels[1] == "Audiobook only · 300 MB" and labels[2]:find("^Narrated book") and labels[3]:find("^Ebook only")
-        and tostring(d.title):find("About Night Trains", 1, true), "the Audiobooks page: audiobook only, narrated book or ebook, with the description: "
+    if d then
+        local list = BP.choices(d.narr, d.audio, d.audio_bytes, d.has_ebook, d.start)
+        for _i, c in ipairs(list) do labels[#labels + 1] = c.label end
+    end
+    local info = d and BP.facts(d.book, d.detail) or {}
+    check(d ~= nil and d.chosen == "audio" and #labels == 3 and labels[1] == "Audiobook only · 300 MB" and labels[2]:find("^Narrated book")
+        and labels[3]:find("^Ebook only"), "the Audiobooks page: the same page as a book's, audiobook only chosen, then narrated book and ebook: "
         .. table.concat(labels, " | "))
+    check(info.rating == "Goodreads ★ 4.05 · 2,310 ratings", "…with the rating BookOrbit fetched: " .. tostring(info.rating))
     if d then UIM():close(d) end
 end, after = 2 })
 add({ fn = function(E)

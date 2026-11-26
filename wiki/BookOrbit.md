@@ -136,12 +136,17 @@ sound.
   one, then Download. Until BookOrbit has made the book-only copy once, its
   size is worked out from the narrated copy less its audio (shown with ≈;
   this needs the API key).
-- **A book that has an audiobook too**, neither on the Kindle: tapping it on
-  Home (recently read on every device) asks **Narrated book**, **Ebook
-  only** or **Audiobook only**, each with its size. On the Catalog's
-  Audiobooks page the same question comes with the audiobook's size and
-  the book's description, the audiobook first; the narrated book then plays
-  as an audiobook once it's downloaded.
+- **Every download has the same page**: a book from the Catalog's Books
+  page, an audiobook from its Audiobooks page, and a book or audiobook on
+  Home that isn't on the Kindle. It shows the cover, the title, the author,
+  the rating BookOrbit fetched (Goodreads first, else Hardcover and the
+  others), the genres, the pages, year and publisher, for an audiobook how
+  long it is and who reads it, and the description. Over **Download** are
+  the choices, each with its size: **Narrated book**, **Ebook only**,
+  **Audiobook only** for a book that has both (the audiobook chosen first
+  on the Audiobooks page), or **With narration** / **Book only** for a
+  narrated book alone. With the audiobook chosen the button is **Download &
+  listen**. (The rating needs the API key.)
   Downloading from elsewhere (the Catalog's lists) asks **Narrated book** or
   **Book only**.
 - **Already on the Kindle without its narration**: hold the book on Home or
