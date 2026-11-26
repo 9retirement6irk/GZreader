@@ -74,7 +74,7 @@ used as they are (up to about 2,500 words a story).
   summary.
 - A story behind a paywall, or on a page built by scripts, keeps the feed's
   summary, and says so at its end.
-- **Settings → Home and tabs → Daily paper → Whole stories** turns it off (a faster
+- **Settings → Accounts and services → Daily paper → Whole stories** turns it off (a faster
   fetch, summaries only).
 
 **Weather**: a box under the date shows now, today and the next two days,
