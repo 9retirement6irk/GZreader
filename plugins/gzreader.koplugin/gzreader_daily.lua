@@ -623,6 +623,56 @@ function Daily.summaryQuestion(item)
         text = "Headline: " .. tostring(item.title or "") .. "\n\nStory:\n" .. Feeds.cut(item.text or "", Daily.AI_TEXT) }
 end
 
+Daily.ORDER_SYSTEM = "You are the editor of a small daily newspaper read on an e-reader. "
+    .. "You are given the day's stories, numbered, each with its section and how it begins. "
+    .. "Put them in the order the paper should print them: open with good, hopeful or uplifting news, "
+    .. "keep plenty of good news near the front, mix the sections so the same one doesn't run on, "
+    .. "and put what matters or interests most early. Every story once. "
+    .. "Reply with JSON only: {\"order\":[numbers]}."
+
+--- What to ask for the paper's order (`list`: Daily.ordered's, numbered from 1): the
+--- headlines, sections and how each begins; nothing of yours. Pure.
+function Daily.orderQuestion(list)
+    local lines = {}
+    for n, st in ipairs(list) do
+        local start = Feeds.cut(tostring(st.item.text or ""):gsub("%s+", " "), 160)
+        lines[#lines + 1] = string.format("%d. [%s] %s: %s", n, tostring(st.topic or ""), tostring(st.item.title or ""), start)
+    end
+    return { system = Daily.ORDER_SYSTEM, max_tokens = 400, timeout = 60,
+        text = "The stories:\n" .. table.concat(lines, "\n") }
+end
+
+--- The order the AI chose, read from its answer `text` for `list`: { { s, i } } with each
+--- story once (any it left out after, in the mix's order), or nil when there's no usable
+--- list in it. Pure.
+function Daily.orderFrom(text, list)
+    local body = type(text) == "string" and text:match("%b{}") or nil
+    local ok, data = pcall(function() return body and require("gzreader_json").decode(body) end)
+    local nums = ok and type(data) == "table" and type(data.order) == "table" and data.order or nil
+    if not nums then return nil end
+    local out, used = {}, {}
+    for _k, v in ipairs(nums) do
+        local n = tonumber(v)
+        local st = n and list[n]
+        if st and not used[n] then used[n] = true; out[#out + 1] = { s = st.s, i = st.i } end
+    end
+    if #out < math.max(1, math.floor(#list / 2)) then return nil end -- (most of it: else not trusted)
+    for n, st in ipairs(list) do if not used[n] then out[#out + 1] = { s = st.s, i = st.i } end end
+    return out
+end
+
+--- The AI edition: the AI puts the paper in order (the mix stays when it can't).
+--- `ask(question)` → text, or nil and why. Returns true, or false and why.
+function Daily.aiOrder(edition, ask)
+    local list = Daily.ordered(edition)
+    if #list < 3 then return false, "too few stories" end
+    local okc, text, err = pcall(ask, Daily.orderQuestion(list))
+    local order = okc and Daily.orderFrom(text, list) or nil
+    if not order then return false, okc and (err or "no order in the answer") or "an error" end
+    edition.order, edition.ordered_by_ai = order, true
+    return true
+end
+
 --- Give the edition's stories their summaries, in the front page's order:
 --- AI_MAX at most, until `seconds` have gone, giving up after AI_GIVE_UP
 --- failures in a row (a refused key fails every time). A story too short to
@@ -857,6 +907,9 @@ function Daily.refresh(plugin, on_done)
         if ai then
             local AI = require("gzreader_ai")
             local why
+            -- (first the order the AI chooses: the summaries then go to the paper's first stories)
+            local ordered, owhy = Daily.aiOrder(edition, function(q) return AI.complete(ai, q) end)
+            if not ordered then Log.warn("daily paper: the AI's order wasn't used:", tostring(owhy)) end
             edition.summaries, edition.summaries_asked, why = Daily.addSummaries(edition, function(q) return AI.complete(ai, q) end)
             edition.ai = ai.provider
             if why then Log.warn("daily paper: a summary wasn't given:", tostring(why)) end
@@ -877,7 +930,7 @@ function Daily.refresh(plugin, on_done)
             tonumber(edition.summaries) or 0, "summaries" .. (edition.ai and (" by " .. tostring(edition.ai) .. " of " .. tostring(edition.summaries_asked or 0) .. " asked") or ""))
         Daily.changed()
         on_done(true)
-    end, "daily paper", { timeout = 300 + Daily.FULL_SECONDS + 120 + (ai and Daily.AI_SECONDS + 60 or 0) })
+    end, "daily paper", { timeout = 300 + Daily.FULL_SECONDS + 120 + (ai and Daily.AI_SECONDS + 120 or 0) })
 end
 
 --- Today's edition, if it's due and wasn't tried a moment ago: with Wi-Fi

@@ -1572,6 +1572,40 @@ local q = Dz.summaryQuestion({ title = "Bridge stays open", text = string.rep("x
 check(q.system == Dz.SUMMARY_SYSTEM and q.text:find("Headline: Bridge stays open", 1, true) and #q.text < Dz.AI_TEXT + 200 and q.max_tokens == 300,
     "a story's headline and the start of its text are asked about (" .. #q.text .. " bytes)")
 check(not q.text:find("example.com", 1, true) and not q.system:find("example.com", 1, true), "its address isn't sent")
+;(function()
+    -- the AI's order: asked with the headlines, sections and how each begins; each story once
+    local oe = { day = Dz.day(), at = os.time(), sections = {
+        { topic = "World", items = { { title = "Storm hits coast", text = "Winds of 100 mph" }, { title = "Talks stall", text = "Leaders met" } } },
+        { topic = "Good news", items = { { title = "Puppies rescued", text = "Twelve puppies" } } },
+        { topic = "Science", items = { { title = "New comet", text = "Astronomers saw" } } } } }
+    oe.order = Dz.mix(oe, oe.day)
+    local asked_q
+    local okq = Dz.aiOrder(oe, function(question)
+        asked_q = question
+        local list = Dz.ordered(oe)
+        local good
+        for k, st in ipairs(list) do if st.topic == "Good news" then good = k end end
+        local other = good == 1 and 2 or 1
+        return 'Here: {"order":[' .. good .. ', 99, ' .. good .. ', ' .. other .. ']}'
+    end)
+    local first = Dz.ordered(oe)[1]
+    check(okq and oe.ordered_by_ai and first.item.title == "Puppies rescued" and #Dz.ordered(oe) == 4,
+        "the AI edition: the AI puts the paper in order (its first story first; the ones it left out after, none twice)")
+    check(asked_q and asked_q.system == Dz.ORDER_SYSTEM and asked_q.text:find("[Good news] Puppies rescued: Twelve puppies", 1, true)
+        and Dz.ORDER_SYSTEM:find("good, hopeful or uplifting", 1, true),
+        "…asked with each story's section, headline and how it begins, to open with good news")
+    -- an answer with no usable order: the mix stays
+    local mixed = Dz.mix(oe, oe.day)
+    oe.order, oe.ordered_by_ai = mixed, nil
+    local okn, whyn = Dz.aiOrder(oe, function() return "I can't do that." end)
+    check(okn == false and whyn and oe.order == mixed and not oe.ordered_by_ai, "…no order in its answer: the paper keeps its mix")
+    check(Dz.orderFrom('{"order":[1]}', Dz.ordered(oe)) == nil, "…an order naming too few stories isn't trusted")
+    local dsrc2 = io.open(PLUGIN .. "/gzreader_daily.lua"):read("*a")
+    check(dsrc2:find("local ordered, owhy = Daily.aiOrder(edition, function(q) return AI.complete(ai, q) end)", 1, true)
+        and dsrc2:find("edition.summaries, edition.summaries_asked, why = Daily.addSummaries", 1, true)
+        and dsrc2:find("Daily.aiOrder(edition", 1, true) < dsrc2:find("edition.summaries, edition.summaries_asked", 1, true),
+        "…asked before the summaries (they go to the paper's first stories)")
+end)()
 -- the summaries
 local e = edition()
 local asked = {}
