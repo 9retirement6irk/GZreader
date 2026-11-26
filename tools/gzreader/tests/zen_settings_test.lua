@@ -6,6 +6,9 @@
 --   luajit zen_settings_test.lua <plugins/zenos.koplugin>
 local ZEN = arg[1]
 package.path = ZEN .. "/?.lua;" .. package.path
+-- (the tree as gz_settings_tree.lua builds it: what Settings makes of it afterwards,
+-- common/gz_settings_tidy.lua, is gz_settings_tidy_test.lua's)
+package.loaded["common/gz_settings_tidy"] = { apply = function(root) return root end }
 local function magic()
     local m
     m = setmetatable({}, { __index = function() return m end, __call = function() return m end,
@@ -15,7 +18,6 @@ end
 local real = {
     ["modules/settings/zen_settings"] = true,
     ["common/gz_settings_tree"] = true,
-    ["common/gz_settings_tidy"] = true,
     ["common/gz_settings"] = true,
     ["modules/settings/sections/extras_settings"] = true,
     ["modules/settings/sections/global_settings"] = true,
@@ -66,11 +68,7 @@ local function texts(list)
 end
 local function sub(list, name)
     for _i, it in ipairs(list or {}) do
-        if rawget(it, "text") == name then
-            local f = rawget(it, "sub_item_table_func") -- (built when opened: gz_settings_tidy.lua's pages)
-            if rawget(it, "sub_item_table") == nil and type(f) == "function" then local ok, l = pcall(f); return ok and l or nil end
-            return rawget(it, "sub_item_table")
-        end
+        if rawget(it, "text") == name then return rawget(it, "sub_item_table") end
     end
 end
 
@@ -91,7 +89,7 @@ if okb then
     -- Home and tabs: Home (its own rows), Status bar, Tab bar, Quick panel, Downloads tab
     local ht = sub(items, "Home and tabs")
     local htt = texts(ht)
-    check(htt == "|Home|Daily paper|Tab bar|Downloads tab|", "Home and tabs: Home, Daily paper, (Status bar, Quick panel: stubs here,) Tab bar, Downloads tab " .. htt)
+    check(htt == "|Home|Tab bar|Downloads tab|", "Home and tabs: Home, (Status bar, Quick panel: stubs here,) Tab bar, Downloads tab " .. htt)
     local home_rows = texts(sub(ht, "Home"))
     check(home_rows == "|Widgets ▸|Edit mode|Presets|Show on Home|",
         "Home: its own rows; with no Status bar section, Show top status bar stays in Home as Show on Home " .. home_rows)
@@ -146,8 +144,7 @@ if okb then
     local custom = sub(display, "Custom icons")
     check(custom ~= nil and not texts(custom):find("Invert", 1, true), "Custom icons: no Invert with dark mode (in Dark mode)")
     local sw = sub(items, "Sleep and wallpaper")
-    check(texts(sw):find("|Home background|", 1, true) ~= nil and not texts(sw):find("|Sleep|", 1, true),
-        "Sleep and wallpaper: the sleep screen's rows (no Sleep row to open first), Home background (Interface's Wallpaper) " .. texts(sw))
+    check(texts(sw):find("^|Sleep|Home background|") ~= nil, "Sleep and wallpaper: Sleep, Home background (Interface's Wallpaper) " .. texts(sw))
     check(not texts(sub(sw, "Home background")):find("Invert", 1, true), "Home background: no Invert with dark mode (in Dark mode)")
     local gen = texts(sub(items, "General"))
     check(not gen:find("|Schedules|", 1, true) and not gen:find("|Sleep|", 1, true),
@@ -171,7 +168,7 @@ do
     end
     view.no_wifi = false
     local con = accounts()
-    check(con:find("|Photos|House|$") ~= nil, "Accounts and services: House (Home Assistant) last (the daily paper is in Home and tabs) " .. con)
+    check(con:find("|Photos|House|Daily paper|$") ~= nil, "Accounts and services: House (Home Assistant), then the daily paper, last " .. con)
     check(not con:find("Copy to or from another GZreader", 1, true) and not con:find("Sync through a computer", 1, true),
         "Accounts and services: no Copy or Sync through a computer (General → Transfer) " .. con)
     view.no_wifi = true

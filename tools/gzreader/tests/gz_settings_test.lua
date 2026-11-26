@@ -8,6 +8,9 @@
 --   luajit gz_settings_test.lua <plugins/zenos.koplugin>
 local ZEN = arg[1]
 package.path = ZEN .. "/?.lua;" .. ZEN .. "/../../frontend/?.lua;" .. package.path
+-- (the tree as gz_settings_tree.lua builds it: what Settings makes of it afterwards,
+-- common/gz_settings_tidy.lua, is gz_settings_tidy_test.lua's)
+package.loaded["common/gz_settings_tidy"] = { apply = function(root) return root end }
 local function magic()
     local m
     m = setmetatable({}, { __index = function() return m end, __call = function() return m end,
@@ -27,7 +30,6 @@ local real = {
     ["modules/settings/koreader_settings"] = true,
     ["common/gz_settings"] = true,
     ["common/gz_settings_tree"] = true,
-    ["common/gz_settings_tidy"] = true,
     ["common/gz_settings_icons"] = true,
     ["common/inline_icon_map"] = true,
     ["common/gz_wifi_icon"] = true,
@@ -156,12 +158,12 @@ if okb then
     local general = find(items, "General").sub_item_table
     local gen = texts(general)
     print("    General: " .. gen)
-    check(gen == "|About|Software update|Storage|Battery|Time and date|Language|Transfer or reset|Setup Guide|",
-        "General: About (as on iOS), Software update, Storage, Battery, Time and date, Language, then Transfer or reset and Setup Guide " .. gen)
+    check(gen == "|About|Software update|Storage|Battery|Time and date|Language|Transfer|Setup Guide|",
+        "General: About (as on iOS), Software update, Storage, Battery, Time and date, Language, then Transfer and Setup Guide " .. gen)
     check(find(general, "Language").separator == true, "a line under Language")
-    local transfer = find(general, "Transfer or reset")
-    check(texts(transfer and transfer.sub_item_table) == "|Copy to or from another GZreader|Sync through a computer|Reset GZreader|",
-        "General → Transfer or reset: Copy to or from another GZreader, Sync through a computer, Reset GZreader " .. texts(transfer and transfer.sub_item_table))
+    local transfer = find(general, "Transfer")
+    check(texts(transfer and transfer.sub_item_table) == "|Copy to or from another GZreader|Sync through a computer|",
+        "General → Transfer: Copy to or from another GZreader, Sync through a computer " .. texts(transfer and transfer.sub_item_table))
     local privacy = find(items, "Privacy and diagnostics").sub_item_table
     local pr = texts(privacy)
     print("    Privacy and diagnostics: " .. pr)
@@ -171,14 +173,14 @@ if okb then
     local advanced = find(privacy, "Advanced")
     local adv = texts(advanced and advanced.sub_item_table)
     print("    Advanced: " .. adv)
-    check(adv == "|Notifications|KOReader settings|", "Privacy and diagnostics → Advanced: Notifications (out of Screen), KOReader settings " .. adv)
-    -- Reset GZreader: last in Transfer or reset, under a line, asks GZreader's reset (gzreader_reset.lua)
-    local reset = transfer.sub_item_table[3]
+    check(adv == "|KOReader settings|Reset GZreader|", "Privacy and diagnostics → Advanced: KOReader settings, then Reset GZreader " .. adv)
+    -- Reset GZreader: last, under a line, asks GZreader's reset (gzreader_reset.lua)
+    local reset = advanced.sub_item_table[2]
     local asked_reset, menu_closed
     package.loaded["gzreader_reset"] = { confirm = function(g) asked_reset = g end }
     pcall(reset.callback, { closeMenu = function() menu_closed = true end })
     package.loaded["gzreader_reset"] = nil
-    check(transfer.sub_item_table[2].separator == true and reset.icon_glyph ~= nil and asked_reset == gz and menu_closed,
+    check(advanced.sub_item_table[1].separator == true and reset.icon_glyph ~= nil and asked_reset == gz and menu_closed,
         "Reset GZreader: last, under a line, with an icon; it closes Settings and asks first (gzreader_reset.confirm)")
     check(find(items, "About") == nil, "no About on the first page (General → About)")
     local about_rows = find(general, "About").sub_item_table
@@ -190,15 +192,15 @@ if okb then
     local im = accounts and find(accounts.sub_item_table, "Photos")
     local okim, imitems = pcall(function() return im.sub_item_table_func() end)
     -- (gzreader_usbsync is a stub here: a Kindle without Wi-Fi, so no House; zen_settings_test.lua has it)
-    check(cl == "|Books|Notes|Calendar|Photos|" and im.mandatory_func() == "Not connected" and okim
+    check(cl == "|Books|Notes|Calendar|Photos|Daily paper|" and im.mandatory == "Immich" and okim
             and texts(imitems) == "|Connect with QR code|Connect by typing|",
-        "Accounts and services: Books, Notes, Calendar, Photos (Immich, GZreader's rows in it); the daily paper is in Home and tabs " .. cl)
-    check(find(find(items, "Home and tabs").sub_item_table, "Daily paper") ~= nil, "…Home and tabs → Daily paper")
-    -- (nothing is connected here: gz_settings_tidy.lua says so on the right, gz_settings_tidy_test.lua has the rest)
-    check(find(accounts.sub_item_table, "Books").mandatory_func() == "Not connected" and find(accounts.sub_item_table, "Notes").mandatory_func() == "Not connected",
-        "each row says on the right that its service isn't connected yet")
+        "Accounts and services: Books, Notes, Calendar, Photos (Immich, GZreader's rows in it), Daily paper " .. cl)
+    check(find(accounts.sub_item_table, "Daily paper").mandatory == "Feeds", "…the daily paper: its feeds")
+    check(find(accounts.sub_item_table, "Books").mandatory == "Grimmory" and find(accounts.sub_item_table, "Notes").mandatory == "Memos"
+            and find(accounts.sub_item_table, "Calendar").mandatory == "CalDAV",
+        "each row says the service it uses on the right")
     -- KOReader settings: KOReader's whole menu, nothing left out
-    local ko = find(advanced.sub_item_table, "KOReader settings")
+    local ko = advanced.sub_item_table[1]
     local asked
     package.loaded["modules/menu/app_launcher/native_menu"] = { settingsItems = function(scope, id, opts)
         asked = { scope = scope, id = id, unfiltered = type(opts) == "table" and opts.unfiltered }
