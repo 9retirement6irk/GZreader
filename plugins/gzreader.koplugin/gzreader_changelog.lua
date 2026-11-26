@@ -9,7 +9,7 @@ return {
     {
         version = "next",
         changes = {
-            { short = "Story so far: who's who and what's happened, up to where you are", text = "Reading: with an AI key set up, the quick panel in a book has Story so far. It asks your AI service who's who and what has happened up to where you are, from what it knows of the book, without going past your place. Sent: the title, author, how far through you are and the chapter's title; nothing of the book's text. The answer is kept for that chapter; Ask again asks for where you are now." },
+            { short = "Story guide: people, places, terms and what's happened, up to your page", text = "Reading: with an AI key set up, the quick panel in a book has Story guide (books that reflow, such as EPUBs). It shows People, Places and Terms up to where you are, each with a line on who or what it is, then what happened in each part so far. It's made from the book's own text, a chapter at a time, by your AI service: the first time it asks before sending the text you've read (and says about how many words); each finished chapter is kept with the book, so later only the new ones go. BookOrbit's own story guide can't be read by GZreader: BookOrbit serves it only to its iPhone app." },
         },
     },
     {

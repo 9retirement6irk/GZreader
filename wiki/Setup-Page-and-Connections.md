@@ -167,17 +167,21 @@ Two kinds of service:
   (`https://…/v1`; plain `http://` only to a computer on your network), a
   **key** and a **model**. For handwriting the model must read pictures.
 
-**Story so far** (in a book, the quick panel's tile, with a key set up): asks
-the service who's who and what has happened up to where you are, from what
-it knows of the book, and shows it in a window: the main people and places
-met so far, a line each, then what has happened. Sent: the book's title and
-author, how far through it you are (a percentage) and the chapter's title;
-nothing of the book's text. It's told to stop at your place, and to say so
-when it doesn't know the book (a new or self-published one). The answer is
-kept with the book for that chapter, so it opens at once there; **Ask
-again** asks for where you are now. An AI wrote it and it can be wrong.
-BookOrbit's own story guides can't be shown here: BookOrbit serves them only
-to its iPhone app.
+**Story guide** (in a book, the quick panel's tile, with a key set up; books
+that reflow, such as EPUBs): **People**, **Places** and **Terms** up to
+where you are (each with a line on who or what it is, and in how many parts
+it came up), then **So far**: what happened, or what was explained, in each
+part. It's made from the book's own text, a part (a chapter) at a time: the
+first time, it asks before sending the text you've read (it says about how
+many words); each finished part is kept with the book, so later only what
+you've read since goes. Sent: the book's title and author, and the parts'
+text (about 9,000 words of a part at most). It's told to use only that text,
+so nothing after your page is given away. An AI made it and it can be
+wrong.
+
+BookOrbit builds story guides on the server, but serves them only to its
+own iPhone app (its server asks for Apple's App Attest and refuses API
+keys), so GZreader can't show BookOrbit's: it makes its own from the book.
 
 With both set up, the one ticked is used. **Try it** asks the service for
 one word, to check the key, the model and the address. **Used for** lists

@@ -4255,72 +4255,86 @@ print("Keep-alive inside a background process (one connection for several reques
     if pf then os.execute("kill " .. (pf:read("*l") or "") .. " 2>/dev/null"); pf:close(); os.remove(WORK .. "/keepalive.pid") end
 end)()
 
-print("Story so far: who's who and what's happened, from the AI service")
+print("Story guide: people, places, terms and what's happened, from the book's own text")
 ;(function()
-    local Story = require("gzreader_storysofar")
+    local G = require("gzreader_storyguide")
     local AI = require("gzreader_ai")
-    local q = Story.question("Moby-Dick", "Herman Melville", { pct = 23, chapter = "Chapter 16: The Ship" })
-    check(q.text:find('I am reading "Moby-Dick" by Herman Melville and I am 23% of the way through, in the part titled "Chapter 16: The Ship".', 1, true)
-        and q.text:find("Who's who", 1, true) and q.text:find("So far", 1, true) and q.text:find("say so in one sentence", 1, true)
-        and q.system:find("Never mention or hint at anything that happens after", 1, true) and q.what == "story so far",
-        "the question: the book, how far, the chapter; who's who and so far; no spoilers; says when it doesn't know the book")
-    check(not q.text:find("The selected text", 1, true) and Story.question("T", nil, {}).text:find('reading "T" and I am partway through.', 1, true),
-        "…nothing of the book's text; no author or position: left out")
-    -- kept per chapter
-    local saved = { text = "Who's who\nIshmael - the narrator", pct = 20, chapter = "Chapter 16: The Ship", by = "Claude" }
-    check(Story.kept(saved, { pct = 25, chapter = "Chapter 16: The Ship" }) == saved and Story.kept(saved, { pct = 21, chapter = "Chapter 17" }) == nil,
-        "the answer is kept for the chapter it was asked in")
-    check(Story.kept({ text = "x", pct = 40 }, { pct = 41 }) and not Story.kept({ text = "x", pct = 40 }, { pct = 45 }) and not Story.kept(nil, {}) and not Story.kept({ text = "" }, {}),
-        "…no chapters: within 2%")
-    local r = Story.render(saved)
-    check(r:find("Up to 20% \u{00B7} Chapter 16: The Ship\n\nWho's who", 1, true) and r:find("Written by Claude from what it knows of the book. It can be wrong.", 1, true),
-        "the window: where it's up to, the answer, who wrote it")
-    -- the position
-    local ui = { document = { getCurrentPage = function() return 50 end, getPageCount = function() return 200 end },
-        toc = { getTocTitleByPage = function(_t, p) return p == 50 and "Chapter 9" or nil end }, doc_props = { display_title = "Moby-Dick", authors = "Herman Melville" } }
-    local pos = Story.position(ui)
-    check(pos.pct == 25 and pos.chapter == "Chapter 9" and pos.page == 50, "where you are: 25%, Chapter 9")
-    -- the tile: with an AI key only
+    -- the parts: the contents' top chapters up to your page; the one you're in up to where you are
+    local toc = { { title = "Part One", depth = 1, page = 1, xpointer = "/p1" }, { title = "Ch 1", depth = 2, page = 2, xpointer = "/c1" },
+        { title = "Part Two", depth = 1, page = 40, xpointer = "/p2" }, { title = "Part Three", depth = 1, page = 90, xpointer = "/p3" } }
+    local parts = G.parts(toc, 55, "/here")
+    check(#parts == 2 and parts[1].title == "Part One" and parts[1].from == "/p1" and parts[1].to == "/p2" and not parts[1].partial
+        and parts[2].title == "Part Two" and parts[2].to == "/here" and parts[2].partial and #G.parts(toc, 1, "/x") == 1,
+        "the parts: each top chapter read, then the one you're in, up to your place")
+    -- the question: the part's text, cut; only that text; JSON back
+    local long = string.rep("word ", G.MAX_WORDS + 50)
+    local q = G.question("Moby-Dick", "Herman Melville", parts[2], long)
+    check(q.text:find('Book: "Moby-Dick" by Herman Melville.', 1, true) and q.text:find("Part: Part Two (read up to here so far)", 1, true)
+        and q.text:find("(its start)", 1, true) and G.words(q.text) < G.MAX_WORDS + 200 and q.system:find("Use only the text you are given", 1, true)
+        and q.what == "story guide", "the question: the book, the part and its text (cut at " .. G.MAX_WORDS .. " words), only that text, JSON back")
+    local a1 = G.parse('Here: {"summary":"Ishmael goes to sea.","people":[{"name":"Ishmael","about":"the narrator"},{"name":"Queequeg","about":"a harpooner"}],'
+        .. '"places":[{"name":"New Bedford","about":"a port"}],"terms":[]}')
+    local a2 = G.parse('{"summary":"They sail.","people":[{"name":"ishmael","about":"a sailor now"},{"name":"Ahab","about":"the captain"}],"places":[],"terms":[{"name":"Pequod","about":"the ship"}]}')
+    check(a1 and a1.summary == "Ishmael goes to sea." and #a1.people == 2 and a2 and G.parse("no json") == nil, "an answer read from the AI's text")
+    a1.title, a2.title = "Part One", "Part Two"
+    local m = G.merge({ a1, a2 })
+    check(#m.people == 3 and m.people[1].name == "Ishmael" and m.people[1].count == 2 and m.people[1].about == "a sailor now"
+        and #m.terms == 1 and #m.parts == 2, "put together: each name once, what the latest part said, how many parts it came up in, the most first")
+    local r = G.render(m, "Up to 28% \u{00B7} Part Two", "Claude")
+    check(r:find("People\n\u{2022} Ishmael \u{2014} a sailor now  (2)", 1, true) and r:find("Places", 1, true) and r:find("Terms", 1, true)
+        and r:find("So far\nPart One: Ishmael goes to sea.", 1, true) and r:find("Made by Claude from the book's own text", 1, true),
+        "the window: People, Places, Terms, then what happened part by part, who made it")
+    -- the tile: an AI key, a book that reflows
+    local doc = { info = { has_pages = false }, getCurrentPage = function() return 55 end, getPageCount = function() return 200 end,
+        getXPointer = function() return "/here" end,
+        getTextFromXPointers = function(_d, a, b) return "text of " .. a .. " to " .. b .. " " .. string.rep("w ", 100) end }
+    local ui = { document = doc, toc = { toc = toc, fillToc = function() end, getTocTitleByPage = function() return "Part Two" end },
+        doc_props = { display_title = "Moby-Dick", authors = "Herman Melville" } }
     local was_hw, was_ai = plugin.store.handwriting, plugin.store.ai
     plugin.store.handwriting, plugin.store.ai = nil, nil
-    check(Story.tile(plugin, ui) == nil, "no AI key: no tile")
+    check(G.tile(plugin, ui) == nil, "no AI key: no tile")
     AI.settings(plugin).claude.key = "sk-example"
-    local tile = Story.tile(plugin, ui)
-    check(tile and tile.id == "storysofar" and tile.label == "Story so far" and io.open(PLUGIN .. "/icons/panel/storysofar.svg") ~= nil, "an AI key: Story so far, with its icon")
-    -- tapped: asked, then shown and kept
+    local tile = G.tile(plugin, ui)
+    check(tile and tile.id == "storyguide" and tile.label == "Story guide" and io.open(PLUGIN .. "/icons/panel/storyguide.svg") ~= nil, "an AI key: Story guide, with its icon")
+    check(G.tile(plugin, { document = { info = { has_pages = true } } }) == nil, "…not for a PDF (no text a part at a time)")
+    -- tapped: asks first, then each part, kept; later only the new
     local store = {}
     ui.doc_settings = { readSetting = function(_s, k) return store[k] end, saveSetting = function(_s, k, v) store[k] = v end }
     local UIM = require("ui/uimanager")
-    local was_show, was_close, was_ask = UIM.show, UIM.close, AI.ask
-    local saved_im, saved_tv = package.loaded["ui/widget/infomessage"], package.loaded["ui/widget/textviewer"]
+    local was_show, was_close, was_ask, was_tick = UIM.show, UIM.close, AI.ask, UIM.nextTick
+    local saved_im, saved_tv, saved_cb = package.loaded["ui/widget/infomessage"], package.loaded["ui/widget/textviewer"], package.loaded["ui/widget/confirmbox"]
     package.loaded["ui/widget/infomessage"] = { new = function(_c, o) o.kind = "info"; return o end }
     package.loaded["ui/widget/textviewer"] = { new = function(_c, o) o.kind = "viewer"; return o end }
-    local shown, asked, cb = {}, 0, nil
+    package.loaded["ui/widget/confirmbox"] = { new = function(_c, o) o.kind = "confirm"; return o end }
+    local shown, asked = {}, {}
     UIM.show = function(_s, w) shown[#shown + 1] = w end
-    UIM.close = function(_s, w) w.closed = true end
-    AI.ask = function(_p, question, c) asked = asked + 1; cb = c; shown.q = question end
+    UIM.close = function(_s, w) if w then w.closed = true end end
+    UIM.nextTick = function(_s, f) f() end
+    AI.ask = function(_p, question, c) asked[#asked + 1] = question; c(#asked == 1 and '{"summary":"One.","people":[{"name":"Ishmael","about":"x"}]}' or '{"summary":"Two.","people":[]}') end
     tile.run()
-    check(asked == 1 and shown.q.text:find("25% of the way through", 1, true) and shown[1].text == "Asking Claude…", "tapped: asked, with where you are")
-    cb("Who's who\nIshmael - the narrator\n\nSo far\nHe goes to sea.")
+    local box = shown[#shown]
+    check(box.kind == "confirm" and box.text:find("sends the text you've read so far", 1, true) and #asked == 0, "the first time: asked before the book's text is sent")
+    box.ok_callback()
     local w = shown[#shown]
-    check(w.kind == "viewer" and w.title == "The story so far" and w.text:find("Up to 25% \u{00B7} Chapter 9", 1, true)
-        and store.gzreader_story_so_far and store.gzreader_story_so_far.chapter == "Chapter 9" and store.gzreader_story_so_far.by == "Claude",
-        "the answer shown, and kept with the book for this chapter")
+    check(#asked == 2 and asked[1].text:find("text of /p1 to /p2", 1, true) and asked[2].text:find("text of /p2 to /here", 1, true)
+        and w.kind == "viewer" and w.title == "Story guide" and w.text:find("Ishmael", 1, true) and w.text:find("Up to 28% \u{00B7} Part Two", 1, true),
+        "…each part asked about, the guide shown")
+    check(store.gzreader_story_guide and store.gzreader_story_guide.parts["/p1|/p2"] and store.gzreader_story_guide.parts["/p2|/here"].partial,
+        "…kept with the book (the part you're in marked as unfinished)")
     tile.run()
-    check(asked == 1 and shown[#shown].kind == "viewer", "opened again in the same chapter: shown at once, not asked again")
-    shown[#shown].buttons_table[1][1].callback()
-    check(asked == 2, "Ask again: asked for where you are now")
-    cb(nil, "the key was refused")
-    check(shown[#shown].text == "Claude didn't answer: the key was refused" and store.gzreader_story_so_far.text:find("He goes to sea", 1, true),
-        "no answer: said why; the kept one stays")
-    UIM.show, UIM.close, AI.ask = was_show, was_close, was_ask
-    package.loaded["ui/widget/infomessage"], package.loaded["ui/widget/textviewer"] = saved_im, saved_tv
+    check(#asked == 2 and shown[#shown].kind == "viewer", "opened again in the same place: shown at once, nothing asked")
+    doc.getXPointer = function() return "/further" end
+    tile.run()
+    check(#asked == 3 and asked[3].text:find("text of /p2 to /further", 1, true) and not store.gzreader_story_guide.parts["/p2|/here"],
+        "read on: only the part you're in asked about again (no question first: the book's text has gone before)")
+    UIM.show, UIM.close, AI.ask, UIM.nextTick = was_show, was_close, was_ask, was_tick
+    package.loaded["ui/widget/infomessage"], package.loaded["ui/widget/textviewer"], package.loaded["ui/widget/confirmbox"] = saved_im, saved_tv, saved_cb
     plugin.store.handwriting, plugin.store.ai = was_hw, was_ai
     local found = false
     for _i, g in ipairs(require("gzreader_panel").catalog()) do
-        if g.id == "book" then for _j, t in ipairs(g.tiles) do if t.id == "storysofar" then found = true end end end
+        if g.id == "book" then for _j, t in ipairs(g.tiles) do if t.id == "storyguide" then found = true end end end
     end
-    check(found, "Settings → Quick panel lists Story so far under This book")
+    check(found, "Settings → Quick panel lists Story guide under This book")
 end)()
 
 print("The request helper (opt-in): connections kept between background processes")
