@@ -1170,10 +1170,7 @@ function Paper.articleText(item)
     local by = item.source or ""
     if item.at then by = by .. (by ~= "" and " · " or "") .. Paper.dateText(item.at) .. ", " .. Paper.timeText(item.at) end
     if by ~= "" then parts[#parts + 1] = by end
-    -- (a story fetched from its page by an earlier build: the same tidying as Article.extract's)
-    local text = item.text
-    if item.full and text and text ~= "" then text = require("gzreader_article").tidyText(text, item.title) end
-    if text and text ~= "" then parts[#parts + 1] = text end
+    if item.text and item.text ~= "" then parts[#parts + 1] = item.text end
     if item.link then
         parts[#parts + 1] = item.full and _("From the story's own page. QR code shows its link for your phone.")
             or (not item.text or #item.text < 600)
@@ -1590,6 +1587,22 @@ end
 local function feedLabel(f)
     local D = Daily()
     return (f.name and (f.name .. " · ") or "") .. D.site(f.url)
+end
+
+-- A story fetched from its own page by an earlier build still has the
+-- page's embed code, captions and byline lines in it: tidied when it's
+-- shown, as Article.extract tidies new ones. (A feed's own text is left.)
+do
+    local as_kept = Paper.articleText
+    function Paper.articleText(item)
+        if type(item) == "table" and item.full and type(item.text) == "string" and item.text ~= "" then
+            local copy = {}
+            for k, v in pairs(item) do copy[k] = v end
+            copy.text = require("gzreader_article").tidyText(item.text, item.title)
+            item = copy
+        end
+        return as_kept(item)
+    end
 end
 
 --- feeds.txt in the GZreader folder or at the top of the Kindle's drive.
