@@ -2692,6 +2692,8 @@ function Grimmory:downloadAndOpen(book, menu, opts)
             end
         end
         local shown = Titles.full(title, sub)
+        -- (asked for by the caller: what to do with it now it's here, gzreader_narratedopen.lua)
+        if type(opts.gz_after) == "function" then return opts.gz_after(path) end
         if book.gz_quiet and not watching then
             UIManager:show(InfoMessage:new{ text = (info.left or 0) > 0
                 and T(_("Downloaded “%1”. %2 more in the queue."), shown, info.left)

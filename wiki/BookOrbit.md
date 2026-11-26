@@ -132,8 +132,16 @@ any EPUB 3 with "media overlays") plays its own narration on a Kindle with
 sound.
 
 - **Downloading one**: its page has **With narration** (with its size) and
-  **Book only** (the text and pictures: much smaller; its size shows once
-  BookOrbit has made that copy) over Download; pick one, then Download.
+  **Book only** (the text and pictures: much smaller) over Download; pick
+  one, then Download. Until BookOrbit has made the book-only copy once, its
+  size is worked out from the narrated copy less its audio (shown with ≈;
+  this needs the API key).
+- **A book that has an audiobook too**, neither on the Kindle: tapping it on
+  Home (recently read on every device) asks **Narrated book**, **Ebook
+  only** or **Audiobook only**, each with its size. On the Catalog's
+  Audiobooks page the same question comes with the audiobook's size and
+  the book's description, the audiobook first; the narrated book then plays
+  as an audiobook once it's downloaded.
   Downloading from elsewhere (the Catalog's lists) asks **Narrated book** or
   **Book only**.
 - **Already on the Kindle without its narration**: hold the book on Home or

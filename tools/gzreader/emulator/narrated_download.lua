@@ -29,6 +29,8 @@ add({ fn = function(E)
     local ok, err = p:connect("http://127.0.0.1:18096", "will-kindle", "hunter22", "bookorbit")
     E.say("sign-in:", tostring(ok), tostring(err))
     local t = top(); if t and t.text then UIM():close(t) end
+    -- (the mock's example API key: Book only's size worked out from the reader's list)
+    p.store.bookorbit.api_key = os.getenv("GZ_EMU_BO_KEY") or p.store.bookorbit.api_key
     page = require("gzreader_bookpage").show({ api = p.api, plugin = p }, { id = 104, title = "Night Trains", authors = { "Example Author" },
         primaryFileType = "epub" })
 end, after = 8 })
@@ -37,9 +39,10 @@ add({ fn = function(E)
     check(page and page.narr and page.narr.has, "the book page: BookOrbit says it has narration")
     local labels = {}
     for _i, c in ipairs(require("gzreader_narratedopen").pageChoices(page.narr)) do labels[#labels + 1] = c.label end
-    check(#labels == 2 and labels[1]:find("With narration", 1, true) and labels[1]:find("MB", 1, true) and labels[2]:find("Book only", 1, true),
+    check(#labels == 2 and labels[1]:find("With narration", 1, true) and labels[1]:find("MB", 1, true) and labels[2]:find("Book only", 1, true)
+        and labels[2]:find("MB", 1, true),
         "…With narration (its size) and Book only over Download: " .. table.concat(labels, " | "))
-    E.tap("Book only (smaller)")
+    E.tap(labels[2])
 end, after = 2 })
 add({ shot = "narrdl-2-book-only" })
 add({ fn = function()
@@ -77,6 +80,20 @@ end, after = 1 })
 add({ wait_for = function()
     return not require("gzreader_download").active and (require("libs/libkoreader-lfs").attributes(copy, "size") or 0) > (copy_size or 0)
 end, timeout = 40 })
+-- the Audiobooks page: the audiobook of a narrated book asks which, with its size and description
+add({ fn = function()
+    require("gzreader_audiobook").choose(plugin(), { id = "a104", title = "Night Trains", fileSizeKb = 300 * 1024 })
+end, after = 6 })
+add({ shot = "narrdl-5-audiobooks" })
+add({ fn = function()
+    local d = top()
+    local labels = {}
+    for _i, r in ipairs(d and d.buttons or {}) do labels[#labels + 1] = r[1].text end
+    check(#labels == 4 and labels[1] == "Audiobook only · 300 MB" and labels[2]:find("^Narrated book") and labels[3]:find("^Ebook only")
+        and tostring(d.title):find("About Night Trains", 1, true), "the Audiobooks page: audiobook only, narrated book or ebook, with the description: "
+        .. table.concat(labels, " | "))
+    if d then UIM():close(d) end
+end, after = 2 })
 add({ fn = function(E)
     local e = plugin().store.downloads["104"]
     local h = io.popen("curl -s http://127.0.0.1:18096/_mock/state"); local st = h:read("*a"); h:close()

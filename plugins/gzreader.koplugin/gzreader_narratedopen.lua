@@ -358,6 +358,14 @@ local function mb(bytes)
     return string.format("%.0f MB", math.max(1, bytes / 1048576))
 end
 
+--- The book-only copy's size for a label: "12 MB", "≈ 12 MB" (worked out from the
+--- narrated copy less its audio, before BookOrbit has made it), or nil. Pure.
+function Open.textSize(info)
+    local m = mb(info and info.text)
+    if m and info.text_about then return "\u{2248} " .. m end
+    return m
+end
+
 --- The question for a narrated BookOrbit book being downloaded: `info` =
 --- { narrated = bytes, text = bytes or nil }; go("original" | "audioless_epub").
 function Open.askDownload(title, info, go)
@@ -365,7 +373,7 @@ function Open.askDownload(title, info, go)
     local d
     local function pick(v) return function() UIManager():close(d); go(v) end end
     local narrated = mb(info.narrated)
-    local text = mb(info.text)
+    local text = Open.textSize(info)
     d = ButtonDialog:new{
         title = T(_("“%1” has its own narration. Download:"), title or ""),
         buttons = {
@@ -411,7 +419,7 @@ end
 --- The book page's two choices for a narrated book (gzreader_bookpage.lua):
 --- { { variant, label } ×2 }, with the sizes when known. Pure.
 function Open.pageChoices(info)
-    local narrated, text = mb(info and info.narrated), mb(info and info.text)
+    local narrated, text = mb(info and info.narrated), Open.textSize(info)
     return {
         { variant = "original", label = narrated and T(_("With narration · %1"), narrated) or _("With narration") },
         { variant = "audioless_epub", label = text and T(_("Book only · %1"), text) or _("Book only (smaller)") },
@@ -474,6 +482,100 @@ function Open.addNarration(p, path)
             })
         end, "read-aloud choices")
     end, { reason = "a book's narration" })
+end
+
+---------------------------------------------------------------- a book and its audiobook, neither on the Kindle
+
+--- The choices for a BookOrbit book that has an audiobook too (Home's recently read, the
+--- Catalog's Audiobooks page): { { how, label } … }: "narrated" (with its size) when the
+--- EPUB has narration, "ebook" (book only), "audio" (the audiobook only). Pure.
+function Open.bothChoices(info, audio_bytes)
+    local out = {}
+    local narrated = info and info.has
+    if narrated then
+        local m = mb(info.narrated)
+        out[#out + 1] = { how = "narrated", label = m and T(_("Narrated book · %1"), m) or _("Narrated book") }
+    end
+    local t = narrated and Open.textSize(info) or nil
+    out[#out + 1] = { how = "ebook", label = t and T(_("Ebook only · %1"), t) or _("Ebook only") }
+    local a = mb(audio_bytes)
+    out[#out + 1] = { how = "audio", label = a and T(_("Audiobook only · %1"), a) or _("Audiobook only") }
+    return out
+end
+
+--- The book's id for an audiobook of BookOrbit's ("a104": 104), or nil.
+function Open.bookIdOfAudio(id)
+    local b = tostring(id or ""):match("^a(%d+)$")
+    return b and tonumber(b) or nil
+end
+
+--- Narrated, ebook only or audiobook only, for a book and its audiobook that aren't on
+--- the Kindle. `book` (its summary: id, title, authors…), `audio` (the audiobook's
+--- summary, for Audiobook.choose), opts.audio_first (the Audiobooks page: the audiobook
+--- row first), opts.text (lines over the buttons: the size, the description).
+function Open.chooseBoth(p, book, audio, opts)
+    opts = opts or {}
+    local function show(info, blurb)
+        local ButtonDialog = require("ui/widget/buttondialog")
+        local audio_bytes = audio and tonumber(audio.fileSizeKb) and audio.fileSizeKb * 1024 or nil
+        local choices = Open.bothChoices(info, audio_bytes)
+        if opts.audio_first then table.insert(choices, 1, table.remove(choices)) end
+        local d
+        local rows = {}
+        for _i, c in ipairs(choices) do
+            rows[#rows + 1] = { { text = c.label, callback = function()
+                UIManager():close(d)
+                Log.info("narration: chosen for a book and its audiobook:", c.how)
+                if c.how == "audio" then return Open.downloadAudio(p, audio) end
+                local b = book
+                if info and info.has then b = Open.asVariant(book, info, c.how == "narrated" and "original" or "audioless_epub") end
+                -- (from the Audiobooks page, the narrated book plays as its audiobook once it's here)
+                local after = c.how == "narrated" and opts.audio_first and function(path) Open.listen(path) end or nil
+                p:downloadAndOpen(b, nil, { gz_asked = true, no_open = after ~= nil or nil, gz_after = after })
+            end } }
+        end
+        rows[#rows + 1] = { { text = _("Cancel"), callback = function() UIManager():close(d) end } }
+        local title = book.title or (audio and audio.title) or ""
+        if blurb and blurb ~= "" then title = title .. "\n\n" .. blurb end
+        d = ButtonDialog:new{ title = title, title_align = "left", buttons = rows }
+        UIManager():show(d)
+        return d
+    end
+    if not (p and p.api and p.api.readAloudChoices) or book.id == nil then return show(nil, opts.text) end
+    require("gzreader_net").run(function()
+        require("gzreader_async").run(p.api, function(api)
+            local info = api:readAloudChoices(book.id)
+            local blurb
+            if opts.describe and api.getBookDetail then
+                local okd, d = pcall(api.getBookDetail, api, book.id)
+                local desc = okd and type(d) == "table" and d.description
+                if type(desc) == "string" then blurb = desc end
+            end
+            return { info = info, blurb = blurb }
+        end, function(r)
+            r = type(r) == "table" and r or {}
+            local blurb = opts.text
+            if r.blurb then
+                local okp, plain = pcall(function() return require("gzreader_audiobook").plainText(r.blurb) end)
+                plain = okp and plain or r.blurb
+                if #plain > 600 then plain = plain:sub(1, 600):gsub("[\128-\191]*$", ""):gsub("[\192-\255]$", "") .. "…" end
+                blurb = (blurb and (blurb .. "\n\n") or "") .. plain
+            end
+            show(r.info, blurb)
+        end, "read-aloud choices")
+    end, { reason = "a book's choices" })
+end
+
+--- The audiobook downloaded and played (as its own Download & listen does).
+function Open.downloadAudio(p, audio)
+    local AB = require("gzreader_audiobook")
+    local b = AB.load(p, audio.id)
+    if b then return AB.open(p, b) end
+    require("ui/network/manager"):runWhenOnline(function()
+        AB.download(p, audio, function(got, err)
+            if got then AB.open(p, got) else p:showError(err) end
+        end)
+    end)
 end
 
 --- The hold menu's row for `path` (gzreader_homemenu.lua), or nil.

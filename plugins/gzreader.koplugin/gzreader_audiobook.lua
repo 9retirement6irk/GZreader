@@ -1605,6 +1605,16 @@ function Audiobook.choose(plugin, summary)
             ok_callback = function() Usb.queuedMessage(plugin, summary) end,
         })
     end
+    -- (BookOrbit: its book may have its own narration: the audiobook only, or the narrated
+    -- book, which plays as an audiobook too; with the sizes and the description)
+    local okn, Open = pcall(require, "gzreader_narratedopen")
+    local book_id = okn and Open.bookIdOfAudio(summary.id)
+    if book_id and plugin.backend and plugin:backend() == "bookorbit" then
+        local size = size_kb and string.format("%.0f MB", size_kb / 1024)
+        return Open.chooseBoth(plugin, { id = book_id, title = summary.title, authors = summary.authors, primaryFileType = "epub" },
+            summary, { audio_first = true, describe = true,
+                text = T(_("Audiobook%1"), size and (" \u{00B7} " .. size) or "") })
+    end
     UIManager:show(ConfirmBox:new{
         text = T(_("Download the audiobook “%1” to this Kindle?"), summary.title or "")
             .. (size_kb and ("\n" .. string.format("%.0f MB", size_kb / 1024)) or ""),

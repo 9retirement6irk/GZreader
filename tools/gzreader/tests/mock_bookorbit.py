@@ -636,6 +636,21 @@ class Handler(BaseHTTPRequestHandler):
                 return
             STATE["seen"].append([method, p])
             return self.koreader(method, p[len("koreader/"):], q)
+        m = re.match(r"^epub/(\d+)/info$", p)
+        if m and method == "GET":
+            # the reader's list of what's in the EPUB, with sizes (a narrated book: its audio and SMIL too)
+            if not self.api_key():
+                return
+            bid = int(m.group(1))
+            b = BOOKS.get(bid) if isinstance(BOOKS, dict) else next((x for x in BOOKS if x["id"] == bid), None)
+            if not b:
+                return self.error(404, "Book not found")
+            manifest = [{"id": "ch1", "href": "OEBPS/ch1.xhtml", "mediaType": "application/xhtml+xml", "size": len(b["data"])}]
+            if bid in NARRATED:
+                extra = len(narrated_data(b)) - len(b["data"])
+                manifest += [{"id": "a1", "href": "OEBPS/audio/1.mp3", "mediaType": "audio/mpeg", "size": extra - 300},
+                             {"id": "s1", "href": "OEBPS/ch1.smil", "mediaType": "application/smil+xml", "size": 300}]
+            return self.send(200, {"spine": [], "manifest": manifest, "toc": []})
         if p == "auth/me" and method == "GET":
             if not self.api_key():
                 return

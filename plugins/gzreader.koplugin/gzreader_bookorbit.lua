@@ -633,7 +633,34 @@ function BookOrbit:readAloudChoices(book_id)
     local t = detail(self, book_id, "audioless_epub")
     local tf = t and BookOrbit.pickFile(t)
     out.text = tf and n(tf.sizeBytes) or nil
+    if not out.text and out.narrated then
+        -- (not made yet: about the narrated copy less its audio, from the reader's list of
+        -- what's in the EPUB; needs the API key)
+        local audio = self:narrationBytes(book_id)
+        if audio and audio < out.narrated then out.text, out.text_about = out.narrated - audio, true end
+    end
     return out
+end
+
+--- The bytes of a narrated EPUB's audio and its timing files (BookOrbit's reader lists
+--- what's in the book with sizes: GET /api/v1/epub/:id/info), or nil (no API key, no answer).
+function BookOrbit:narrationBytes(book_id)
+    local code, data = self:keyCall("GET", "/api/v1/epub/" .. tostring(book_id) .. "/info", { timeouts = { 10, 30 } })
+    if code ~= 200 or type(data) ~= "table" then return nil end
+    return BookOrbit.audioInManifest(data.manifest)
+end
+
+--- The size of the audio and SMIL items of an EPUB's manifest ({ mediaType, size }…), or nil. Pure.
+function BookOrbit.audioInManifest(manifest)
+    local total, seen = 0, false
+    for _i, it in ipairs(list(manifest)) do
+        local mt = type(it) == "table" and s(it.mediaType) or ""
+        if mt:match("^audio/") or mt == "application/smil+xml" then
+            total = total + (n(it.size) or 0)
+            seen = true
+        end
+    end
+    return seen and total or nil
 end
 
 --- The file of a book's detail that GZreader downloads: one of the book's own files
