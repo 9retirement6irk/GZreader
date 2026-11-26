@@ -68,7 +68,7 @@ add({ shot = "penpal-2-answer", after = 0.5 })
 add({ fn = function(E)
     local d = screen()
     local el = d.sketch:liveTexts()[1]
-    local _x, bottom = d.sketch:toCanvas(el.x, el.y + el.height)
+    local bottom = select(2, d.sketch:toCanvas(el.x, el.y + el.height))
     check(el.text:find("^Dear friend") ~= nil and el.customData.gzAsk.state == "answer" and el.fontFamily:find("Patrick Hand", 1, true) ~= nil,
         "the answer in the box, in the handwriting font")
     write(E, W * 0.15, bottom + H * 0.06, W * 0.6)
