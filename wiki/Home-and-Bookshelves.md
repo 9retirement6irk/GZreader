@@ -220,6 +220,11 @@ fill, rotation and fit, when to ignore a book's cover and the wake-up delay
 are in **Wallpaper options** next to it. (There is no custom image to
 choose, and no sleep-screen presets.)
 
+With a calendar set up (see [Calendar](Calendar)), there are two more tiles:
+**Today's calendar** (today in big with its events, then the next days that
+have events) and **This week's calendar** (the week, a day a row). See
+[Calendar → On the sleep screen](Calendar#on-the-sleep-screen).
+
 To have the cover fill the whole screen with no bars at the edges, tick
 **Wallpaper options → Border fill, rotation, and fit → Scale cover to fill
 screen**: the cover (or picture) keeps its proportions and is scaled up until

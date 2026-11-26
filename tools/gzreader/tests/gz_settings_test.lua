@@ -527,6 +527,13 @@ if PLUGIN then
         getHeight = function() return 800 end }, hasKeyboard = function() return true end,
         isKindle = function() return true end, hasDPad = function() return true end }
     package.loaded.device = nil
+    -- GZreader's plugin as the tiles see it; a calendar set up or not (gzreader_sleepcalendar.lua)
+    local gzp = { has_calendar = false }
+    stubs["apps/reader/readerui"] = { instance = nil }
+    stubs["apps/filemanager/filemanager"] = { instance = { gzreader = gzp } }
+    stubs.gzreader_sleepcalendar = { available = function(p) return p.has_calendar end,
+        chosen = function() return nil end, page = function() return nil end }
+    for _i, m in ipairs({ "apps/reader/readerui", "apps/filemanager/filemanager", "gzreader_sleepcalendar" }) do package.loaded[m] = nil end
     local okp, P = pcall(require, "gzreader_sleeppreview")
     check(okp and type(P) == "table", "the Wallpaper tiles load " .. tostring(not okp and P or ""))
     if okp then
@@ -557,6 +564,19 @@ if PLUGIN then
         P.choose("auto")
         check(P.current() == "auto" and store.gzreader_sleep_source == nil, "GZreader's own again, from the folder")
         store.gzreader_immich_album = nil
+        -- a calendar set up (Settings → Accounts and services → Calendar): two more tiles
+        gzp.has_calendar = true
+        ids = {}
+        for _i, c in ipairs(P.choices()) do ids[#ids + 1] = c.id end
+        check(table.concat(ids, ",") == "auto,cover,random_image,readingprogress,bookstatus,gz_calendar,gz_calendar_week,disable"
+            and #P.choices() <= #P.KEYS, "with a calendar: Today's and This week's calendar, before As it is " .. table.concat(ids, ","))
+        local pv = P.preview("gz_calendar", 120, 160)
+        check(type(pv) == "table" and pv[1] and pv[1].widget ~= nil, "the calendar's tile has a picture (its calendar icon when it can't be drawn)")
+        P.choose("gz_calendar")
+        check(P.current() == "gz_calendar" and store.screensaver_type == "gz_calendar" and store.gzreader_sleep_auto == false,
+            "choosing Today's calendar saves it as the sleep screen")
+        P.choose("auto")
+        gzp.has_calendar = false
         local L8 = P.layoutFor(600, 800, 8)
         check(L8.rows == 3 and L8.top + 3 * L8.th + 2 * L8.gap <= 800 - 30, "eight tiles fit a 600 × 800 screen")
         for _i, size in ipairs({ { 600, 800 }, { 824, 1200 }, { 1072, 1448 }, { 758, 1024 } }) do

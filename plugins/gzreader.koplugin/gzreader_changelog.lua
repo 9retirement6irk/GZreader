@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Your calendar on the sleep screen", text = "Settings → Sleep and wallpaper → Sleep → Wallpaper has two more tiles when a calendar is set up: Today's calendar (today in big with its events, then the next days that have events) and This week's calendar (the week, a day a row). The page is drawn from the events kept on the Kindle, so going to sleep never waits for Wi-Fi; when Wi-Fi connects and the last sync is more than an hour old, the calendar syncs again. The page says when it last synced." },
+        },
+    },
+    {
         version = "2026.11.22",
         changes = {
             { short = "Colour Kindles: Immich photos in colour", text = "On a Kindle Colorsoft or Scribe Colorsoft, the pictures from your Immich album (the sleep screen and the Home wallpaper) are kept in colour instead of being made grey. Pictures already on the Kindle stay grey until they are swapped for others from the album (about half each time GZreader gets new pictures)." },

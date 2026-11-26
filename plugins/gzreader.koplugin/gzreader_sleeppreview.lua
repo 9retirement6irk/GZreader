@@ -59,6 +59,7 @@ function P.choices()
     local u = ui()
     local immich = G_reader_settings:readSetting("gzreader_immich_album") ~= nil
         or require("gzsleepmode").source(G_reader_settings) == "immich"
+    local calendar = P.calendarPlugin() ~= nil
     local list = {
         { id = "auto", label = _("Book cover while reading, a picture elsewhere"), enabled = true },
         { id = "cover", label = _("Book cover"), enabled = lastFile() ~= nil },
@@ -68,11 +69,25 @@ function P.choices()
         immich and { id = "immich", label = _("A picture from your Immich album"), enabled = true } or false,
         { id = "readingprogress", label = _("Reading progress"), enabled = u ~= nil and u.statistics ~= nil },
         { id = "bookstatus", label = _("Book status (while reading)"), enabled = true },
+        -- (with a calendar: Settings → Accounts and services → Calendar; gzreader_sleepcalendar.lua)
+        calendar and { id = "gz_calendar", label = _("Today's calendar"), enabled = true } or false,
+        calendar and { id = "gz_calendar_week", label = _("This week's calendar"), enabled = true } or false,
         { id = "disable", label = _("Leave the screen as it is"), enabled = true },
     }
     local out = {}
     for _i, c in ipairs(list) do if c then out[#out + 1] = c end end
     return out
+end
+
+--- GZreader's plugin, when a calendar is set up (or the calendar is the sleep
+--- screen already), or nil.
+function P.calendarPlugin()
+    local u = ui()
+    local plugin = u and u.gzreader
+    if not plugin then return nil end
+    local okc, SC = pcall(require, "gzreader_sleepcalendar")
+    if okc and (SC.available(plugin) or SC.chosen(G_reader_settings)) then return plugin end
+    return nil
 end
 
 --- The choice in use.
@@ -179,6 +194,10 @@ function P.preview(id, w, h, snapshot)
             { widget = picture(bb and { image = bb } or { icon = zen_icons .. "book_closed.svg" }, half, h), left = true },
             { widget = picture(f and { file = f } or { icon = zen_icons .. "grid.svg" }, w - half, h), right = true },
         }
+    elseif id == "gz_calendar" or id == "gz_calendar_week" then
+        -- the page itself, drawn screen-size and made small
+        local bb = P.calendarPreview(id, w, h)
+        return { { widget = picture(bb and { image = bb } or { icon = zen_icons .. "calendar.svg" }, w, h) } }
     elseif id == "readingprogress" then
         return { { widget = picture({ icon = zen_icons .. "pie_chart.svg" }, w, h) } }
     elseif id == "disable" then
@@ -186,6 +205,28 @@ function P.preview(id, w, h, snapshot)
         return { { widget = picture({ icon = zen_icons .. "page.svg" }, w, h) } }
     end
     return {}
+end
+
+--- The calendar sleep screen `id` drawn at the screen's size and scaled to
+--- fit w x h: a blitbuffer, or nil.
+function P.calendarPreview(id, w, h)
+    local plugin = P.calendarPlugin()
+    if not plugin then return nil end
+    local ok, bb = pcall(function()
+        local sw, sh = Screen:getWidth(), Screen:getHeight()
+        if sw > sh then sw, sh = sh, sw end
+        local page = require("gzreader_sleepcalendar").page(plugin, id, sw, sh)
+        if not page then return nil end
+        local full = Blitbuffer.new(sw, sh, Screen.bb:getType())
+        full:fill(Blitbuffer.COLOR_WHITE)
+        page:paintTo(full, 0, 0)
+        local f = math.min(w / sw, h / sh)
+        local small = full:scale(math.max(1, math.floor(sw * f)), math.max(1, math.floor(sh * f)))
+        full:free()
+        return small
+    end)
+    if ok then return bb end
+    return nil
 end
 
 ---------------------------------------------------------------- a tile

@@ -378,6 +378,7 @@ function CalItem:onTapSelect()
 end
 
 local function badge(letter, side)
+    if Calendar.no_badges then return nil end -- (the sleep screen: nothing to press)
     if not letter or not Touch.keys() then return nil end -- (touch: no letter keys, a tap opens it)
     return Menu.getItemShortCutIcon(nil, Geom:new{ w = side, h = side }, letter, "square")
 end
@@ -1854,6 +1855,48 @@ function Calendar.settingsItems(plugin)
             callback = function() require("gzreader_storage").open("calendar") end,
         }),
     }
+end
+
+---------------------------------------------------------------- the sleep screen
+
+--- When the events were last synced, said simply ("Synced 9:42 AM",
+--- "Synced Tue Nov 24"), or nil (never: only the holidays, or not yet).
+function Calendar.syncedText(at, now)
+    if not at then return nil end
+    now = now or os.time()
+    if dayStart(at) == dayStart(now) then return T(_("Synced %1"), clock(at)) end
+    local d = os.date("*t", at)
+    return T(_("Synced %1"), WDAY[d.wday] .. " " .. MON[d.month] .. " " .. d.day)
+end
+
+--- The calendar as a sleep screen, w x h: "agenda" (today, then the next
+--- days with events) or "week", from the events kept on the Kindle (no Wi-Fi
+--- here: the Kindle is going to sleep). No letters to press. nil when it
+--- can't be drawn (the sleep screen then shows a picture instead).
+function Calendar.sleepPage(plugin, layout, w, h)
+    if not plugin or not RENDER[layout] then return nil end
+    Calendar.plugin = plugin
+    if not Calendar.events then pcall(Calendar.loadCache) end
+    local cursor, shown = Calendar.cursor, Calendar.layout
+    Calendar.cursor, Calendar.layout, Calendar.no_badges = dayStart(), layout, true
+    local ok, desk = pcall(RENDER[layout], plugin, w, h)
+    Calendar.cursor, Calendar.layout, Calendar.no_badges = cursor, shown, nil
+    if not ok or not desk then
+        Log.warn("calendar: the sleep screen couldn't be drawn:", tostring(desk))
+        return nil
+    end
+    local note = Calendar.hasNetSources(plugin) and Calendar.syncedText(Calendar.cached_at)
+    if note then
+        local t = TextWidget:new{ text = note, face = Font:getFace("cfont", 11), fgcolor = Blitbuffer.COLOR_DARK_GRAY }
+        local tw = t:getSize().w
+        if layout == "week" then
+            -- (in the heading, left of the week's number: the days fill the sheet)
+            desk:place(t, w - tw - S(150), S(30))
+        else
+            desk:place(t, w - tw - S(40), h - S(44)) -- (on the pad, at its foot)
+        end
+    end
+    return desk
 end
 
 return Calendar

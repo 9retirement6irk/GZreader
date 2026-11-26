@@ -448,6 +448,12 @@ function Screensaver:setup(event, event_message)
             self.screensaver_type = "random_image"
         end
     end
+    -- GZreader: a sleep screen a plugin draws (the calendar: gzreader_sleepcalendar.lua);
+    -- with nothing to draw it (the plugin off), a picture instead
+    if type(self.screensaver_type) == "string" and self.screensaver_type:match("^gz_")
+            and not (Screensaver.gz_screens and Screensaver.gz_screens[self.screensaver_type]) then
+        self.screensaver_type = "random_image"
+    end
     if self.screensaver_type == "random_image" then
         -- GZreader: the Immich album's pictures first when they're chosen,
         -- the folder set, then the USB drive's "screensavers" folder, then
@@ -576,6 +582,10 @@ function Screensaver:show()
         }
     elseif self.screensaver_type == "readingprogress" then
         widget = self.ui.statistics:onShowReaderProgress(true) -- get widget
+    elseif Screensaver.gz_screens and Screensaver.gz_screens[self.screensaver_type] then
+        -- GZreader: drawn by a plugin (the calendar); nothing drawn: the background alone
+        local ok, w = pcall(Screensaver.gz_screens[self.screensaver_type], screen_w, screen_h)
+        if ok then widget = w else logger.warn("Screensaver: couldn't draw", self.screensaver_type, w) end
     end
 
     -- Assume that we'll be covering the full-screen by default (either because of a widget, or a background fill).
