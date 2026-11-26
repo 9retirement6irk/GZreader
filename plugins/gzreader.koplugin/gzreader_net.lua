@@ -252,29 +252,69 @@ wrapScan = function()
     if type(orig) ~= "function" then return end
     Net._scan = function(self, cb, interactive, ...)
         if not Net.automatic or interactive then return orig(self, cb, interactive, ...) end
-        local show, repaint = UIManager.show, UIManager.forceRePaint
-        UIManager.show = function(um, w, ...)
-            -- (only messages are shown here when it isn't interactive)
-            if type(w) == "table" and type(w.text) == "string" and not w.buttons then
-                Log.info("wifi (quiet):", (tostring(w.text):gsub("\n", " "))) -- (Log hides the network's name)
+        local extra = { ... }
+        local function quietly()
+            local show, repaint = UIManager.show, UIManager.forceRePaint
+            UIManager.show = function(um, w, ...)
+                -- (only messages are shown here when it isn't interactive)
+                if type(w) == "table" and type(w.text) == "string" and not w.buttons then
+                    Log.info("wifi (quiet):", (tostring(w.text):gsub("\n", " "))) -- (Log hides the network's name)
+                    return
+                end
+                return show(um, w, ...)
+            end
+            UIManager.forceRePaint = function() end
+            local res = { pcall(orig, self, cb, interactive, unpack(extra)) }
+            UIManager.show, UIManager.forceRePaint = show, repaint
+            if not res[1] then error(res[2]) end
+            return res
+        end
+        local res = quietly()
+        if res[2] ~= false then return unpack(res, 2) end
+        -- KOReader's scan found no network. On a Kindle the radio has often
+        -- only just come up: look again a few times before giving up.
+        if not Net.onKindle() then return false end
+        local function again(n)
+            if not Net.connecting then return end -- (given up on meanwhile, or Wi-Fi turned off)
+            local okc, on = pcall(function() return NetworkMgr:isConnected() end)
+            if okc and on then
+                Log.info("wifi: the Kindle joined a network by itself meanwhile")
+                if cb then cb() end
                 return
             end
-            return show(um, w, ...)
+            local oks, r2 = pcall(quietly)
+            if oks and r2[2] ~= false then
+                Log.info("wifi: a network found at scan", n + 1)
+                return -- (KOReader is connecting to it, and ran the callback)
+            end
+            if n < Net.RESCANS then
+                return UIManager:scheduleIn(Net.RESCAN_WAIT, function() again(n + 1) end)
+            end
+            -- still none: the Kindle's own saved network, as ZenOS's Wi-Fi menu does
+            if Net.joinSaved() and cb then cb() end -- (KOReader's connectivity check waits for it)
         end
-        UIManager.forceRePaint = function() end
-        local res = { pcall(orig, self, cb, interactive, ...) }
-        UIManager.show, UIManager.forceRePaint = show, repaint
-        if not res[1] then error(res[2]) end
-        -- KOReader's scan found no network: the Kindle's own saved network
-        if res[2] == false and Net.joinSaved() then
-            if cb then cb() end -- (KOReader's connectivity check waits for it)
-            return nil
-        end
-        return unpack(res, 2)
+        Log.info("wifi: the scan found no network; looking again in", Net.RESCAN_WAIT, "s")
+        UIManager:scheduleIn(Net.RESCAN_WAIT, function() again(1) end)
+        return nil -- (not known yet: KOReader doesn't turn Wi-Fi off again)
     end
     NetworkMgr.reconnectOrShowNetworkMenu = Net._scan
 end
 Net._wrapScan = wrapScan -- (for the tests)
+
+--[[ An empty scan on a Kindle. The owner's Scribe (2026-11-25): on Auto, the
+scan made the moment Wi-Fi was switched on found nothing about one time in
+three, the Kindle was then asked to join the first network it has saved (of
+three by the evening, so not always the one in range), and nothing connected
+for 90 s; switching Wi-Fi to On connected in 5 s. So the scan is made again
+Net.RESCANS times, Net.RESCAN_WAIT seconds apart, and only after that is the
+saved network asked for. ]]
+Net.RESCANS = 3
+Net.RESCAN_WAIT = 4
+
+function Net.onKindle()
+    local okd, Device = pcall(require, "device")
+    return okd and Device.isKindle ~= nil and Device:isKindle() == true
+end
 
 --- KOReader's scan came back empty: a Paperwhite 3 and a Touch, right after
 --- KOReader or the Kindle restarted, had "Initial Wi-Fi scan yielded no

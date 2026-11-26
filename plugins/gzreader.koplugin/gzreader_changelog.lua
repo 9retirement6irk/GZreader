@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Wi-Fi on Auto: an empty first scan is tried again instead of failing for 90 seconds", text = "Wi-Fi on Auto (Kindles): the scan made the moment Wi-Fi is switched on sometimes finds no network. GZreader then asked the Kindle to join the first network it has saved, which isn't always the one in range, and nothing connected for 90 seconds (a Scribe with three saved networks; sending a report needed Wi-Fi set to On). The scan is now made again up to three times, four seconds apart, and the saved network is asked for only after that." },
+        },
+    },
+    {
         version = "2026.11.22",
         changes = {
             { short = "Colour Kindles: Immich photos in colour", text = "On a Kindle Colorsoft or Scribe Colorsoft, the pictures from your Immich album (the sleep screen and the Home wallpaper) are kept in colour instead of being made grey. Pictures already on the Kindle stay grey until they are swapped for others from the album (about half each time GZreader gets new pictures)." },
