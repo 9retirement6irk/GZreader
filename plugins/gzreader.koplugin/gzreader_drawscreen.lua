@@ -698,6 +698,8 @@ DrawScreen.SELECTION_TOOLS = {
     { id = "sel-cut", icon = "cut", label = _("Cut") },
     { id = "sel-delete", icon = "lasso-delete", label = _("Delete") },
     { id = "sel-text", icon = "text", label = _("To text") },
+    -- (level lines, even size and spacing: gzreader_tidy.lua; one Undo)
+    { id = "sel-tidy", icon = "tidy", label = _("Tidy") },
 }
 DrawScreen.SHORTCUT_NAMES = { eraser = _("Eraser"), pen = _("Pen"), pencil = _("Pencil"), fountain = _("Fountain pen"),
     marker = _("Marker"), highlighter = _("Highlighter") }
@@ -2989,6 +2991,22 @@ function DrawScreen:use(t)
             if not self:repaintArea(area) then self:repaintCanvas() end
         else
             self:layoutBar()
+        end
+        UIManager:setDirty(self, "ui")
+    elseif t.id == "sel-tidy" then
+        -- the writing chosen: lines made level, words even in size and spacing
+        local Tidy = require("gzreader_tidy")
+        local changed, area, sum = Tidy.apply(sk, sk.selection and sk.selection.strokes)
+        Log.info("drawing: lasso, tidy:", sum.lines, "lines,", sum.words, "words;", sum.turned, "turned level,",
+            sum.moved, "words set on the line,", sum.sized, "resized,", sum.spaced, "lines spaced evenly")
+        sk:clearSelection()
+        self:layoutBar()
+        if changed then
+            self:touched()
+            if not self:repaintArea(area) then self:repaintCanvas() end
+        else
+            UIManager:show(require("ui/widget/infomessage"):new{ timeout = 3,
+                text = _("That writing is already tidy (or isn't writing: shapes and highlighter aren't tidied).") })
         end
         UIManager:setDirty(self, "ui")
     elseif t.id == "paste" then

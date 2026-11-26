@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Drawings: Tidy handwriting", text = "In the drawing screen, choose some writing with the lasso and tap Tidy: lines that run uphill or downhill are made level, each word is set on its line, a word much bigger or smaller than the rest is brought nearer their size, and the gaps between words are made even. It doesn't read the writing or change its letters; one Undo puts it back. The diagnostic log's device probe now also lists what the Kindle has for reading handwriting (its libraries and services, no content), to find out whether the Scribe's own handwriting reader can be used." },
+        },
+    },
+    {
         version = "2026.11.22",
         changes = {
             { short = "Colour Kindles: Immich photos in colour", text = "On a Kindle Colorsoft or Scribe Colorsoft, the pictures from your Immich album (the sleep screen and the Home wallpaper) are kept in colour instead of being made grey. Pictures already on the Kindle stay grey until they are swapped for others from the album (about half each time GZreader gets new pictures)." },

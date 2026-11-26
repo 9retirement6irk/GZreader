@@ -205,7 +205,7 @@ function Log.exportTo(dir, crash_log_path)
     if Log.probe_device then
         local text
         text, probe = Log.deviceProbe()
-        out:write("\n\n===== device probe (text-to-speech, audio, Wi-Fi) =====\n", text)
+        out:write("\n\n===== device probe (text-to-speech, audio, Wi-Fi, handwriting) =====\n", text)
     end
     out:close()
     Log.info(string.format("log built in %.1f s", now() - started),
@@ -293,6 +293,13 @@ Log.PROBE_COMMANDS = {
     "lipc-probe com.lab126.wifid 2>&1 | head -60",
     "lipc-probe com.lab126.cmd 2>&1 | head -40",
     "for p in cmState scanState; do echo \"$p: $(lipc-get-prop com.lab126.wifid $p 2>&1)\"; done",
+    -- handwriting: whether the Kindle's own recognizer (its notebooks' and keyboard's: the
+    -- Scribe) is something GZreader could reach: its libraries, data files and services
+    "ls -la /usr/lib /usr/lib64 /opt/amazon/ebook/lib /app/lib 2>/dev/null | awk 'tolower($0) ~ /hwr|myscript|iink|handwrit|recogn|libink|stylus|scribe|notebook/'",
+    "ls -R /usr/share /opt /app /etc 2>/dev/null | awk 'tolower($0) ~ /myscript|iink|hwr|handwrit|recogni|\\.res$|ink-|_ink/' | head -60",
+    "lipc-probe -a 2>&1 | awk 'tolower($0) ~ /ink|hwr|handwrit|recogn|note|scribe|stylus|pen|keyboard|kb/' | head -40",
+    "ls /usr/bin /usr/sbin /app/bin 2>/dev/null | awk 'tolower($0) ~ /^ink|hwr|recogn|notebook|scribe|stylus|keyboard|myscript|iink/'",
+    "ps 2>/dev/null | awk 'tolower($0) ~ /hwr[^n]|recogn|notebook|scribe|keyboard|stylus|myscript|iink/' | grep -v awk",
 }
 
 --- What keeps the Kindle from sleeping, as the log is sent: GZreader's
@@ -330,6 +337,7 @@ Log.PROBE_LIVE = {
     ["awk 'tolower($0) ~ /tts|snippet/' /var/log/messages 2>/dev/null | tail -40"] = true,
     ["for p in cmState scanState; do echo \"$p: $(lipc-get-prop com.lab126.wifid $p 2>&1)\"; done"] = true,
     ["ls -la /usr/lib/liblipc* common/*lipc* libs/*lipc* 2>&1"] = true, -- (GZreader's own files too)
+    ["ps 2>/dev/null | awk 'tolower($0) ~ /hwr[^n]|recogn|notebook|scribe|keyboard|stylus|myscript|iink/' | grep -v awk"] = true,
 }
 
 local function readFile(path)
