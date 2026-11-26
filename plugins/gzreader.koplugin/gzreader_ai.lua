@@ -118,9 +118,23 @@ end
 
 ---------------------------------------------------------------- asking
 
+--- A conversation's messages: `history` ({ role = "user" | "assistant", text }
+--- each, oldest first: what was asked and answered before), then `last`.
+function AI.withHistory(history, last)
+    local out = {}
+    for _i, h in ipairs(type(history) == "table" and history or {}) do
+        if type(h) == "table" and type(h.text) == "string" and h.text ~= "" and (h.role == "user" or h.role == "assistant") then
+            out[#out + 1] = { role = h.role, content = h.text }
+        end
+    end
+    out[#out + 1] = last
+    return out
+end
+
 --- The request for a question: url, headers, body (JSON).
 --- `q` = { text = what to do, png = a picture's base64 (optional),
---- system = standing instructions (optional), max_tokens }.
+--- system = standing instructions (optional), max_tokens, history = the
+--- conversation before it (optional: AI.withHistory) }.
 function AI.request(provider, cfg, q)
     local Json = require("gzreader_json")
     local max_tokens = q.max_tokens or 1024
@@ -131,7 +145,7 @@ function AI.request(provider, cfg, q)
         local body = {
             model = (cfg.model or "") ~= "" and cfg.model or AI.CLAUDE_MODEL,
             max_tokens = max_tokens,
-            messages = { { role = "user", content = content } },
+            messages = AI.withHistory(q.history, { role = "user", content = content }),
         }
         if q.system then body.system = q.system end
         return AI.CLAUDE_URL, {
@@ -146,7 +160,7 @@ function AI.request(provider, cfg, q)
     if q.png then content[#content + 1] = { type = "image_url", image_url = { url = "data:image/png;base64," .. q.png } } end
     local messages = {}
     if q.system then messages[#messages + 1] = { role = "system", content = q.system } end
-    messages[#messages + 1] = { role = "user", content = content }
+    for _i, m in ipairs(AI.withHistory(q.history, { role = "user", content = content })) do messages[#messages + 1] = m end
     return url, { ["Authorization"] = "Bearer " .. tostring(cfg.key), ["Content-Type"] = "application/json" },
         Json.encode({ model = cfg.model, max_tokens = max_tokens, messages = messages })
 end
@@ -248,7 +262,7 @@ end
 function AI.uses(plugin)
     local _ = require("gettext")
     local out = {}
-    if AI.ready(plugin) then out[#out + 1] = _("Explain (the question mark when you select text in a book)") end
+    if AI.ready(plugin) then out[#out + 1] = _("Explain and Translate (the question mark and Translate when you select text in a book)") end
     local okh, Hw = pcall(require, "gzreader_handwriting")
     if okh and Hw.engine(plugin) ~= "kindle" then out[#out + 1] = _("Handwriting to text") end
     return out

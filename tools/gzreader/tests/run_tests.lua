@@ -1256,7 +1256,7 @@ print("The AI connection (gzreader_ai.lua): one key, asked the same way by every
     local names = {}
     for _i, r in ipairs(rows) do names[#names + 1] = r.text or r.text_func() end
     local list = table.concat(names, "|")
-    check(list:find("Set up from your browser (QR code)|Claude|Online service (OpenAI-style)|Claude key: set|", 1, true) and list:find("|Try it|Used for: Explain (the question mark when you select text in a book), Handwriting to text|Remove the keys", 1, true),
+    check(list:find("Set up from your browser (QR code)|Claude|Online service (OpenAI-style)|Claude key: set|", 1, true) and list:find("|Try it|Used for: Explain and Translate (the question mark and Translate when you select text in a book), Handwriting to text|Remove the keys", 1, true),
         "Settings → Accounts and services → AI: " .. list)
     check(not list:find("sk-ant-example", 1, true), "the key is never shown")
     check(rows[2].checked_func() == true and rows[3].enabled_func() == false, "Claude is ticked; the service can't be chosen until it's set up")
@@ -1276,14 +1276,15 @@ print("Explain: the selection menu's question mark asks the AI service about the
     check(Explain.available(plugin) == false, "no AI key: no question mark")
     -- the question
     local q = Explain.question("  the whale's lay  ", "Moby-Dick", "Herman Melville")
-    check(q.text == 'The book: "Moby-Dick" by Herman Melville\n\nThe selected text:\nthe whale\'s lay' and q.what == "explain" and q.max_tokens == 500,
-        "the question: the book's title and author, then the selected text (trimmed)")
-    check(q.system:find("Explain it to them plainly", 1, true) and q.system:find("Do not reveal anything that happens later", 1, true)
-        and q.system:find("under 150 words", 1, true) and q.system:find("language of the selected text", 1, true),
-        "…asked to explain it plainly, briefly, with no spoilers, in the text's language")
-    check(Explain.question("x", nil, nil).text == "The selected text:\nx" and Explain.question("x", "T", "").text:find('The book: "T"\n', 1, true),
+    check(q.text:find('The book: "Moby-Dick" by Herman Melville\n\nThe selected text:\nthe whale\'s lay\n\n', 1, true) == 1 and q.what == "explain" and q.max_tokens == 500,
+        "the question: the book's title and author, then the selected text (trimmed), then what's asked")
+    check(q.text:find("Explain it to me plainly", 1, true) and q.system:find("Do not reveal anything that happens later", 1, true)
+        and q.text:find("under 150 words", 1, true) and q.text:find("language of the selected text", 1, true)
+        and q.system:find("no Markdown", 1, true) and not q.system:find("Explain", 1, true),
+        "…asked to explain it plainly, briefly, in the text's language; the standing instructions (no spoilers, plain text) fit any question")
+    check(Explain.question("x", nil, nil).text:find("The selected text:\nx\n\n", 1, true) == 1 and Explain.question("x", "T", "").text:find('The book: "T"\n', 1, true),
         "…a book with no title or no author: left out")
-    check(Explain.cut("abcdef", 4) == "abcd" and Explain.cut("aé", 2) == "a" and Explain.cut("aé", 3) == "aé" and #Explain.question(("word "):rep(2000)).text < 3100,
+    check(Explain.cut("abcdef", 4) == "abcd" and Explain.cut("aé", 2) == "a" and Explain.cut("aé", 3) == "aé" and #Explain.question(("word "):rep(2000)).text < 3500,
         "a long selection is cut (never inside a letter)")
     -- the button, registered with the reader's selection menu
     local added = {}
@@ -1327,6 +1328,113 @@ print("Explain: the selection menu's question mark asks the AI service about the
     check(asked and asked.text:find("an old highlight", 1, true), "an existing highlight: its text is explained")
     asked = nil
     check(Explain.run(plugin, { ui = ui, selected_text = { text = "   " } }) == false and asked == nil, "nothing selected: nothing asked")
+    -- the answer's window: Ask…, Simpler, Summarize, Translate… carry the conversation on
+    ;(function()
+        local saved_bd, saved_id = package.loaded["ui/widget/buttondialog"], package.loaded["ui/widget/inputdialog"]
+        package.loaded["ui/widget/buttondialog"] = { new = function(_c, o) o.kind = "menu"; return o end }
+        package.loaded["ui/widget/inputdialog"] = { new = function(_c, o) o.kind = "input"; o.getInputText = function() return o.typed end; return o end }
+        local was_lang, was_ui_lang = gsettings.gzreader_ai_translate_to, gsettings.language
+        gsettings.gzreader_ai_translate_to, gsettings.language = nil, "fr_FR"
+        local function button(w, text)
+            for _i, row in ipairs(w.buttons_table or w.buttons or {}) do
+                for _j, b in ipairs(row) do if b.text == text then return b end end
+            end
+        end
+        shown = {}
+        ui.highlight.selected_text = { text = "the whale's lay" }
+        btn.callback()
+        answer_cb("A lay is a sailor's share of the voyage's profit.")
+        local win = shown[2]
+        check(win.add_default_buttons == false and button(win, "Ask…") and button(win, "Simpler") and button(win, "Summarize") and button(win, "Translate…") and button(win, "Close"),
+            "the answer's window: Ask…, Simpler, Summarize, Translate… and Close")
+        button(win, "Simpler").callback()
+        check(win.closed and asked.text == Explain.INSTRUCTIONS.simplify and asked.system == Explain.SYSTEM and #asked.history == 2
+            and asked.history[1].role == "user" and asked.history[1].text:find("the whale's lay", 1, true) and asked.history[1].text:find("Explain it to me plainly", 1, true)
+            and asked.history[2].role == "assistant" and asked.history[2].text == "A lay is a sailor's share of the voyage's profit.",
+            "Simpler: asked with the first question and its answer sent along (so \"it\" is known)")
+        answer_cb("A lay is a sailor's pay: a part of what the trip earns.")
+        local win2 = shown[#shown]
+        local at_new, at_old = win2.text:find("a part of what the trip earns", 1, true), win2.text:find("share of the voyage", 1, true)
+        check(win2.kind == "viewer" and win2.title == "Answered by Claude" and at_new and at_old and at_new < at_old
+            and win2.text:find("\u{25B8} Simpler\n", 1, true) and win2.text:find("\u{2014} Earlier \u{2014}", 1, true) and win2.text:find("\u{25B8} Explain\n", 1, true)
+            and select(2, win2.text:gsub("An AI wrote this", "")) == 1,
+            "the window again: the new answer first under what was asked, the earlier one below")
+        -- a question typed
+        button(win2, "Ask…").callback()
+        local box = shown[#shown]
+        box.typed = "   "
+        box.buttons[1][2].callback()
+        check(box.kind == "input" and not box.closed, "Ask…: a box to type in; an empty question isn't sent")
+        box.typed = " Who gets the biggest lay? "
+        asked = nil
+        box.buttons[1][2].callback()
+        check(box.closed and asked and asked.text == "Who gets the biggest lay?" and #asked.history == 4 and asked.history[3].text == Explain.INSTRUCTIONS.simplify,
+            "…the question as typed, with both earlier exchanges")
+        answer_cb("The captain.")
+        check(shown[#shown].text:find("\u{25B8} Who gets the biggest lay?\nThe captain.", 1, true), "…shown under the question")
+        -- Translate…: the languages, the usual one first; the pick is kept
+        button(shown[#shown], "Translate…").callback()
+        local menu = shown[#shown]
+        check(menu.kind == "menu" and menu.title == "Translate with AI" and menu.buttons[1][1].text == "Into French" and #menu.buttons[1] == 1
+            and menu.buttons[2][1].text == "English" and #menu.buttons[2] == 2 and not button(menu, "Without AI (Google Translate)"),
+            "Translate…: GZreader's language first (French here), then the others two to a row")
+        button(menu, "German").callback()
+        check(menu.closed and gsettings.gzreader_ai_translate_to == "German" and asked.text == "Translate the selected text into German. Give only the translation."
+            and Explain.languages()[1] == "German" and Explain.languages()[2] == "English",
+            "a language picked: asked for, and the usual one from then on")
+        answer_cb(nil, "it took too long")
+        check(shown[#shown - 1].text == "Claude didn't answer: it took too long" and shown[#shown].kind == "viewer" and shown[#shown].text:find("The captain.", 1, true),
+            "no answer to a follow-up: it says why, and the conversation so far is shown again")
+        -- a long conversation: the first exchange and the newest few go along
+        local long = Explain.newChat("sel", "T", "A")
+        for k = 1, 8 do long.turns[k] = { action = k == 1 and "explain" or "ask", arg = "q" .. k, label = "q" .. k, sent = k > 1 and ("q" .. k) or nil, answer = "a" .. k } end
+        local nq = Explain.next(long, "summarize")
+        check(#nq.history == 2 + 2 * Explain.KEEP and nq.history[1].text:find("The selected text:\nsel", 1, true) and nq.history[2].text == "a1"
+            and nq.history[3].text == "q5" and nq.history[#nq.history].text == "a8",
+            "a long conversation: the first exchange (it has the selection) and the newest " .. Explain.KEEP .. " are sent")
+        check(Explain.maxTokens("translate", ("x"):rep(2400)) == 1200 and Explain.maxTokens("translate", "x") == 500 and Explain.maxTokens("simplify", ("x"):rep(9000)) == 1500
+            and Explain.maxTokens("summarize", ("x"):rep(9000)) == 500, "a translation or a simpler version may be as long as the selection; the rest stay short")
+        -- the selection menu's Translate, with a key: the languages, and Google Translate last
+        local tbtn = added["13_gz_translate"](ui.highlight, nil)
+        local plain = 0
+        ui.highlight.translate = function(_h, idx) plain = plain + 1; ui.highlight.translated = idx end
+        check(tbtn.text == "Translate (AI)" and tbtn.show_in_highlight_dialog_func() == true, "Translate (AI) is registered too, shown with a key")
+        shown, asked = {}, nil
+        ui.highlight.closed = 0
+        tbtn.callback()
+        menu = shown[1]
+        check(menu.kind == "menu" and menu.buttons[1][1].text == "Into German" and menu.buttons[#menu.buttons][1].text == "Without AI (Google Translate)"
+            and asked == nil and ui.highlight.closed == 0,
+            "tapped: the list of languages over the selection (nothing sent yet), Google Translate as its last row")
+        menu.buttons[1][1].callback()
+        check(asked and asked.what == "explain translate" and asked.history == nil and asked.text:find("the whale's lay\n\nTranslate the selected text into German.", 1, true)
+            and ui.highlight.closed == 1, "a language: the selection sent to be translated, the menu closed")
+        answer_cb("der Anteil des Wals")
+        check(shown[#shown].title == "Answered by Claude" and shown[#shown].text:find("\u{25B8} Into German\nder Anteil des Wals", 1, true), "the translation in the same window, with the same follow-ups")
+        shown = {}
+        tbtn.callback()
+        shown[1].buttons[#shown[1].buttons][1].callback()
+        check(plain == 1 and shown[1].closed, "Without AI: the reader's own translator (Google Translate), as before")
+        AI.settings(plugin).claude.key = nil
+        check(tbtn.show_in_highlight_dialog_func() == false, "no key: no AI translate (the row's Translate is KOReader's)")
+        AI.settings(plugin).claude.key = "sk-example"
+        gsettings.gzreader_ai_translate_to, gsettings.language = nil, nil
+        check(Explain.language() == "English", "no language set anywhere: English")
+        gsettings.gzreader_ai_translate_to, gsettings.language = was_lang, was_ui_lang
+        package.loaded["ui/widget/buttondialog"], package.loaded["ui/widget/inputdialog"] = saved_bd, saved_id
+        -- the request carries the conversation, for both kinds of service
+        local Json = require("gzreader_json")
+        local hq = { system = "S", text = "now", history = { { role = "user", text = "first" }, { role = "assistant", text = "answer" }, { role = "system", text = "no" }, { role = "user", text = "" } } }
+        local _u1, _h1, b1 = AI.request("claude", { key = "k" }, hq)
+        local _u2, _h2, b2 = AI.request("openai", { key = "k", model = "m", url = "https://ai.example.com/v1" }, hq)
+        local c, o = Json.decode(b1), Json.decode(b2)
+        check(#c.messages == 3 and c.messages[1].content == "first" and c.messages[2].role == "assistant" and c.messages[3].content[1].text == "now" and c.system == "S",
+            "Claude: the earlier turns, then the new question (other roles and empty turns left out)")
+        check(#o.messages == 4 and o.messages[1].role == "system" and o.messages[2].content == "first" and o.messages[3].content == "answer" and o.messages[4].content[1].text == "now",
+            "an OpenAI-style service: the same, after its system message")
+        local _u3, _h3, b3 = AI.request("claude", { key = "k" }, { text = "alone" })
+        check(#Json.decode(b3).messages == 1, "no history: one message, as before")
+    end)()
     UIM.show, UIM.close, AI.ask = was_show, was_close, was_ask
     package.loaded["ui/widget/infomessage"], package.loaded["ui/widget/textviewer"] = saved_im, saved_tv
     plugin.store.handwriting, plugin.store.ai = was_hw, was_ai
@@ -1335,6 +1443,9 @@ print("Explain: the selection menu's question mark asks the AI service about the
     check(hsrc:find('find_highlight_button(self, index, "gz_explain")', 1, true) and hsrc:find('resolveLocalIcon(_icons_dir, "lookup_explain")', 1, true)
         and hsrc:find("gz_explain = true", 1, true) and io.open(arg[5] .. "/plugins/zenos.koplugin/icons/lookup_explain.svg"),
         "the icon row has it as a question mark (and it isn't repeated under More)")
+    check(hsrc:find('find_highlight_button(self, index, "gz_translate")', 1, true) and hsrc:find("if ai_translate then return ai_translate.callback() end", 1, true)
+        and hsrc:find("gz_translate = true", 1, true) and hsrc:find("self:translate(index)", 1, true),
+        "the icon row's Translate opens GZreader's AI translate when there's a key, KOReader's translator otherwise (and it isn't repeated under More)")
     local msrc = io.open(arg[5] .. "/plugins/gzreader.koplugin/main.lua"):read("*a")
     check(msrc:find('require("gzreader_explain").register(self, self.ui)', 1, true), "registered when a book opens")
 end)()
