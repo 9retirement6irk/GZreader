@@ -1099,6 +1099,8 @@ local function endPinch(self, out)
         if c then c.kind = "ignore" end -- (the other finger, still down, does nothing more)
     end
     if not p.cancel then applyPinch(self, out, true) end
+    -- (the fingers lifted: the page drawn properly once, after the quick look at each step)
+    if p.live then out.redraw, out.view, out.view_final = true, true, true end
     self.pinch = nil
 end
 
@@ -1214,6 +1216,7 @@ local function endContact(self, slot, out)
     if c.kind == "pinch" and self.pinch then return endPinch(self, out) end
     if c.kind == "pan" then
         applyPan(self, c, out)
+        if c.panning then out.redraw, out.view, out.view_final = true, true, true end
         if self.pan_slot == slot then self.pan_slot = nil end
         return
     end

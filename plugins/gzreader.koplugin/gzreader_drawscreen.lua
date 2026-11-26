@@ -1623,6 +1623,9 @@ function DrawScreen:repaintCanvas()
     end
     self:paintLocked(pictures)
     self:paintLocked(others)
+    -- (zoomed in: what's under the strokes and text boxes kept, so a rubbed-out stroke or an Undo
+    -- draws only its place again, repaintArea)
+    self:keepZoomPaper()
     for _i, el in ipairs(self.sketch:liveTexts()) do self:paintText(el) end
     local list = self.sketch:live()
     local cur = self.sketch:current()
@@ -1638,7 +1641,17 @@ function DrawScreen:repaintCanvas()
     -- again at every step; a coloured one still is if it's the first, as that makes the colour layer)
     local sk = self.sketch
     local cpu, inked = sk.zoomed and os.clock(), 0
-    local function ink(seg) self:ink(seg) end
+    local cw, ch, cx, cy = sk.canvas.w, sk.canvas.h, sk.canvas.x, sk.canvas.y
+    local zoomed = sk.zoomed
+    local function ink(seg)
+        -- (zoomed in, a stroke's bits off the canvas aren't inked: most of a long stroke there)
+        if zoomed then
+            local r = (seg[5] or 0) + 2
+            if math.max(seg[1], seg[3]) + r < cx or math.min(seg[1], seg[3]) - r > cx + cw
+                or math.max(seg[2], seg[4]) + r < cy or math.min(seg[2], seg[4]) - r > cy + ch then return end
+        end
+        self:ink(seg)
+    end
     for _i, st in ipairs(list) do
         if not sk.zoomed or (st.color and not self.tint_bb) or DrawScreen.strokeOnCanvas(sk, st) then
             strokeSegments(sk, st, ink)
@@ -1652,6 +1665,95 @@ function DrawScreen:repaintCanvas()
         self._view_paints = v
     end
     if t0 then self:noteRedraw(DrawScreen.clock() - t0, #list) end
+    self._painted_view = DrawScreen.viewOf(sk)
+    if self._view_base then self._view_base.bb:free(); self._view_base = nil end
+end
+
+--- The view a sketch shows (to tell whether a page drawn for it still is).
+function DrawScreen.viewOf(sk)
+    return { per_unit = sk.per_unit, ox = sk.ox, oy = sk.oy, w = sk.canvas.w, h = sk.canvas.h }
+end
+
+local function sameView(a, b)
+    return a ~= nil and b ~= nil and a.per_unit == b.per_unit and a.ox == b.ox and a.oy == b.oy and a.w == b.w and a.h == b.h
+end
+DrawScreen.sameView = sameView
+
+--- Zoomed in on a grey page: the page as it is before the strokes (paper,
+--- pictures, shapes) kept for this view (repaintCanvas calls it there). Not
+--- in colour (its layers too would have to be kept), nor fitted (repaintArea
+--- draws the paper itself there).
+function DrawScreen:keepZoomPaper()
+    local zp = self._zoom_paper
+    if zp then
+        zp.canvas:free(); zp.ink:free()
+        self._zoom_paper = nil
+    end
+    local sk = self.sketch
+    if not sk.zoomed or self.color_bb or self.tint_bb or not self.canvas_bb or not self.ink_bb then return end
+    local ok, a, b = pcall(function() return self.canvas_bb:copy(), self.ink_bb:copy() end)
+    if ok and a and b then
+        self._zoom_paper = { canvas = a, ink = b, view = DrawScreen.viewOf(sk), locked_n = #sk.locked, locked_last = sk.locked[#sk.locked] }
+    end
+end
+
+--- Where a page drawn for view `old` shows in view `new` (both DrawScreen.viewOf's):
+--- the part of the old page (sx, sy, sw, sh) and where it goes, scaled (dx, dy,
+--- dw, dh); nil when none of it does. Pure.
+function DrawScreen.viewMap(old, new)
+    local k = old.per_unit / new.per_unit -- (old pixels for one new pixel)
+    local x0, y0 = (new.ox - old.ox) * old.per_unit, (new.oy - old.oy) * old.per_unit
+    local sx0, sy0 = math.max(0, x0), math.max(0, y0)
+    local sx1, sy1 = math.min(old.w, x0 + new.w * k), math.min(old.h, y0 + new.h * k)
+    if sx1 - sx0 < 2 or sy1 - sy0 < 2 then return nil end
+    local sx, sy = math.floor(sx0), math.floor(sy0)
+    local sw, sh = math.floor(sx1) - sx, math.floor(sy1) - sy
+    local dx, dy = math.floor((sx - x0) / k + 0.5), math.floor((sy - y0) / k + 0.5)
+    local dw, dh = math.max(1, math.floor(sw / k + 0.5)), math.max(1, math.floor(sh / k + 0.5))
+    return { sx = sx, sy = sy, sw = sw, sh = sh, dx = dx, dy = dy, dw = math.min(dw, new.w - dx), dh = math.min(dh, new.h - dy) }
+end
+
+--- `bb` scaled to `w` × `h`: MuPDF's scaler, or nearest pixels through its bytes.
+function DrawScreen.scaled(bb, w, h)
+    local okm, Mupdf = pcall(require, "ffi/mupdf")
+    if okm and Mupdf and Mupdf.scaleBlitBuffer then
+        local ok, out = pcall(Mupdf.scaleBlitBuffer, bb, w, h)
+        if ok and out then return out end
+    end
+    return bb:scale(w, h)
+end
+
+--- A pinch or a pan going on: the page as last drawn, scaled and moved to
+--- the view now, on the screen at once; drawn properly when the fingers
+--- lift (out.view_final). Every step drew the whole zoomed page from its
+--- strokes, a second or more each on a full one, and the pinch couldn't be
+--- followed (the owner's Scribe, 2026-11-26: "it will freeze and won't let me
+--- zoom out"). False when there's nothing to show it from (colour: as before).
+function DrawScreen:previewView()
+    local pv = self._painted_view
+    if not pv or self.color_bb or self.tint_bb or not self.canvas_bb then return false end
+    local base = self._view_base
+    if not base then
+        local ok, copy = pcall(function() return self.canvas_bb:copy() end)
+        if not (ok and copy) then return false end
+        base = { bb = copy, view = pv }
+        self._view_base = base
+    end
+    local now = DrawScreen.viewOf(self.sketch)
+    local m = DrawScreen.viewMap(base.view, now)
+    local ok = pcall(function()
+        self.canvas_bb:fill(Blitbuffer.COLOR_WHITE)
+        if m and m.dw > 0 and m.dh > 0 then
+            local part = base.bb:viewport(m.sx, m.sy, m.sw, m.sh)
+            local big = DrawScreen.scaled(part, m.dw, m.dh)
+            self.canvas_bb:blitFrom(big, m.dx, m.dy, 0, 0, m.dw, m.dh)
+            big:free()
+        end
+    end)
+    if not ok then return false end
+    self._previews = (self._previews or 0) + 1
+    UIManager:setDirty(self, "fast")
+    return true
 end
 
 function DrawScreen:redrawAll()
@@ -1669,7 +1771,11 @@ end
 --- returns the part drawn (x, y, w, h: canvas pixels; none when it's off the page).
 function DrawScreen:repaintArea(area, quiet)
     local sk, c = self.sketch, self.canvas
-    if not area or sk.zoomed then return false end
+    if not area then return false end
+    -- (zoomed in: from the paper kept for this view, keepZoomPaper; without it, the whole page)
+    local zp = sk.zoomed and self._zoom_paper
+    if sk.zoomed and not (zp and sameView(zp.view, DrawScreen.viewOf(sk)) and not self.color_bb and not self.tint_bb
+        and zp.locked_n == #sk.locked and zp.locked_last == sk.locked[#sk.locked]) then return false end
     local x0, y0 = math.max(0, area.x0), math.max(0, area.y0)
     local x1, y1 = math.min(c.w, area.x1), math.min(c.h, area.y1)
     local w, h = x1 - x0, y1 - y0
@@ -1697,6 +1803,7 @@ function DrawScreen:repaintArea(area, quiet)
     end
     -- the pictures' parts first (their cached pictures at this size; one that can't be had: the whole page)
     local parts = {}
+    if zp then pictures = {} end -- (zoomed: the kept paper has them)
     for _i, p in ipairs(pictures) do
         if p.w >= 2 and p.h >= 2 and crosses(p.x, p.y, p.x + p.w, p.y + p.h) then
             local bb = self:picture(p.el, p.w, p.h)
@@ -1704,9 +1811,14 @@ function DrawScreen:repaintArea(area, quiet)
             parts[#parts + 1] = { bb = bb, p = p }
         end
     end
-    -- the area as an empty page…
-    self.canvas_bb:paintRect(x0, y0, w, h, Blitbuffer.COLOR_WHITE)
-    self.ink_bb:paintRect(x0, y0, w, h, Blitbuffer.COLOR_WHITE)
+    -- the area as an empty page (zoomed in: as the kept paper has it)…
+    if zp then
+        self.canvas_bb:blitFrom(zp.canvas, x0, y0, x0, y0, w, h)
+        self.ink_bb:blitFrom(zp.ink, x0, y0, x0, y0, w, h)
+    else
+        self.canvas_bb:paintRect(x0, y0, w, h, Blitbuffer.COLOR_WHITE)
+        self.ink_bb:paintRect(x0, y0, w, h, Blitbuffer.COLOR_WHITE)
+    end
     if self.tint_bb then self.tint_bb:paintRectRGB32(x0, y0, w, h, DrawScreen.rgb32(Drawing.INK)) end
     if self.color_bb then self.color_bb:paintRectRGB32(x0, y0, w, h, DrawScreen.rgb32(Drawing.PAPER)) end
     -- …its paper…
@@ -2077,8 +2189,10 @@ function DrawScreen:apply(out)
     if out.redraw then
         -- (the view moved, by a pinch or a finger: the page itself is as it was)
         if not out.view then self:touched() end
-        -- (a stroke rubbed out: only where it was)
-        if out.view or not self:repaintArea(out.area) then self:redrawAll() end
+        -- (a pinch or a pan still going: the page as it was shown, scaled and moved, a quick
+        -- look; drawn properly once, when the fingers lift; a stroke rubbed out: only where it was)
+        if out.view and not out.view_final and self:previewView() then -- luacheck: ignore 542
+        elseif out.view or not self:repaintArea(out.area) then self:redrawAll() end
     elseif #out.segments > 0 then
         self:touched()
         local screen_bb = Screen.bb
@@ -3308,6 +3422,8 @@ function DrawScreen:onCloseWidget()
     for _i, bb in ipairs({ "canvas_bb", "ink_bb", "color_bb", "tint_bb" }) do
         if self[bb] then self[bb]:free(); self[bb] = nil end
     end
+    if self._view_base then self._view_base.bb:free(); self._view_base = nil end
+    if self._zoom_paper then self._zoom_paper.canvas:free(); self._zoom_paper.ink:free(); self._zoom_paper = nil end
     for _i, p in ipairs(self.pages or {}) do
         for _k, bb in pairs(p.pictures or {}) do if bb then bb:free() end end
         p.pictures = nil

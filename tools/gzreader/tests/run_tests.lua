@@ -10916,7 +10916,7 @@ print("Notes (Memos v0.31)")
                 and dsrcs:find('local again = self:settleWait()', 1, true) ~= nil
                 and dsrcs:find('local st = PenMode.unhook()', 1, true) ~= nil,
                 "drawing: on the Scribe a stroke's ink goes out in the display's pen mode; what a stroke leaves to do waits for a pause; pen mode off when the screen closes")
-            check(dsrcs:find('if out.view or not self:repaintArea(out.area) then self:redrawAll() end', 1, true) ~= nil
+            check(dsrcs:find('elseif out.view or not self:repaintArea(out.area) then self:redrawAll() end', 1, true) ~= nil
                 and dsrcs:find('if self:repaintArea(area) then self:refreshBar() else self:redrawAll() end', 1, true) ~= nil
                 and dsrcs:find('if not area or sk.zoomed then return false end', 1, true) ~= nil,
                 "drawing: a rubbed-out stroke, an Undo, a Redo draw and refresh only their part of the page (all of it when zoomed in)")
@@ -11175,6 +11175,58 @@ print("Notes (Memos v0.31)")
             DS.eraseShown = real_shown
             UIMe.setDirty, UIMe.scheduleIn, UIMe.unschedule = real.dirty, real.sched, real.unsched
             PM.ink, PM.queued, PM.on = real.ink, real.queued, real.on
+        end)()
+        -- zoomed in: a pinch's steps show the page as it was drawn, scaled (no whole page from its strokes at
+        -- each), and a rubbed-out stroke draws only its place again, from the paper kept for that view
+        ;(function()
+            local DS = require("gzreader_drawscreen")
+            local Sk = require("gzreader_sketch")
+            local BBz = require("ffi/blitbuffer")
+            local UIMz = require("ui/uimanager")
+            local real_dirty = UIMz.setDirty
+            local dirty = {}
+            UIMz.setDirty = function(_s, _w, mode) dirty[#dirty + 1] = mode end
+            -- where a page drawn for one view shows in another
+            local fit = { per_unit = 1, ox = 0, oy = 0, w = 100, h = 130 }
+            local m = DS.viewMap(fit, { per_unit = 2, ox = 25, oy = 0, w = 100, h = 130 })
+            check(m and m.sx == 25 and m.sy == 0 and m.sw == 50 and m.sh == 65 and m.dx == 0 and m.dy == 0 and m.dw == 100 and m.dh == 130,
+                "drawing, zoomed: a page drawn fitted, seen at 2x from a quarter across: its middle half, twice as big")
+            local back = DS.viewMap({ per_unit = 2, ox = 25, oy = 0, w = 100, h = 130 }, fit)
+            check(back and back.sx == 0 and back.sw == 100 and back.dx == 25 and back.dw == 50 and back.dh == 65,
+                "…pinched back out: the zoomed page, half as big, where it is on the page (the rest white until drawn)")
+            check(DS.viewMap(fit, { per_unit = 1, ox = 500, oy = 0, w = 100, h = 130 }) == nil, "…a view showing none of it: nothing")
+            -- the quick look: the shown page scaled, a fast refresh, nothing drawn from strokes
+            local canvas = { x = 0, y = 0, w = 100, h = 130 }
+            local sk = Sk.new{ canvas = canvas, per_unit = 1 }
+            local page = BBz.new(100, 130, BBz.TYPE_BB8)
+            page:fill(BBz.COLOR_WHITE)
+            page:paintRect(40, 40, 20, 20, BBz.COLOR_BLACK) -- (a square in the middle)
+            local d = setmetatable({ sketch = sk, canvas = canvas, canvas_bb = page, ink_bb = BBz.new(100, 130, BBz.TYPE_BB8), ox = 0, oy = 0,
+                _painted_view = DS.viewOf(sk) }, { __index = function(_t, k) return rawget(DS, k) end })
+            sk:zoomBy(2, 50, 65, 50, 65)
+            local shown = d:previewView()
+            local dark_mid = page:getPixel(50, 65):getColor8().a < 64
+            local white_corner = page:getPixel(5, 5):getColor8().a > 192
+            local dark_edge = page:getPixel(32, 65):getColor8().a < 64 -- (the square, twice as big: from 30 to 70)
+            check(shown and dark_mid and white_corner and dark_edge and dirty[#dirty] == "fast" and d._view_base ~= nil,
+                "…a pinch going on: the page shown scaled about the fingers (the square twice as big), a quick refresh")
+            d._previews = 0
+            -- a colour page: as before (no quick look)
+            d.color_bb = {}
+            check(d:previewView() == false, "…a colour page: drawn from its strokes as before")
+            d.color_bb = nil
+            -- a rubbed-out stroke, zoomed in: its place from the paper kept for this view
+            local paper = BBz.new(100, 130, BBz.TYPE_BB8)
+            paper:fill(BBz.COLOR_GRAY)
+            d._zoom_paper = { canvas = paper, ink = BBz.new(100, 130, BBz.TYPE_BB8), view = DS.viewOf(sk), locked_n = 0 }
+            d.ink = function() end
+            local ok_area = d:repaintArea({ x0 = 10, y0 = 10, x1 = 30, y1 = 30 }, true)
+            local grey = page:getPixel(20, 20):getColor8().a
+            check(ok_area == true and grey > 100 and grey < 200, "…zoomed in, a rubbed-out stroke: only its place drawn again, from the paper kept for the view")
+            sk:zoomBy(1.2, 50, 65, 50, 65)
+            check(d:repaintArea({ x0 = 10, y0 = 10, x1 = 30, y1 = 30 }, true) == false, "…the view moved since: the whole page (the kept paper is for another view)")
+            UIMz.setDirty = real_dirty
+            if d._view_base then d._view_base.bb:free() end
         end)()
         local dsrcp = io.open(PLUGIN .. "/gzreader_drawscreen.lua"):read("*a")
         -- the drawing screen as the Kindle Scribe's notebook (walked through by emulator/notebook_ui.lua)

@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Drawing: zooming and rubbing out stay quick on a full page", text = "Zoomed in on a drawing, every step of a pinch or of moving the page drew the whole page again from its strokes, a second or more each on a full page (seven on the owner's Scribe), so the page froze and couldn't be zoomed out. Now the page follows the fingers as a quick scaled picture and is drawn properly once when they lift. Zoomed in, rubbing out a line or Undo redraws only that place (it redrew the whole page), and the parts of long lines that are off the screen aren't drawn. Colour pages are drawn as before." },
+        },
+    },
+    {
         version = "2026.11.22",
         changes = {
             { short = "Colour Kindles: Immich photos in colour", text = "On a Kindle Colorsoft or Scribe Colorsoft, the pictures from your Immich album (the sleep screen and the Home wallpaper) are kept in colour instead of being made grey. Pictures already on the Kindle stay grey until they are swapped for others from the album (about half each time GZreader gets new pictures)." },
