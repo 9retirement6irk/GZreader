@@ -685,6 +685,24 @@ API to `/api` are found too.
   reach Memos ("not sent yet" on the note meanwhile). The Notes tab keeps
   Wi‑Fi up while it's open (Wi‑Fi on Auto).
 
+## A pen pal: the AI writes back
+
+With the [AI connection](Setup-Page-and-Connections#ai) set up, a drawing's
+top bar has **✦** (Write back). Write a question or a note on the page with
+the pen, tap **✦**, and the AI writes back under it in a text box, in a
+handwriting font (Patrick Hand), like a pen pal answering on the same page.
+Your writing stays as you wrote it.
+
+- The question is the writing under the last answer on the page (on a page
+  with no answers yet, all of it). Write the next one under the answer and
+  tap **✦** again.
+- Only that writing is sent, as a black-and-white picture: never the rest of
+  the page, its pictures or your other notes. Wi‑Fi turns on for it.
+- No Wi‑Fi, or no reply: the box says so and waits. Tap **✦** to try again,
+  or open the page again later with Wi‑Fi on and it's asked by itself.
+- The answer is an ordinary text box: move it, change its words or delete
+  it as any other. Memos shows it too, in its own handwriting-style font.
+
 ## Saving
 
 - **Saving…** shows in the middle of the screen while a note or a drawing

@@ -13288,6 +13288,115 @@ print("Wi-Fi turned on by GZreader: no scan messages (touch Kindles)")
     local _unused = orig_show
 end)()
 
+print("A pen pal on a drawing's page (gzreader_drawask.lua): ✦ and the AI writes back under the writing")
+;(function()
+    local Ask = require("gzreader_drawask")
+    local AI = require("gzreader_ai")
+    local Hw = require("gzreader_handwriting")
+    local was_hw, was_ai = plugin.store.handwriting, plugin.store.ai
+    plugin.store.handwriting, plugin.store.ai = nil, nil
+    check(Ask.available(plugin) == false and Ask.available(nil) == false, "pen pal: no ✦ without the AI set up")
+    AI.settings(plugin).claude.key = "sk-ant-example"
+    check(Ask.available(plugin) == true, "pen pal: ✦ with the AI set up")
+    -- a page: strokes as canvas boxes, scene = canvas / 2
+    local function stroke(x0, y0, x1, y1) return { points = { { x0, y0 }, { x1, y1 } }, box = { x0 = x0, y0 = y0, x1 = x1, y1 = y1 } } end
+    local sk = { strokes = {}, texts = {}, text_gone = {}, changes = 0 }
+    function sk:live() local o = {}; for _i, st in ipairs(self.strokes) do if not st.gone then o[#o + 1] = st end end; return o end
+    function sk:liveTexts() local o = {}; for _i, el in ipairs(self.texts) do if not self.text_gone[el] then o[#o + 1] = el end end; return o end
+    function sk:strokeBox(st) return st.box end
+    function sk:strokesArea(list)
+        local a
+        for _i, st in ipairs(list) do
+            local b = st.box
+            a = a and { x0 = math.min(a.x0, b.x0), y0 = math.min(a.y0, b.y0), x1 = math.max(a.x1, b.x1), y1 = math.max(a.y1, b.y1) }
+                or { x0 = b.x0, y0 = b.y0, x1 = b.x1, y1 = b.y1 }
+        end
+        return a
+    end
+    function sk:toCanvas(x, y) return x * 2, y * 2 end
+    function sk:toScene(x, y) return x / 2, y / 2 end
+    function sk:addText(el) self.texts[#self.texts + 1] = el end
+    function sk:changeText(el, f) for k, v in pairs(f) do el[k] = v end; self.changes = self.changes + 1 end
+    function sk:radius() return 3 end
+    local screen = { sketch = sk, canvas = { w = 1000, h = 1400 }, plugin = plugin, redraws = 0 }
+    function screen:textHeight(el) local n = 1; for _l in tostring(el.text):gmatch("\n") do n = n + 1 end; return n * el.fontSize * 1.25 end
+    function screen:touched() end
+    function screen:redrawAll() self.redraws = self.redraws + 1 end
+    local real_ask, real_png = AI.ask, Hw.png
+    local asked, pending = {}, {}
+    Hw.png = function(flat) return flat and #flat > 0 and ("PNG" .. #flat) or nil, "nothing written" end
+    AI.ask = function(_p, q, done) asked[#asked + 1] = q; pending[#pending + 1] = done end
+    -- nothing written: told how
+    local said
+    local real_info = package.loaded["ui/widget/infomessage"]
+    package.loaded["ui/widget/infomessage"] = { new = function(_, o) said = o.text; return o end }
+    local n0 = Ask.tap(screen)
+    package.loaded["ui/widget/infomessage"] = real_info
+    check(n0 == 0 and tostring(said):find("then tap ✦", 1, true) ~= nil and #asked == 0, "pen pal: ✦ on an empty page says to write first")
+    -- a question written, ✦: a waiting box under it, the writing sent as a picture
+    sk.strokes = { stroke(100, 100, 400, 140), stroke(100, 160, 300, 200) }
+    local n1 = Ask.tap(screen)
+    local box = sk.texts[1]
+    local info = Ask.info(box)
+    check(n1 == 1 and #asked == 1 and asked[1].png == Hw.base64("PNG2") and asked[1].system == Ask.SYSTEM and asked[1].what == "drawing: pen pal",
+        "pen pal: the writing goes as a picture, with the pen pal's instructions")
+    check(box and box.text == Ask.THINKING and info.state == "waiting" and box.x == 50 and box.y == 100 + Ask.GAP
+        and info.q[1] == 50 and info.q[2] == 50 and info.q[3] == 200 and info.q[4] == 100 and box.fontFamily == Ask.FONT and Ask.isHand(box),
+        "pen pal: a box under the question, in a handwriting font, saying it's thinking; where the question is, kept with it")
+    check(#sk.strokes[1].points == 2 and not sk.strokes[1].gone, "pen pal: the writing stays as it was written")
+    -- tapped again while asking: not asked twice
+    local n_again = Ask.tap(screen)
+    check(#asked == 1 and n_again == 0 and info.asking == nil and next(box.customData.gzAsk, nil) ~= nil and Ask.busy[box] == true,
+        "pen pal: ✦ again while it's asking doesn't ask twice (and the drawing doesn't keep that it's asking)")
+    -- the answer comes: in the box, the box as tall as its lines
+    pending[1]("**Hello!** Paris is the capital of France.\n\n\n\nWrite again soon.  ")
+    check(box.text == "Hello! Paris is the capital of France.\n\nWrite again soon." and info.state == "answer"
+        and box.height == 3 * Ask.SIZE * 1.25 and Ask.waiting(sk.texts)[1] == nil,
+        "pen pal: the answer written in the box, plain, as tall as its lines")
+    -- the next question, under the answer: only it is sent
+    sk.strokes[3] = stroke(100, 500, 500, 560)
+    Ask.tap(screen)
+    check(#asked == 2 and asked[2].png == Hw.base64("PNG1") and #sk.texts == 2 and sk.texts[2].y == 280 + Ask.GAP,
+        "pen pal: the next question is only the writing under the last answer")
+    -- no answer (no Wi-Fi): the box says so and waits
+    pending[2](nil, "no answer (timeout)")
+    local second = sk.texts[2]
+    check(Ask.info(second).state == "waiting" and second.text:find("Tap ✦ to try again", 1, true) ~= nil,
+        "pen pal: no answer: the box says so, and still waits")
+    -- ✦ again: the waiting one asked again with its own writing (nothing new written)
+    Ask.tap(screen)
+    check(#asked == 3 and asked[3].png == Hw.base64("PNG1") and #sk.texts == 2 and second.text == Ask.THINKING,
+        "pen pal: ✦ asks what's still waiting again, with its own question")
+    -- the drawing closed before the answer: the box left waiting, asked when the page opens with Wi-Fi
+    screen._closed = true
+    pending[3]("Too late")
+    check(second.text == Ask.THINKING and Ask.info(second).state == "waiting", "pen pal: closed before the answer came: left waiting")
+    screen._closed = nil
+    local Net = require("gzreader_net")
+    local real_conn = Net.connected
+    Net.connected = function() return false end
+    local r0 = Ask.resume(screen)
+    Net.connected = function() return true end
+    local r1 = Ask.resume(screen)
+    Net.connected = real_conn
+    check(r0 == 0 and r1 == 1 and #asked == 4, "pen pal: a page opened with Wi-Fi on asks what's waiting (never turning Wi-Fi on for it)")
+    pending[4]("At last")
+    check(second.text == "At last" and Ask.info(second).state == "answer", "pen pal: …and the answer goes in")
+    -- a box from memos in Patrick Hand: drawn in it too; the answer tidied
+    check(Ask.isHand({ fontFamily = "'Patrick Hand', cursive" }) and not Ask.isHand({ fontFamily = "system-ui, sans-serif" })
+        and Ask.clean("   \n ") == nil and Ask.clean(nil) == nil, "pen pal: boxes in the handwriting font; an empty answer is none")
+    -- where it's wired in
+    local dsrc = io.open(PLUGIN .. "/gzreader_drawscreen.lua"):read("*a")
+    check(dsrc:find('elseif t.id == "ask" then self:setFlyout(nil); require("gzreader_drawask").tap(self)', 1, true) ~= nil
+        and dsrc:find('if require("gzreader_drawask").available(self.plugin) then icons[#icons + 1] = { id = "ask", icon = "ask"', 1, true) ~= nil
+        and dsrc:find('require("gzreader_drawask").isHand(el) and require("gzreader_sticky").hand(size)', 1, true) ~= nil
+        and dsrc:find('pcall(require("gzreader_drawask").resume, self)', 1, true) ~= nil
+        and io.open(PLUGIN .. "/icons/draw/ask.svg") ~= nil,
+        "pen pal: ✦ in the drawing's top bar, the answers drawn in the handwriting font, waiting ones asked when a page opens")
+    AI.ask, Hw.png = real_ask, real_png
+    plugin.store.handwriting, plugin.store.ai = was_hw, was_ai
+end)()
+
 print("No plain-HTTP retry with a password for servers on the internet")
 ;(function()
     local Lan = require("gzreader_lan")
