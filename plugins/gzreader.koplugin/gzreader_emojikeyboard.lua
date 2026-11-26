@@ -241,7 +241,7 @@ function Emoji.turn(state, step, settings)
     local kinds = Emoji.kinds(settings)
     local ki = 1
     for i, k in ipairs(kinds) do if k.id == state.kind then ki = i end end
-    local _list, page, pages = Emoji.page(kinds[ki].list, state.page, state.per or 30)
+    local _, page, pages = Emoji.page(kinds[ki].list, state.page, state.per or 30)
     if step > 0 and page < pages then state.page = page + 1
     elseif step < 0 and page > 1 then state.page = page - 1
     elseif step > 0 then state.kind, state.page = kinds[ki % #kinds + 1].id, 1
@@ -321,11 +321,10 @@ function Emoji.install()
                 local def = shown and shown[r] and shown[r][c]
                 if emoji and type(def) == "table" and def.gz then
                     local gz = def.gz
-                    if gz.back then
-                        -- KOReader's own ⌫ (hold: to the start of the line)
-                    elseif gz.blank then
+                    -- (⌫ stays KOReader's own: hold for the start of the line)
+                    if gz.blank then
                         vkey.callback = function() end; plain(vkey)
-                    else
+                    elseif not gz.back then
                         vkey.callback = function() Emoji.press(kb, gz) end; plain(vkey)
                     end
                 elseif vkey.label == Emoji.KEY then
