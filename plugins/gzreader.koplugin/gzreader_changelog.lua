@@ -10,6 +10,7 @@ return {
         version = "next",
         changes = {
             { short = "Reading: one Reader controls tile; Fit pictures in its Layout", text = "In a book, the quick panel's Contents, Bookmarks, Go to page, Font, Layout and Fit pictures tiles are one tile, Reader controls, which opens what a swipe up from the bottom of the page opens. Fit pictures is in reader controls' Layout tab (on or off; hold it for its options). On a Kindle with a keyboard, reader controls show their keys on a line under them: 1, 2, 3… the tabs along the bottom, F, L, T Font, Layout, Themes." },
+            { short = "Mark up: draw on a book's page, saved as a note in Memos", text = "Reading: the quick panel in a book has Mark up (touch Kindles, while Memos is connected). It takes the page as it is on the screen (highlights and status bars too) and opens the drawing screen on it, the page under your ink. The drawing is named for the book and its chapter, and you pick its tags in the top bar; Done saves it to Memos at once, with no note text to write. There's no Paper icon there: the book's page is the paper. The book itself isn't changed. The page is kept at most 1440 pixels on its longer side, in colour on a colour Kindle." },
         },
     },
     {

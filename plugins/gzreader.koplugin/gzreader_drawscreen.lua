@@ -743,6 +743,16 @@ function DrawScreen:topIcons()
     return icons
 end
 
+-- (a book's page marked up: the page is the paper, no Paper icon; gzreader_bookmarkup.lua)
+local topIconsAll = DrawScreen.topIcons
+function DrawScreen:topIcons()
+    local icons = topIconsAll(self)
+    if self.no_paper then
+        for i = #icons, 1, -1 do if icons[i].id == "paper" then table.remove(icons, i) end end
+    end
+    return icons
+end
+
 --- The note's space, who can see it or its tags changed (the editor behind): the bar again.
 function DrawScreen:barChanged()
     if self._closed then return end
@@ -3576,6 +3586,7 @@ function DrawScreen.show(opts)
         journal = opts.journal, -- { under }: a journal entry's drawing, in `pane` under its prompt (the entry: `under`)
         note_actions = opts.note_actions, -- { archive(screen), delete(screen) }: a note that's already there
         note_icons = opts.note_icons, -- fn(screen) → the note's icons' actions (gzreader_notebar.noteIcons)
+        no_paper = opts.no_paper, -- (a book's page marked up: the page is the paper, no Paper icon)
         on_done = on_done and function(res)
             for _i, p in ipairs(gone) do res[#res + 1] = p end
             -- (a journal entry's: what comes next, "entry", "typing" or "save")

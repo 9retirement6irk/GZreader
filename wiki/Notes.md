@@ -122,6 +122,15 @@ API to `/api` are found too.
   isn't changed. A colour PDF stays in colour: the Kindle shows it in greys
   as you draw (in colour on a colour Kindle), Memos in its colours. Each page is a picture of at most 1440 pixels on its longer
   side (smaller for a busy scan), so very small print is best zoomed in Memos.
+- **Mark up a book's page** (touch Kindles, Memos over Wi‑Fi): in a book,
+  the quick panel's **Mark up** takes the page as it is on the screen
+  (its highlights and status bars too) and opens the drawing screen on it,
+  the page under your ink like a notepaper (so there's no Paper icon). The
+  drawing is named for the book and its chapter ("Moby-Dick — Chapter 36.
+  The Quarter-Deck"; change it in the top bar if you like). Draw, write,
+  circle, pick tags with the tag icon; **Done** saves it to Memos straight
+  away, with no note text to write. The book itself isn't changed. The page is a picture of at most
+  1440 pixels on its longer side, in colour on a colour Kindle.
 - **Notes from Memos' rich editor** (Memos 26.11 and newer): its empty
   paragraphs (`&nbsp;`), characters written as codes (`&amp;`, `&#124;`) and
   backslash escapes (`\*`, `\#`) show as Memos shows them: blank lines and
