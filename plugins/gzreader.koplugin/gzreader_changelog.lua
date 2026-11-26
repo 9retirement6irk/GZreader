@@ -9,6 +9,7 @@ return {
     {
         version = "next",
         changes = {
+            { short = "A calendar card over your wallpaper", text = "Settings → Sleep and wallpaper → Sleep → Calendar on the wallpaper lays a small card (the day and date, your next five events this week, when it last synced) at the top or bottom of whatever wallpaper you chose, together with the sleep screen message if you have one. Drawn from the events kept on the Kindle; Wi-Fi connecting syncs it when it's over an hour old." },
             { short = "Your calendar on the sleep screen", text = "Settings → Sleep and wallpaper → Sleep → Wallpaper has two more tiles when a calendar is set up: Today's calendar (today in big with its events, then the next days that have events) and This week's calendar (the week, a day a row). The page is drawn from the events kept on the Kindle, so going to sleep never waits for Wi-Fi; when Wi-Fi connects and the last sync is more than an hour old, the calendar syncs again. The page says when it last synced." },
         },
     },

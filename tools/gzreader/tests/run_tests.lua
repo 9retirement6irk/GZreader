@@ -17512,6 +17512,74 @@ print("The calendar as the sleep screen (gzreader_sleepcalendar.lua)")
     local r4 = SC.onNetworkConnected(plugin)
     check(r1 == nil and r2 == "fresh" and r3 == "sync" and r4 == nil and refreshed == 1,
         "Calendar sleep screen: Wi-Fi connecting syncs it when over an hour old, and only when it's the sleep screen")
+    -- the card over another wallpaper: the next events, soonest first, at most five in the next week
+    local nowc = os.time{ year = 2026, month = 11, day = 26, hour = 11, min = 0 } -- a Thursday
+    local dayc = Cal.dayStart(nowc)
+    local evs = {
+        { title = "Over", start = dayc + 8 * 3600, finish = dayc + 9 * 3600 },
+        { title = "Piano", start = dayc + 16 * 3600, finish = dayc + 17 * 3600 },
+        { title = "Lunch", start = dayc + 12 * 3600, finish = dayc + 13 * 3600 },
+        { title = "Holiday", start = dayc, finish = Cal.addDays(dayc, 1), all_day = true },
+        { title = "Library", start = Cal.addDays(dayc, 1), finish = Cal.addDays(dayc, 2), all_day = true },
+        { title = "Book club", start = Cal.addDays(dayc, 2) + 19 * 3600, finish = Cal.addDays(dayc, 2) + 21 * 3600 },
+        { title = "Far off", start = Cal.addDays(dayc, 9) + 10 * 3600, finish = Cal.addDays(dayc, 9) + 11 * 3600 },
+    }
+    local up = Cal.upcoming(evs, nowc)
+    local names = {}
+    for i, e in ipairs(up) do names[i] = e.title end
+    check(table.concat(names, ",") == "Holiday,Lunch,Piano,Library,Book club",
+        "Calendar card: the next events, soonest first, none over and none past the week")
+    check(#Cal.upcoming(evs, nowc, 2) == 2 and #Cal.upcoming(nil, nowc) == 0,
+        "Calendar card: at most the number asked, and nothing with no events")
+    check(Cal.cardWhen(evs[3], nowc) == "12:00 PM" and Cal.cardWhen(evs[4], nowc) == "All day"
+        and Cal.cardWhen(evs[5], nowc) == "Tomorrow" and Cal.cardWhen(evs[6], nowc) == "Sat 7:00 PM",
+        "Calendar card: says when each is (a time, All day, Tomorrow, a weekday)")
+    -- where it goes, and only when it's on and there's a calendar
+    local saved_card = gsettings[SC.CARD]
+    gsettings[SC.CARD] = nil
+    local p_off = SC.cardPlace()
+    gsettings[SC.CARD] = "nonsense"
+    local p_bad = SC.cardPlace()
+    gsettings[SC.CARD] = "bottom"
+    local p_bottom = SC.cardPlace()
+    check(p_off == nil and p_bad == nil and p_bottom == "bottom", "Calendar card: off, at the top or at the bottom")
+    local real_card = Cal.sleepCard
+    Cal.sleepCard = function(p, w) return p and { card_w = w } or nil end
+    local placed = SC.card(plugin, 600, 800)
+    gsettings[SC.CARD] = nil
+    local none = SC.card(plugin, 600, 800)
+    gsettings[SC.CARD] = "top"
+    local no_plugin = SC.card(nil, 600, 800)
+    Cal.sleepCard = real_card
+    check(placed and placed.widget.card_w == 600 and placed.vertical == SC.CARD_PLACES.bottom and none == nil and no_plugin == nil,
+        "Calendar card: laid at its place, and not drawn when off or without the plugin")
+    Cal.hasSources = function() return false end
+    check(Cal.sleepCard(plugin, 600) == nil, "Calendar card: none without a calendar set up")
+    -- its menu row: Off / At the top / At the bottom
+    local item = SC.cardItem()
+    item.sub_item_table[3].callback()
+    local after_bottom = gsettings[SC.CARD]
+    local text_bottom = item.text_func()
+    item.sub_item_table[1].callback()
+    check(after_bottom == "bottom" and text_bottom == "Calendar on the wallpaper: at the bottom"
+        and gsettings[SC.CARD] == nil and item.text_func() == "Calendar on the wallpaper: off"
+        and item.sub_item_table[2].checked_func() == false and item.sub_item_table[1].checked_func() == true,
+        "Calendar card: its menu row chooses where it goes, or off")
+    -- Wi-Fi keeps it fresh too, with the calendar not the sleep screen
+    refreshed = 0
+    gsettings.gzreader_sleep_auto, gsettings.screensaver_type = false, "random_image"
+    gsettings[SC.CARD] = "top"
+    Cal.hasNetSources = function() return true end
+    Cal.cached_at = os.time() - 2 * 3600
+    local r5 = SC.onNetworkConnected(plugin)
+    gsettings[SC.CARD] = saved_card
+    check(r5 == "sync" and refreshed == 1, "Calendar card: Wi-Fi connecting syncs the calendar for the card too")
+    -- the sleep screen and its menu
+    check(src:find("Screensaver.gz_cards", 1, true) ~= nil and src:find("CustomPositionContainer:new{ widget = card.widget", 1, true) ~= nil,
+        "Calendar card: frontend/ui/screensaver.lua lays cards over the wallpaper")
+    local mf = io.open(PLUGIN .. "/../../frontend/ui/elements/screensaver_menu.lua"); local msrc = mf:read("*a"); mf:close()
+    check(msrc:find('require("gzreader_sleepcalendar").cardItem()', 1, true) ~= nil,
+        "Calendar card: its row in the sleep screen menu")
     Cal.events, Cal.cached_at, Cal.range, Cal.refresh = saved_cal.events, saved_cal.at, saved_cal.range, saved_cal.refresh
     Cal.hasNetSources, Cal.hasSources, Cal.cursor, Cal.layout = saved_cal.net, saved_cal.src, saved_cal.cursor, saved_cal.layout
     gsettings.gzreader_sleep_auto, gsettings.screensaver_type = saved.auto, saved.kind
