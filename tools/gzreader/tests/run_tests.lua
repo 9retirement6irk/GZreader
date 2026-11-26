@@ -2739,6 +2739,7 @@ do
     Panel.setShown("book", "searchbook", false)
     check(not labels(Panel.bookTiles(hplug, fakeui)):match("Search book") and labels(Panel.bookTiles(hplug, fakeui)):match("|Reader controls|"),
         "a book's tiles hidden too")
+    Panel.setShown("book", "searchbook", true)
     -- Reader controls: ZenOS's, as the swipe up from the bottom opens them; without them, KOReader's
     -- bottom menu with force (ZenOS's Zen mode blocks a plain ShowConfigMenu on touch Kindles)
     local shown_rc = 0
@@ -2796,7 +2797,7 @@ do
         check(not hq0:match("Quick note") and not bq0:match("Quick note"), "Memos not connected: no Quick note tile")
         hplug.store.memos = { server = "https://memos.example.com", token = "t" }
         local hq1, bq1 = labels(Panel.homeTiles(hplug, nil)), labels(Panel.bookTiles(hplug, fakeui))
-        check(hq1:match("|View|Quick note|") and bq1:match("|Layout|Quick note|"),
+        check(hq1:match("|View|Quick note|") and bq1:match("|Search book|Quick note|"),
             "Memos connected: Quick note at Home (after View/Sort) and in a book (before Music) " .. hq1 .. " " .. bq1)
         local quick = {}
         package.loaded["gzreader_notes"] = { quickNote = function(p) quick[#quick + 1] = p end }
