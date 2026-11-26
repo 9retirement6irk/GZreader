@@ -136,7 +136,12 @@ local function apply_responsive_keyboard()
                 and bottom_row and #bottom_row == 7 and bottom_row[4][2] == " "
                 and not gz_multiline(self.inputbox)
             local space_width = simplify_bottom and bottom_row[4].width
-            local x_key = english_letters and keys[4] and keys[4][3]
+            -- GZreader: the x key found by its letter (GZreader's ☺ key can sit before it: gzreader_emojikeyboard.lua)
+            local x_at = 3
+            for index, k in ipairs(english_letters and keys[4] or {}) do
+                if type(k) == "table" and type(k[2]) == "table" and k[2][1] == "x" then x_at = index break end
+            end
+            local x_key = english_letters and keys[4] and keys[4][x_at]
             local clean_x_key
             if x_key then
                 clean_x_key = {}
@@ -167,7 +172,7 @@ local function apply_responsive_keyboard()
             end
 
             if hide_comma then table.remove(row) end
-            if clean_x_key then keys[4][3] = clean_x_key end
+            if clean_x_key then keys[4][x_at] = clean_x_key end
             if simplify_bottom then
                 bottom_row[4].width = 7
                 keys[5] = { bottom_row[1], bottom_row[4], bottom_row[2] }
@@ -182,7 +187,7 @@ local function apply_responsive_keyboard()
                 keys[5] = bottom_row
                 HashKey.restore(bottom_row, hash_saved)
             end
-            if clean_x_key then keys[4][3] = x_key end
+            if clean_x_key then keys[4][x_at] = x_key end
             if hide_comma then row[#row + 1] = last_key end
         end
     end

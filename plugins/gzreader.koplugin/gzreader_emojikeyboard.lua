@@ -1,19 +1,27 @@
 --[[--
-Emoji on the on-screen keyboard: a ☺ key on the bottom row, beside the
-space bar (which gives up a little of its width), opens the emoji picker:
-the emoji by kind (Recent first, then Smileys, People, Animals and nature,
-Food, Travel and places, Activities, Objects, Symbols), a page at a time.
-A tap types one into the box and the picker stays up for more; Done (or
-Back) closes it. The ones used are kept as Recent (`RECENT_MAX`, the
-latest first).
+Emoji on the on-screen keyboard. A ☺ key sits beside Shift (the two share
+Shift's old width, so the space bar keeps its size). A tap on ☺ turns the
+keyboard itself into emoji, as Shift turns it to capitals:
+
+  😀 😃 😄 😁 😆 😅 🤣 😂 🙂 🙃      three rows of emoji (a page of a kind)
+  😉 😊 😇 🥰 😍 🤩 😘 😗 😚 😙
+  😋 😛 😜 🤪 😝 🤑 🤗 🤭 🤫 🤔
+  🕘 •😀 👋 🐶 🍎 🚗 ⚽ 💡 ❤      the kinds (Recent when there are any)
+  ABC  ◀  ▶  [ Smileys 1/3 ]  ⌫  ⮠
+
+A tap types an emoji and the emoji stay up for more; ◀ ▶ turn the page (on
+into the next kind at the end); ABC goes back to the letters. The ones used
+are kept as Recent (`RECENT_MAX`, the latest first). The editor's Done
+closes the keyboard as always.
 
 Emoji show in OpenMoji's black font everywhere and in colour on a colour
 Kindle (frontend/gzcoloremoji.lua), as in notes. Kindles with a keyboard
 have no on-screen keyboard: their Sym key's symbols are as before.
 
-How: GZreader wraps KOReader's VirtualKeyboard.addKeys (the last row's
-space bar, `_`, loses one unit of width to the ☺ key), as the handwriting
-key does (gzreader_hwkeyboard.lua); the two don't touch the same key.
+How: GZreader wraps KOReader's VirtualKeyboard.addKeys. On the letters it
+lays out a copy of the keys with ☺ after Shift (`withKey`); in emoji mode
+(`kb.gz_emoji`) the keys are `Emoji.layout`'s, laid out as the symbols'
+page is (layer 3) so ZenOS's letter-page changes leave them alone.
 ]]
 
 local Log = require("gzreader_log")
@@ -22,9 +30,12 @@ local _ = require("gettext")
 local Emoji = {
     KEY = "☺",
     SETTING_RECENT = "gzreader_emoji_recent",
-    RECENT_MAX = 24,
-    COLS = 8,
-    ROWS = 5,
+    RECENT_MAX = 30,
+    ABC = "ABC",
+    BACKSPACE = "", -- KOReader's ⌫ (its own key: hold for the start of the line)
+    -- each kind's key on the kinds row
+    ICONS = { recent = "🕘", smileys = "😀", people = "👋", nature = "🐶", food = "🍎",
+        travel = "🚗", activities = "⚽", objects = "💡", symbols = "❤" },
 }
 
 --- The emoji, by kind: { { id, name, list } }. Single codepoints and the
@@ -110,9 +121,9 @@ function Emoji.kinds(settings)
     return out
 end
 
---- Page `page` of `list` (COLS × ROWS at a time) and how many pages. Pure.
-function Emoji.page(list, page)
-    local per = Emoji.COLS * Emoji.ROWS
+--- Page `page` of `list` (`per` at a time) and how many pages. Pure.
+function Emoji.page(list, page, per)
+    per = math.max(1, tonumber(per) or 30)
     local pages = math.max(1, math.ceil(#list / per))
     page = math.max(1, math.min(pages, page or 1))
     local out = {}
@@ -120,101 +131,126 @@ function Emoji.page(list, page)
     return out, page, pages
 end
 
---- `keys` (a layout's KEYS) with the ☺ key before the last row's space bar,
---- which gives it one unit of width (a copy); nil when there's no space bar
---- wide enough. Pure.
-function Emoji.withKey(keys)
+--- A key for every layer of the keyboard (KOReader reads key[layer]).
+local function key(label, value, width, extra)
+    local k = { label = label, width = width }
+    for l = 1, 12 do k[l] = value end
+    for n, v in pairs(extra or {}) do k[n] = v end
+    return k
+end
+
+local function copyRow(row)
+    local out = {}
+    for c, k in ipairs(row) do out[c] = k end
+    return out
+end
+
+--- `keys` (a layout's KEYS) with the ☺ key: after Shift (a label in
+--- `shift_labels`), the two sharing Shift's width, when Shift is wide enough;
+--- otherwise before the last row's space bar, which gives it one unit. A copy
+--- (only the changed row is new); nil when there's no room. Pure.
+function Emoji.withKey(keys, shift_labels)
     if type(keys) ~= "table" or #keys == 0 then return nil end
+    local function copyWith(r, row)
+        local copy = {}
+        for i, rr in ipairs(keys) do copy[i] = rr end
+        copy[r] = row
+        return copy
+    end
+    for r, row in ipairs(keys) do
+        for j, k in ipairs(type(row) == "table" and row or {}) do
+            local w = type(k) == "table" and (tonumber(k.width) or 1) or 0
+            if type(k) == "table" and shift_labels and k.label and shift_labels[k.label] and w >= 1.4 then
+                local out = copyRow(row)
+                local shift = {}
+                for n, v in pairs(k) do shift[n] = v end
+                shift.width = w / 2
+                out[j] = shift
+                table.insert(out, j + 1, { label = Emoji.KEY, width = w / 2, gz_emoji_key = true })
+                return copyWith(r, out)
+            end
+        end
+    end
     local last = keys[#keys]
     for j, k in ipairs(type(last) == "table" and last or {}) do
         if type(k) == "table" and k.label == "_" and (tonumber(k.width) or 1) >= 2 then
-            local copy = {}
-            for r, rr in ipairs(keys) do copy[r] = rr end
-            local row = {}
-            for c, kk in ipairs(last) do row[c] = kk end
+            local out = copyRow(last)
             local space = {}
-            for kk, v in pairs(k) do space[kk] = v end
+            for n, v in pairs(k) do space[n] = v end
             space.width = (tonumber(k.width) or 1) - 1
-            row[j] = space
-            table.insert(row, j, { label = Emoji.KEY, gz_emoji_key = true })
-            copy[#keys] = row
-            return copy
+            out[j] = space
+            table.insert(out, j, { label = Emoji.KEY, gz_emoji_key = true })
+            return copyWith(#keys, out)
         end
     end
     return nil
 end
 
---- The emoji picker over keyboard `kb`: a tap types into its box.
-function Emoji.show(kb)
-    local UIManager = require("ui/uimanager")
-    local Screen = require("device").screen
-    local ButtonTable = require("ui/widget/buttontable")
-    local FrameContainer = require("ui/widget/container/framecontainer")
-    local CenterContainer = require("ui/widget/container/centercontainer")
-    local BottomContainer = require("ui/widget/container/bottomcontainer")
-    local VerticalGroup = require("ui/widget/verticalgroup")
-    local InputContainer = require("ui/widget/container/inputcontainer")
-    local Geom = require("ui/geometry")
-    local Blitbuffer = require("ffi/blitbuffer")
-    local Device = require("device")
-    local kinds = Emoji.kinds()
-    local state = { kind = 1, page = 1 }
-    local picker
-    local width = Screen:getWidth()
-    local Picker = InputContainer:extend{ name = "gz_emoji_picker", covers_fullscreen = false }
-    function Picker:init()
-        if Device:hasKeys() then self.key_events = { Close = { { Device.input.group.Back } } } end
-        self:build()
+--- Where the emoji keyboard is: the kind shown (its id) and the page.
+function Emoji.state(kb, settings)
+    if type(kb.gz_emoji) ~= "table" then
+        kb.gz_emoji = { kind = #Emoji.recent(settings) > 0 and "recent" or "smileys", page = 1 }
     end
-    function Picker:build()
-        local kind = kinds[state.kind]
-        local list, page, pages = Emoji.page(kind.list, state.page)
-        state.page = page
-        local rows = {}
-        -- the kinds (two rows of tabs, the one shown marked)
-        local tabs = {}
-        for i, k in ipairs(kinds) do
-            tabs[#tabs + 1] = { text = (i == state.kind and "● " or "") .. k.name, callback = function()
-                state.kind, state.page = i, 1
-                self:rebuild()
-            end }
+    return kb.gz_emoji
+end
+
+--- The emoji keyboard's keys: `nrows` rows (as the letters have, so the
+--- keyboard keeps its height) of `cols` units: emoji, the kinds, then ABC,
+--- ◀, ▶, the space bar (the kind and page on it), ⌫, ⮠. Each key's `gz`
+--- says what it does. Pure (but for Recent, read from `settings`).
+function Emoji.layout(state, cols, nrows, settings)
+    cols, nrows = math.max(6, cols or 10), math.max(3, nrows or 5)
+    local kinds = Emoji.kinds(settings)
+    local ki = 1
+    for i, k in ipairs(kinds) do if k.id == state.kind then ki = i end end
+    local kind = kinds[ki]
+    state.kind = kind.id
+    local grid = nrows - 2
+    local list, page, pages = Emoji.page(kind.list, state.page, grid * cols)
+    state.page = page
+    local rows = {}
+    for r = 1, grid do
+        local row = {}
+        for c = 1, cols do
+            local e = list[(r - 1) * cols + c]
+            row[c] = e and key(e, e, 1, { gz = { emoji = e } }) or key(" ", "", 1, { gz = { blank = true } })
         end
-        local half = math.ceil(#tabs / 2)
-        local r1, r2 = {}, {}
-        for i, t in ipairs(tabs) do if i <= half then r1[#r1 + 1] = t else r2[#r2 + 1] = t end end
-        rows[#rows + 1] = r1
-        rows[#rows + 1] = r2
-        for r = 1, Emoji.ROWS do
-            local row = {}
-            for c = 1, Emoji.COLS do
-                local e = list[(r - 1) * Emoji.COLS + c]
-                row[#row + 1] = e and { text = e, font_size = 26, callback = function() Emoji.type(kb, e) end }
-                    or { text = " ", enabled = false, callback = function() end }
-            end
-            rows[#rows + 1] = row
-        end
-        rows[#rows + 1] = {
-            { text = "◀", enabled = page > 1, callback = function() state.page = page - 1; self:rebuild() end },
-            { text = string.format("%d / %d", page, pages), enabled = false, callback = function() end },
-            { text = "▶", enabled = page < pages, callback = function() state.page = page + 1; self:rebuild() end },
-            { text = _("Done"), callback = function() UIManager:close(self) end },
-        }
-        local bt = ButtonTable:new{ width = width - Screen:scaleBySize(16), buttons = rows, zero_sep = true, show_parent = self }
-        local frame = FrameContainer:new{ background = Blitbuffer.COLOR_WHITE, bordersize = Screen:scaleBySize(1), padding = Screen:scaleBySize(4),
-            radius = 0, VerticalGroup:new{ align = "center", bt } }
-        local kb_h = (kb and kb.dimen and kb.dimen.h) or 0
-        self.dimen = Geom:new{ x = 0, y = 0, w = width, h = Screen:getHeight() - kb_h }
-        self[1] = BottomContainer:new{ dimen = self.dimen, CenterContainer:new{ dimen = Geom:new{ w = width, h = frame:getSize().h }, frame } }
+        rows[r] = row
     end
-    function Picker:rebuild()
-        self:build()
-        UIManager:setDirty(self, "ui")
+    local tabs = {}
+    for i, k in ipairs(kinds) do
+        local icon = Emoji.ICONS[k.id] or k.name
+        tabs[i] = key((i == ki and "•" or "") .. icon, "", cols / #kinds, { gz = { kind = k.id } })
     end
-    function Picker:onClose() UIManager:close(self); return true end
-    picker = Picker:new{}
-    UIManager:show(picker)
-    Log.info("keyboard: the emoji picker opened")
-    return picker
+    rows[grid + 1] = tabs
+    local u = cols / 10
+    rows[grid + 2] = {
+        key(Emoji.ABC, "", 1.5 * u, { gz = { abc = true }, bold = true }),
+        key("◀", "", 1 * u, { gz = { turn = -1 } }),
+        key("▶", "", 1 * u, { gz = { turn = 1 } }),
+        key(string.format("%s %d/%d", kind.name, page, pages), " ", 3 * u, { gz = { space = true } }),
+        key(Emoji.BACKSPACE, "", 1.5 * u, { gz = { back = true } }),
+        key("⮠", "\n", 2 * u, { gz = { enter = true } }),
+    }
+    return rows, kind, page, pages
+end
+
+--- A page turned: `step` (-1, 1) from `state`, on into the kind before or
+--- after at either end. Pure (but for Recent, read from `settings`).
+function Emoji.turn(state, step, settings)
+    local kinds = Emoji.kinds(settings)
+    local ki = 1
+    for i, k in ipairs(kinds) do if k.id == state.kind then ki = i end end
+    local _list, page, pages = Emoji.page(kinds[ki].list, state.page, state.per or 30)
+    if step > 0 and page < pages then state.page = page + 1
+    elseif step < 0 and page > 1 then state.page = page - 1
+    elseif step > 0 then state.kind, state.page = kinds[ki % #kinds + 1].id, 1
+    else
+        local prev = kinds[(ki - 2) % #kinds + 1]
+        state.kind = prev.id
+        state.page = select(3, Emoji.page(prev.list, 1, state.per or 30))
+    end
+    return state
 end
 
 --- `e` typed into keyboard `kb`'s box (and kept as Recent).
@@ -222,6 +258,37 @@ function Emoji.type(kb, e)
     local box = kb and kb.inputbox
     if box and box.addChars then box:addChars(e) end
     pcall(Emoji.used, e)
+end
+
+--- The keyboard laid out again (emoji or letters) and redrawn.
+function Emoji.redraw(kb)
+    kb:addKeys()
+    if kb._refresh then kb:_refresh(false) end
+end
+
+--- What a key of the emoji keyboard does, from its `gz`.
+function Emoji.press(kb, gz)
+    local state = Emoji.state(kb)
+    if gz.emoji then Emoji.type(kb, gz.emoji)
+    elseif gz.kind then state.kind, state.page = gz.kind, 1; Emoji.redraw(kb)
+    elseif gz.turn then Emoji.turn(state, gz.turn); Emoji.redraw(kb)
+    elseif gz.abc then kb.gz_emoji_on = false; Emoji.redraw(kb); Log.info("keyboard: back to the letters")
+    elseif gz.space then kb:addChar(" ")
+    elseif gz.enter then kb:addChar("\n")
+    elseif gz.back then kb:delChar()
+    end
+end
+
+--- The emoji keyboard shown on `kb` (from the ☺ key).
+function Emoji.open(kb)
+    kb.gz_emoji_on = true
+    Emoji.state(kb)
+    Emoji.redraw(kb)
+    Log.info("keyboard: the emoji keys shown")
+end
+
+local function plain(k)
+    k.hold_callback, k.swipe_callback, k.key_chars = nil, nil, nil
 end
 
 function Emoji.install()
@@ -232,18 +299,37 @@ function Emoji.install()
     VirtualKeyboard._gz_emoji = true
     local orig = VirtualKeyboard.addKeys
     function VirtualKeyboard:addKeys(...)
-        local keys = self.KEYS
-        local with = Emoji.withKey(keys)
-        if with then self.KEYS = with end
-        local res = { pcall(orig, self, ...) }
-        self.KEYS = keys
-        if not res[1] then error(res[2]) end
+        local keys, layer = self.KEYS, self.keyboard_layer
         local kb = self
-        for _r, row in ipairs(self.layout or {}) do
-            for _c, key in ipairs(row) do
-                if key.label == Emoji.KEY then
-                    key.callback = function() Emoji.show(kb) end
-                    key.hold_callback, key.swipe_callback, key.key_chars = nil, nil, nil
+        local emoji, with
+        if self.gz_emoji_on and type(keys) == "table" and type(keys[1]) == "table" then
+            local state = Emoji.state(self)
+            state.per = (#keys - 2) * #keys[1]
+            emoji = Emoji.layout(state, #keys[1], #keys)
+            self.KEYS, self.keyboard_layer = emoji, 3
+        elseif (tonumber(layer) or 1) <= 2 then
+            -- the letters only: the symbols' pages are ZenOS's own (responsive_keyboard.lua)
+            with = Emoji.withKey(keys, self.shiftmode_keys)
+            if with then self.KEYS = with end
+        end
+        local res = { pcall(orig, self, ...) }
+        self.KEYS, self.keyboard_layer = keys, layer
+        if not res[1] then error(res[2]) end
+        local shown = emoji or with
+        for r, row in ipairs(self.layout or {}) do
+            for c, vkey in ipairs(row) do
+                local def = shown and shown[r] and shown[r][c]
+                if emoji and type(def) == "table" and def.gz then
+                    local gz = def.gz
+                    if gz.back then
+                        -- KOReader's own ⌫ (hold: to the start of the line)
+                    elseif gz.blank then
+                        vkey.callback = function() end; plain(vkey)
+                    else
+                        vkey.callback = function() Emoji.press(kb, gz) end; plain(vkey)
+                    end
+                elseif vkey.label == Emoji.KEY then
+                    vkey.callback = function() Emoji.open(kb) end; plain(vkey)
                 end
             end
         end
