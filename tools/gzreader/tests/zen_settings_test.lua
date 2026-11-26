@@ -15,6 +15,7 @@ end
 local real = {
     ["modules/settings/zen_settings"] = true,
     ["common/gz_settings_tree"] = true,
+    ["common/gz_settings_tidy"] = true,
     ["common/gz_settings"] = true,
     ["modules/settings/sections/extras_settings"] = true,
     ["modules/settings/sections/global_settings"] = true,

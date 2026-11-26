@@ -12,12 +12,21 @@ account uses). When an update is known, it shows at the top of the page.
 | **Wi‑Fi** | On, Off or Auto ([Wi‑Fi](Wi-Fi)), Networks, HTTP proxy, Network info. |
 | **General** | **About** (GZreader's version, what it's built on, the device), Software update (test builds, changelog), Storage, Battery, Time and date, Language; **Transfer** (copy to or from another GZreader, [sync through a computer](Sync-with-a-Computer)), Setup Guide, **Performance** (Pre-size covers, Lay out new books while charging, Keep connections open). |
 | **Display and light** | Screen (e-ink refresh, flashing), Brightness and warmth (schedules), **Dark mode**, the menu font and its size, accent colour, custom icons, Blur menu background; on a Nook, its colour screen or touch orientation. |
-| **Sleep and wallpaper** | Sleep (the sleep screen, automatic sleep), Home background, Pictures from Immich. |
+| **Sleep and wallpaper** | Sleep (the sleep screen, automatic sleep), Home background. Pictures from Immich are chosen in each of them; the Immich connection is Accounts and services → Photos. |
 | **Audio** | Kindles with a speaker, headphone jack or Bluetooth: [Bluetooth](Bluetooth) first (on or off, the devices), then [read aloud](Audiobooks-and-Read-Aloud), Test audiobook playback, the headphone jack. |
 | **Home and tabs** | Home (widgets, edit mode, presets), Status bar, Tab bar (which tabs, their look, the default tab), Quick panel (which tiles), Downloads tab (layout, covers, folders, books, context menu). |
 | **Reader** | Appearance (status bars), Highlight / Lookup, Gestures and controls, Table of contents, Notes and footnotes, Closing a book (end of book, where the library opens). |
 | **Accounts and services** | One row per service, the server it uses on the right: Books (Grimmory: your account first, who's signed in), Audiobooks (Grimmory or Plex), Music (Plex), Notes (Memos), Calendar (CalDAV), Photos (Immich), House (Home Assistant). |
 | **Privacy and diagnostics** | Diagnostic logging, Send debug reports automatically, Report a problem, sending or saving the log ([Privacy and diagnostics](Privacy-and-Diagnostics)); Advanced → KOReader settings. |
+
+## Kept simple (November 2026)
+
+Each thing has one place, and as few taps as it takes. Where rows moved:
+
+| Was | Now |
+|---|---|
+| Sleep and wallpaper → Pictures from Immich | Accounts and services → Photos (the sleep screen and Home background still choose Immich pictures) |
+| Notes → Handwriting to text → AI key and service (the whole AI page again) | One row, **AI service**, that opens Accounts and services → AI |
 
 ## Dark mode in one place
 

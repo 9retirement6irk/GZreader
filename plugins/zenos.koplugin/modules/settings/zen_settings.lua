@@ -119,6 +119,8 @@ function M.build(plugin)
         audio = okt and type(Touch) == "table" and type(Touch.audio) == "function" and Touch.audio() and true or false,
         wifi = not (okn and no_wifi),
     })
+    -- GZreader: each thing in one place, as few taps as it takes (common/gz_settings_tidy.lua)
+    root_items = require("common/gz_settings_tidy").apply(root_items, { gzreader = gzreader })
 
     root_items._zen_header_action_func = function()
         return updater.build_update_available_action(plugin)

@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Settings: each thing in one place", text = "Settings no longer shows the same page twice. Sleep and wallpaper has no Pictures from Immich row (the Immich connection is Accounts and services → Photos; the sleep screen and Home background still choose Immich pictures), and Notes → Handwriting to text has one AI service row that opens Accounts and services → AI instead of the whole AI page again." },
+        },
+    },
+    {
         version = "2026.11.22",
         changes = {
             { short = "Colour Kindles: Immich photos in colour", text = "On a Kindle Colorsoft or Scribe Colorsoft, the pictures from your Immich album (the sleep screen and the Home wallpaper) are kept in colour instead of being made grey. Pictures already on the Kindle stay grey until they are swapped for others from the album (about half each time GZreader gets new pictures)." },
