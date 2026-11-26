@@ -2315,7 +2315,7 @@ function DrawScreen:textWidget(el)
     local one = Screen:scaleBySize(100) / 100
     local size = math.max(6, math.floor(px / one))
     -- (a pen pal's answer: in a handwriting font, gzreader_drawask.lua)
-    local face = require("gzreader_drawask").isHand(el) and require("gzreader_sticky").hand(size) or Font:getFace("cfont", size)
+    local face = require("gzreader_drawask").face(el, size) or Font:getFace("cfont", size)
     return TextBoxWidget:new{ text = el.text ~= "" and el.text or " ", face = face,
         width = math.max(S(20), math.floor((tonumber(el.width) or 100) * sk.per_unit)), fgcolor = Blitbuffer.COLOR_BLACK }
 end
@@ -2328,12 +2328,26 @@ function DrawScreen:textHeight(el)
     return h / self.sketch.per_unit
 end
 
+--- `tw`'s letters onto `dst` at (x, y), the page showing through between
+--- them (TextBoxWidget paints a white box: the paper's lines went under it).
+function DrawScreen.inkText(dst, tw, x, y)
+    local src = tw._bb
+    if not src then return tw:paintTo(dst, x, y) end
+    local w, h = src:getWidth(), src:getHeight()
+    -- (its letters as a mask: dark where the ink is)
+    local mask = Blitbuffer.new(w, h, Blitbuffer.TYPE_BB8)
+    mask:blitFrom(src, 0, 0, 0, 0, w, h)
+    mask:invertRect(0, 0, w, h)
+    dst:colorblitFrom(mask, x, y, 0, 0, w, h, Blitbuffer.COLOR_BLACK)
+    mask:free()
+end
+
 --- A box into the page (and the PNG's ink).
 function DrawScreen:paintText(el)
     local cx, cy = self.sketch:toCanvas(tonumber(el.x) or 0, tonumber(el.y) or 0)
     local tw = self:textWidget(el)
-    tw:paintTo(self.canvas_bb, math.floor(cx), math.floor(cy))
-    tw:paintTo(self.ink_bb, math.floor(cx), math.floor(cy))
+    DrawScreen.inkText(self.canvas_bb, tw, math.floor(cx), math.floor(cy))
+    DrawScreen.inkText(self.ink_bb, tw, math.floor(cx), math.floor(cy))
     tw:free()
 end
 

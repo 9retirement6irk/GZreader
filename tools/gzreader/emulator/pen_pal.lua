@@ -1,8 +1,10 @@
 -- A pen pal on a drawing's page (gzreader_drawask.lua): with the AI set up
--- (an example key: nothing is asked; the answer is put in by the tour), ✦ in
--- the top bar; writing on the page, ✦, a box under it "thinking", then the
--- answer in a handwriting font; a second question with no answer (no Wi-Fi):
--- the box says to try again; Done saves the boxes into memos' drawing.
+-- (an example key: nothing is asked; the tour answers as the AI would), ✦
+-- in the top bar. On ruled paper: two sums side by side and a question under
+-- them, ✦, a box under them "thinking"; the answers each under their own,
+-- in Caveat about the size of the writing, the paper's lines showing through;
+-- a follow-up under them sent with what was said before; the eraser takes
+-- an answer off; Done saves the boxes into memos' drawing.
 --   python3 -I demo/mock_memos.py 18090 &
 --   GZ_EMU_MODEL=scribe GZ_EMU_TREE=<tree>/koreader run.sh pen_pal.lua <out>
 -- Checks go to <out>/pen-pal-checks.txt.
@@ -25,17 +27,20 @@ local function button(id)
     end
 end
 local function tapAt(E, p) if PEN then E.penTap(p) else E.tap(p) end end
--- a line of "writing": small loops along it
-local function write(E, x0, y, x1)
+local function line(E, pts) if PEN then E.pen(pts, 0.5) else E.finger(pts, 0.5) end end
+-- a "word": small loops along a line, `h` high
+local function word(E, x0, y, x1, h)
     local pts = {}
-    local n = 40
+    local n = 24
     for i = 0, n do
         local x = x0 + (x1 - x0) * i / n
-        pts[#pts + 1] = { math.floor(x + 10 * math.cos(i * 1.7)), math.floor(y + 14 * math.sin(i * 1.7)) }
+        pts[#pts + 1] = { math.floor(x + h * 0.2 * math.cos(i * 1.7)), math.floor(y + h * 0.45 * math.sin(i * 1.7)) }
     end
-    if PEN then E.pen(pts, 0.8) else E.finger(pts, 0.8) end
+    line(E, pts)
 end
 local pending = {}
+local erase_at
+local function texts() return screen().sketch:liveTexts() end
 
 add({ fn = function(_E)
     W, H = require("device").screen:getWidth(), require("device").screen:getHeight()
@@ -47,41 +52,78 @@ add({ fn = function(_E)
     require("gzreader_ai").settings(p).claude.key = "sk-ant-example-not-a-key"
     -- (nothing leaves the emulator: the tour answers)
     require("gzreader_ai").ask = function(_p, q, done) pending[#pending + 1] = { q = q, done = done } end
+    require("gzreader_drawscreen").setLastPaper("ruled-medium")
     require("gzreader_notes").draw(p)
 end, after = 3 })
 add({ fn = function(E) if find("gz_paperlist") then tapAt(E, "Create") end end, after = 4 })
 add({ fn = function(E)
     check(screen() ~= nil and button("ask") ~= nil, "the drawing screen: ✦ in the top bar, with the AI set up")
-    write(E, W * 0.15, H * 0.2, W * 0.7)
-end, after = 2 })
-add({ fn = function(E) write(E, W * 0.15, H * 0.25, W * 0.5) end, after = 2 })
+    word(E, W * 0.22, H * 0.20, W * 0.32, 60)   -- 500
+end, after = 1 })
+add({ fn = function(E) word(E, W * 0.18, H * 0.225, W * 0.36, 60) end, after = 1 })     -- × 7520
+add({ fn = function(E) line(E, { { math.floor(W * 0.17), math.floor(H * 0.245) }, { math.floor(W * 0.38), math.floor(H * 0.245) } }) end, after = 1 })
+add({ fn = function(E) word(E, W * 0.66, H * 0.20, W * 0.72, 60) end, after = 1 })     -- 10
+add({ fn = function(E) word(E, W * 0.64, H * 0.225, W * 0.74, 60) end, after = 1 })     -- + 10
+add({ fn = function(E) word(E, W * 0.18, H * 0.40, W * 0.30, 60) end, after = 1 })     -- what
+add({ fn = function(E) word(E, W * 0.33, H * 0.40, W * 0.40, 60) end, after = 1 })     -- is
+add({ fn = function(E) word(E, W * 0.43, H * 0.40, W * 0.55, 60) end, after = 1 })     -- this?
 add({ fn = function(E) tapAt(E, button("ask")) end, after = 2 })
 add({ shot = "penpal-1-thinking", after = 0.5 })
 add({ fn = function(_E)
-    local d = screen()
-    local el = d.sketch:liveTexts()[1]
-    check(#pending == 1 and pending[1].q.png ~= nil and el and el.text == "✦ …", "✦: the writing sent as a picture, a box under it thinking")
-    check(#d.sketch:live() == 2, "…the writing stays as it was")
-    pending[1].done("Dear friend, Paris is the capital of France. It sits on the Seine, and its bakeries open early. What are you reading these days?")
+    local el = texts()[1]
+    check(#pending == 1 and pending[1].q.png ~= nil and pending[1].q.text:find("numbered 1 to 3", 1, true) and el and el.text == "✦ …",
+        "✦: the writing sent as one picture, three pieces numbered; a box under it thinking")
+    check(#screen().sketch:live() == 8, "…the writing stays as it was")
+    pending[1].done('{"replies":[{"boxes":[1],"read":"500 x 7520","reply":"3,760,000"},{"boxes":[2],"read":"10 + 10","reply":"20"},'
+        .. '{"boxes":[3],"read":"what is this?","reply":"Two sums: 500 × 7520 is 3,760,000, and 10 + 10 is 20."}]}')
 end, after = 3 })
-add({ shot = "penpal-2-answer", after = 0.5 })
+add({ shot = "penpal-2-answers", after = 0.5 })
 add({ fn = function(E)
     local d = screen()
-    local el = d.sketch:liveTexts()[1]
-    local bottom = select(2, d.sketch:toCanvas(el.x, el.y + el.height))
-    check(el.text:find("^Dear friend") ~= nil and el.customData.gzAsk.state == "answer" and el.fontFamily:find("Patrick Hand", 1, true) ~= nil,
-        "the answer in the box, in the handwriting font")
-    write(E, W * 0.15, bottom + H * 0.06, W * 0.6)
+    local list = texts()
+    local by = {}
+    for _i, el in ipairs(list) do by[el.text] = el end
+    local a1, a2, a3 = by["3,760,000"], by["20"], by["Two sums: 500 × 7520 is 3,760,000, and 10 + 10 is 20."]
+    local function cx(el) return (d.sketch:toCanvas(el.x, el.y)) end
+    local function cy(el) return select(2, d.sketch:toCanvas(el.x, el.y)) end
+    check(#list == 3 and a1 and a2 and a3, "three answers, one per question")
+    check(a1 and math.abs(cx(a1) - W * 0.18) < W * 0.03 and cy(a1) > H * 0.245 and cy(a1) < H * 0.29,
+        "the first sum's under it")
+    check(a2 and math.abs(cx(a2) - W * 0.64) < W * 0.04 and cy(a2) > H * 0.23 and cy(a2) < H * 0.28, "the second sum's under it, beside")
+    local pr = d.sketch:pageRect()
+    check(pr and a3 and (d.sketch:toCanvas(a3.x + a3.width, 0)) <= pr.x + pr.w, "the answers stay on the paper")
+    check(a3 and cy(a3) > H * 0.41 and a1.fontSize > 24 and a1.fontFamily:find("Caveat", 1, true),
+        "the question's under it; in Caveat, about the size of the writing (" .. tostring(a1 and a1.fontSize) .. ")")
+    -- (the paper's lines through the answers' text: checked on the screenshot, penpal-2-answers.png)
+    -- a follow-up under them
+    word(E, W * 0.18, cy(a3) + d.sketch.per_unit * a3.height + H * 0.08, W * 0.45, 60)
 end, after = 2 })
 add({ fn = function(E) tapAt(E, button("ask")) end, after = 2 })
 add({ fn = function(_E)
-    check(#pending == 2 and #screen().sketch:liveTexts() == 2, "the next question: only the new writing, a second box")
-    pending[2].done(nil, "no answer (timeout)")
+    check(#pending == 2 and pending[2].q.text:find("numbered 1 to 1", 1, true) and pending[2].q.text:find("They wrote: 500 x 7520", 1, true),
+        "the follow-up: only the new writing, with the questions and replies before it")
+    pending[2].done('{"replies":[{"boxes":[1],"read":"and its square root?","reply":"About 1,939."}]}')
 end, after = 3 })
-add({ shot = "penpal-3-waiting", after = 0.5 })
+add({ shot = "penpal-3-follow-up", after = 0.5 })
 add({ fn = function(E)
-    local el = screen().sketch:liveTexts()[2]
-    check(el.customData.gzAsk.state == "waiting" and el.text:find("try again", 1, true) ~= nil, "no answer: the box says to try again")
+    local d = screen()
+    local el
+    for _i, t in ipairs(texts()) do if t.text == "20" then el = t end end
+    local x, y = d.sketch:toCanvas(el.x + 5, el.y + el.height / 2)
+    -- the eraser over it
+    tapAt(E, button("eraser"))
+    local ox, oy = d.canvas.x or 0, d.canvas.y or 0
+    erase_at = { math.floor(x + ox), math.floor(y + oy) }
+end, after = 2 })
+add({ fn = function(E)
+    local p = erase_at
+    line(E, { p, { p[1] + 30, p[2] }, { p[1] + 60, p[2] + 4 } })
+end, after = 2 })
+add({ shot = "penpal-4-erased", after = 0.5 })
+add({ fn = function(E)
+    local gone = true
+    for _i, t in ipairs(texts()) do if t.text == "20" then gone = false end end
+    check(gone and #texts() == 3, "the eraser took that answer off")
     tapAt(E, button("done"))
 end, after = 5 })
 add({ wait_for = function()
@@ -103,9 +145,9 @@ add({ fn = function(E)
         local scene = require("gzreader_drawing").readFile(path)
         for _i, el in ipairs(scene and scene.elements or {}) do if el.type == "text" then boxes[#boxes + 1] = el end end
     end
-    check(#boxes == 2 and boxes[1].customData and boxes[1].customData.gzAsk and boxes[1].customData.gzAsk.state == "answer"
-        and boxes[2].customData.gzAsk.state == "waiting",
-        "Done: both boxes in memos' drawing, the waiting one kept waiting")
+    local reads = 0
+    for _i, b in ipairs(boxes) do if b.customData and b.customData.gzAsk and b.customData.gzAsk.read then reads = reads + 1 end end
+    check(#boxes == 3 and reads == 3 and boxes[1].fontFamily:find("Caveat", 1, true), "Done: the answers in memos' drawing, with what each question read")
     local f = io.open(E.out .. "/pen-pal-checks.txt", "w")
     f:write(table.concat(lines, "\n") .. "\n")
     f:close()

@@ -688,20 +688,25 @@ API to `/api` are found too.
 ## A pen pal: the AI writes back
 
 With the [AI connection](Setup-Page-and-Connections#ai) set up, a drawing's
-top bar has **✦** (Write back). Write a question or a note on the page with
-the pen, tap **✦**, and the AI writes back under it in a text box, in a
-handwriting font (Patrick Hand), like a pen pal answering on the same page.
-Your writing stays as you wrote it.
+top bar has **✦** (Write back). Write a question, a note or a few sums on the
+page with the pen and tap **✦**: the AI writes back under each one, in a
+handwriting font (Caveat) about the size of your writing. Your writing stays
+as you wrote it.
 
-- The question is the writing under the last answer on the page (on a page
-  with no answers yet, all of it). Write the next one under the answer and
-  tap **✦** again.
-- Only that writing is sent, as a black-and-white picture: never the rest of
-  the page, its pictures or your other notes. Wi‑Fi turns on for it.
-- No Wi‑Fi, or no reply: the box says so and waits. Tap **✦** to try again,
-  or open the page again later with Wi‑Fi on and it's asked by itself.
-- The answer is an ordinary text box: move it, change its words or delete
-  it as any other. Memos shows it too, in its own handwriting-style font.
+- **Several at once**: separate pieces of writing (two sums side by side, a
+  question under them) each get their own answer, under it and as wide as
+  the room beside it. The lines of one question are answered together.
+- **Follow-ups**: what was asked and answered earlier on the page goes along
+  with the next question, so "what is the square root of it?" follows on.
+- **What's asked**: only writing that hasn't been asked about yet. It's sent
+  as a black-and-white picture, its pieces boxed and numbered, never the rest
+  of the page, its pictures or your other notes. Wi‑Fi turns on for it.
+- **No Wi‑Fi, or no reply**: the box says so and waits. Tap **✦** to try
+  again, or open the page again later with Wi‑Fi on and it's asked by itself.
+- **The eraser** takes an answer off (Undo brings it back). Answers are
+  text boxes too: move one, change its words or delete it as any other.
+- Text boxes are drawn as ink on the page: the paper's lines show through
+  them. Memos shows the answers too, in a cursive font.
 
 ## Saving
 

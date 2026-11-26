@@ -374,6 +374,21 @@ function Sketch:textAt(x, y)
     end
 end
 
+--- A pen pal's answer (a text box with customData.gzAsk: gzreader_drawask.lua)
+--- at canvas point (x, y), or nil: the eraser takes it off.
+function Sketch.answerAt(self, x, y)
+    local DrawText = require("gzreader_drawtext")
+    local live = self:liveTexts()
+    for i = #live, 1, -1 do
+        local el = live[i]
+        local cd = type(el.customData) == "table" and el.customData
+        if cd and type(cd.gzAsk) == "table" then
+            local r = DrawText.rect(el, function(sx, sy) return self:toCanvas(sx, sy) end)
+            if x >= r.x and x <= r.x + r.w and y >= r.y and y <= r.y + r.h then return el end
+        end
+    end
+end
+
 local function textChanged(self, el, before)
     local DrawText = require("gzreader_drawtext")
     self.history[#self.history + 1] = { kind = "text", el = el, before = before, after = DrawText.snap(el, self.text_gone[el]) }
@@ -923,6 +938,17 @@ local function erase(self, contact, x, y, out)
             -- (what changed: only this much of the page needs drawing again)
             out.area = self:strokesArea({ st }, out.area)
             st = self:strokeAt(px, py, reach)
+        end
+        -- (a pen pal's answer under the eraser goes too, one Undo of its own: gzreader_drawask.lua)
+        local el = Sketch.answerAt(self, px, py)
+        if el then
+            self:removeText(el)
+            out.redraw = true
+            out.erased = (out.erased or 0) + 1
+            local r = require("gzreader_drawtext").rect(el, function(sx, sy) return self:toCanvas(sx, sy) end)
+            local a = { x0 = math.floor(r.x) - 2, y0 = math.floor(r.y) - 2, x1 = math.ceil(r.x + r.w) + 2, y1 = math.ceil(r.y + r.h) + 2 }
+            out.area = out.area and { x0 = math.min(out.area.x0, a.x0), y0 = math.min(out.area.y0, a.y0),
+                x1 = math.max(out.area.x1, a.x1), y1 = math.max(out.area.y1, a.y1) } or a
         end
     end
     contact.last = { cx, cy }
