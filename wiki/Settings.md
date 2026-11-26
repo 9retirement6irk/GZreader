@@ -45,6 +45,15 @@ services' rows say **Not connected** on the right until their service is;
 Daily paper says On or Off. The reader's status bar's custom text starts
 as "GZreader".
 
+**Every service's page starts as Books' does**: a first row saying what it's
+connected to ("Connected to Immich as Will", "Connected to Claude
+(claude-haiku-5-5)", or **Not connected**). The ways to connect (QR code,
+typing, keys, models, Try it), disconnecting or removing the keys, and About
+are on that row's own page; the page itself keeps what the service does here.
+That's AI, Photos, House, Recipes and Music; Notes' Memos row reads
+"Connected to Memos as …". Calendar keeps its CalDAV account and calendar
+links rows.
+
 ## Dark mode in one place
 
 Settings → Display and light → **Dark mode** has everything that follows dark
