@@ -9,7 +9,7 @@ return {
     {
         version = "next",
         changes = {
-            { short = "Wi-Fi on Auto: an empty first scan is tried again instead of failing for 90 seconds", text = "Wi-Fi on Auto (Kindles): the scan made the moment Wi-Fi is switched on sometimes finds no network. GZreader then asked the Kindle to join the first network it has saved, which isn't always the one in range, and nothing connected for 90 seconds (a Scribe with three saved networks; sending a report needed Wi-Fi set to On). The scan is now made again up to three times, four seconds apart, and the saved network is asked for only after that." },
+            { short = "Wi-Fi on Auto: an empty first scan is tried again instead of failing for 90 seconds", text = "Wi-Fi on Auto (Kindles): the scan made the moment Wi-Fi is switched on sometimes finds no network. GZreader then asked the Kindle to join the first network it has saved, which isn't always the one in range, and nothing connected for 90 seconds (a Scribe with three saved networks; sending a report needed Wi-Fi set to On). The scan is now made again up to three times, four seconds apart, and a saved network is asked for only after that: of several, one that's in range." },
         },
     },
     {

@@ -2391,6 +2391,10 @@ print("Wi-Fi network names stay out of the log and reports")
     check(scans == 1 + Net.RESCANS and cbs == 1 and asked[1] == "com.lab126.cmd ensureConnection wifi:Example Net" and #asked == 1 and closed == 1
         and logged:find("asked the Kindle to join its saved one (2 saved)", 1, true) and not logged:find("Example Net", 1, true),
         "still nothing after " .. Net.RESCANS .. " more scans: the Kindle asked to join its saved network; KOReader's connectivity check waits; no name logged")
+    check(Net.pickSaved({ { essid = "Example Net" }, { essid = "Other Example" } }, { ["Other Example"] = true }) == "Other Example"
+        and Net.pickSaved({ { essid = "Example Net" }, { essid = "Other Example" } }, {}) == "Example Net"
+        and Net.pickSaved({ { essid = "" }, { netid = 3 } }, {}) == nil and Net.pickSaved(nil, nil) == nil,
+        "several networks saved: the one in range is asked for, else the first")
     -- the second scan finds the network: KOReader connects to it, nothing asked of the Kindle
     asked, cbs, scans = {}, 0, 0
     local empty_scan = NM.reconnectOrShowNetworkMenu

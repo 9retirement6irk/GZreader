@@ -311,6 +311,31 @@ saved network asked for. ]]
 Net.RESCANS = 3
 Net.RESCAN_WAIT = 4
 
+--- The names of the networks a scan sees now, as a set ({} when it can't say).
+function Net.inRange()
+    local seen = {}
+    pcall(function()
+        for _i, n in ipairs(NetworkMgr:getNetworkList() or {}) do
+            if type(n) == "table" and type(n.ssid) == "string" then seen[n.ssid] = true end
+        end
+    end)
+    return seen
+end
+
+--- Of the Kindle's saved networks (`profiles`), the one to ask it to join:
+--- the first that's in range (`seen`: a set of names), else the first. nil
+--- when none is saved. Pure.
+function Net.pickSaved(profiles, seen)
+    local first
+    for _i, p in ipairs(type(profiles) == "table" and profiles or {}) do
+        if type(p) == "table" and type(p.essid) == "string" and p.essid ~= "" then
+            if type(seen) == "table" and seen[p.essid] then return p.essid end
+            first = first or p.essid
+        end
+    end
+    return first
+end
+
 function Net.onKindle()
     local okd, Device = pcall(require, "device")
     return okd and Device.isKindle ~= nil and Device:isKindle() == true
@@ -342,10 +367,8 @@ function Net.joinSaved()
     end)
     if result then pcall(result.destroy, result) end
     if input then pcall(input.destroy, input) end
-    local essid
-    for _i, p in ipairs(type(profiles) == "table" and profiles or {}) do
-        if type(p) == "table" and type(p.essid) == "string" and p.essid ~= "" then essid = p.essid break end
-    end
+    -- (several saved: the one a scan sees now, else the first)
+    local essid = Net.pickSaved(profiles, Net.inRange())
     local asked = false
     if essid then
         asked = pcall(h.set_string_property, h, "com.lab126.cmd", "ensureConnection", "wifi:" .. essid)
