@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Daily paper: steadier scrolling in a story", text = "A story in the daily paper no longer redraws at every bit of a drag, which left lines ghosting over each other: a slow drag moves it a third of a screen at a time and it rests where your finger lifts, a flick moves most of a screen like a page turn, and the screen is refreshed once, with a flash, at the end. The page keys do the same." },
+        },
+    },
+    {
         version = "2026.11.22",
         changes = {
             { short = "Colour Kindles: Immich photos in colour", text = "On a Kindle Colorsoft or Scribe Colorsoft, the pictures from your Immich album (the sleep screen and the Home wallpaper) are kept in colour instead of being made grey. Pictures already on the Kindle stay grey until they are swapped for others from the album (about half each time GZreader gets new pictures)." },

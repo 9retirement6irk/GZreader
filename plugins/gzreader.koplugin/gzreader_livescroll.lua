@@ -7,17 +7,28 @@ at most one step each `INTERVAL` seconds, and only once the finger has gone
 
 `LiveScroll.step(state, rel, now)` is the rule (pure, tested):
 state = { applied, at } (how far the finger had gone at the last step, and when).
-`LiveScroll.on(scroller)` puts it on a KOReader ScrollableContainer.
+`LiveScroll.on(scroller, opts)` puts it on a KOReader ScrollableContainer.
+
+The daily paper's stories (`opts.coarse`, the owner's video of 2026-11-26:
+the free scroll redrew so often that lines ghosted over each other) move
+less often: a step only after a good part of the screen (`COARSE_STEP`) and
+`COARSE_INTERVAL` apart; a flick moves a screenful, as a page turn; and the
+page is shown once more with a flash when the finger lifts, which clears
+what the steps left behind.
 ]]
 
-local LiveScroll = { INTERVAL = 0.18, MIN_STEP = 12 }
+local LiveScroll = { INTERVAL = 0.18, MIN_STEP = 12,
+    COARSE_INTERVAL = 0.6, COARSE_STEP = 0.3, -- (a third of the screen, at most every 0.6 s)
+    FLICK_PAGE = 0.85, -- a flick moves this much of the screen (as the page keys do)
+    COARSE_SETTLE = "flashpartial" }
 
 --- The finger is `rel` pixels from where the drag began, at time `now`
 --- (seconds): how far to scroll now (0: not yet). Updates `state`.
-function LiveScroll.step(state, rel, now)
+--- `interval` and `min_step`: the defaults' INTERVAL and MIN_STEP otherwise.
+function LiveScroll.step(state, rel, now, interval, min_step)
     local d = rel - (state.applied or 0)
-    if math.abs(d) < LiveScroll.MIN_STEP then return 0 end
-    if state.at and now - state.at < LiveScroll.INTERVAL then return 0 end
+    if math.abs(d) < (min_step or LiveScroll.MIN_STEP) then return 0 end
+    if state.at and now - state.at < (interval or LiveScroll.INTERVAL) then return 0 end
     state.applied, state.at = rel, now
     return d
 end
@@ -57,9 +68,18 @@ LiveScroll.STEP_REFRESH = "fast"
 --- one in every few of them a flash of that part of the screen.)
 LiveScroll.SETTLE_REFRESH = "partial"
 
---- `widget`'s `region` shown again cleanly (after a drag's rough steps).
-function LiveScroll.settle(widget, region)
-    require("ui/uimanager"):setDirty(widget, function() return LiveScroll.SETTLE_REFRESH, region end)
+--- `widget`'s `region` shown again cleanly (after a drag's rough steps); `mode`: SETTLE_REFRESH otherwise.
+function LiveScroll.settle(widget, region, mode)
+    require("ui/uimanager"):setDirty(widget, function() return mode or LiveScroll.SETTLE_REFRESH, region end)
+end
+
+--- How far a flick moves (coarse): `page` px forward for one upwards, back for
+--- one downwards; 0 for one sideways. Pure.
+function LiveScroll.flickBy(ges, page)
+    local dir = ges and ges.direction or ""
+    if dir:find("north", 1, true) then return page end
+    if dir:find("south", 1, true) then return -page end
+    return 0
 end
 
 --- How much further the page has to move when a drag ends as a swipe, so
@@ -99,6 +119,10 @@ LiveScroll.now = seconds
 function LiveScroll.on(scroller, opts)
     if not scroller or scroller._gz_live then return scroller end
     local free = type(opts) == "table" and opts.free == true
+    local coarse = type(opts) == "table" and opts.coarse == true
+    local interval = coarse and LiveScroll.COARSE_INTERVAL or nil
+    local function minStep(self) return coarse and math.max(LiveScroll.MIN_STEP, math.floor(self.dimen.h * LiveScroll.COARSE_STEP)) or nil end
+    local settle_mode = coarse and LiveScroll.COARSE_SETTLE or nil
     local function fresh() return { x = {}, y = {}, moved_x = 0, moved_y = 0 } end
     scroller._gz_live = fresh()
     local pan, release, swipe = scroller.onScrollablePan, scroller.onScrollablePanRelease, scroller.onScrollableSwipe
@@ -116,8 +140,8 @@ function LiveScroll.on(scroller, opts)
             local live, now = self._gz_live, LiveScroll.now()
             -- (where the finger is now, for a lift that comes as a swipe)
             live.rel_x, live.rel_y = ges.relative.x or 0, ges.relative.y or 0
-            local dy = LiveScroll.step(live.y, ges.relative.y or 0, now)
-            local dx = self._max_scroll_offset_x > 0 and LiveScroll.step(live.x, ges.relative.x or 0, now) or 0
+            local dy = LiveScroll.step(live.y, ges.relative.y or 0, now, interval, minStep(self))
+            local dx = self._max_scroll_offset_x > 0 and LiveScroll.step(live.x, ges.relative.x or 0, now, interval, minStep(self)) or 0
             if dx ~= 0 or dy ~= 0 then
                 local x0, y0 = self._scroll_offset_x, self._scroll_offset_y
                 LiveScroll.quiet(function() self:_scrollBy(-dx, -dy) end)
@@ -131,7 +155,7 @@ function LiveScroll.on(scroller, opts)
     end
     -- (after steps shown roughly: the page once more, properly, even when it ends where the last step left it)
     local function settle(self, rough)
-        if rough then LiveScroll.settle(self.show_parent, self.dimen) end
+        if rough then LiveScroll.settle(self.show_parent, self.dimen, settle_mode) end
     end
     function scroller:onScrollablePanRelease(arg, ges)
         local rough = self._gz_live.rough
@@ -142,6 +166,15 @@ function LiveScroll.on(scroller, opts)
     end
     function scroller:onScrollableSwipe(arg, ges)
         local rough = self._gz_live.rough
+        if coarse and self._is_scrollable and ges.pos and ges.pos:intersectWith(self.dimen) then
+            -- a flick: a screenful, as a page turn (what the steps moved first taken back)
+            takeBack(self)
+            self._scrolling, self._scroll_relative_x, self._scroll_relative_y = false, nil, nil
+            local dy = LiveScroll.flickBy(ges, math.floor(self.dimen.h * LiveScroll.FLICK_PAGE))
+            if dy ~= 0 then LiveScroll.quiet(function() self:_scrollBy(0, dy) end) end
+            settle(self, true)
+            return true
+        end
         if free and self._is_scrollable and ges.pos and ges.pos:intersectWith(self.dimen) then
             -- to where the finger was last seen, less what the steps already moved
             local live = self._gz_live
