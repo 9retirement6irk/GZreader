@@ -10918,8 +10918,8 @@ print("Notes (Memos v0.31)")
                 "drawing: on the Scribe a stroke's ink goes out in the display's pen mode; what a stroke leaves to do waits for a pause; pen mode off when the screen closes")
             check(dsrcs:find('elseif out.view or not self:repaintArea(out.area) then self:redrawAll() end', 1, true) ~= nil
                 and dsrcs:find('if self:repaintArea(area) then self:refreshBar() else self:redrawAll() end', 1, true) ~= nil
-                and dsrcs:find('if not area or sk.zoomed then return false end', 1, true) ~= nil,
-                "drawing: a rubbed-out stroke, an Undo, a Redo draw and refresh only their part of the page (all of it when zoomed in)")
+                and dsrcs:find('if sk.zoomed and not (zp and sameView(zp.view, DrawScreen.viewOf(sk))', 1, true) ~= nil,
+                "drawing: a rubbed-out stroke, an Undo, a Redo draw and refresh only their part of the page (zoomed in: from the paper kept for the view)")
             -- tilt per tool (sketch_test.lua has the numbers): the redraw uses each point's tilt as the live ink does
             check(dsrcs:find("local t = b[4] and (a[4] and (a[4] + b[4]) / 2 or b[4]) or nil", 1, true) ~= nil
                 and dsrcs:find("local pr = Sketch.toolRadius(st.kind, r, w, t)", 1, true) ~= nil
@@ -11004,27 +11004,27 @@ print("Notes (Memos v0.31)")
                 end
                 return false
             end
-            -- the page drawn again: which strokes were inked (each stroke's segments, the same numbers as the old list's, in order)
+            -- the page drawn again: which strokes were inked (their segments, the same numbers as the old list's, in
+            -- order; zoomed in, only the segments that reach the canvas, all of a first coloured one)
             local function paint()
                 calls = {}
                 local before = copyPoints()
                 d:repaintCanvas()
                 local k, inked, skipped, ok, missed = 1, {}, 0, true, false
+                local function key(sg) return table.concat({ sg[1], sg[2], sg[3], sg[4], sg[5] }, ",") end
                 for _i, st in ipairs(order) do
                     local segs = DS.strokeSegments(sk, st)
-                    local match = #segs > 0
-                    for j, sg in ipairs(segs) do
-                        local got = calls[k + j - 1]
-                        if not got then match = false; break end
-                        for m = 1, 8 do if got[m] ~= sg[m] then match = false end end
+                    local any = false
+                    for _j, sg in ipairs(segs) do
+                        local got = calls[k]
+                        if got and key(got) == key(sg) then
+                            for m = 1, 8 do if got[m] ~= sg[m] then ok = false end end
+                            k, any = k + 1, true
+                        elseif reaches({ sg }) and not (sg[6] and not d.tint_bb) then
+                            missed = true -- (a bit on the canvas not inked)
+                        end
                     end
-                    if match then
-                        k = k + #segs
-                        inked[st] = true
-                    else
-                        skipped = skipped + 1
-                        if reaches(segs) then missed = true end
-                    end
+                    if any then inked[st] = true else skipped = skipped + 1 end
                 end
                 if k ~= #calls + 1 then ok = false end
                 return ok and not missed and samePoints(before), inked, skipped
@@ -11205,9 +11205,10 @@ print("Notes (Memos v0.31)")
                 _painted_view = DS.viewOf(sk) }, { __index = function(_t, k) return rawget(DS, k) end })
             sk:zoomBy(2, 50, 65, 50, 65)
             local shown = d:previewView()
-            local dark_mid = page:getPixel(50, 65):getColor8().a < 64
-            local white_corner = page:getPixel(5, 5):getColor8().a > 192
-            local dark_edge = page:getPixel(32, 65):getColor8().a < 64 -- (the square, twice as big: from 30 to 70)
+            local function px(bb, x, y) local data, stride = DS.bytes(bb); return data[y * stride + x] end
+            local dark_mid = px(page, 50, 65) < 64
+            local white_corner = px(page, 5, 5) > 192
+            local dark_edge = px(page, 32, 65) < 64 -- (the square, twice as big: from 30 to 70)
             check(shown and dark_mid and white_corner and dark_edge and dirty[#dirty] == "fast" and d._view_base ~= nil,
                 "…a pinch going on: the page shown scaled about the fingers (the square twice as big), a quick refresh")
             d._previews = 0
@@ -11221,7 +11222,7 @@ print("Notes (Memos v0.31)")
             d._zoom_paper = { canvas = paper, ink = BBz.new(100, 130, BBz.TYPE_BB8), view = DS.viewOf(sk), locked_n = 0 }
             d.ink = function() end
             local ok_area = d:repaintArea({ x0 = 10, y0 = 10, x1 = 30, y1 = 30 }, true)
-            local grey = page:getPixel(20, 20):getColor8().a
+            local grey = px(page, 20, 20)
             check(ok_area == true and grey > 100 and grey < 200, "…zoomed in, a rubbed-out stroke: only its place drawn again, from the paper kept for the view")
             sk:zoomBy(1.2, 50, 65, 50, 65)
             check(d:repaintArea({ x0 = 10, y0 = 10, x1 = 30, y1 = 30 }, true) == false, "…the view moved since: the whole page (the kept paper is for another view)")

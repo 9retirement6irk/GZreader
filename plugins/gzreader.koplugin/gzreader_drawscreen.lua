@@ -1643,19 +1643,23 @@ function DrawScreen:repaintCanvas()
     local cpu, inked = sk.zoomed and os.clock(), 0
     local cw, ch, cx, cy = sk.canvas.w, sk.canvas.h, sk.canvas.x, sk.canvas.y
     local zoomed = sk.zoomed
+    local segs_inked = 0
     local function ink(seg)
-        -- (zoomed in, a stroke's bits off the canvas aren't inked: most of a long stroke there)
-        if zoomed then
+        -- (zoomed in, a stroke's bits off the canvas aren't inked: most of a long stroke there;
+        -- a coloured one is while it's the first, as that makes the colour layer)
+        if zoomed and not (seg[6] and not self.tint_bb) then
             local r = (seg[5] or 0) + 2
             if math.max(seg[1], seg[3]) + r < cx or math.min(seg[1], seg[3]) - r > cx + cw
                 or math.max(seg[2], seg[4]) + r < cy or math.min(seg[2], seg[4]) - r > cy + ch then return end
         end
+        segs_inked = segs_inked + 1
         self:ink(seg)
     end
     for _i, st in ipairs(list) do
         if not sk.zoomed or (st.color and not self.tint_bb) or DrawScreen.strokeOnCanvas(sk, st) then
+            local before = segs_inked
             strokeSegments(sk, st, ink)
-            inked = inked + 1
+            if segs_inked > before then inked = inked + 1 end
         end
     end
     if cpu then
