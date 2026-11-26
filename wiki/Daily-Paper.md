@@ -9,7 +9,7 @@ get it when they [sync with a computer](Sync-with-a-Computer): see
 
 ## Turning it on
 
-**Settings → Accounts and services → Daily paper**, and tick **Daily paper**. A folded
+**Settings → Home and tabs → Daily paper**, and tick **Daily paper**. A folded
 newspaper appears on Home's bookshelf, standing on its side at the start of
 the first shelf like the books beside it, nearly as tall as they are: you see
 its fold with the paper's name running up it, the day's lead headline, and
@@ -74,7 +74,7 @@ used as they are (up to about 2,500 words a story).
   summary.
 - A story behind a paywall, or on a page built by scripts, keeps the feed's
   summary, and says so at its end.
-- **Settings → Accounts and services → Daily paper → Whole stories** turns it off (a faster
+- **Settings → Home and tabs → Daily paper → Whole stories** turns it off (a faster
   fetch, summaries only).
 
 **Weather**: a box under the date shows now, today and the next two days,
@@ -84,7 +84,7 @@ rain on a wet day. It comes with the day's paper:
 - from your **Home Assistant** when the [House](House) tab's is connected (its
   first weather entity); nothing leaves your network;
 - otherwise from **Open‑Meteo** (open-meteo.com: free, no account) for the
-  town you set in **Settings → Accounts and services → Daily paper → Weather → Town**, or on
+  town you set in **Settings → Home and tabs → Daily paper → Weather → Town**, or on
   the setup page's Daily paper tab. **Degrees** switches Fahrenheit and
   Celsius (it starts as the town's country uses).
 
@@ -96,7 +96,7 @@ front page has a **TODAY** box under the date with today's events, all-day
 ones first, then by time. They're the events the Calendar tab last synced,
 kept on the Kindle: nothing is fetched for it and nothing about them leaves
 the Kindle. Tap the box for the Calendar tab. A day without events has no
-box; **Settings → Accounts and services → Daily paper → Today's calendar events** turns it off.
+box; **Settings → Home and tabs → Daily paper → Today's calendar events** turns it off.
 
 **Pictures**: an opened story shows its picture, whole, under its headline
 (up to 24 stories an edition have one). The lead story's picture also runs
@@ -105,7 +105,7 @@ lead's is on the newspaper's front page on the shelf. They are the pictures
 the feeds name for their stories (or, failing that, the one the story's own
 page names), fetched with the paper, kept until the next edition and shown in
 grey (in colour on a colour Kindle). Pictures between a story's paragraphs aren't shown.
-**Settings → Accounts and services → Daily paper → Pictures** turns them off
+**Settings → Home and tabs → Daily paper → Pictures** turns them off
 (the paper is fetched faster without them).
 
 **On a colour Kindle** (Colorsoft, Scribe Colorsoft): each section's heading
@@ -123,7 +123,7 @@ Once a day, the first time Home (or the paper) is on the screen after
 - With [Wi‑Fi](Wi-Fi) on **Auto**, GZreader turns Wi‑Fi on for it and off
   again afterwards. On **On** it's fetched straight away. On **Off** nothing
   is fetched until you ask: **Fetch today's paper** at the foot of the
-  paper (or **Settings → Accounts and services → Daily paper → Fetch now**), which turns
+  paper (or **Settings → Home and tabs → Daily paper → Fetch now**), which turns
   Wi‑Fi on for that.
 - If the feeds can't be reached, yesterday's paper stays (the widget says
   which day it's from) and GZreader tries again half an hour later.
@@ -137,7 +137,7 @@ seldom: its newest story is shown rather than nothing.
 The Kindle 2, DX and DX Graphite (or any Kindle with **Sync through a
 computer** chosen) get the paper each time you
 [sync with a computer](Sync-with-a-Computer). Turn it on and choose feeds on
-the Kindle as usual (Settings → Accounts and services → Daily paper). Then,
+the Kindle as usual (Settings → Home and tabs → Daily paper). Then,
 when you sync, the sync page fetches the feeds and GZreader makes the paper
 when it next starts.
 
@@ -154,14 +154,14 @@ A feed is a site's list of its newest stories (RSS or Atom); most news sites
 and blogs have one.
 
 **From your phone or computer** (the easy way to paste addresses):
-**Settings → Accounts and services → Daily paper → Set up from a browser (QR code)** opens the
+**Settings → Home and tabs → Daily paper → Set up from a browser (QR code)** opens the
 [setup page](Setup-Page-and-Connections) at its **Daily paper** tab. Scan the
 code, or open the address shown on a computer on the same Wi‑Fi. There you
 can turn the paper on or off, take it off the bookshelf, tick the feeds
 GZreader comes with, paste your own (one per line, as in `feeds.txt` below),
 and remove them. **Save**, then press Back on the Kindle.
 
-**On the Kindle**: **Settings → Accounts and services → Daily paper → Feeds**:
+**On the Kindle**: **Settings → Home and tabs → Daily paper → Feeds**:
 
 - GZreader comes with a few to tick, by section: BBC News (World, Technology,
   Science), NPR, Ars Technica, NASA, Literary Hub, Atlas Obscura, NPR Strange

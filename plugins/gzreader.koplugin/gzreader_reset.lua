@@ -1,5 +1,5 @@
 --[[--
-Reset GZreader (Settings → About → Advanced → Reset GZreader): every setting
+Reset GZreader (Settings → General → Transfer or reset → Reset GZreader): every setting
 back to its default, everything downloaded taken off the device, every
 account forgotten on it, then a restart into the setup guide.
 
@@ -290,7 +290,7 @@ function Reset.question()
         .. _("GZreader then restarts with the setup guide.")
 end
 
---- Settings → About → Advanced → Reset GZreader.
+--- Settings → General → Transfer or reset → Reset GZreader.
 function Reset.confirm(plugin)
     local UIManager = require("ui/uimanager")
     local ConfirmBox = require("ui/widget/confirmbox")

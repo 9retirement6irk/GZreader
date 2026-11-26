@@ -241,7 +241,7 @@ function M.koreaderMenuItem(plugin_root, native)
     }
 end
 
---- About → Advanced → Reset GZreader: settings to their defaults, downloads
+--- General → Transfer or reset → Reset GZreader: settings to their defaults, downloads
 --- and accounts gone, a restart into the setup guide (gzreader_reset.lua
 --- asks first).
 function M.resetItem()

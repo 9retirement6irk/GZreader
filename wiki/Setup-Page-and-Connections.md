@@ -152,11 +152,11 @@ Set one GZreader up and copy its connections to the others over the Wi‑Fi,
 instead of scanning the QR code on each:
 
 1. On the one that has them: **Send connections to another GZreader**
-   (Settings → General → Transfer → Copy to or from another GZreader, or its setup
+   (Settings → General → Transfer or reset → Copy to or from another GZreader, or its setup
    guide's first page). It shows its name ("Kindle Paperwhite 3 · 3F2A"), a
    6-digit PIN and what it has.
 2. On the new one: **Copy from another GZreader** (the setup guide's first
-   page, Settings → General → Transfer → Copy to or from another GZreader, the Notes
+   page, Settings → General → Transfer or reset → Copy to or from another GZreader, the Notes
    or Calendar tab while not connected, Settings → Accounts and services → Books). It
    lists the GZreader devices sending on the Wi‑Fi; pick it and enter the PIN.
 3. Tick what to copy (everything this one doesn't have yet; from the Notes tab

@@ -11,7 +11,7 @@ gzreader_dailyscreen.lua); a tap opens the whole paper.
   Technology
     …
 
-- Off until it's turned on (Settings → Accounts and services → Daily paper): the feeds are
+- Off until it's turned on (Settings → Home and tabs → Daily paper): the feeds are
   other people's sites, and each fetch tells them this Kindle's address.
   Nothing else is sent: no account, no cookies, nothing about you.
 - An edition is made when the day's first look at Home (or the paper) finds
@@ -737,7 +737,7 @@ end
 --- Why there's no paper, in words.
 function Daily.why(err)
     if err == "usb" then return _("This Kindle gets the daily paper when it syncs with the computer: plug it in and open the sync page. Feeds whose sites don't let a web page read them can't come that way.") end
-    if err == "no feeds" then return _("No feeds are ticked: Settings → Accounts and services → Daily paper → Feeds.") end
+    if err == "no feeds" then return _("No feeds are ticked: Settings → Home and tabs → Daily paper → Feeds.") end
     if err == "busy" then return _("Already fetching today's paper…") end
     if err == "empty" then return _("The feeds answered, but had no stories.") end
     if err == "timeout" then return _("The feeds took too long to answer.") end

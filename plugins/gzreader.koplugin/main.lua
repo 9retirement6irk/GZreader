@@ -724,7 +724,7 @@ end
 ---   "general"     { wifi = item (Wi-Fi: On, Off, Auto), diagnostics = { items } }
 ---   "reader"      { items } (audio: Settings → Audio)
 ---   "interface"   { items } (the Nooks' screens: Settings → Display and light)
----   "performance" { items } (Settings → General → Performance)
+---   "performance" { items } (Settings → Privacy and diagnostics → Advanced → Performance)
 function Grimmory:sectionItems(section)
     local okI, IconItem = pcall(require, "common/ui/icon_menu_item")
     local okc, icons = pcall(require, "common/inline_icon_map")
@@ -887,7 +887,7 @@ function Grimmory:sectionItems(section)
     return {}
 end
 
---- Settings → Accounts and services → Daily paper (gzreader_daily.lua: feeds fetched once a day, read on Home).
+--- Settings → Home and tabs → Daily paper (gzreader_daily.lua: feeds fetched once a day, read on Home).
 function Grimmory:dailySettingsItems()
     return require("gzreader_dailyscreen").settingsItems(self)
 end
@@ -1457,7 +1457,7 @@ function Grimmory:plexSettingsItems()
     return require("gzreader_musictab").settingsItems(self)
 end
 
---- Settings → General → Transfer → Copy to or from another GZreader.
+--- Settings → General → Transfer or reset → Copy to or from another GZreader.
 function Grimmory:copyItems()
     return {
         {
@@ -2281,7 +2281,7 @@ function Grimmory:onShowGrimmoryLibrary(touchmenu, opts)
     return true
 end
 
---- Settings → General → Transfer → Sync through a computer.
+--- Settings → General → Transfer or reset → Sync through a computer.
 function Grimmory:usbSyncItems()
     local Usb = require("gzreader_usbsync")
     return {

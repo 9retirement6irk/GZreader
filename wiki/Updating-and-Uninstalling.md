@@ -11,7 +11,7 @@ More: [Updates and test builds](Updates-and-Test-Builds).
 
 ## Resetting GZreader
 
-**Settings → Privacy and diagnostics → Advanced → Reset GZreader** (the last item) puts GZreader back to how it was when you installed it, without reinstalling. It asks first. Then:
+**Settings → General → Transfer or reset → Reset GZreader** (the last item) puts GZreader back to how it was when you installed it, without reinstalling. It asks first. Then:
 
 - every setting goes back to its default, and your reading statistics are removed;
 - everything GZreader downloaded is removed: `GZreader/books`, `music`, `audiobooks` and `notes` are emptied, and the sync page's saved keys and reports go (`GZreader/app`, GZreader itself, stays);

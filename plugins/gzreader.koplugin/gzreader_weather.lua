@@ -8,7 +8,7 @@ Where it comes from:
   entity (its state and temperature, and its daily forecast when it gives
   one). Nothing leaves your network.
 - else Open-Meteo (open-meteo.com: free, no account, no key) for the town
-  set in Settings → Accounts and services → Daily paper → Weather. The town's name is sent
+  set in Settings → Home and tabs → Daily paper → Weather. The town's name is sent
   once, to find where it is; after that only its coordinates rounded to two
   decimals (about a kilometre) go with each day's request. Neither the
   town nor the coordinates are written to the log.

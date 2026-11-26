@@ -206,13 +206,150 @@ function M.menuText(root)
     end
 end
 
+---------------------------------------------------------------- rows where they belong
+
+--- Is this a Kindle with a pen (the Scribe)?
+function M.penDevice()
+    local ok, pen = pcall(function() return require("gzreader_sketch").penDevice(require("device")) end)
+    return ok and pen == true
+end
+
+-- the rows of Notes that are the pen's (a Kindle with a pen: General → Pen)
+local function penRow(it)
+    local _ = gettext()
+    return M.startsWith(it, _("Pen's shortcut button")) or M.startsWith(it, _("Handwriting to text"))
+end
+local function eraserRow(it) return M.startsWith(it, gettext()("Pen's eraser removes highlights")) end
+
+--- On a Kindle with a pen, General has a Pen row (as an iPad has Apple
+--- Pencil): the pen's shortcut button and Handwriting to text (with the
+--- keyboard's ✍ key in it), out of Notes. Notes' "Pen's eraser removes
+--- highlights" acts in books: it goes to Reader → Highlight / Lookup.
+function M.penPage(root, opts)
+    local _ = gettext()
+    local _acc, accounts = M.section(root, "accounts")
+    local notes = M.find(accounts, _("Notes"))
+    if not notes then return end
+    local pen = (opts and opts.pen) ~= nil and opts.pen or M.penDevice()
+    -- (Notes as it was, to take the rows from)
+    local notes_rows = notes.sub_item_table_func
+    local function fromNotes(match, ...)
+        local list = type(notes_rows) == "function" and notes_rows(...) or notes.sub_item_table or {}
+        local out = {}
+        for _i, it in ipairs(type(list) == "table" and list or {}) do
+            if type(it) == "table" and match(it) then out[#out + 1] = it end
+        end
+        return out
+    end
+    M.onPage(notes, function(list)
+        for i = #list, 1, -1 do
+            if (pen and penRow(list[i])) or eraserRow(list[i]) then table.remove(list, i) end
+        end
+        if list[#list] then list[#list].separator = nil end
+    end)
+    if pen then
+        local _gen, general = M.section(root, "general")
+        if general then
+            local _t, at = M.find(general, _("Transfer"))
+            local row = M.icon({
+                text = _("Pen"),
+                help_text = _("The pen: what its shortcut button does while drawing, and how handwriting becomes typed text (also the keyboard's ✍ key)."),
+                sub_item_table_func = function(...)
+                    local list = fromNotes(penRow, ...)
+                    if list[#list] then list[#list].separator = nil end
+                    return list
+                end,
+            }, "edit")
+            table.insert(general, at or (#general + 1), row)
+        end
+    end
+    local _r, reader = M.section(root, "reader")
+    local hl = M.find(reader, function(it) return M.startsWith(it, _("Highlight")) end)
+    M.onPage(hl, function(list)
+        if M.find(list, eraserRow) then return end
+        local got = fromNotes(eraserRow)
+        if got[1] and list[#list] then list[#list].separator = true end
+        for _i, it in ipairs(got) do list[#list + 1] = it end
+    end)
+end
+
+--- A row with ZenOS's icon `glyph` (as the tree gives its rows).
+function M.icon(item, glyph)
+    local okI, IconItem = pcall(require, "common/ui/icon_menu_item")
+    local okc, icons = pcall(require, "common/inline_icon_map")
+    if okI and okc and type(icons) == "table" and icons[glyph] then return IconItem.decorate(item, icons[glyph]) end
+    return item
+end
+
+--- General → Transfer is "Transfer or reset", with Reset GZreader last (as
+--- an iPhone's General → Transfer or Reset). Privacy and diagnostics →
+--- Advanced keeps what's seldom needed: Performance (from General), the
+--- Notifications switches (from Display and light → Screen), KOReader
+--- settings.
+function M.transferOrReset(root)
+    local _ = gettext()
+    local _g, general = M.section(root, "general")
+    local _p, privacy = M.section(root, "privacy")
+    local advanced = M.find(privacy, _("Advanced"))
+    local adv = advanced and type(advanced.sub_item_table) == "table" and advanced.sub_item_table or nil
+    local transfer = M.find(general, _("Transfer"))
+    local reset = adv and M.take(adv, _("Reset GZreader"))
+    if transfer and reset and type(transfer.sub_item_table) == "table" then
+        transfer.text = _("Transfer or reset")
+        transfer.help_text = _("Copy your connections to or from another GZreader, sync through a computer instead of Wi-Fi, or reset GZreader.")
+        local list = transfer.sub_item_table
+        if list[#list] then list[#list].separator = true end
+        list[#list + 1] = reset
+    elseif reset and adv then
+        adv[#adv + 1] = reset -- (no Transfer to put it in: where it was)
+    end
+    if not adv then return end
+    if adv[#adv] then adv[#adv].separator = nil end
+    local first = {}
+    local perf = M.take(general, _("Performance"))
+    if perf then first[#first + 1] = perf end
+    -- the Notifications switches, out of Screen (built when it opens)
+    local _d, display = M.section(root, "display")
+    local screen = M.find(display, _("Screen"))
+    local screen_func = screen and screen.sub_item_table_func
+    if type(screen_func) == "function" then
+        M.onPage(screen, function(list) M.take(list, _("Notifications")) end)
+        first[#first + 1] = M.icon({
+            text = _("Notifications"),
+            help_text = _("Which of KOReader's short messages show (from the bottom menu, gestures and the rest), and the ones shown before."),
+            sub_item_table_func = function(...)
+                local ok, list = pcall(screen_func, ...)
+                local n = ok and M.find(list, _("Notifications"))
+                return M.rowsOf(n, ...)
+            end,
+        }, "settings_advanced")
+    end
+    if #first > 0 then first[#first].separator = true end
+    for i = #first, 1, -1 do table.insert(adv, 1, first[i]) end
+end
+
+--- The daily paper has no account and is read on Home: Home and tabs → Daily
+--- paper (after Home), not Accounts and services.
+function M.dailyPaperHome(root)
+    local _ = gettext()
+    local _a, accounts = M.section(root, "accounts")
+    local _h, home = M.section(root, "home")
+    if not (accounts and home) then return end
+    local paper = M.take(accounts, _("Daily paper"))
+    if not paper then return end
+    local _x, at = M.find(home, _("Home"))
+    table.insert(home, (at or 0) + 1, paper)
+    if accounts[#accounts] then accounts[#accounts].separator = nil end
+end
+
 ---------------------------------------------------------------- all of it
 
 --- Settings' first page (gz_settings_tree.build's) made simpler. `opts`:
---- { gzreader = function() → GZreader's plugin or nil }.
+--- { gzreader = function() → GZreader's plugin or nil, pen = a Kindle with a pen
+--- (nil: asked of the device) }.
 function M.apply(root, opts)
     opts = opts or {}
-    for _i, step in ipairs({ M.noImmichCopy, M.aiOnce, M.flatSleep, M.menuText }) do
+    for _i, step in ipairs({ M.noImmichCopy, M.aiOnce, M.flatSleep, M.menuText, M.penPage, M.transferOrReset, M.dailyPaperHome }) do
         local ok, err = pcall(step, root, opts)
         if not ok then
             pcall(function() require("logger").warn("GZreader settings: a tidying step failed:", tostring(err)) end)

@@ -393,7 +393,7 @@ API to `/api` are found too.
       on the Apple Newton. Go on writing after it, on its line or the next,
       and the words go into the same box. **Undo** brings the writing back
       as ink. How it's read is in the panel (**Read: …**) and in
-      [Settings → Notes → Handwriting to text](#handwriting-to-text).
+      [Settings → Accounts and services → Notes → Handwriting to text (on a Kindle with a pen: Settings → General → Pen)](#handwriting-to-text).
     - **Stickers:** the 935 Kid Pix stickers of the Memos fork's drawing
       sheet (animals, food, flags, vehicles, praise…). The first tap opens
       them: the category's name at the top lists the 42 categories, ‹ ›
@@ -567,7 +567,7 @@ API to `/api` are found too.
     finger at the same time is ignored.
   - **The pen's side button** (Kindle Scribe, Premium Pen): hold it and the
     tip rubs out, like the pen's other end; let go and it draws again, with
-    the Pen tool still chosen. **Settings → Notes → Pen's shortcut button**
+    the Pen tool still chosen. **Settings → General → Pen → Pen's shortcut button**
     chooses what holding it does: **Eraser** (the default), or a writing
     tool: **Pen**, **Pencil**, **Fountain pen** or **Highlighter** (draw
     with it while the button is held, then you're back to the tool in hand).
