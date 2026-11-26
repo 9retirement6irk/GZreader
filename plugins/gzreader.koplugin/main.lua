@@ -183,6 +183,7 @@ function Grimmory:init()
         end
     end
     Grimmory.last_instance = self -- (every instance shares the store: the exit's last save)
+    pcall(function() require("gzreader_hwkeyboard").install() end) -- (the keyboard's ✍ key: a writing pad)
     self.store.downloads = self.store.downloads or {}
     self.store.pending = self.store.pending or { progress = {}, sessions = {} }
     self.store.pending.ratings = self.store.pending.ratings or {}

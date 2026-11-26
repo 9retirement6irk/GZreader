@@ -14094,6 +14094,58 @@ print("Quick panel: a 5-way step redraws only the two tiles that change")
     Screen.scaleBySize = was_scale
 end)()
 
+print("Handwriting on the keyboard (gzreader_hwkeyboard.lua): the ✍ key and its writing pad")
+;(function()
+    local HwKb = require("gzreader_hwkeyboard")
+    -- what's typed
+    check(HwKb.typed("hello", "d") == " hello" and HwKb.typed("hello", " ") == "hello" and HwKb.typed("hello", nil) == "hello"
+        and HwKb.typed("two\nlines ", "x") == " two lines" and HwKb.typed(", then", "x") == ", then"
+        and HwKb.typed("  ", "x") == nil and HwKb.typed(nil, "x") == nil,
+        "keyboard: what's read typed after a space when it follows a word, lines joined, nothing for nothing")
+    check(HwKb.before({ charlist = { "a", "b" }, charpos = 3 }) == "b" and HwKb.before({ charlist = { "a" }, charpos = 1 }) == nil
+        and HwKb.before(nil) == nil, "keyboard: the character before the cursor")
+    -- the ✍ key in the 🌐 key's place (one layout), not with several
+    local en = { { { "q" }, { "w" } }, { { label = "⌥" }, { label = "🌐", width = 1.5 }, { " " } } }
+    local swapped = HwKb.withKey(en, 1)
+    check(swapped and swapped[2][2].label == "✍" and swapped[2][2].width == 1.5 and en[2][2].label == "🌐" and swapped[1] == en[1]
+        and HwKb.withKey(en, 2) == nil and HwKb.withKey({ { { "q" } } }, 1) == nil,
+        "keyboard: ✍ in the 🌐 key's place (a copy: the layout itself untouched); with several layouts 🌐 stays")
+    -- strokes from the pen, in the pad's area
+    local rec = HwKb.recorder({ x = 100, y = 500, w = 400, h = 200 }, true)
+    local o1 = rec:feed({ { slot = 1, id = 7, x = 150, y = 550, tool = 1 } })
+    local o2 = rec:feed({ { slot = 1, id = 7, x = 160, y = 600, tool = 1 }, { slot = 2, id = 8, x = 300, y = 600, tool = 0 } })
+    check(#o1.new == 0 and #o2.new == 1 and o2.new[1][1] == 50 and o2.new[1][4] == 100 and rec:writing(),
+        "keyboard pad: the pen's line in the pad's own coordinates; a finger on a pen Kindle doesn't write")
+    local o3 = rec:feed({ { slot = 1, id = -1, tool = 1 } })
+    check(o3.lifted and not rec:writing(), "keyboard pad: the pen lifted")
+    rec:feed({ { slot = 1, id = 9, x = 50, y = 50, tool = 1 } }) -- (outside the pad: not writing)
+    rec:feed({ { slot = 1, id = -1, tool = 1 } })
+    local flat = rec:take()
+    check(#flat == 1 and flat[1][1] == 50 and flat[1][2] == 50 and flat[1][3] == 60 and #rec:take() == 0,
+        "keyboard pad: what's written, as the reader takes it, once")
+    rec:feed({ { slot = 1, id = 10, x = 200, y = 550, tool = 1 } })
+    rec:feed({ { slot = 1, id = -1, tool = 1 } })
+    check(#rec.strokes == 1 and rec:feed({ { slot = 1, id = 11, x = 200, y = 550, tool = 2 } }).clear and #rec.strokes == 0,
+        "keyboard pad: a dot kept; the pen's other end clears the pad")
+    local frec = HwKb.recorder({ x = 0, y = 0, w = 100, h = 100 }, false)
+    frec:feed({ { slot = 0, id = 1, x = 10, y = 10, tool = 0 } }); frec:feed({ { slot = 0, id = 1, x = 20, y = 30, tool = 0 } })
+    check(#frec.strokes == 1 and #frec.strokes[1] == 2, "keyboard pad: a finger writes on a Kindle without a pen")
+    -- on touch Kindles, on until turned off; its row in Settings → Notes
+    local saved = gsettings.gzreader_hw_keyboard
+    local touch = { isTouchDevice = function() return true end }
+    local keys = { isTouchDevice = function() return false end }
+    gsettings.gzreader_hw_keyboard = nil
+    local on, k3 = HwKb.enabled(G_reader_settings, touch), HwKb.enabled(G_reader_settings, keys)
+    local it = HwKb.menuItem()
+    it.callback()
+    check(on and not k3 and gsettings.gzreader_hw_keyboard == false and HwKb.enabled(G_reader_settings, touch) == false,
+        "keyboard: ✍ on touch Kindles, on by default; its row turns it off")
+    gsettings.gzreader_hw_keyboard = saved
+    local NS = require("gzreader_notesettings")
+    local okh, hw = pcall(NS.handwritingItem, plugin, nil)
+    check(not okh or hw == nil or (hw.sub_item_table and hw.sub_item_table[1].text == "Handwriting on the keyboard (✍ key)"),
+        "Settings → Notes → Handwriting to text: the keyboard's row first")
+end)()
 print("Quick panel: a volume slider on touch Kindles with sound")
 ;(function()
     local Panel = require("gzreader_panel")

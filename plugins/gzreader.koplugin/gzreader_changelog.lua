@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Handwriting on the keyboard: the ✍ key", text = "On touch Kindles the on-screen keyboard's 🌐 key is ✍ (with several layouts, hold 🌐): it swaps the keys for a writing pad, in any text box. Write, and a moment after you lift the pen your writing is typed into the box, read the way Settings → Notes → Handwriting to text says. The pad has ⌨ (the keys again), space, ⌫ and Enter; on a Kindle with a pen, fingers don't write on it." },
+        },
+    },
+    {
         version = "2026.11.22",
         changes = {
             { short = "Colour Kindles: Immich photos in colour", text = "On a Kindle Colorsoft or Scribe Colorsoft, the pictures from your Immich album (the sleep screen and the Home wallpaper) are kept in colour instead of being made grey. Pictures already on the Kindle stay grey until they are swapped for others from the album (about half each time GZreader gets new pictures)." },
