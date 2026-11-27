@@ -1325,6 +1325,10 @@ function Shop.build(m, browser, select_number, no_recalculate_dimen)
     if section == "magazines" and not signed_out then
         return require("gzreader_magstand").build(m, browser, W, H, select_number, old_dimen)
     end
+    -- the Requests page: the order desk (gzreader_orderdesk.lua)
+    if section == "requests" and not signed_out then
+        return require("gzreader_orderdesk").build(m, browser, W, H, select_number, old_dimen)
+    end
     local L = Shop.layout(W, H)
     if not L.fits then return false end
     local by = entryById(m)
