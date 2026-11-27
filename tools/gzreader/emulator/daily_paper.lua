@@ -144,6 +144,60 @@ add({ fn = function(E)
     Paper.show(plugin())
 end, after = 10 })
 add({ shot = "daily-2-paper" })
+-- a Kindle with a keyboard: the 5-way goes every way; a story's letter opens it (real key presses)
+if os.getenv("GZ_EMU_MODEL") == "k3" or not os.getenv("GZ_EMU_MODEL") then
+    add({ fn = function(E)
+        local page = require("gzreader_dailyscreen").instance
+        E.trail = { tostring(page.focus) }
+        -- (which story is first in the second column)
+        for i, b in ipairs(page.blocks) do if not E.right_top and i > 1 and b.x > page.blocks[2].x then E.right_top = i end end
+        check(E, page.focus == 1 and page.badges[1] ~= nil and page.badges[2] ~= nil and page.diary ~= nil, "the frame starts on the lead story; stories carry their letter")
+    end, after = 1 })
+    for _i, key in ipairs({ "Down", "Right", "Left", "Up", "Up", "Down", "Down", "Right" }) do
+        add({ key = key, after = 3 })
+        add({ fn = function(E) E.trail[#E.trail + 1] = tostring(require("gzreader_dailyscreen").instance.focus) end, after = 1 })
+    end
+    add({ shot = "daily-2a-right-column" })
+    add({ fn = function(E)
+        local page = require("gzreader_dailyscreen").instance
+        local want = table.concat({ "1", "2", tostring(E.right_top), "2", "1", "diary", "1", "2", tostring(E.right_top) }, " ")
+        check(E, table.concat(E.trail, " ") == want and page.page == 1, "Down, Right, Left, Up, Up, Down, Down, Right: " .. table.concat(E.trail, " ") .. " (wanted " .. want .. "), no page turned")
+    end, after = 1 })
+    -- down the right column to the foot, along it, and up again
+    add({ fn = function(E) E.trail = {} end, after = 1 })
+    for _i, key in ipairs({ "Down", "Down", "Down", "Down", "Down", "Down" }) do
+        add({ fn = function(E)
+            local page = require("gzreader_dailyscreen").instance
+            if page.focus ~= "puzzles" and page.page == 1 then E.key("Down") end
+        end, after = 3 })
+    end
+    add({ fn = function(E) check(E, require("gzreader_dailyscreen").instance.focus == "puzzles", "down the right column ends on Puzzles at the foot") end, after = 1 })
+    add({ key = "Left", after = 3 })
+    add({ fn = function(E) check(E, require("gzreader_dailyscreen").instance.focus == "type", "Left: Aa") end, after = 1 })
+    add({ key = "Left", after = 3 })
+    add({ shot = "daily-2b-foot" })
+    add({ fn = function(E)
+        local page = require("gzreader_dailyscreen").instance
+        check(E, page.focus == "fetch" and page.foot.fetch.widget.text:sub(1, 1) == "F" and page.foot.puzzles.widget.text:sub(1, 1) == "P", "Left: Fetch; the foot names its letters (F, P)")
+    end, after = 1 })
+    add({ key = "Up", after = 3 })
+    add({ fn = function(E)
+        local page = require("gzreader_dailyscreen").instance
+        check(E, type(page.focus) == "number" and page.blocks[page.focus].x == page.blocks[2].x, "Up from Fetch: the left column's last story (" .. tostring(page.focus) .. ")")
+    end, after = 1 })
+    -- a story's letter
+    add({ key = "W", after = 6 })
+    add({ fn = function(E)
+        local Paper = require("gzreader_dailyscreen")
+        local page = Paper.instance
+        local UIM = require("ui/uimanager")
+        local top = UIM._window_stack[#UIM._window_stack].widget
+        check(E, top ~= page and top.item == page.blocks[2].story.item, "W opens the second story (" .. tostring(top.item and top.item.title) .. ")")
+        if top ~= page then UIM:close(top) end
+        page.focus = 1
+        page:redraw()
+    end, after = 4 })
+end
 add({ fn = function(E)
     local page = require("gzreader_dailyscreen").instance
     check(E, page ~= nil and page.page == 1 and #page.blocks >= 3 and page.blocks[1].w > page.blocks[2].w,

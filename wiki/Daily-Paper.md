@@ -115,12 +115,34 @@ others, always the same one), and the heavy rule under the nameplate, on the
 paper and on Home, is the paper's red. Turning off KOReader's colour rendering
 puts it back in black.
 
+## With keys
+
+On a Kindle with keys, a frame shows where you are, and the 5-way moves it
+**every way**: up and down a column, left and right between the columns,
+along the foot (Fetch, Aa, Puzzles), and up to the TODAY box. **Press** opens
+what's framed. When nothing lies further that way, right or down turns to the
+next page and left or up to the one before; the page-turn keys always turn
+the page.
+
+A Kindle with a keyboard (Kindle 2, Keyboard, DX) also has a letter for
+everything:
+
+| Key | Does |
+|---|---|
+| **Q W E R T Y U I O** (or 1–9) | Open the first to ninth story on the page. Each story shows its letter beside its byline. |
+| **P** | Puzzles |
+| **F** | Fetch the paper again |
+| **D** | Today's events, in the Calendar tab (when the TODAY box is showing) |
+| **Aa** | The type of the paper's pages |
+| **Menu** | The quick panel |
+| **Back** | Close the paper |
+
 ## Puzzles
 
 Each day's paper comes with three puzzles you do on the Kindle: a
 **sudoku**, a **word search** and a **maze**. Open the paper and choose
-**Puzzles** at its foot (with keys: move the frame down to it with the 5-way
-and press). The foot shows how many you've finished (**Puzzles 1/3**).
+**Puzzles** at its foot (with keys: move the frame to it with the 5-way and
+press; on a keyboard, **P**). The foot shows how many you've finished (**Puzzles 1/3**).
 
 They are made on the Kindle from the date, so they need no Wi‑Fi and no
 paper to have been fetched, and every Kindle has the same ones that day.
