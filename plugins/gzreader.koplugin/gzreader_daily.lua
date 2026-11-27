@@ -56,6 +56,12 @@ local Daily = {
     PAGE_PICTURES = 8,   -- … of which the first few also show on the paper's pages
     PICTURE_SECONDS = 180, -- how long fetching the pictures may take altogether
     MAX_PICTURE_BYTES = 700 * 1024,
+    AI_MAX = 20,         -- stories summarised in one edition (the AI edition)
+    AI_SECONDS = 240,    -- … and how long that may take altogether
+    AI_TEXT = 6000,      -- bytes of a story sent for its summary
+    AI_MIN = 600,        -- a story shorter than this is its own summary: not sent
+    AI_SUMMARY = 700,    -- bytes of a summary kept
+    AI_GIVE_UP = 3,      -- failures in a row after which the rest aren't asked for
     EDITION_HOUR = 5,    -- a day's paper is made from this hour on (the Kindle's clock)
     TOPICS = { "World", "Technology", "Science", "Books", "Curiosities" },
     OWN_TOPIC = "Your feeds",
@@ -209,7 +215,11 @@ function Daily.pageState(plugin)
         own[#own + 1] = { n = i, name = f.name, site = Daily.site(f.url), topic = f.topic, on = f.enabled ~= false }
     end
     local edition = Daily.load()
-    return { enabled = st.enabled == true, shelf = st.shelf ~= false, pictures = st.pictures ~= false, calendar = st.calendar ~= false, full = st.full ~= false,
+    local ai_ready = (function()
+        local ok, AI = pcall(require, "gzreader_ai")
+        return ok and AI.ready(plugin) or false
+    end)()
+    return { ai = st.ai == true, ai_ready = ai_ready, enabled = st.enabled == true, shelf = st.shelf ~= false, pictures = st.pictures ~= false, calendar = st.calendar ~= false, full = st.full ~= false,
         weather = (function()
             local W = require("gzreader_weather")
             local w = W.store(plugin)
@@ -230,6 +240,7 @@ function Daily.pageSave(plugin, form)
     if form.pictures == "1" then st.pictures = nil else st.pictures = false end
     if form.full == "1" then st.full = nil else st.full = false end
     if form.calendar == "1" then st.calendar = nil else st.calendar = false end
+    st.ai = form.ai == "1" or nil
     local w = require("gzreader_weather").store(plugin)
     w.off = (form.weather ~= "1") or nil
     if form.unit == "F" or form.unit == "C" then w.unit = form.unit end
@@ -492,6 +503,59 @@ function Daily.addFullText(edition, fetch, seconds, clock)
     return filled, asked
 end
 
+---------------------------------------------------------------- the AI edition
+
+--- The AI edition ticked? (Settings → Daily paper → AI edition.)
+function Daily.aiWanted(plugin)
+    return Daily.store(plugin).ai == true
+end
+
+--- The AI edition on: ticked, and the AI connection (gzreader_ai.lua) set up.
+function Daily.aiOn(plugin)
+    if not Daily.aiWanted(plugin) then return false end
+    local ok, AI = pcall(require, "gzreader_ai")
+    return ok and AI.ready(plugin) or false
+end
+
+Daily.SUMMARY_SYSTEM = "You write the short summaries a newspaper prints under its headlines. "
+    .. "Given a news story, reply with a summary of it in 2 to 4 plain sentences, about 60 to 90 words. "
+    .. "Say what happened, to whom, where and why it matters, using only what the story says. "
+    .. "Neutral tone, no opinion, no preamble, no headline, no lists, no formatting: only the summary."
+
+--- What to ask for a story's summary: { system, text, max_tokens, timeout }.
+--- The story's headline and text only: never its address, nor anything of yours.
+function Daily.summaryQuestion(item)
+    return { system = Daily.SUMMARY_SYSTEM, max_tokens = 300, timeout = 40,
+        text = "Headline: " .. tostring(item.title or "") .. "\n\nStory:\n" .. Feeds.cut(item.text or "", Daily.AI_TEXT) }
+end
+
+--- Give the edition's stories their summaries, in the front page's order:
+--- AI_MAX at most, until `seconds` have gone, giving up after AI_GIVE_UP
+--- failures in a row (a refused key fails every time). A story too short to
+--- need one is left as it is. `ask(question)` → text, or nil and why.
+--- Returns how many got one, how many were asked for, and the last reason
+--- one wasn't given.
+function Daily.addSummaries(edition, ask, seconds, clock)
+    clock = clock or os.time
+    local started, done, asked, misses, why = clock(), 0, 0, 0, nil
+    for _i, f in ipairs(Daily.front(edition, Daily.count(edition))) do
+        local item = f.item
+        if asked >= Daily.AI_MAX or misses >= Daily.AI_GIVE_UP or clock() - started >= (seconds or Daily.AI_SECONDS) then break end
+        if #(item.text or "") >= Daily.AI_MIN then
+            asked = asked + 1
+            local ok, text, err = pcall(ask, Daily.summaryQuestion(item))
+            if ok and type(text) == "string" and #text >= 40 then
+                item.summary = Feeds.cut((text:gsub("%s+", " "):gsub("^ ", ""):gsub(" $", "")), Daily.AI_SUMMARY)
+                done, misses = done + 1, 0
+            else
+                misses = misses + 1
+                why = ok and (err or "an empty answer") or "an error"
+            end
+        end
+    end
+    return done, asked, why
+end
+
 ---------------------------------------------------------------- pictures
 
 --- Pictures wanted? (On unless turned off; never on a Kindle with 128 MB.)
@@ -672,6 +736,8 @@ function Daily.refresh(plugin, on_done)
     local pictures = Daily.pictures(plugin)
     local weather_plan = require("gzreader_weather").plan(plugin)
     local full = Daily.fullStories(plugin)
+    -- (the AI edition: what a job needs to ask, copied now; nil when it's off)
+    local ai = Daily.aiOn(plugin) and require("gzreader_ai").snapshot(plugin) or nil
     require("gzreader_async").run({}, function()
         local edition, err = Daily.build(feeds, now, Daily.fetch)
         if not edition then return nil, err end
@@ -693,6 +759,14 @@ function Daily.refresh(plugin, on_done)
             Daily.addPictures(edition, Daily.pictureDir(), function() return nil end)
             Daily.clearPictures()
         end
+        -- (the AI edition: each story's summary, last, so a slow service delays nothing else)
+        if ai then
+            local AI = require("gzreader_ai")
+            local why
+            edition.summaries, edition.summaries_asked, why = Daily.addSummaries(edition, function(q) return AI.complete(ai, q) end)
+            edition.ai = ai.provider
+            if why then Log.warn("daily paper: a summary wasn't given:", tostring(why)) end
+        end
         return edition
     end, function(edition, err)
         Daily.refreshing = false
@@ -705,10 +779,11 @@ function Daily.refresh(plugin, on_done)
         Daily.last_error = nil
         Daily.keep(edition)
         Log.info("daily paper:", Daily.count(edition), "stories in", #edition.sections, "sections;", #(edition.failed or {}), "feeds failed;",
-            tonumber(edition.pictures) or 0, "pictures;", tonumber(edition.full) or 0, "whole stories from", tonumber(edition.pages) or 0, "pages")
+            tonumber(edition.pictures) or 0, "pictures;", tonumber(edition.full) or 0, "whole stories from", tonumber(edition.pages) or 0, "pages;",
+            tonumber(edition.summaries) or 0, "summaries" .. (edition.ai and (" by " .. tostring(edition.ai) .. " of " .. tostring(edition.summaries_asked or 0) .. " asked") or ""))
         Daily.changed()
         on_done(true)
-    end, "daily paper", { timeout = 300 + Daily.FULL_SECONDS + 120 })
+    end, "daily paper", { timeout = 300 + Daily.FULL_SECONDS + 120 + (ai and Daily.AI_SECONDS + 60 or 0) })
 end
 
 --- Today's edition, if it's due and wasn't tried a moment ago: with Wi-Fi

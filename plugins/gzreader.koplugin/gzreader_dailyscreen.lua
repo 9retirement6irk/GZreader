@@ -91,7 +91,21 @@ function Paper.statusText(plugin, now)
     if edition.day ~= D.day(now) then
         return T(_("from %1"), Paper.dateText(edition.at))
     end
-    return T(_("%1 stories · %2"), D.count(edition), Paper.timeText(edition.at))
+    local line = T(_("%1 stories · %2"), D.count(edition), Paper.timeText(edition.at))
+    if Paper.aiEdition(plugin, edition) then
+        line = line .. " · " .. T(_("summaries by %1"), edition.ai == "claude" and "Claude" or _("AI"))
+    end
+    return line
+end
+
+--- Is this edition shown as the AI edition? (Ticked, and it has summaries.)
+function Paper.aiEdition(plugin, edition)
+    return plugin ~= nil and type(edition) == "table" and (tonumber(edition.summaries) or 0) > 0 and Daily().aiWanted(plugin)
+end
+
+--- The AI edition's columns: one article across a 6" page, two on a big one.
+function Paper.aiColumns(w, dpi)
+    return math.max(1, Paper.columnCount(w, dpi) - 1)
 end
 
 --- Said where there's no paper yet.
@@ -794,7 +808,10 @@ local function pageClass()
 
     --- One story's block, `w` wide: its section over the first of each, the
     --- headline, where it's from, and how it begins.
-    function PaperPage:block(story, w, lead)
+    --- A story's block. `lead`: across the front page. `feature` (the AI
+    --- edition): a bigger headline, its picture whenever it has one, and its
+    --- summary whole instead of how the story begins.
+    function PaperPage:block(story, w, lead, feature)
         local parts, h = {}, 0
         local function add(widget, gap)
             self.widgets[#self.widgets + 1] = widget
@@ -804,8 +821,8 @@ local function pageClass()
         -- (the front page's type: Paper.frontFont)
         local ff = Paper.frontFont(self.plugin)
         local function fz(n) return math.max(5, math.floor(n * ff.scale + 0.5)) end
-        local head_face = face(ff.face.bold, fz(lead and 17 or 12), "smallinfofontbold")
-        local body_face = face(ff.face.regular, fz(10), "smallinfofont")
+        local head_face = face(ff.face.bold, fz(lead and 17 or feature and 15 or 12), "smallinfofontbold")
+        local body_face = face(ff.face.regular, fz(feature and 11 or 10), "smallinfofont")
         if story.kicker then
             add(TextWidget:new{ text = D.topicLabel(story.topic):upper(), face = Font:getFace("smallinfofontbold", fz(8)), max_width = w,
                 fgcolor = Paper.ink(Paper.topicColor(story.topic)) }, S(1))
@@ -826,13 +843,15 @@ local function pageClass()
                 max_width = w - (self.keyboard and S(22) or 0), fgcolor = Blitbuffer.COLOR_DARK_GRAY }, S(2))
             byline_h = parts[#parts].widget:getSize().h
         end
-        local pic_path = D.pictures(self.plugin) and D.pagePicture(story.item) and D.picturePath(story.item)
-        local pic = pic_path and Paper.pictureWidget(pic_path, w, math.floor(w * (lead and 0.3 or 0.5)))
+        local pic_path = D.pictures(self.plugin) and (feature or D.pagePicture(story.item)) and D.picturePath(story.item)
+        local pic_h = feature and math.min(math.floor(w * 0.42), math.floor(self.dimen.h * 0.26)) or math.floor(w * (lead and 0.3 or 0.5))
+        local pic = pic_path and Paper.pictureWidget(pic_path, w, pic_h)
         if pic then add(pic, S(4)) end
-        local text = Paper.excerpt(story.item.text, lead and 700 or 420)
+        local summary = feature and type(story.item.summary) == "string" and story.item.summary ~= "" and story.item.summary or nil
+        local text = summary or Paper.excerpt(story.item.text, (lead or feature) and 700 or 420)
         if text ~= "" and text ~= story.item.title then
             local body = TextBoxWidget:new{ text = text, face = body_face, width = w, alignment = "left", justified = true }
-            local lines = (lead and 4 or 5) - (pic and 2 or 0)
+            local lines = feature and 12 or ((lead and 4 or 5) - (pic and 2 or 0))
             if body:getSize().h > body:getLineHeight() * lines then
                 local lh = body:getLineHeight()
                 body:free()
@@ -841,7 +860,7 @@ local function pageClass()
             end
             add(body)
         end
-        return { parts = parts, h = h, story = story, byline_y = byline_y, byline_h = byline_h }
+        return { parts = parts, h = h, story = story, byline_y = byline_y, byline_h = byline_h, summary = summary ~= nil }
     end
 
     --- Lay the current page out: the nameplate, the stories in columns.
@@ -955,7 +974,10 @@ local function pageClass()
             self.next_start = 1
         else
             local start = self.starts[self.page] or 1
-            if first then
+            -- (the AI edition: every story a feature, one after another; no lead across)
+            local ai = Paper.aiEdition(self.plugin, edition)
+            self.ai = ai
+            if first and not ai then
                 -- the lead story across the page
                 local lead = self:block(stories[1], inner_w, true)
                 lead.x, lead.y, lead.w = margin, y, inner_w
@@ -964,14 +986,14 @@ local function pageClass()
                 self.rules[#self.rules + 1] = { y = y - S(3), h = 1 }
                 start = 2
             end
-            local cols = Paper.columnCount(W, Screen:getDPI())
+            local cols = ai and Paper.aiColumns(W, Screen:getDPI()) or Paper.columnCount(W, Screen:getDPI())
             local gutter = S(16)
             local col_w = math.floor((inner_w - gutter * (cols - 1)) / cols)
             local col_h = foot_y - y - S(4)
             local gap = S(9)
             local built = {}
             local placed, nxt = Paper.fill(start, self.n, cols, col_h, gap, function(i)
-                built[i] = built[i] or self:block(stories[i], col_w, false)
+                built[i] = built[i] or self:block(stories[i], col_w, false, ai)
                 return built[i].h
             end)
             for _i, p in ipairs(placed) do
@@ -1274,6 +1296,8 @@ function Paper.articleText(item)
     local by = item.source or ""
     if item.at then by = by .. (by ~= "" and " · " or "") .. Paper.dateText(item.at) .. ", " .. Paper.timeText(item.at) end
     if by ~= "" then parts[#parts + 1] = by end
+    -- (the AI edition's summary, said to be one, before the story itself)
+    if type(item.summary) == "string" and item.summary ~= "" then parts[#parts + 1] = T(_("In brief (AI summary): %1"), item.summary) end
     if item.text and item.text ~= "" then parts[#parts + 1] = item.text end
     if item.link then
         parts[#parts + 1] = item.full and _("From the story's own page. QR code shows its link for your phone.")
@@ -2061,6 +2085,19 @@ function Paper.settingsItems(plugin)
                 if st.full == false then st.full = nil else st.full = false end
                 plugin:save()
                 D.feedsChanged()
+            end,
+        },
+        {
+            text = _("AI edition"),
+            help_text = _("Each story gets a short summary written by the AI service you set up (Settings → Accounts and services → AI), and the paper becomes pages of articles: a headline, its picture and its summary, one after another. Open a story for the whole of it. For the summaries, each story's headline and text are sent to that service when the paper is fetched (about twenty stories a day, paid by use: a few cents a month with Claude's small model); nothing about you or your Kindle is. Needs an AI key; the next paper fetched is the first AI edition."),
+            enabled_func = function() return on() and require("gzreader_ai").ready(plugin) end,
+            checked_func = function() return on() and D.aiOn(plugin) end,
+            callback = function()
+                local st = D.store(plugin)
+                st.ai = (not D.aiWanted(plugin)) or nil
+                plugin:save()
+                require("gzreader_log").info("daily paper: AI edition", st.ai and "on" or "off")
+                if Paper.instance and not Paper.instance.closed then Paper.instance:reload() end
             end,
         },
         {

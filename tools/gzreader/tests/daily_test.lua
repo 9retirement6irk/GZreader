@@ -818,7 +818,7 @@ check(fw == 200 and fh == 100, "a small one: at most twice its size (not blown u
 local dsp = read(PLUGIN .. "/gzreader_dailyscreen.lua")
 check(dsp:find("Paper.pictureWhole(pic_path, inner", 1, true) and dsp:find("Daily().pictures(self.plugin) and Daily().picturePath(it)", 1, true),
     "an opened story shows its picture under the headline (when Pictures is on and it has one)")
-check(dsp:find("D.pagePicture(story.item) and D.picturePath(story.item)", 1, true), "the pages show only the first few")
+check(dsp:find("(feature or D.pagePicture(story.item)) and D.picturePath(story.item)", 1, true), "the pages show only the first few (the AI edition: every story's)")
 
 print("== a story's type")
 plugin = { store = { daily = { enabled = true } }, save = function() saves = saves + 1 end }
@@ -924,7 +924,7 @@ check(Paper.frontFont(plugin).size.id == "normal" and Paper.frontFont(plugin).fa
 check(Paper.weatherDays(0.85) == 4 and Paper.weatherDays(1) == 4 and Paper.weatherDays(1.2) == 3 and Paper.weatherDays(1.45) == 2, "bigger type: fewer days in the weather box, so each still fits")
 check(row("The paper's pages").help_text:find("fewer stories on a page", 1, true), "the setting says bigger type means more pages")
 local fsrc = read(PLUGIN .. "/gzreader_dailyscreen.lua")
-check(fsrc:find("local head_face = face(ff.face.bold, fz(lead and 17 or 12)", 1, true) and fsrc:find("local body_face = face(ff.face.regular, fz(10)", 1, true)
+check(fsrc:find("local head_face = face(ff.face.bold, fz(lead and 17 or feature and 15 or 12)", 1, true) and fsrc:find("local body_face = face(ff.face.regular, fz(feature and 11 or 10)", 1, true)
     and fsrc:find("self.key_events.GzType = { { k.type } }", 1, true) and fsrc:find('return "type"', 1, true), "headlines and stories' beginnings are set in it; Aa at the foot and a key open the box")
 
 print("== a story rests where the finger leaves it")
@@ -1443,6 +1443,91 @@ check(dsrc2:find('self.key_events["GzStory" .. n] = { { letter }, { tostring(n) 
     and dsrc2:find("self.keyboard = self.keys and Device:hasKeyboard() and true or false", 1, true), "a story's letter or number opens it, only on a Kindle with a keyboard")
 check(dsrc2:find('foot("fetch", f.fetch, S(4))', 1, true) and dsrc2:find('foot("type", f.type, S(6))', 1, true) and dsrc2:find('out[#out + 1] = { id = "diary"', 1, true),
     "the 5-way reaches everything: TODAY, every story, Fetch, Aa, Puzzles")
+end)()
+
+;(function()
+print("== the AI edition: a summary a story, pages of articles")
+local Dz = require("gzreader_daily")
+local AI = require("gzreader_ai")
+local long = string.rep("The council met on Monday and agreed to keep the old bridge open through the winter. ", 12)
+local function edition()
+    return { day = Dz.day(), at = os.time(), sections = {
+        { topic = "World", items = { { title = "Bridge stays open", text = long, source = "Example World", link = "https://example.com/world/bridge" },
+            { title = "Short one", text = "Rain is forecast.", source = "Example World" } } },
+        { topic = "Technology", items = { { title = "A radio that tunes itself", text = long .. long, source = "Example Tech" } } },
+    } }
+end
+local pl = { store = { daily = { enabled = true } }, save = function() end }
+check(Dz.aiWanted(pl) == false and Dz.aiOn(pl) == false, "the AI edition is off as it comes")
+pl.store.daily.ai = true
+check(Dz.aiWanted(pl) == true and Dz.aiOn(pl) == false, "ticked without an AI key: not on, nothing will be asked")
+AI.settings(pl).claude.key = "sk-ant-example"
+check(Dz.aiOn(pl) == true and table.concat(AI.uses(pl), "|"):find("The daily paper's AI edition", 1, true), "with the AI connection set up: on, and the AI page lists it")
+-- what's asked
+local q = Dz.summaryQuestion({ title = "Bridge stays open", text = string.rep("x", 20000), link = "https://example.com/world/bridge", source = "Example World" })
+check(q.system == Dz.SUMMARY_SYSTEM and q.text:find("Headline: Bridge stays open", 1, true) and #q.text < Dz.AI_TEXT + 200 and q.max_tokens == 300,
+    "a story's headline and the start of its text are asked about (" .. #q.text .. " bytes)")
+check(not q.text:find("example.com", 1, true) and not q.system:find("example.com", 1, true), "its address isn't sent")
+-- the summaries
+local e = edition()
+local asked = {}
+local done, n, why = Dz.addSummaries(e, function(question) asked[#asked + 1] = question; return "  The council voted to keep the bridge open.\nIt will be reviewed in spring, the mayor said afterwards.  " end)
+check(done == 2 and n == 2 and why == nil and #asked == 2, "each long story is asked for once (" .. done .. " of " .. n .. ")")
+check(e.sections[1].items[1].summary == "The council voted to keep the bridge open. It will be reviewed in spring, the mayor said afterwards."
+    and e.sections[2].items[1].summary ~= nil, "the answer is kept as the story's summary, on one line")
+check(e.sections[1].items[2].summary == nil, "a story of a line or two is its own summary: not sent")
+e = edition()
+local calls = 0
+done, n, why = Dz.addSummaries(e, function() calls = calls + 1; return nil, "the key was refused (401)" end)
+check(done == 0 and why == "the key was refused (401)" and calls == 2 and e.sections[1].items[1].summary == nil, "a refused key: no summaries, and why")
+local many = { day = Dz.day(), at = os.time(), sections = { { topic = "World", items = {} } } }
+for i = 1, 8 do many.sections[1].items[i] = { title = "Story " .. i, text = long } end
+calls = 0
+done, n = Dz.addSummaries(many, function() calls = calls + 1; return nil, "no answer" end)
+check(calls == Dz.AI_GIVE_UP and done == 0, "after " .. Dz.AI_GIVE_UP .. " failures in a row the rest aren't asked for")
+calls = 0
+local t = 0
+done, n = Dz.addSummaries(many, function() calls = calls + 1; t = t + 100; return string.rep("A summary. ", 6) end, 250, function() return t end)
+check(calls == 3 and done == 3, "it stops when its time is up (" .. calls .. " asked in 250 s)")
+calls = 0
+done = Dz.addSummaries(many, function() calls = calls + 1; return calls == 1 and "short" or string.rep("word ", 400) end)
+check(many.sections[1].items[1].summary == nil or many.sections[1].items[1].summary ~= "short", "an answer of a word isn't a summary")
+local longest = 0
+for _i, it in ipairs(many.sections[1].items) do longest = math.max(longest, #(it.summary or "")) end
+check(longest > 0 and longest <= Dz.AI_SUMMARY + 8, "a summary that runs on is cut (" .. longest .. " bytes)")
+check(pcall(Dz.addSummaries, edition(), function() error("boom") end), "an error while asking doesn't end the paper")
+-- the page
+e = edition()
+check(Paper.aiEdition(pl, e) == false, "an edition without summaries is the ordinary paper, even when ticked")
+e.summaries, e.ai = 2, "claude"
+check(Paper.aiEdition(pl, e) == true, "ticked, with summaries: the AI edition")
+pl.store.daily.ai = nil
+check(Paper.aiEdition(pl, e) == false, "unticked: the ordinary paper again, the same edition")
+pl.store.daily.ai = true
+check(Paper.aiColumns(600, 167) == 1 and Paper.aiColumns(1072, 300) == 1 and Paper.aiColumns(1860, 300) >= 2, "one article across a 6-inch page, two on a big one")
+local art = Paper.articleText({ title = "Bridge stays open", source = "Example World", text = "The whole story.", summary = "The council voted." })
+check(art:find("In brief (AI summary): The council voted.", 1, true) and art:find("The whole story.", 1, true)
+    and art:find("In brief", 1, true) < art:find("The whole story.", 1, true), "an opened story: the summary first, said to be the AI's, then the whole of it")
+check(not Paper.articleText({ title = "x", text = "The whole story." }):find("In brief", 1, true), "no summary: nothing added")
+-- settings and the setup page
+local arow
+for _i, r in ipairs(Paper.settingsItems(pl)) do if r.text == "AI edition" then arow = r end end
+check(arow and arow.enabled_func() == true and arow.checked_func() == true and arow.help_text:find("headline and text are sent", 1, true), "Settings → Daily paper → AI edition, saying what's sent")
+arow.callback()
+check(Dz.aiWanted(pl) == false and arow.checked_func() == false, "unticked there")
+AI.clear(pl)
+check(arow.enabled_func() == false, "without an AI key it can't be ticked")
+local ps = Dz.pageState(pl)
+check(ps.ai == false and ps.ai_ready == false, "the setup page knows: off, no key")
+Dz.pageSave(pl, { enabled = "1", ai = "1" })
+check(pl.store.daily.ai == true and Dz.aiOn(pl) == false, "ticked on the page before there's a key: kept, but nothing is asked until there is one")
+Dz.pageSave(pl, { enabled = "1" })
+check(pl.store.daily.ai == nil, "unticked on the page")
+local dsrc3, ksrc = read(PLUGIN .. "/gzreader_dailyscreen.lua"), read(PLUGIN .. "/gzreader_daily.lua")
+check(ksrc:find("local ai = Daily.aiOn(plugin) and require(\"gzreader_ai\").snapshot(plugin) or nil", 1, true)
+    and ksrc:find("Daily.addSummaries(edition, function(q) return AI.complete(ai, q) end)", 1, true), "the paper's fetch asks through the AI connection, only when it's on")
+check(not ksrc:find("Log%.%a+%([^\n]*item%.summary") and not ksrc:find("Log%.%a+%([^\n]*%.text") and not ksrc:find("Log%.%a+%([^\n]*item%.title"), "no story, headline or summary in the log")
+check(dsrc3:find("built[i] = built[i] or self:block(stories[i], col_w, false, ai)", 1, true) and dsrc3:find("if first and not ai then", 1, true), "the pages lay every story out as an article")
 end)()
 
 local cl = read(PLUGIN .. "/gzreader_changelog.lua")

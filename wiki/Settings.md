@@ -29,8 +29,8 @@ icons are inverted.
 ## AI
 
 Accounts and services has an **AI** row, after Notes: one key of your own for everything
-that asks an AI service something (handwriting to text, and what comes
-next). It's described under
+that asks an AI service something (handwriting to text, the daily paper's
+AI edition, and what comes next). It's described under
 [the AI connection](Setup-Page-and-Connections#ai). Kindles without Wi‑Fi
 don't have the row.
 

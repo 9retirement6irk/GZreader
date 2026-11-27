@@ -232,6 +232,77 @@ if os.getenv("GZ_EMU_MODEL") == "k3" or not os.getenv("GZ_EMU_MODEL") then
         check(E, require("gzreader_panel").open == nil and Paper.instance and not Paper.instance.closed, "Menu again closes it; the paper is still there")
     end, after = 2 })
 end
+-- the AI edition: the same paper with a summary a story (given here: nothing is asked), as pages of articles
+add({ fn = function(E)
+    local Paper = require("gzreader_dailyscreen")
+    local Daily = require("gzreader_daily")
+    local AI = require("gzreader_ai")
+    local p = plugin()
+    local page = Paper.instance
+    page.page, page.starts = 1, { 1 }
+    page:build()
+    E.plain_blocks, E.plain_cols = #page.blocks, 0
+    local xs = {}
+    for _i, b in ipairs(page.blocks) do if not xs[b.x] then xs[b.x] = true; E.plain_cols = E.plain_cols + 1 end end
+    local edition = Daily.load()
+    local n = 0
+    for _i, sec in ipairs(edition.sections) do
+        for _j, it in ipairs(sec.items) do
+            n = n + 1
+            it.summary = "The council voted nine to four to keep the old bridge open through the winter, after engineers said it was sound. "
+                .. "Traffic lights will let one lane cross at a time. The question comes back in spring, when the surveyors can get up to the pass. (" .. n .. ")"
+        end
+    end
+    edition.summaries, edition.ai = n, "claude"
+    Daily.keep(edition)
+    AI.settings(p).claude.key = "sk-ant-example-not-a-key"
+    Daily.store(p).ai = true
+    check(E, Daily.aiOn(p) and Paper.aiEdition(p, Daily.load()), "the AI edition switched on, the edition has its summaries")
+    page:reload()
+end, after = 8 })
+add({ shot = "daily-ai-1-front" })
+add({ fn = function(E)
+    local Paper = require("gzreader_dailyscreen")
+    local page = Paper.instance
+    local cols, xs, inside, whole, pics = 0, {}, true, true, 0
+    for _i, b in ipairs(page.blocks) do
+        if not xs[b.x] then xs[b.x] = true; cols = cols + 1 end
+        if b.x < 0 or b.x + b.w > page.dimen.w or b.y + math.min(b.h, b.clip or b.h) > page.foot.y then inside = false end
+        if not b.summary then whole = false end
+        for _j, part in ipairs(b.parts) do if part.widget.gz_picture or (part.widget.getSize and part.widget.image) then pics = pics + 1 end end
+    end
+    check(E, page.ai == true and #page.blocks >= 1 and cols == Paper.aiColumns(page.dimen.w, require("device").screen:getDPI()) and cols < math.max(2, E.plain_cols),
+        "the front page is articles one after another (" .. #page.blocks .. " on it, " .. cols .. " across; the ordinary paper had " .. E.plain_blocks .. " in " .. E.plain_cols .. " columns)")
+    check(E, inside and whole, "every article fits inside the page and shows its summary")
+    check(E, page.blocks[1].w > page.dimen.w * 0.4 and page.has_next, "an article is as wide as its column; more pages behind")
+    check(E, Paper.statusText(plugin()):find("summaries by Claude", 1, true) ~= nil, "the date line says the summaries are Claude's")
+    E.ai_pages = 1
+    page:turn(1)
+end, after = 6 })
+add({ shot = "daily-ai-2-page2" })
+add({ fn = function(E)
+    local Paper = require("gzreader_dailyscreen")
+    local Daily = require("gzreader_daily")
+    local page = Paper.instance
+    check(E, page.page == 2 and #page.blocks >= 1 and page.blocks[1].summary == true, "the next page: more articles")
+    local guard = 0
+    while page.has_next and guard < 40 do guard = guard + 1; page:turn(1) end
+    local last = page.blocks[#page.blocks]
+    check(E, last ~= nil and page.next_start == page.n + 1, "paging reaches the last story (" .. page.page .. " pages for " .. page.n .. " stories)")
+    -- open one: the summary first, then the whole story
+    local text = Paper.articleText(page.blocks[1].story.item)
+    check(E, text:find("In brief (AI summary):", 1, true) ~= nil, "an opened story begins with its summary, said to be the AI's")
+    -- back to the ordinary paper for the rest of the tour
+    local p = plugin()
+    Daily.store(p).ai = nil
+    require("gzreader_ai").clear(p)
+    local edition = Daily.load()
+    for _i, sec in ipairs(edition.sections) do for _j, it in ipairs(sec.items) do it.summary = nil end end
+    edition.summaries, edition.ai = nil, nil
+    Daily.keep(edition)
+    page:reload()
+    check(E, page.ai ~= true and #page.blocks == E.plain_blocks, "switched off: the ordinary paper again")
+end, after = 8 })
 -- the pages' type: Aa at the foot; Large + Sans, laid out again
 add({ fn = function(E)
     local Paper = require("gzreader_dailyscreen")

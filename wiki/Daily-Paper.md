@@ -115,6 +115,39 @@ others, always the same one), and the heavy rule under the nameplate, on the
 paper and on Home, is the paper's red. Turning off KOReader's colour rendering
 puts it back in black.
 
+## The AI edition
+
+**Settings → Accounts and services → Daily paper → AI edition** (or the tick
+on the setup page's Daily paper tab). It needs the
+[AI connection](Setup-Page-and-Connections#ai) to have a key; until then the
+row is grey.
+
+With it on, each paper fetched gets a short summary of every story (two to
+four sentences), written by the AI service you set up, and the paper becomes
+pages of articles: a headline, its picture when it has one, and its summary,
+one article after another (two side by side on a big screen). Turn the pages
+as usual. Open a story for the whole of it; it begins with **In brief (AI
+summary)**. The date line says who wrote the summaries (*summaries by
+Claude*).
+
+- **What's sent:** when the paper is fetched, each story's headline and the
+  first part of its text (about a thousand words at most) go to the AI
+  service, one story at a time, about twenty a day. Nothing about you, your
+  Kindle or your feeds' addresses is sent.
+- **What it costs:** you pay the service by use. With Claude's small model,
+  twenty short summaries a day come to a few cents a month.
+- **When it starts:** with the next paper fetched (**Fetch again** at the
+  paper's foot does it at once). Today's paper, fetched before, stays as it
+  was.
+- **When the service doesn't answer:** the stories it didn't answer for show
+  how they begin, as in the ordinary paper. If no story got a summary (a
+  refused key, no connection), the paper is the ordinary one that day; the
+  log says why.
+- A story of only a line or two isn't sent: it is its own summary.
+- Summaries are written by a machine and can be wrong; the story itself is
+  one tap away.
+- Not on Kindles without Wi‑Fi.
+
 ## With keys
 
 On a Kindle with keys, a frame shows where you are, and the 5-way moves it
