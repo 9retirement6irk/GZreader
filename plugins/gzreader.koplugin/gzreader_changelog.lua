@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Copy from another GZreader: settings, game data and downloads too", text = "Copy from another GZreader now also brings your settings (GZreader's and ZenOS's, the reader's defaults, the daily paper's feeds; never passwords or keys), the game board's history and achievements, and a list of what's downloaded there: books (narrated ones with their narration), audiobooks and Plex music are downloaded again on the new Kindle once it's signed in to the same servers." },
+        },
+    },
+    {
         version = "2026.11.26",
         changes = {
             { short = "Quick panel: Home first, one Rotate tile, Reader tools, and your own order", text = "The quick panel's Controls start with Home, and on a Kindle that turns the screen by itself Rotate is one tile with Auto or Manual under it (while Manual, its bottom part turns the screen). In a book, one Reader tools tile opens what a swipe up from the bottom opens (font, layout with Fit pictures, search, bookmarks, highlights), with Story guide, Flashcards, Mark up and Notes after it and Quick note last. Settings → Quick panel can arrange the tiles and add tiles of your own." },

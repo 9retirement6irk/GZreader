@@ -299,6 +299,8 @@ question mark, and Translate is KOReader's own.
 
 ## Copy connections from another GZreader
 
+(Connections, settings, the game board and the downloads.)
+
 Set one GZreader up and copy its connections to the others over the Wi‑Fi,
 instead of scanning the QR code on each:
 
@@ -310,8 +312,9 @@ instead of scanning the QR code on each:
    page, Settings → General → Transfer or reset → Copy to or from another GZreader, the Notes
    or Calendar tab while not connected, Settings → Accounts and services → Books). It
    lists the GZreader devices sending on the Wi‑Fi; pick it and enter the PIN.
-3. Tick what to copy (everything this one doesn't have yet; from the Notes tab
-   only Notes, from the Calendar tab only calendars) and **Copy**.
+3. Tick what to copy (everything this one doesn't have yet, with Settings, Game
+   board and Downloads; from the Notes tab only Notes, from the Calendar tab
+   only calendars) and **Copy**.
 
 What's copied:
 - **Notes:** the Memos address and access token.
@@ -321,6 +324,23 @@ What's copied:
   sign-in (a refresh token used on two devices signs both out) and GZreader
   never keeps your password, so the new one then signs in: type the password
   (address and user name filled in), or the setup page for single sign-on.
+- **Settings:** GZreader's and ZenOS's own (Home, the tabs, the quick panel,
+  the shelf…), the reader's defaults for books, the status bar, the sleep
+  screen, sorting, and the daily paper's feeds and choices, Notes' and the
+  calendar's preferences and the auto-download shelf. Never a password, token,
+  key or PIN, and nothing that belongs to the device itself (its rotation, pen,
+  screen, light). They apply once GZreader restarts: it offers to restart
+  (after signing in to Grimmory, when that comes first).
+- **Game board:** its history, achievements, themes and your books' words,
+  joined with any on the new one (each puzzle once), and today's paper puzzles
+  as far as they've got.
+- **Downloads:** what's on the other Kindle is downloaded again on this one,
+  through the usual download queue: books (narrated books with their
+  narration), audiobooks and Plex music. Books and audiobooks start once this
+  Kindle is signed in to the same book server (straight after signing in, or at
+  the next Wi‑Fi connection); music once it's connected to Plex. What's already
+  here isn't downloaded again. Books you copied onto the Kindle yourself (not
+  from the book server) can't be fetched this way.
 
 Each copy is checked by connecting with it, as when typed in. Both must be on
 the same Wi‑Fi. Finding each other is mDNS / DNS‑SD (`_gzreader._tcp`, what
