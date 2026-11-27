@@ -12,6 +12,7 @@ return {
             { short = "Home: a tap on Reading stats opens the stats page", text = "A tap on Home's Reading stats (every device) widget now opens the reading stats page, as it was meant to. It did nothing because ZenOS's \"hold a widget to change it\" setting, on by default, stopped the tap. A hold still opens the widget's settings." },
             { short = "BookOrbit: Settings and Audiobooks from say BookOrbit", text = "Signed in to BookOrbit, Settings → Accounts and services now shows BookOrbit beside Books and Audiobooks, and the Catalog's Audiobooks from window offers BookOrbit (with your Plex libraries) instead of Grimmory." },
             { short = "Setup guide: asks whether Home shows what you read on every device", text = "The setup guide now asks, after Library View, whether Home should also show the books and audiobooks you're in the middle of on your other devices (Home's Recently read on every device), from Grimmory or BookOrbit. Yes is picked when you use a book server; on its own, Not now. Change it later in Settings → Home and tabs → Home → Widgets → Featured book." },
+            { short = "Daily paper: the Aa key opens the type box, Menu the quick panel", text = "On a Kindle with a keyboard (Kindle 2, Keyboard, DX), the Aa key now opens the type box on the daily paper's pages and in an opened story, and Menu opens the quick panel there, as it does in a book and at Home. Menu used to open the type box. A Kindle 4 has no Aa key, so Menu still opens the type box there." },
         },
     },
     {

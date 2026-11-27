@@ -45,15 +45,15 @@ and how it begins.
   **Aa** sets the story's text (below), **QR code** shows the story's link as
   a code for your phone, for the rest of it or its pictures, and **✕** closes
   it.
-- **Story text**: **Aa** at the top of a story (**Menu** on a Kindle with
-  keys) opens a box with **A−** / **A+** for the size, the typeface (Serif,
+- **Story text**: **Aa** at the top of a story (the **Aa** key on a Kindle
+  with a keyboard; **Menu** on a Kindle 4) opens a box with **A−** / **A+** for the size, the typeface (Serif,
   Sans, Classic, Typewriter) and the line spacing (Tight, Normal, Wide). The
   story behind is set again at each tap, at the same place, so you can try
   them; **Done** closes the box. The choices are kept, and are also in the
   daily paper's settings under **Story text**. They set opened stories; the
   paper's own pages have their own (next).
-- **The paper's pages**: **Aa** at the foot of the paper (**Menu** on a
-  Kindle with keys) sets the type of the pages themselves: the headlines, how
+- **The paper's pages**: **Aa** at the foot of the paper (the **Aa** key on
+  a Kindle with a keyboard; **Menu** on a Kindle 4) sets the type of the pages themselves: the headlines, how
   each story begins, the weather and TODAY boxes. Four sizes (Small, Normal,
   Large, Larger) and the same typefaces. Bigger type puts fewer stories on a
   page, so the paper has more pages, and shows fewer days in the weather box.
@@ -61,7 +61,7 @@ and how it begins.
   name keeps its own face.
 - **Close**: the cross in the corner, or Back.
 - **The quick panel**: swipe down from the top of the paper or of a story,
-  as anywhere else.
+  as anywhere else. On a Kindle with a keyboard: **Menu**.
 
 **Whole stories**: many feeds carry only a sentence or two of each story.
 For those, GZreader also fetches the story's own web page with the day's

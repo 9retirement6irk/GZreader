@@ -874,8 +874,22 @@ frows[1].sub_item_table[3].callback()
 frows[3].sub_item_table[1].callback()
 check(Paper.storyFont(plugin).face.id == "classic" and Paper.storyFont(plugin).spacing.id == "tight", "a typeface and a spacing picked there")
 local dsrc = read(PLUGIN .. "/gzreader_dailyscreen.lua")
-check(dsrc:find("line_height = font.spacing.em", 1, true) and dsrc:find("face(font.face.regular, font.size", 1, true) and dsrc:find('ShowType = { { "Menu" } }', 1, true),
-    "the story is set in the type chosen; Menu opens the box on a Kindle with keys")
+check(dsrc:find("line_height = font.spacing.em", 1, true) and dsrc:find("face(font.face.regular, font.size", 1, true) and dsrc:find("self.key_events.ShowType = { { k.type } }", 1, true),
+    "the story is set in the type chosen; a key opens the box on a Kindle with keys")
+;(function()
+    local kb, k4 = Paper.typeKeys(true), Paper.typeKeys(false)
+    check(kb.type == "AA" and kb.panel == "Menu", "a Kindle with a keyboard: the Aa key is the type box, Menu the quick panel")
+    check(k4.type == "Menu" and k4.panel == nil, "keys but no keyboard (no Aa key): Menu stays the type box")
+    check(dsrc:find("if k.panel then self.key_events.KeyPanel = { { k.panel } } end", 1, true) and dsrc:find("if k.panel then self.key_events.GzPanel = { { k.panel } } end", 1, true)
+        and dsrc:find('function PaperPage:onGzPanel() return Paper.openPanel(self.plugin, "Menu") end', 1, true)
+        and dsrc:find('function ArticleView:onKeyPanel() return Paper.openPanel(self.plugin, "Menu") end', 1, true)
+        and dsrc:find("Paper.typeKeys(Device:hasKeyboard())", 1, true), "the paper's pages and a story both take their keys from it")
+    local shown = 0
+    local was = package.loaded["gzreader_panel"]
+    package.loaded["gzreader_panel"] = { show = function() shown = shown + 1 end }
+    check(Paper.openPanel({}, "Menu") == true and shown == 1, "Menu's handler shows the quick panel")
+    package.loaded["gzreader_panel"] = was
+end)()
 
 print("== the type of the paper's own pages")
 plugin = { store = { daily = { enabled = true } }, save = function() saves = saves + 1 end }
@@ -911,7 +925,7 @@ check(Paper.weatherDays(0.85) == 4 and Paper.weatherDays(1) == 4 and Paper.weath
 check(row("The paper's pages").help_text:find("fewer stories on a page", 1, true), "the setting says bigger type means more pages")
 local fsrc = read(PLUGIN .. "/gzreader_dailyscreen.lua")
 check(fsrc:find("local head_face = face(ff.face.bold, fz(lead and 17 or 12)", 1, true) and fsrc:find("local body_face = face(ff.face.regular, fz(10)", 1, true)
-    and fsrc:find('GzType = { { "Menu" } }', 1, true) and fsrc:find('return "type"', 1, true), "headlines and stories' beginnings are set in it; Aa at the foot and Menu open the box")
+    and fsrc:find("self.key_events.GzType = { { k.type } }", 1, true) and fsrc:find('return "type"', 1, true), "headlines and stories' beginnings are set in it; Aa at the foot and a key open the box")
 
 print("== a story rests where the finger leaves it")
 local LS = require("gzreader_livescroll")
