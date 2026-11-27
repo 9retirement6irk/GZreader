@@ -909,6 +909,11 @@ print("House tab in the Bookshelf view: the rooms as a wall (where things go, th
         and key(E["sensor.temp"]) == "thermometer-12-1a1a1a" and key(dev("sensor.t", "68", { dc = "temperature", unit = "°F" })) == "thermometer-12-1a1a1a"
         and key(dev("sensor.t", "unknown", { dc = "temperature" })) == "thermometer-0-1a1a1a" and key(E["sensor.hum"]) == "gauge-8",
         "the wall: sensors: a contact apart when open, a thermometer (°F as °C), a gauge for humidity")
+    check(key(dev("media_player.s", "playing")) == "speaker-playing" and key(dev("media_player.s", "paused")) == "speaker-on" and key(dev("media_player.s", "off")) == "speaker-off"
+        and key(dev("media_player.t", "on", { dc = "tv" })) == "tv-on" and key(dev("media_player.t", "standby", { dc = "tv" })) == "tv-off"
+        and key(dev("media_player.t", "playing", { dc = "tv" })) == "tv-playing" and View.fitting(dev("media_player.s", "playing")).svg():match("^<%?xml")
+        and View.fitting(dev("media_player.t", "on", { dc = "tv" })).svg():match("^<%?xml"),
+        "the wall: a speaker (sound coming from it while it plays) and a TV (its screen lit when on)")
     -- colour screens: a lit lamp in the bulb's colour, the thermostat's scale while it heats or cools, a red thermometer
     check(key(E["light.ceiling"], true) == "dimmer-8-ffc94d" and key(dev("light.x", "on", { dim = true, bri = 50, rgb = "#0A84FF" }), true) == "dimmer-5-0a84ff"
         and key(E["light.lamp"], true) == "toggle-off-1a1a1a" and key(dev("light.x", "on"), true) == "toggle-on-ffc94d"
@@ -1048,7 +1053,7 @@ print("House tab (Home Assistant): connecting, rooms, switching, Settings, the p
     local function texts() local t = {} for _i, r in ipairs(rows()) do t[#t + 1] = r.text end return table.concat(t, "|") end
     check(tab and tab.menu._gz_navbar_tab_id == "ct_house" and tab.house and not tab.house.by_kind,
         "House tab: opened (its tab id), the list fetched with the rooms")
-    check(texts() == "Refresh|Living room|Ceiling light|Floor lamp|Thermostat|Temperature|Kitchen|Under-cabinet lights|Kettle"
+    check(texts() == "Refresh|Living room|Ceiling light|Floor lamp|Thermostat|Temperature|Speaker|TV|Kitchen|Under-cabinet lights|Kettle"
         .. "|Outside|Porch light|Front door|Garage door|Back door|Other|Coffee maker|Scenes|Goodnight|Leaving|Movie",
         "House tab: rooms in Home Assistant's order, room names off the devices' names, no empty room, no power sensor or automation (" .. texts() .. ")")
     check(row("Ceiling light").mandatory == "On · 80%" and row("Floor lamp").mandatory == "Off" and row("Thermostat").mandatory == "20.5° → 21°"
@@ -1159,6 +1164,134 @@ print("House tab (Home Assistant): connecting, rooms, switching, Settings, the p
     check(hstate("light.porch").state == "off" and hstate("light.floor_lamp").state == "off" and row("Porch light").mandatory == "Off",
         "House tab: a scene runs (Goodnight: the lights off)")
 
+    -- media players: a speaker (Music Assistant's) and a TV
+    ;(function()
+        check(row("Speaker").mandatory == "Paused · Blue in Green" and row("TV").mandatory == "Off" and row("Speaker").gz_icon:match("icons/house/speaker%.svg$")
+            and row("TV").gz_icon:match("icons/house/tv%.svg$") and row("Speaker").checked_func == nil and row("Speaker").callback,
+            "House tab: a speaker and a TV in their room (what plays; their icons; no toggle: they open their buttons)")
+        local function media(text)
+            captured.buttons = nil
+            row(text).callback()
+            return captured.buttons
+        end
+        local function titles(d)
+            local t = {}
+            for _i, line in ipairs(d and d.buttons or {}) do for _j, btn in ipairs(line) do t[#t + 1] = btn.text end end
+            return table.concat(t, "|")
+        end
+        local md = media("Speaker")
+        check(md and md.title == "Speaker\nPaused · Blue in Green\nExample Quartet\nVolume 30%"
+            and titles(md) == "Previous|Play|Next|− 5%|+ 5%|Mute|10%|20%|● 30%|50%|Shuffle: off|Repeat: off|Choose music…|Close",
+            "House tab: a speaker's buttons: before, play, after; its volume a step, mute and levels (● its own); shuffle, repeat; music (no on/off: it has none) (" .. titles(md) .. ")")
+        captured.buttons = nil
+        button(md, "Play").callback()
+        check(hstate("media_player.living_room_speaker").state == "playing" and row("Speaker").mandatory == "Playing · Blue in Green"
+            and captured.buttons and button(captured.buttons, "Pause"),
+            "House tab: Play: it plays, the list says so at once (Home Assistant's answer has no state), and its buttons stay open with Pause")
+        button(captured.buttons, "+ 5%").callback()
+        check(hstate("media_player.living_room_speaker").attributes.volume_level == 0.35 and captured.buttons.title:match("Volume 35%%"),
+            "House tab: + 5%: the volume a step up, and the buttons open again for another")
+        button(captured.buttons, "50%").callback()
+        button(captured.buttons, "Mute").callback()
+        check(hstate("media_player.living_room_speaker").attributes.volume_level == 0.5 and hstate("media_player.living_room_speaker").attributes.is_volume_muted == true
+            and captured.buttons.title:match("Volume 50%% · muted") and button(captured.buttons, "Unmute") and button(captured.buttons, "● 50%"),
+            "House tab: a level (50%), then Mute (it says muted, and offers Unmute)")
+        button(captured.buttons, "Shuffle: off").callback()
+        button(captured.buttons, "Repeat: off").callback()
+        button(captured.buttons, "Repeat: all").callback()
+        check(hstate("media_player.living_room_speaker").attributes.shuffle == true and hstate("media_player.living_room_speaker").attributes["repeat"] == "one"
+            and button(captured.buttons, "Shuffle: on") and button(captured.buttons, "Repeat: one"),
+            "House tab: shuffle on; repeat goes off → all → one")
+        button(captured.buttons, "Next").callback()
+        tab:refresh(false)
+        check(row("Speaker").mandatory == "Playing · Next song", "House tab: Next: the song after, in the list at the next refresh")
+        -- a TV that only turns on and off
+        local tv = media("TV")
+        check(tv and tv.title == "TV\nOff" and titles(tv) == "Turn on|Close", "House tab: a TV that can only be turned on and off offers just that (" .. titles(tv) .. ")")
+        captured.buttons = nil
+        button(tv, "Turn on").callback()
+        check(hstate("media_player.living_room_tv").state == "on" and row("TV").mandatory == "On" and titles(captured.buttons) == "Turn off|Close",
+            "House tab: Turn on: the TV is on, and its buttons now offer Turn off")
+        button(captured.buttons, "Turn off").callback()
+        check(hstate("media_player.living_room_tv").state == "off" and row("TV").mandatory == "Off", "House tab: …and off again")
+        -- choosing music (Music Assistant)
+        local MenuMod = require("ui/widget/menu")
+        local saved_new, saved_input, saved_page = MenuMod.new, package.loaded["ui/widget/inputdialog"], HA.MUSIC_PAGE
+        local shown_menu, typed
+        MenuMod.new = function(_s, o) shown_menu = o; return o end
+        package.loaded["ui/widget/inputdialog"] = { new = function(_s, o)
+            o.getInputText = function() return typed end
+            o.onShowKeyboard = function() end
+            captured.input = o
+            return o
+        end }
+        local function names() local t = {} for _i, r in ipairs(shown_menu and shown_menu.item_table or {}) do t[#t + 1] = r.text .. "=" .. tostring(r.mandatory) end return table.concat(t, "|") end
+        local function pickMusic(text)
+            for _i, r in ipairs(shown_menu.item_table) do if r.text == text then return shown_menu.onMenuSelect(shown_menu, r) end end
+        end
+        local function chooser()
+            captured.buttons = nil
+            button(media("Speaker"), "Choose music…").callback()
+            return captured.buttons
+        end
+        local ch = chooser()
+        check(ch and ch.title == "Play on Speaker" and titles(ch) == "Playlists|Albums|Artists|Radio|Search…|Back",
+            "House tab: Choose music: Music Assistant's playlists, albums, artists, radio, or a search (" .. titles(ch) .. ")")
+        button(ch, "Playlists").callback()
+        check(shown_menu and shown_menu.title == "Playlists" and names() == "Evening=Home|Morning=Home", "House tab: Playlists: Music Assistant's, by name (" .. names() .. ")")
+        pickMusic("Evening")
+        local sp = hstate("media_player.living_room_speaker")
+        check(sp.state == "playing" and sp.attributes.media_content_id == "library://playlist/1" and row("Speaker").mandatory == "Playing · Evening",
+            "House tab: a playlist picked: it plays on that speaker (in place of what was queued), and the list says so")
+        button(chooser(), "Albums").callback()
+        check(names() == "Kind of Example (Remastered)=Example Quartet", "House tab: Albums: each with its artist (" .. names() .. ")")
+        button(chooser(), "Radio").callback()
+        check(names() == "Music Assistant has none of these.=nil" and shown_menu.item_table[1].select_enabled == false, "House tab: a kind with nothing in it says so")
+        HA.MUSIC_PAGE = 1
+        button(chooser(), "Playlists").callback()
+        check(names() == "Evening=Home|More…=nil", "House tab: a long list: its first rows and More…")
+        pickMusic("More…")
+        check(names() == "Morning=Home|More…=nil", "House tab: More…: the rows after")
+        pickMusic("More…")
+        check(names() == "That's all of them.=nil", "House tab: …until there are no more")
+        HA.MUSIC_PAGE = saved_page
+        -- a search: what's typed is asked for, never logged
+        captured.input = nil
+        button(chooser(), "Search…").callback()
+        local find
+        for _i, btn in ipairs(captured.input.buttons[1]) do if btn.text == "Search" then find = btn end end
+        typed = " blue "
+        find.callback()
+        check(shown_menu.title == "Search: blue" and names() == "Blue in Green=Song", "House tab: a search: what Music Assistant found, each with its kind (" .. names() .. ")")
+        pickMusic("Blue in Green")
+        check(hstate("media_player.living_room_speaker").attributes.media_content_id == "library://track/9", "House tab: a song found: it plays")
+        typed = "nothing like this"
+        find.callback()
+        check(names() == "Music Assistant found nothing for that.=nil", "House tab: a search that finds nothing says so")
+        local lg = io.open(WORK .. "/gzreader.log", "rb"); local ltxt = lg and lg:read("*a") or ""; if lg then lg:close() end
+        check(ltxt:find("house: music_assistant.search", 1, true) and ltxt:find("music_assistant.play_media media_player.living_room_speaker", 1, true)
+            and not ltxt:lower():find("nothing like this", 1, true) and not ltxt:find("Evening", 1, true) and not ltxt:find("library://", 1, true),
+            "House: the log says a search was made and what played where: never what was typed or what was chosen")
+        MenuMod.new, package.loaded["ui/widget/inputdialog"] = saved_new, saved_input
+        -- what a player can do, and the small rules
+        local e = HA.entity({ i = "media_player.x", s = "playing", sf = 1 + 4 + 16384, v = 0.3 })
+        check(HA.can(e, "pause") and HA.can(e, "volume_set") and HA.can(e, "play") and not HA.can(e, "next") and not HA.can(e, "shuffle")
+            and not HA.can(e, "turn_off") and HA.can({ domain = "media_player" }, "next") and not HA.can(e, "fly"),
+            "House: a media player's buttons follow what it says it can do (one that doesn't say: all of them)")
+        check(HA.nextRepeat("off") == "all" and HA.nextRepeat("all") == "one" and HA.nextRepeat("one") == "off" and HA.nextRepeat(nil) == "off"
+            and HA.nextVolume({ vol = 98 }, 1) == 100 and HA.nextVolume({ vol = 3 }, -1) == 0 and e.vol == 30,
+            "House: repeat's round, the volume's steps kept in 0–100")
+        local dom, svc, vdata = HA.service(e, "volume", 35)
+        local d2, svc2, data2 = HA.service(e, "play", { uri = "library://album/7", media_type = "album" })
+        check(dom == "media_player" and svc == "volume_set" and vdata.volume_level == 0.35 and select(2, HA.service(e, "play_pause")) == "media_pause"
+            and d2 == "music_assistant" and svc2 == "play_media" and data2.media_id == "library://album/7" and data2.media_type == "album" and data2.enqueue == "replace"
+            and HA.service(e, "play", { name = "no uri" }) == nil, "House: a media player's services (the volume as 0–1; playing something replaces the queue)")
+        check(HA.musicItem({ uri = "", name = "x" }) == nil and HA.musicItem("junk") == nil and HA.musicItem({ uri = "a://b" }).name == "a://b"
+            and HA.stateText(HA.entity({ i = "media_player.y", s = "idle" })) == "Idle" and HA.stateText(HA.entity({ i = "media_player.y", s = "standby" })) == "Off"
+            and HA.stateText(HA.entity({ i = "media_player.y", s = "playing" })) == "Playing" and HA.action(HA.entity({ i = "media_player.y", s = "unavailable" })) == nil,
+            "House: something of Music Assistant's needs its address; what a player's row says; an unavailable one does nothing")
+    end)()
+
     -- what Settings hides
     hs.hidden = { ["switch.kettle"] = true }
     hs.hidden_rooms = { outside = true }
@@ -1249,9 +1382,19 @@ print("House tab (Home Assistant): connecting, rooms, switching, Settings, the p
     local function texts2() local t = {} for _i, r in ipairs(tab2.menu.item_table) do t[#t + 1] = r.text end return table.concat(t, "|") end
     check(ok and tab2.house and tab2.house.by_kind and plugin.store.homeassistant.no_template
         and texts2() == "Refresh|Lights|Floor lamp|Kitchen Under-cabinet lights|Living room Ceiling light|Porch light|Switches|Coffee maker|Kettle"
-            .. "|Climate|Thermostat|Locks|Front door|Covers|Garage door|Doors and windows|Back door|Sensors|Living room Temperature"
+            .. "|Climate|Thermostat|Locks|Front door|Covers|Garage door|Media|Living room Speaker|TV|Doors and windows|Back door|Sensors|Living room Temperature"
             .. "|Scenes|Goodnight|Leaving|Movie|Why no rooms?",
         "House tab: a token that can't render templates: grouped by kind (full names), it says why (" .. texts2() .. ")")
+    ;(function()
+        local sprow
+        for _i, r in ipairs(tab2.menu.item_table) do if r.text == "Living room Speaker" then sprow = r end end
+        captured.buttons = nil
+        sprow.callback()
+        local has_music = false
+        for _i, line in ipairs(captured.buttons.buttons) do for _j, bt in ipairs(line) do if bt.text == "Choose music…" then has_music = true end end end
+        check(sprow.mandatory:match("Blue in Green") and not has_music,
+            "House tab: without rooms (not an administrator's token) a speaker still has its buttons, but not Choose music")
+    end)()
     tab2:refresh(true)
     local log2 = json.decode(hctl(HP2, "GET", "/__state")).log
     local templ = 0

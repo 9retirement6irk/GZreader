@@ -31,7 +31,7 @@ local HA = {
     PORT = 8123,
     -- what the tab shows: switchable kinds, and a few sensors worth a glance
     CONTROL = { light = true, switch = true, fan = true, input_boolean = true, climate = true,
-        lock = true, cover = true, script = true, scene = true },
+        lock = true, cover = true, script = true, scene = true, media_player = true },
     SENSOR_CLASSES = { temperature = true, humidity = true },
     BINARY_CLASSES = { door = true, window = true, garage_door = true, opening = true, lock = true },
     TOGGLE = { light = true, switch = true, fan = true, input_boolean = true },
@@ -41,7 +41,7 @@ local HA = {
     KINDS = {
         { "light", _("Lights") }, { "switch", _("Switches") }, { "fan", _("Fans") },
         { "input_boolean", _("Helpers") }, { "climate", _("Climate") }, { "lock", _("Locks") },
-        { "cover", _("Covers") }, { "binary_sensor", _("Doors and windows") }, { "sensor", _("Sensors") },
+        { "cover", _("Covers") }, { "media_player", _("Media") }, { "binary_sensor", _("Doors and windows") }, { "sensor", _("Sensors") },
         { "script", _("Scripts") }, { "scene", _("Scenes") },
     },
 }
@@ -53,13 +53,26 @@ HA.__index = HA
 --- u(nit), c (device class), t (current temperature), g (target),
 --- a (heating/cooling now), lo/hi (target range), st (target step),
 --- p (cover position), rgb (a light's colour now), cm (it can take a
---- colour), hm (a thermostat's modes). The first line marks it for the test server.
+--- colour), hm (a thermostat's modes). A media player (speaker, TV) has its
+--- own: v(olume 0–1), mu(ted), sh(uffle), rp (repeat: off/all/one), mt and ar
+--- (what plays: title, artist), sf (what it can do: supported_features), ap
+--- (its app: "music_assistant" for Music Assistant's players) and ce (Music
+--- Assistant's config entry, to ask it for its library). The first line marks
+--- it for the test server.
 HA.TEMPLATE = [==[
 {#- gzreader-house-v1 -#}
-{%- set C = ['light','switch','fan','input_boolean','climate','lock','cover','script'] -%}
+{%- set C = ['light','switch','fan','input_boolean','climate','lock','cover','script','media_player'] -%}
 {%- set SC = ['temperature','humidity'] -%}
 {%- set BC = ['door','window','garage_door','opening','lock'] -%}
 {%- macro e(s) -%}
+{%- if s.domain == 'media_player' -%}
+{{ {'i': s.entity_id, 's': s.state, 'n': s.name, 'c': s.attributes.get('device_class'),
+ 'v': s.attributes.get('volume_level'), 'mu': s.attributes.get('is_volume_muted'),
+ 'sh': s.attributes.get('shuffle'), 'rp': s.attributes.get('repeat'),
+ 'mt': s.attributes.get('media_title'), 'ar': s.attributes.get('media_artist'),
+ 'sf': s.attributes.get('supported_features'), 'ap': s.attributes.get('app_id'),
+ 'ce': (config_entry_id(s.entity_id) if s.attributes.get('app_id') == 'music_assistant' else none)} | to_json }}
+{%- else -%}
 {{ {'i': s.entity_id, 's': s.state, 'n': s.name,
  'b': s.attributes.get('brightness'),
  'd': ((s.attributes.get('supported_color_modes') or []) | reject('in', ['onoff', 'unknown']) | list | count) > 0,
@@ -69,6 +82,7 @@ HA.TEMPLATE = [==[
  'st': s.attributes.get('target_temp_step'), 'p': s.attributes.get('current_position'),
  'rgb': s.attributes.get('rgb_color'), 'hm': s.attributes.get('hvac_modes'),
  'cm': ((s.attributes.get('supported_color_modes') or []) | select('in', ['hs', 'rgb', 'rgbw', 'rgbww', 'xy']) | list | count) > 0} | to_json }}
+{%- endif -%}
 {%- endmacro -%}
 {"v":1,"rooms":[
 {%- for a in areas() -%}
@@ -171,6 +185,8 @@ function HA.entity(o)
     local domain = o.i:match("^([%w_]+)%.")
     if not domain then return nil end
     local b = num(o.b)
+    local shuffle
+    if o.sh == true or o.sh == false then shuffle = o.sh end
     return {
         id = o.i, domain = domain, state = str(o.s) or "unknown", name = str(o.n) or o.i,
         bri = b and math.max(0, math.min(100, math.floor(b * 100 / 255 + 0.5))) or nil,
@@ -178,6 +194,12 @@ function HA.entity(o)
         unit = str(o.u), dc = str(o.c), cur = num(o.t), target = num(o.g), action = str(o.a),
         min = num(o.lo), max = num(o.hi), step = num(o.st), pos = num(o.p),
         rgb = HA.rgbHex(o.rgb), col = o.cm == true or nil, modes = HA.modeList(o.hm),
+        -- a media player's
+        vol = num(o.v) and math.max(0, math.min(100, math.floor(num(o.v) * 100 + 0.5))) or nil,
+        muted = o.mu == true or nil, shuffle = shuffle,
+        rep = (o.rp == "off" or o.rp == "all" or o.rp == "one") and o.rp or nil,
+        title = str(o.mt), artist = str(o.ar), feat = num(o.sf),
+        ma = o.ap == "music_assistant" or nil, entry = str(o.ce),
     }
 end
 
@@ -224,7 +246,9 @@ function HA.entityFromState(st)
     return HA.entity({ i = st.entity_id, s = st.state, n = a.friendly_name, b = a.brightness, d = dim,
         u = a.unit_of_measurement, c = a.device_class, t = a.current_temperature, g = a.temperature,
         a = a.hvac_action, lo = a.min_temp, hi = a.max_temp, st = a.target_temp_step, p = a.current_position,
-        rgb = a.rgb_color, cm = col, hm = a.hvac_modes })
+        rgb = a.rgb_color, cm = col, hm = a.hvac_modes,
+        v = a.volume_level, mu = a.is_volume_muted, sh = a.shuffle, rp = a["repeat"],
+        mt = a.media_title, ar = a.media_artist, sf = a.supported_features, ap = a.app_id })
 end
 
 --- Whether the tab shows this device at all.
@@ -336,6 +360,8 @@ function HA.applyChanged(house, changed)
             if n then
                 -- (an answer without a friendly name keeps the one we have)
                 if n.name == n.id then n.name = e.name end
+                -- (Music Assistant's entry comes with the list only)
+                n.entry = n.entry or e.entry
                 r.entities[j] = n
                 any = true
             end
@@ -387,6 +413,13 @@ function HA.stateText(e)
         if e.target then return T(_("to %1"), HA.fmt(e.target) .. "°") end
         return now or s
     end
+    if d == "media_player" then
+        local words = { playing = _("Playing"), buffering = _("Playing"), paused = _("Paused"), idle = _("Idle"),
+            off = _("Off"), standby = _("Off"), on = _("On") }
+        local w = words[s] or s
+        if (s == "playing" or s == "buffering" or s == "paused") and e.title then return T(_("%1 · %2"), w, e.title) end
+        return w
+    end
     if d == "lock" then
         local words = { locked = _("Locked"), unlocked = _("Unlocked"), jammed = _("Jammed"), open = _("Open"),
             locking = _("Locking…"), unlocking = _("Unlocking…"), opening = _("Opening…") }
@@ -427,14 +460,15 @@ function HA.shortName(name, room)
 end
 
 --- What tapping a device does: "toggle", "light" (the dimmer), "climate"
---- (the target), "lock", "unlock", "open", "close", "scene", "script", or
---- nil (sensors, unavailable).
+--- (the target), "media" (a speaker's or TV's buttons), "lock", "unlock",
+--- "open", "close", "scene", "script", or nil (sensors, unavailable).
 function HA.action(e)
     if not e or UNAVAILABLE[e.state] then return nil end
     local d = e.domain
     if d == "light" then return e.dim and "light" or "toggle" end
     if HA.TOGGLE[d] then return "toggle" end
     if d == "climate" then return "climate" end
+    if d == "media_player" then return "media" end
     if d == "lock" then return e.state == "locked" and "unlock" or "lock" end
     if d == "cover" then return (e.state == "open" or e.state == "opening") and "close" or "open" end
     if d == "scene" then return "scene" end
@@ -481,6 +515,145 @@ function HA.service(e, what, arg)
     if what == "close" then return "cover", "close_cover", data end
     if what == "scene" then return "scene", "turn_on", data end
     if what == "script" then return "script", "turn_on", data end
+    -- a media player's
+    if what == "play_pause" then return "media_player", e.state == "playing" and "media_pause" or "media_play", data end
+    if what == "next" then return "media_player", "media_next_track", data end
+    if what == "previous" then return "media_player", "media_previous_track", data end
+    if what == "volume" then
+        data.volume_level = math.max(0, math.min(100, math.floor((tonumber(arg) or 0) + 0.5))) / 100
+        return "media_player", "volume_set", data
+    end
+    if what == "volume_up" or what == "volume_down" then return "media_player", what, data end
+    if what == "mute" then
+        data.is_volume_muted = not e.muted
+        return "media_player", "volume_mute", data
+    end
+    if what == "shuffle" then
+        data.shuffle = not e.shuffle
+        return "media_player", "shuffle_set", data
+    end
+    if what == "repeat" then
+        data["repeat"] = HA.nextRepeat(e.rep)
+        return "media_player", "repeat_set", data
+    end
+    if what == "media_on" then return "media_player", "turn_on", data end
+    if what == "media_off" then return "media_player", "turn_off", data end
+    if what == "play" then
+        -- (arg: something of Music Assistant's library: { uri, media_type })
+        if type(arg) ~= "table" or type(arg.uri) ~= "string" then return nil end
+        data.media_id, data.media_type, data.enqueue = arg.uri, arg.media_type, "replace"
+        return "music_assistant", "play_media", data
+    end
+end
+
+---------------------------------------------------------------- media players
+
+-- what a media player says it can do (Home Assistant's MediaPlayerEntityFeature)
+HA.FEATURE = { pause = 1, volume_set = 4, volume_mute = 8, previous = 16, next = 32, turn_on = 128, turn_off = 256,
+    play_media = 512, volume_step = 1024, play = 16384, shuffle = 32768, ["repeat"] = 262144 }
+
+--- Whether a media player can do `what` (a key of HA.FEATURE). One that
+--- doesn't say what it can do: anything.
+function HA.can(e, what)
+    local f = e and e.feat
+    local bit_ = HA.FEATURE[what]
+    if not f or not bit_ then return f == nil end
+    return math.floor(f / bit_) % 2 == 1
+end
+
+--- Repeat goes off → all → one → off.
+function HA.nextRepeat(rep)
+    return rep == "off" and "all" or rep == "all" and "one" or "off"
+end
+
+--- A media player's volume a step up (dir 1) or down (-1), 0–100.
+function HA.nextVolume(e, dir)
+    return math.max(0, math.min(100, (e.vol or 0) + dir * HA.VOLUME_STEP))
+end
+HA.VOLUME_STEP = 5
+HA.VOLUME_LEVELS = { 10, 20, 30, 50 }
+
+--- Home Assistant answers a media player's action before the player has
+--- changed, so the answer often has no states: what `what` should have
+--- done to `e`, put into it for now (the next refresh has the truth).
+function HA.assume(e, what, arg)
+    if type(e) ~= "table" or e.domain ~= "media_player" then return false end
+    if what == "play_pause" then e.state = e.state == "playing" and "paused" or "playing"
+    elseif what == "volume" then e.vol = math.max(0, math.min(100, math.floor((tonumber(arg) or 0) + 0.5)))
+    elseif what == "volume_up" then e.vol = e.vol and HA.nextVolume(e, 1) or nil
+    elseif what == "volume_down" then e.vol = e.vol and HA.nextVolume(e, -1) or nil
+    elseif what == "mute" then e.muted = (not e.muted) or nil
+    elseif what == "shuffle" then e.shuffle = not e.shuffle
+    elseif what == "repeat" then e.rep = HA.nextRepeat(e.rep)
+    elseif what == "media_on" then e.state = (e.state == "off" or e.state == "standby") and "on" or e.state
+    elseif what == "media_off" then e.state = "off"
+    elseif what == "play" then
+        e.state = "playing"
+        e.title, e.artist = type(arg) == "table" and arg.name or e.title, type(arg) == "table" and arg.by or nil
+    else return false end
+    return true
+end
+
+-- Music Assistant's library, as the House tab offers it (its media types)
+HA.MUSIC_KINDS = {
+    { "playlist", _("Playlists") }, { "album", _("Albums") }, { "artist", _("Artists") }, { "radio", _("Radio") },
+}
+HA.MUSIC_PAGE = 100   -- a list's rows asked for at once
+HA.MUSIC_FOUND = 8    -- a search: of each kind
+
+--- One thing of Music Assistant's (a playlist, an album…): { name, uri,
+--- media_type, by (its artist, a playlist's owner) }, or nil.
+function HA.musicItem(o, media_type)
+    if type(o) ~= "table" or type(o.uri) ~= "string" or o.uri == "" then return nil end
+    local by
+    if type(o.artists) == "table" and type(o.artists[1]) == "table" then by = str(o.artists[1].name) end
+    local name = str(o.name) or o.uri
+    if str(o.version) then name = name .. " (" .. o.version .. ")" end
+    return { name = name, uri = o.uri, media_type = str(o.media_type) or media_type, by = by or str(o.owner) }
+end
+
+--- A service that answers with data (Home Assistant's ?return_response):
+--- its answer, or nil, err.
+function HA:ask(domain, service, data)
+    if not (tostring(domain):match("^[%w_]+$") and tostring(service):match("^[%w_]+$")) then return nil, "bad_service" end
+    local _, res, err = self:request("POST", "/api/services/" .. domain .. "/" .. service .. "?return_response", data or {},
+        { timeouts = { 8, 40 } })
+    if err then return nil, err end
+    if type(res) ~= "table" or type(res.service_response) ~= "table" then return nil, "bad_answer" end
+    return res.service_response
+end
+
+--- Music Assistant's library of one kind ("playlist", "album", "artist",
+--- "radio"), by name, from `offset`: a list of HA.musicItem, or nil, err.
+function HA:library(entry, media_type, offset)
+    local res, err = self:ask("music_assistant", "get_library", { config_entry_id = entry, media_type = media_type,
+        limit = HA.MUSIC_PAGE, offset = offset or 0, order_by = "sort_name" })
+    if not res then return nil, err end
+    local out = {}
+    for _i, o in ipairs(type(res.items) == "table" and res.items or {}) do
+        out[#out + 1] = HA.musicItem(o, media_type)
+    end
+    return out
+end
+
+--- Search Music Assistant (its library and its providers) for `name`: a
+--- list of HA.musicItem, artists first, then albums, playlists, tracks, radio.
+function HA:searchMusic(entry, name)
+    local res, err = self:ask("music_assistant", "search", { config_entry_id = entry, name = name, limit = HA.MUSIC_FOUND })
+    if not res then return nil, err end
+    local out = {}
+    for _i, k in ipairs({ { "artists", "artist" }, { "albums", "album" }, { "playlists", "playlist" }, { "tracks", "track" }, { "radio", "radio" } }) do
+        for _j, o in ipairs(type(res[k[1]]) == "table" and res[k[1]] or {}) do
+            out[#out + 1] = HA.musicItem(o, k[2])
+        end
+    end
+    return out
+end
+
+--- A kind's name for one thing ("Album", "Playlist"…).
+function HA.musicKindName(media_type)
+    local words = { playlist = _("Playlist"), album = _("Album"), artist = _("Artist"), radio = _("Radio"), track = _("Song") }
+    return words[media_type] or media_type
 end
 
 --- A thermostat's next target, one step up (dir 1) or down (-1), kept in its range.
@@ -556,6 +729,7 @@ function HA.iconFile(e, colour)
     if d == "light" then name = "light"
     elseif d == "fan" then name = "fan"
     elseif d == "climate" then name = "thermostat"
+    elseif d == "media_player" then name = (e.dc == "tv" or e.dc == "receiver") and "tv" or "speaker"
     elseif d == "lock" then name = e.state == "locked" and "lock" or "unlock"
     elseif d == "cover" then name = HA.GUARDED_COVERS[e.dc or ""] and "garage" or "blinds"
     elseif d == "scene" then name = "scene"

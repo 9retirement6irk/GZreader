@@ -14,6 +14,11 @@ Kindle (ZenOS's tab bar; off until turned on in Settings → Accounts and servic
   Scenes
     Goodnight                                           ›
 
+A speaker or TV (a media player) opens its buttons: play or pause, the song
+before and after, the volume, shuffle and repeat, on and off, the ones it
+can do; a Music Assistant player also chooses what to play (its playlists,
+albums, artists, radio, or a search).
+
 In the Bookshelf view the same rows are drawn as a wall with a fitting for
 each device (gzreader_houseview.lua); the other views keep this list.
 
@@ -315,6 +320,7 @@ function House:tap(id)
     if not what then return end
     if what == "light" then return self:lightDialog(e) end
     if what == "climate" then return self:climateDialog(e) end
+    if what == "media" then return self:mediaDialog(e) end
     if Ha.guarded(e, what) and House.asks(self.plugin) then
         if what == "unlock" then
             return confirm(T(_("Unlock %1?"), self:label(e)), _("Unlock"), function() self:run(e, what) end)
@@ -339,11 +345,16 @@ function House:run(e, what, arg, after)
                 Log.warn("house:", domain .. "." .. service, "failed:", tostring(err))
                 return info(Ha.why(err))
             end
-            if Ha.applyChanged(self.house, changed) then Ha.saveCache(self.house) end
+            local answered = false
+            for _i, st in ipairs(changed) do if type(st) == "table" and st.entity_id == e.id then answered = true end end
+            local known = Ha.applyChanged(self.house, changed)
+            -- (a media player answers before it has changed: what it should be, for now)
+            if not answered and Ha.assume(Ha.find(self.house, e.id), what, arg) then known = true end
+            if known then Ha.saveCache(self.house) end
             self:redraw()
             if what == "scene" or what == "script" then toast(T(_("%1: done"), self:label(e))) end
             -- (a scene changes others; an answer without the state: fetch again in a moment)
-            if what == "scene" or #changed == 0 then
+            if what == "scene" or #changed == 0 or e.domain == "media_player" then
                 UIManager:scheduleIn(2, function() self:refresh(false) end)
             end
             if after then after(Ha.find(self.house, e.id) or e) end
@@ -422,6 +433,182 @@ function House:climateDialog(e)
         buttons = buttons,
     }
     UIManager:show(d)
+    return d
+end
+
+--- A media player (a speaker, a TV): play or pause, the song before and
+--- after, its volume, shuffle and repeat, on and off: the ones it can do.
+--- Music Assistant's players also choose what to play.
+function House:mediaDialog(e)
+    local Ha = HA()
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local d
+    local function again(now) self:mediaDialog(now) end
+    local function act(what, arg, stay)
+        UIManager:close(d)
+        self:run(e, what, arg, stay and again or nil)
+    end
+    local off = e.state == "off" or e.state == "standby"
+    local lines = { self:label(e), Ha.stateText(e) or "" }
+    if e.artist and (e.state == "playing" or e.state == "paused") then lines[#lines + 1] = e.artist end
+    if e.vol then lines[#lines + 1] = e.muted and T(_("Volume %1% · muted"), e.vol) or T(_("Volume %1%"), e.vol) end
+    local buttons = {}
+    local function row(r) if #r > 0 then buttons[#buttons + 1] = r end end
+    -- play or pause, the song before and after
+    local r = {}
+    if Ha.can(e, "previous") then r[#r + 1] = { text = _("Previous"), enabled = not off, callback = function() act("previous", nil, true) end } end
+    if Ha.can(e, "play") or Ha.can(e, "pause") then
+        r[#r + 1] = { text = e.state == "playing" and _("Pause") or _("Play"), enabled = not off, callback = function() act("play_pause", nil, true) end }
+    end
+    if Ha.can(e, "next") then r[#r + 1] = { text = _("Next"), enabled = not off, callback = function() act("next", nil, true) end } end
+    row(r)
+    -- its volume: a step down or up (it stays open for another), mute, and levels
+    r = {}
+    if Ha.can(e, "volume_set") and e.vol then
+        r[#r + 1] = { text = T(_("− %1%"), Ha.VOLUME_STEP), enabled = e.vol > 0, callback = function() act("volume", Ha.nextVolume(e, -1), true) end }
+        r[#r + 1] = { text = T(_("+ %1%"), Ha.VOLUME_STEP), enabled = e.vol < 100, callback = function() act("volume", Ha.nextVolume(e, 1), true) end }
+    elseif Ha.can(e, "volume_step") then
+        r[#r + 1] = { text = _("Quieter"), callback = function() act("volume_down", nil, true) end }
+        r[#r + 1] = { text = _("Louder"), callback = function() act("volume_up", nil, true) end }
+    end
+    if Ha.can(e, "volume_mute") then
+        r[#r + 1] = { text = e.muted and _("Unmute") or _("Mute"), callback = function() act("mute", nil, true) end }
+    end
+    row(r)
+    if Ha.can(e, "volume_set") then
+        r = {}
+        for _i, p in ipairs(Ha.VOLUME_LEVELS) do
+            r[#r + 1] = { text = (e.vol == p and "● " or "") .. p .. "%", callback = function() act("volume", p, true) end }
+        end
+        row(r)
+    end
+    -- shuffle and repeat (what each is now)
+    r = {}
+    if Ha.can(e, "shuffle") and e.shuffle ~= nil then
+        r[#r + 1] = { text = e.shuffle and _("Shuffle: on") or _("Shuffle: off"), callback = function() act("shuffle", nil, true) end }
+    end
+    if Ha.can(e, "repeat") and e.rep then
+        local words = { off = _("Repeat: off"), all = _("Repeat: all"), one = _("Repeat: one") }
+        r[#r + 1] = { text = words[e.rep], callback = function() act("repeat", nil, true) end }
+    end
+    row(r)
+    r = {}
+    if e.ma and e.entry and Ha.can(e, "play_media") then
+        r[#r + 1] = { text = _("Choose music…"), callback = function() UIManager:close(d); self:musicDialog(e) end }
+    end
+    if off and Ha.can(e, "turn_on") then r[#r + 1] = { text = _("Turn on"), callback = function() act("media_on", nil, true) end } end
+    if not off and Ha.can(e, "turn_off") then r[#r + 1] = { text = _("Turn off"), callback = function() act("media_off") end } end
+    row(r)
+    buttons[#buttons + 1] = { { text = _("Close"), callback = function() UIManager:close(d) end } }
+    d = ButtonDialog:new{ title = table.concat(lines, "\n"), title_align = "center", buttons = buttons }
+    UIManager:show(d)
+    return d
+end
+
+--- Choose music (a Music Assistant player): its playlists, albums, artists
+--- or radio stations, or a search.
+function House:musicDialog(e)
+    local Ha = HA()
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local d
+    local buttons = {}
+    local row
+    for i, k in ipairs(Ha.MUSIC_KINDS) do
+        if i % 2 == 1 then row = {}; buttons[#buttons + 1] = row end
+        row[#row + 1] = { text = k[2], callback = function() UIManager:close(d); self:musicList(e, k[1], k[2], 0) end }
+    end
+    buttons[#buttons + 1] = { { text = _("Search…"), callback = function() UIManager:close(d); self:musicSearch(e) end } }
+    buttons[#buttons + 1] = { { text = _("Back"), callback = function() UIManager:close(d); self:mediaDialog(HA().find(self.house, e.id) or e) end } }
+    d = ButtonDialog:new{ title = T(_("Play on %1"), self:label(e)), title_align = "center", buttons = buttons }
+    UIManager:show(d)
+    return d
+end
+
+--- The rows of a list of Music Assistant's things: each plays when picked.
+--- `more`: a last row to go on with (a list that may have more).
+function House:musicRows(e, list, pick, more)
+    local Ha = HA()
+    local rows = {}
+    for _i, it in ipairs(list or {}) do
+        rows[#rows + 1] = { text = it.name, mandatory = pick.kinds and Ha.musicKindName(it.media_type) or it.by,
+            gz_music_uri = it.uri, callback = function() pick.play(it) end }
+    end
+    if #rows == 0 then rows[1] = { text = pick.empty or _("Nothing here."), select_enabled = false, dim = true } end
+    if more then rows[#rows + 1] = { text = _("More…"), callback = more } end
+    return rows
+end
+
+--- Ask Music Assistant (in the background), then show what it has in a list.
+function House:musicShow(e, title, ask, rows_of)
+    local msg = InfoMessage:new{ text = _("Asking Music Assistant…"), timeout = 0 }
+    Net().run(function()
+        UIManager:show(msg)
+        Async().run(nil, ask, function(list, err)
+            UIManager:close(msg)
+            if self.closed then return end
+            if not list then
+                Log.warn("house: Music Assistant didn't answer:", tostring(err))
+                return info(HA().why(err))
+            end
+            local menu
+            local pick = { play = function(it)
+                UIManager:close(menu)
+                self:run(e, "play", it)
+                toast(T(_("%1: playing on %2"), it.name, self:label(e)))
+            end }
+            menu = Menu:new{
+                title = title, item_table = rows_of(list, pick, function() UIManager:close(menu) end),
+                covers_fullscreen = true, is_borderless = true, is_popout = false, title_bar_fm_style = true,
+                onMenuSelect = function(_m, item) if item.callback then item.callback() end return true end,
+            }
+            menu.close_callback = function() UIManager:close(menu) end
+            self.music_menu = menu
+            UIManager:show(menu)
+        end, "house music")
+    end, { reason = "Home Assistant" })
+end
+
+--- One kind of Music Assistant's library (its playlists…), by name.
+function House:musicList(e, media_type, title, offset)
+    local Ha = HA()
+    local client = House.client(self.plugin)
+    Log.info("house: music_assistant.get_library", media_type, "from", offset)
+    self:musicShow(e, title, function() return client:library(e.entry, media_type, offset) end, function(list, pick, close)
+        pick.empty = offset > 0 and _("That's all of them.") or _("Music Assistant has none of these.")
+        local more = #list >= Ha.MUSIC_PAGE and function()
+            close()
+            self:musicList(e, media_type, title, offset + Ha.MUSIC_PAGE)
+        end or nil
+        return self:musicRows(e, list, pick, more)
+    end)
+end
+
+--- Search Music Assistant: what's typed, then what it found (each with its kind).
+function House:musicSearch(e)
+    local InputDialog = require("ui/widget/inputdialog")
+    local client = House.client(self.plugin)
+    local d
+    d = InputDialog:new{
+        title = _("Search Music Assistant"),
+        input_hint = _("an artist, an album, a song, a playlist"),
+        buttons = { {
+            { text = _("Cancel"), id = "close", callback = function() UIManager:close(d) end },
+            { text = _("Search"), is_enter_default = true, callback = function()
+                local q = (d:getInputText() or ""):gsub("^%s+", ""):gsub("%s+$", "")
+                UIManager:close(d)
+                if q == "" then return end
+                -- (what was typed isn't logged)
+                Log.info("house: music_assistant.search")
+                self:musicShow(e, T(_("Search: %1"), q), function() return client:searchMusic(e.entry, q) end, function(list, pick)
+                    pick.kinds = true
+                    pick.empty = _("Music Assistant found nothing for that.")
+                    return self:musicRows(e, list, pick)
+                end)
+            end },
+        } },
+    }
+    UIManager:show(d)
+    d:onShowKeyboard()
     return d
 end
 

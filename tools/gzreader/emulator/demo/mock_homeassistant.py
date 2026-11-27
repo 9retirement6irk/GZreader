@@ -10,13 +10,19 @@ Mirrors the parts of Home Assistant's REST API GZreader uses:
                                    render it; 401 with --no-admin (a token
                                    that isn't an administrator's)
   POST  /api/services/<d>/<s>      {entity_id, brightness_pct, temperature}:
-                                   the states it changed
+                                   the states it changed; a media player's
+                                   answer has none (as Home Assistant's: the
+                                   player changes afterwards)
+  POST  /api/services/music_assistant/get_library?return_response
+  POST  /api/services/music_assistant/search?return_response
+                                   {"changed_states": [], "service_response":
+                                   {…}} from LIBRARY below
 Sign-in: "Authorization: Bearer <token>" (TOKEN below).
 
   python3 -I mock_homeassistant.py PORT [--no-admin]
 
-The house is the mockup's: a living room, a kitchen, outside, a switch in no
-room and three scenes. Test helpers: GET /__state (states and the request
+The house is the mockup's: a living room (with a Music Assistant speaker and
+a TV), a kitchen, outside, a switch in no room and three scenes. Test helpers: GET /__state (states and the request
 log), POST /__reset, POST /__offline?on=1, POST /__set?id=<entity>&state=<s>.
 """
 import copy, json, sys, threading
@@ -30,7 +36,8 @@ LOCK = threading.Lock()
 
 AREAS = [
     ("living_room", "Living room", ["light.living_room_ceiling", "light.floor_lamp", "climate.thermostat",
-                                    "sensor.living_room_temperature", "sensor.living_room_power"]),
+                                    "sensor.living_room_temperature", "sensor.living_room_power",
+                                    "media_player.living_room_speaker", "media_player.living_room_tv"]),
     ("kitchen", "Kitchen", ["light.under_cabinet", "switch.kettle"]),
     ("outside", "Outside", ["light.porch", "lock.front_door", "cover.garage_door", "binary_sensor.back_door"]),
     ("attic", "Attic", []),
@@ -51,6 +58,10 @@ def initial():
            device_class="temperature", unit_of_measurement="°C"),
         st("sensor.living_room_power", "120", friendly_name="Living room Power", device_class="power",
            unit_of_measurement="W"),
+        st("media_player.living_room_speaker", "paused", friendly_name="Living room Speaker", device_class="speaker",
+           volume_level=0.3, is_volume_muted=False, shuffle=False, repeat="off", media_title="Blue in Green",
+           media_artist="Example Quartet", app_id="music_assistant", supported_features=8322623),
+        st("media_player.living_room_tv", "off", friendly_name="TV", device_class="tv", supported_features=384),
         st("light.under_cabinet", "off", friendly_name="Kitchen Under-cabinet lights",
            supported_color_modes=["hs", "color_temp"]),
         st("switch.kettle", "off", friendly_name="Kettle"),
@@ -68,7 +79,19 @@ def initial():
 
 STATE = {"states": initial(), "log": [], "offline": False}
 
-C = {"light", "switch", "fan", "input_boolean", "climate", "lock", "cover", "script"}
+C = {"light", "switch", "fan", "input_boolean", "climate", "lock", "cover", "script", "media_player"}
+MA_ENTRY = "ma-entry-1"
+LIBRARY = {
+    "playlist": [{"name": "Evening", "uri": "library://playlist/1", "media_type": "playlist", "owner": "Home"},
+                 {"name": "Morning", "uri": "library://playlist/2", "media_type": "playlist", "owner": "Home"}],
+    "album": [{"name": "Kind of Example", "uri": "library://album/7", "media_type": "album", "version": "Remastered",
+               "artists": [{"name": "Example Quartet"}]}],
+    "artist": [{"name": "Example Quartet", "uri": "library://artist/3", "media_type": "artist"}],
+    "radio": [],
+    "track": [{"name": "Blue in Green", "uri": "library://track/9", "media_type": "track",
+               "artists": [{"name": "Example Quartet"}]}],
+}
+NAMES = {i["uri"]: i for items in LIBRARY.values() for i in items}
 SC = {"temperature", "humidity"}
 BC = {"door", "window", "garage_door", "opening", "lock"}
 
@@ -96,6 +119,12 @@ def shown(s):
 def obj(s):
     """One device as the House template renders it."""
     a = s["attributes"]
+    if s["entity_id"].startswith("media_player."):
+        return {"i": s["entity_id"], "s": s["state"], "n": a.get("friendly_name", s["entity_id"]),
+                "c": a.get("device_class"), "v": a.get("volume_level"), "mu": a.get("is_volume_muted"),
+                "sh": a.get("shuffle"), "rp": a.get("repeat"), "mt": a.get("media_title"),
+                "ar": a.get("media_artist"), "sf": a.get("supported_features"), "ap": a.get("app_id"),
+                "ce": MA_ENTRY if a.get("app_id") == "music_assistant" else None}
     modes = [m for m in (a.get("supported_color_modes") or []) if m not in ("onoff", "unknown")]
     return {"i": s["entity_id"], "s": s["state"], "n": a.get("friendly_name", s["entity_id"]),
             "b": a.get("brightness"), "d": len(modes) > 0, "u": a.get("unit_of_measurement"),
@@ -116,9 +145,47 @@ def render_house():
     return json.dumps({"v": 1, "rooms": rooms, "other": other, "scenes": scenes}, ensure_ascii=False)
 
 
+def media(s, service, data):
+    """A media player's service; False when it isn't one."""
+    a = s["attributes"]
+    if service == "media_play":
+        s["state"] = "playing"
+    elif service == "media_pause":
+        s["state"] = "paused"
+    elif service == "volume_set":
+        a["volume_level"] = float(data["volume_level"])
+    elif service == "volume_mute":
+        a["is_volume_muted"] = bool(data["is_volume_muted"])
+    elif service == "shuffle_set":
+        a["shuffle"] = bool(data["shuffle"])
+    elif service == "repeat_set" and data.get("repeat") in ("off", "all", "one"):
+        a["repeat"] = data["repeat"]
+    elif service in ("media_next_track", "media_previous_track"):
+        a["media_title"] = "Next song" if service == "media_next_track" else "Song before"
+    elif service == "turn_on":
+        s["state"] = "on"
+    elif service == "turn_off":
+        s["state"] = "off"
+    else:
+        return False
+    return True
+
+
 def call(domain, service, data):
     """Run a service; the states it changed, or None (unknown service)."""
     ids = data.get("entity_id")
+    if domain == "music_assistant" and service == "play_media":
+        s = by_id(ids)
+        item = NAMES.get(data.get("media_id"))
+        if not s or not item or s["attributes"].get("app_id") != "music_assistant" or data.get("enqueue") != "replace":
+            return None
+        s["state"] = "playing"
+        s["attributes"]["media_title"] = item["name"]
+        s["attributes"]["media_content_id"] = item["uri"]
+        return []
+    if domain == "media_player":
+        s = by_id(ids)
+        return [] if s and ids.startswith("media_player.") and media(s, service, data) else None
     ids = ids if isinstance(ids, list) else [ids]
     changed = []
     for eid in ids:
@@ -236,6 +303,22 @@ class H(BaseHTTPRequestHandler):
                 data = self.body()
                 if len(parts) != 5 or not isinstance(data, dict):
                     return self.send(400, {"message": "Data should be valid JSON."})
+                if parts[3] == "music_assistant" and parts[4] in ("get_library", "search"):
+                    if "return_response" not in q and "return_response" not in u.query:
+                        return self.send(400, {"message": "Service call requires responses but caller did not ask for responses."})
+                    if data.get("config_entry_id") != MA_ENTRY:
+                        return self.send(400, {"message": "Config entry not found."})
+                    if parts[4] == "get_library":
+                        items = LIBRARY.get(data.get("media_type"))
+                        if items is None or data.get("order_by") != "sort_name":
+                            return self.send(400, {"message": "Invalid media type."})
+                        off, lim = int(data.get("offset", 0)), int(data.get("limit", 25))
+                        res = {"items": items[off:off + lim], "limit": lim, "offset": off, "media_type": data["media_type"]}
+                    else:
+                        want = str(data.get("name", "")).lower()
+                        res = {k + "s" if k != "radio" else k: [i for i in v if want in i["name"].lower()][:int(data.get("limit", 5))]
+                               for k, v in LIBRARY.items()}
+                    return self.send(200, {"changed_states": [], "service_response": res})
                 changed = call(parts[3], parts[4], data)
                 if changed is None:
                     return self.send(400, {"message": "Service not found."})

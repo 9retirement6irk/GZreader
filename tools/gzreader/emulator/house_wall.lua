@@ -1,7 +1,8 @@
 -- The House tab in the Bookshelf view (gzreader_houseview.lua): the rooms as a
 -- wall with a fitting for each device, with demo/mock_homeassistant.py on
 -- 127.0.0.1:18095. Its pages, a switch flipped (a tap, or its letter on a
--- keyboard Kindle), and the list again in another view.
+-- keyboard Kindle), a speaker's buttons and a playlist of Music Assistant's
+-- played on it, and the list again in another view.
 --   python3 -I demo/mock_homeassistant.py 18095 &
 --   GZ_EMU_TREE=<tree>/koreader ./run.sh house_wall.lua <out>
 local s = { start = 12 }
@@ -56,6 +57,32 @@ add({ fn = function(E)
     end
 end, after = 8 })
 add({ shot = "wall-4-scene-run" })
+-- a speaker's buttons, then Music Assistant's playlists
+add({ fn = function()
+    House().instance.menu:onGotoPage(1)
+    House().instance:tap("media_player.living_room_speaker")
+end, after = 6 })
+add({ shot = "wall-5-speaker" })
+add({ fn = function(E)
+    local UIManager = require("ui/uimanager")
+    local stack = UIManager._window_stack
+    UIManager:close(stack[#stack].widget)
+    local t = House().instance
+    t:musicList(require("gzreader_homeassistant").find(t.house, "media_player.living_room_speaker"), "playlist", "Playlists", 0)
+end, after = 8 })
+add({ shot = "wall-6-playlists" })
+add({ fn = function(E)
+    local t = House().instance
+    local m = t.music_menu
+    E.say("playlists:", m and tostring(#m.item_table) or "NO LIST", m and tostring(m.item_table[1].text))
+    if m then m:onMenuSelect(m.item_table[1]) end
+end, after = 8 })
+add({ shot = "wall-7-playing" })
+add({ fn = function(E)
+    local h = io.popen("curl -s http://127.0.0.1:18095/__state")
+    local st = h:read("*a"); h:close()
+    E.say("the speaker plays the playlist:", tostring(st:find('"media_content_id": "library://playlist/1"', 1, true) ~= nil))
+end, after = 2 })
 add({ fn = function(E)
     require("common/gz_view").set("mosaic_image")
     local UIManager = require("ui/uimanager")
@@ -63,6 +90,6 @@ add({ fn = function(E)
     House().show(plugin())
     E.say("another view: the list:", tostring(wall() == nil))
 end, after = 10 })
-add({ shot = "wall-5-list-in-another-view" })
+add({ shot = "wall-8-list-in-another-view" })
 add({ fn = function() require("common/gz_view").set("bookshelf") end, after = 2 })
 return s
