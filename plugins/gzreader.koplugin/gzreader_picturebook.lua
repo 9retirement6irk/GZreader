@@ -43,7 +43,7 @@ local PB = {}
 
 local MARK_BEGIN = "/* GZreader picture book: begin */"
 local MARK_END = "/* GZreader picture book: end */"
-PB.VERSION = 8
+PB.VERSION = 9
 PB.INLINE_PAGES = 4 -- pages whose own <style> blocks are read for a fixed-layout book's text layer
 
 --- The style tweak, with pictures `vh` tall. In crengine 1vh is 1% of the
@@ -268,7 +268,7 @@ end
 
 --- Screen space for a page, between the title bar and the footer:
 --- { top = margin (unscaled px) for the title bar, vh = picture height }.
-PB.VH = 99
+PB.VH = 100
 function PB.layout(ui)
     local Screen = require("device").screen
     local H = Screen:getHeight()
@@ -293,9 +293,11 @@ function PB.layout(ui)
     -- KOReader adds the status bar's height to the bottom margin, but only
     -- its height when the margins are set: it grows when its text appears
     -- ("16 min left in chapter"), and with "overlap status bar" it isn't
-    -- added at all. 1.2.5's pages ran under it. Keep a few pixels spare, and
-    -- the whole status bar when it overlaps.
-    local bottom = 4
+    -- added at all. 1.2.5's pages ran under it: the whole status bar is kept
+    -- when it overlaps. No spare beside that (it was 4, with the pictures at
+    -- 99% of the room: a strip of white under every page, which the owner
+    -- found on his Scribe); a picture now takes all of the room.
+    local bottom = 0
     if footer and (footer.reclaim_height or (footer.settings and footer.settings.reclaim_height)) then
         bottom = bottom + math.ceil(footer_h / scale)
     end

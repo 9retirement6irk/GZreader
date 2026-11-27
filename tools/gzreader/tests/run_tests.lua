@@ -8074,15 +8074,15 @@ do
     local cfg = ui.document.configurable
     check(reopened == 1 and relayouts == 0 and ui.document.cache_dropped,
         "then the layout is saved and the book reopened once, with a fresh layout cache (no re-layouts of the open book, no Styles-have-changed box)")
-    check(css:find("height: 99.0vh !important", 1, true) and css:find("h1, h2", 1, true), "pictures 99vh; headings lose their margins too (Wimpy Kid's title page made an empty page)")
-    check(cfg.t_page_margin == 30 and cfg.h_page_margins[1] == 0 and cfg.b_page_margin == 4 and cfg.sync_t_b_page_margins == 0,
-        "margins: title bar on top, a little room above the status bar")
+    check(css:find("height: 100.0vh !important", 1, true) and css:find("h1, h2", 1, true), "pictures the whole room's height (100vh); headings lose their margins too (Wimpy Kid's title page made an empty page)")
+    check(cfg.t_page_margin == 30 and cfg.h_page_margins[1] == 0 and cfg.b_page_margin == 0 and cfg.sync_t_b_page_margins == 0,
+        "margins: title bar on top, nothing spare above the status bar (the owner's Scribe: a white strip under every page)")
     check(css:find('img[src$="logo.jpg"]', 1, true) and not css:find('page1.jpg', 1, true), "a wide picture (logo) keeps its own size; page scans fill the page")
     check(cfg.smooth_scaling == 1, "smooth image scaling on")
     ui.view.footer.settings.reclaim_height = true
     ui.document._zen_top_status_bar_reserved_height = 30 -- ZenOS reserves the title bar itself
     PB.set(ui, true)
-    check(cfg.t_page_margin == 0 and cfg.b_page_margin == 4 + 28 and reopened == 2, "ZenOS reserves the title bar: no extra top margin; overlapping status bar: room for it")
+    check(cfg.t_page_margin == 0 and cfg.b_page_margin == 28 and reopened == 2, "ZenOS reserves the title bar: no extra top margin; overlapping status bar: room for it")
     ui.document._zen_top_status_bar_reserved_height = nil
     ui.view.footer.settings.reclaim_height = nil
     PB.set(ui, false)
@@ -8132,8 +8132,8 @@ do
     check(reopened == 4 and ui.styletweak.book_style_tweak:find("/* v" .. PB.VERSION .. " */", 1, true), "fitted by an older version: fitted again once")
     ui.styletweak.book_style_tweak = "/* GZreader picture book: begin */ /* v5 */ img{} /* GZreader picture book: end */"
     PB.onOpen(ui)
-    check(reopened == 5 and PB.VERSION == 8 and ui.styletweak.book_style_tweak:find("/* v8 */", 1, true),
-        "fitted by an earlier build (v5 to v7: text layers still showing, a page's own px size kept): fitted again once")
+    check(reopened == 5 and PB.VERSION == 9 and ui.styletweak.book_style_tweak:find("/* v9 */", 1, true),
+        "fitted by an earlier build (v5 to v8: text layers still showing, a page's own px size kept, 99% of the room): fitted again once")
     PB.onOpen(ui)
     check(reopened == 5, "…and not again")
 
@@ -8155,7 +8155,7 @@ do
     local dsx = DocSettings:open(pf)
     local tweak = dsx:readSetting("book_style_tweak") or ""
     check(dsx:readSetting("gzreader_picture_book") == true and dsx:readSetting("copt_t_page_margin") == 30
-        and dsx:readSetting("copt_b_page_margin") == 4 and dsx:readSetting("copt_h_page_margins")[1] == 0
+        and dsx:readSetting("copt_b_page_margin") == 0 and dsx:readSetting("copt_h_page_margins")[1] == 0
         and dsx:readSetting("copt_smooth_scaling") == 1 and dsx:readSetting("book_style_tweak_enabled") == true
         and tweak:find("/* v" .. PB.VERSION .. " */", 1, true) and tweak:find('img[src$="logo.jpg"]', 1, true)
         and tweak:find(".tx { display: none", 1, true) and dsx:readSetting("gzreader_pb_layers")[1] == ".tx"
