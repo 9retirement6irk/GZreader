@@ -20,9 +20,9 @@ keep each tile under an inch wide (seven on a Scribe, eight turned sideways).
   **Music** and **Audiobook** while one plays or is
   paused (they open its player: music and audiobooks are browsed in the
   Catalog tab), and **Downloads (N)** while something downloads.
-- **This book** (while reading): Sync with Grimmory, **Reader controls**
-  (what a swipe up from the bottom of the page opens: contents, bookmarks, go
-  to page, the font, the layout with Fit pictures, themes), Bookmark, Search
+- **This book** (while reading): Sync with Grimmory, **Options** (what a
+  swipe up from the bottom of the page opens, as set in Settings → Reader →
+  Bottom swipe gesture: the page browser or reader controls), Bookmark, Search
   book, Read aloud,
   **Quick note** and **Mark up** (draw on the page, kept as a note) while
   [Memos](Notes) is connected, and Music and Audiobook

@@ -1,4 +1,4 @@
--- The quick panel's Reader controls tile in a book (GZ_EMU_BOOK = an EPUB):
+-- The quick panel's Options tile in a book (GZ_EMU_BOOK = an EPUB):
 -- ZenOS's reader controls open, Layout has Fit pictures; on a keyboard model
 -- (k3) a line under them names their keys, and a number / a letter picks a
 -- tab / a section.
@@ -37,8 +37,22 @@ add({ fn = function(E)
     local ui = reader()
     local tile
     for _i, t in ipairs(require("gzreader_panel").bookTiles(ui.gzreader, ui)) do if t.id == "controls" then tile = t end end
-    check(tile ~= nil and tile.label == "Reader controls", "the quick panel in a book: Reader controls")
+    check(tile ~= nil and tile.label == "Options", "the quick panel in a book: Options")
     if tile then tile.run() end
+end, after = 4 })
+add({ shot = "rc-0-options" })
+add({ fn = function(E)
+    -- what the swipe up from the bottom opens (the page browser by default), then reader controls themselves
+    local top = UIM()._window_stack[#UIM()._window_stack]
+    local PBW = require("ui/widget/pagebrowserwidget")
+    local what = controls() and "reader controls" or (top and getmetatable(top.widget) == PBW and "the page browser")
+        or (top and top.widget and tostring(top.widget.name))
+    E.say("Options opened:", tostring(what))
+    local mode = require("common/reader_bottom_swipe").getMode(reader().zenos and reader().zenos.config or rawget(_G, "__ZEN_UI_PLUGIN").config)
+    check(what and what ~= "gzreader quick panel" and (mode ~= "page_browser" or what == "the page browser"),
+        "…Options opens what the swipe up opens (" .. tostring(mode) .. "): " .. tostring(what))
+    if top and top.widget and not controls() then UIM():close(top.widget) end
+    reader().menu:onShowReaderControls()
 end, after = 4 })
 add({ shot = "rc-1-open" })
 add({ fn = function(E)
@@ -62,6 +76,19 @@ add({ fn = function(E)
     local m = controls()
     local refs = m and m._zen_panel_refs
     if refs and refs.select_section then refs.select_section("page") end
+    -- the sheet: its Layout tab along the bottom
+    local names = {}
+    for _i, t in ipairs(refs and refs.gz_tab_keys or {}) do
+        names[#names + 1] = tostring(t.label)
+        if t.label == "Layout" or t.label == "Page" then t.run() end
+    end
+    E.say("tabs:", table.concat(names, ", "))
+end, after = 3 })
+add({ fn = function()
+    -- Fit pictures is the Layout section's last row: its last page
+    local m = controls()
+    local refs = m and m._zen_panel_refs
+    if refs and refs.goto_page and not table.concat(texts(m), " | "):find("Fit pictures", 1, true) then refs.goto_page(2) end
 end, after = 3 })
 add({ shot = "rc-2-layout" })
 add({ fn = function(E)

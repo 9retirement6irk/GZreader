@@ -607,6 +607,8 @@ local function apply_page_browser()
         ui:handleEvent(Event:new("HandledAsSwipe"))
         return true
     end
+    -- GZreader: the quick panel's Options tile does what this swipe does (gzreader_panel.lua)
+    BottomSwipe.gz_open = function(ui) return handle_bottom_swipe(ui, { direction = "north" }) end
 
     local function register_page_browser_zone(ui)
         ui:registerTouchZones({

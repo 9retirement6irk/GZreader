@@ -205,7 +205,7 @@ function Panel.catalog()
         } },
         { id = "book", title = _("This book"), tiles = {
             { id = "sync", label = _("Sync with Grimmory"), note = _("Grimmory's books") },
-            { id = "controls", label = _("Reader controls"), note = _("contents, bookmarks, go to page, font, layout, fit pictures: as a swipe up from the bottom") },
+            { id = "controls", label = _("Options"), note = _("what a swipe up from the bottom of the page opens") },
             { id = "bookmark", label = _("Bookmark") },
             { id = "searchbook", label = _("Search book") },
             { id = "readaloud", label = _("Read aloud"), available = Touch.tts },
@@ -522,7 +522,7 @@ function Panel.bookTiles(plugin, ui)
     end
     -- reader controls, as a swipe up from the bottom opens them: contents, bookmarks, go to page, the
     -- font, the layout (Fit pictures in it) — they were six tiles here (the owner, 2026-11-26)
-    list[#list + 1] = { id = "controls", icon = "layout", label = _("Reader controls"), run = function() Panel.readerControls(ui) end }
+    list[#list + 1] = { id = "controls", icon = "layout", label = _("Options"), run = function() Panel.readerControls(ui) end }
     list[#list + 1] = { id = "bookmark", icon = "bookmark", label = _("Bookmark"), on = ui.view and ui.view.dogear_visible == true,
         run = send("ToggleBookmark") }
     list[#list + 1] = { id = "searchbook", icon = "searchbook", label = _("Search book"), run = send("ShowFulltextSearchInput") }
@@ -544,10 +544,20 @@ end
 --- The layout panel (KOReader's bottom config menu: size, margins, spacing…).
 --- Opened with force: ZenOS's Zen mode blocks a plain ShowConfigMenu on touch
 --- Kindles (meant for the bottom swipe), as its own reader controls do.
---- ZenOS's reader controls, as the swipe up from the bottom of a book opens them
---- (KOReader's bottom menu where ZenOS's aren't there).
+--- The Options tile: on a touch Kindle, whatever the swipe up from the bottom
+--- of a book opens (Settings → Reader → Bottom swipe gesture: the page
+--- browser, reader controls, …; ZenOS's page_browser.lua); otherwise, or when
+--- that swipe is off, ZenOS's reader controls (KOReader's bottom menu where
+--- ZenOS's aren't there).
 function Panel.readerControls(ui)
     local menu = ui and ui.menu
+    if Device.isTouchDevice and Device:isTouchDevice() then
+        local okb, BottomSwipe = pcall(require, "common/reader_bottom_swipe")
+        if okb and type(BottomSwipe) == "table" and type(BottomSwipe.gz_open) == "function" then
+            local ok, done = pcall(BottomSwipe.gz_open, ui)
+            if ok and done then return true end
+        end
+    end
     if menu and not menu.onShowReaderControls then
         local zen = rawget(_G, "__ZEN_UI_PLUGIN") or ui.zenos
         if zen then pcall(function() require("modules/menu/patches/reader_controls")(zen) end) end

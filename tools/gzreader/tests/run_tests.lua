@@ -2733,11 +2733,11 @@ do
     check(Panel.isShown("book", "music") and not Panel.isShown("home", "sort"), "Music in a book is its own tick (Home's Music is separate)")
     local fakeui = { handleEvent = function() end, view = {}, document = { info = { has_pages = true } } }
     local bt = labels(Panel.bookTiles(hplug, fakeui))
-    check(bt:match("|Reader controls|") and not bt:match("|Contents|") and not bt:match("|Bookmarks|") and not bt:match("Go to page")
+    check(bt:match("|Options|") and not bt:match("|Contents|") and not bt:match("|Bookmarks|") and not bt:match("Go to page")
         and not bt:match("|Font|") and not bt:match("|Layout|") and not bt:match("Fit pictures") and bt:match("|Bookmark|") and bt:match("|Search book|"),
-        "a book's tiles: Reader controls in place of Contents, Bookmarks, Go to page, Font, Layout and Fit pictures " .. bt)
+        "a book's tiles: Options in place of Contents, Bookmarks, Go to page, Font, Layout and Fit pictures " .. bt)
     Panel.setShown("book", "searchbook", false)
-    check(not labels(Panel.bookTiles(hplug, fakeui)):match("Search book") and labels(Panel.bookTiles(hplug, fakeui)):match("|Reader controls|"),
+    check(not labels(Panel.bookTiles(hplug, fakeui)):match("Search book") and labels(Panel.bookTiles(hplug, fakeui)):match("|Options|"),
         "a book's tiles hidden too")
     Panel.setShown("book", "searchbook", true)
     -- Reader controls: ZenOS's, as the swipe up from the bottom opens them; without them, KOReader's
@@ -2746,7 +2746,24 @@ do
     local rcui = { handleEvent = function() end, view = {}, document = { info = { has_pages = true } },
         menu = { onShowReaderControls = function() shown_rc = shown_rc + 1; return true end } }
     for _i, t in ipairs(Panel.bookTiles(hplug, rcui)) do if t.id == "controls" then t.run() end end
-    check(shown_rc == 1, "Reader controls tile: ZenOS's reader controls")
+    check(shown_rc == 1, "Options tile: ZenOS's reader controls (a keyboard Kindle, or no swipe up set)")
+    -- a touch Kindle: what the swipe up from the bottom opens (ZenOS's page_browser.lua's handler)
+    local swiped, saved_bs = {}, package.loaded["common/reader_bottom_swipe"]
+    local Dev = require("device")
+    local saved_touch = Dev.isTouchDevice
+    Dev.isTouchDevice = function() return true end
+    package.loaded["common/reader_bottom_swipe"] = { gz_open = function(u) swiped[#swiped + 1] = u; return true end }
+    shown_rc = 0
+    for _i, t in ipairs(Panel.bookTiles(hplug, rcui)) do if t.id == "controls" then t.run() end end
+    check(#swiped == 1 and swiped[1] == rcui and shown_rc == 0, "Options tile on a touch Kindle: what the swipe up from the bottom opens (the page browser here)")
+    package.loaded["common/reader_bottom_swipe"] = { gz_open = function() return nil end }
+    for _i, t in ipairs(Panel.bookTiles(hplug, rcui)) do if t.id == "controls" then t.run() end end
+    check(shown_rc == 1, "…the swipe up turned off: reader controls")
+    package.loaded["common/reader_bottom_swipe"] = saved_bs
+    Dev.isTouchDevice = saved_touch
+    local pbsrc = io.open(arg[5] .. "/plugins/zenos.koplugin/modules/reader/patches/page_browser.lua"):read("*a")
+    check(pbsrc:find('BottomSwipe.gz_open = function(ui) return handle_bottom_swipe(ui, { direction = "north" }) end', 1, true),
+        "…ZenOS's swipe handler, as a swipe north")
     local forced, sent = nil, {}
     local layoutui = { handleEvent = function(_s, ev) sent[#sent + 1] = ev.handler end, view = {},
         document = { info = { has_pages = true } },

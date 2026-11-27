@@ -2,8 +2,8 @@ Books whose pages are pictures (scanned pages, comics as EPUB) are fitted to the
 
 ## Fit pictures and its options
 
-In a book, **Fit pictures** in reader controls' **Layout** (the quick
-panel's Reader controls, or a swipe up from the bottom) fits the book's
+In a book, **Fit pictures** in reader controls' **Layout** (a
+swipe up from the bottom, or the quick panel's Options) fits the book's
 pictures to the screen when it's on, and puts the book back when it's off.
 Hold it for its options:
 
