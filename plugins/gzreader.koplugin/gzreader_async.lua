@@ -27,6 +27,9 @@ and the result comes back a moment later.
   one core and little memory, and a calendar sync running beside a book
   open made it take 23.5 s instead of 6 (2026-11-08). They carry on once
   the first page is up, their time limits moved on by the pause.
+  GZreader's own update download pauses them the same way, for as long as
+  it downloads (gzreader_update.lua): waking from a long sleep, a dozen
+  catch-up requests shared the Wi-Fi with it.
 ]]
 
 local UIManager = require("ui/uimanager")
@@ -336,7 +339,7 @@ end
 ---------------------------------------------------------------- while a book opens
 
 Async.running = {} -- pid -> { started = os.time() }: the background processes running now
-Async.paused = nil -- { reason, at, count, timer }: while a book opens
+Async.paused = nil -- { reason, at, count, timer, holders = { [reason] = true } }: while a book opens, an update downloads
 Async.PAUSE_MAX = 30 -- s: carry on anyway (a book that never finished opening)
 
 --- A signal to a background process and anything it started (its group;
@@ -351,26 +354,47 @@ local function signal(pid, sig)
     end)
 end
 
---- A book starts opening: pause the background processes running now, and
---- start no new request until Async.resume() (or PAUSE_MAX seconds).
-function Async.pause(reason)
-    if Async.sync or Async.paused then return end
-    local p = { reason = reason or "?", at = os.time(), count = 0 }
+--- A book starts opening (or an update downloads): pause the background
+--- processes running now, and start no new request until Async.resume()
+--- (or `max` seconds, PAUSE_MAX by default). A second reason while paused
+--- joins the pause: it ends when each has resumed with its reason.
+function Async.pause(reason, max)
+    if Async.sync then return end
+    reason = reason or "?"
+    max = max or Async.PAUSE_MAX
+    local p = Async.paused
+    if p then
+        p.holders[reason] = true
+        local left = p.until_at - os.time()
+        if max > left then
+            UIManager:unschedule(p.timer)
+            p.until_at = os.time() + max
+            p.timer = function() Async.resume("still not done after " .. max .. " s") end
+            UIManager:scheduleIn(max, p.timer)
+        end
+        return
+    end
+    p = { reason = reason, at = os.time(), count = 0, holders = { [reason] = true }, until_at = os.time() + max }
     Async.paused = p
     for pid in pairs(Async.running) do
         signal(pid, SIGSTOP)
         p.count = p.count + 1
     end
     if p.count > 0 then Log.info("async: paused", p.count, "background process(es) while", p.reason) end
-    p.timer = function() Async.resume("still not done after " .. Async.PAUSE_MAX .. " s") end
-    UIManager:scheduleIn(Async.PAUSE_MAX, p.timer)
+    p.timer = function() Async.resume("still not done after " .. max .. " s") end
+    UIManager:scheduleIn(max, p.timer)
 end
 
 --- The book is open: the paused processes carry on (their time limits moved
 --- on by the pause), and waiting requests start.
-function Async.resume(why)
+function Async.resume(why, reason)
     local p = Async.paused
     if not p then return end
+    -- (another reason still holds the pause: an update downloading while a book opened)
+    if reason and p.holders then
+        p.holders[reason] = nil
+        if next(p.holders) then return end
+    end
     Async.paused = nil
     UIManager:unschedule(p.timer)
     local paused_for = os.time() - p.at

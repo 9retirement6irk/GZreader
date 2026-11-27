@@ -726,6 +726,24 @@ function Update.closeBook()
     return true
 end
 
+--- While the update downloads, GZreader's other network work waits: the
+--- background requests (syncs, shelves, Immich pictures, covers…) and the
+--- book downloads, paused and carried on afterwards. Waking from a long
+--- sleep they all start in the same minute, and a Scribe's update download
+--- crawled beside them (2026-11-23). At most this long.
+Update.HOLD_MAX = 600
+
+local HOLD = "an update downloads"
+function Update.holdOthers()
+    pcall(function() require("gzreader_async").pause(HOLD, Update.HOLD_MAX) end)
+    pcall(function() require("gzreader_download").hold(HOLD) end)
+end
+
+function Update.releaseOthers()
+    pcall(function() require("gzreader_download").release() end)
+    pcall(function() require("gzreader_async").resume("the update is downloaded", HOLD) end)
+end
+
 function Update.download(info)
     local ProgressbarDialog = require("gzreader_progress")
     local Net = require("gzreader_net")
@@ -742,6 +760,7 @@ function Update.download(info)
     end, true)
     if not pid then return UIManager:show(InfoMessage:new{ text = _("Couldn't start the download.") }) end
     Net.hold("update")
+    Update.holdOthers()
     -- No sleeping until GZreader restarts (the download, then installing):
     -- the dialog below swallows every tap, so nothing else tells the Kindle
     -- someone is there, and a Scribe went to sleep mid-update (2026-11-16).
@@ -775,6 +794,7 @@ function Update.download(info)
         if not ffiutil.isSubProcessDone(pid) then return UIManager:scheduleIn(1, poll) end
         UIManager:close(dialog)
         Net.release("update")
+        Update.releaseOthers() -- (installing needs no network; a restart waits for them, 20 s at most)
         local res = ffiutil.readAllFromFD(fd)
         if res ~= "ok" then
             ended()

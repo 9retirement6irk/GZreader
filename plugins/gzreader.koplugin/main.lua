@@ -2067,7 +2067,7 @@ end
 
 function Grimmory:onReaderReady()
     -- the first page is drawn next: then the paused background work carries on
-    UIManager:scheduleIn(1, function() require("gzreader_async").resume("the book is open") end)
+    UIManager:scheduleIn(1, function() require("gzreader_async").resume("the book is open", "a book opens") end)
     if not self.ui.document then return end
     nookChange()
     pcall(self.setupReader, self)

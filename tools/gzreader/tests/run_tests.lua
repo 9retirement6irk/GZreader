@@ -547,6 +547,29 @@ print("While a book opens, background processes wait")
     timer()
     runLoop(function() return res_c ~= nil end, 10)
     check(res_c == "c" and Async.paused == nil, "after " .. Async.PAUSE_MAX .. " s without a page: carries on")
+    -- GZreader's update downloading (10 minutes at most) and a book opening: the pause lasts until both are done
+    Async.pause("an update downloads", 600)
+    local p_upd = Async.paused
+    UI.scheduled[p_upd.timer] = nil
+    check(p_upd.until_at - p_upd.at == 600, "an update download pauses them for up to 10 minutes")
+    Async.pause("a book opens")
+    check(Async.paused == p_upd and p_upd.holders["a book opens"] and p_upd.holders["an update downloads"]
+        and p_upd.until_at - p_upd.at == 600, "a book opening meanwhile joins the pause (its shorter limit doesn't cut it)")
+    local res_d
+    Async.run(nil, function() return "d" end, function(r) res_d = r end, "later")
+    Async.resume("the book is open", "a book opens")
+    runLoop(function() return res_d ~= nil end, 0.5)
+    check(Async.paused == p_upd and res_d == nil, "the book open: still paused, the update is downloading")
+    Async.resume("the update is downloaded", "an update downloads")
+    runLoop(function() return res_d ~= nil end, 10)
+    check(Async.paused == nil and res_d == "d", "the update downloaded: they carry on")
+    Async.pause("a book opens")
+    UI.scheduled[Async.paused.timer] = nil
+    Async.pause("an update downloads", 600)
+    check(Async.paused.until_at - Async.paused.at == 600, "an update starting while a book opens: the longer limit")
+    UI.scheduled[Async.paused.timer] = nil
+    Async.resume("no reason given")
+    check(Async.paused == nil, "a resume without a reason ends it whatever holds it (as before)")
     Log.info = orig_info
     local log = table.concat(logged, "\n")
     check(log:find("async: paused 1 background process(es) while a book opens", 1, true)
@@ -1992,6 +2015,16 @@ do -- other requests first: the download waits while they run
     Download.yield()
     check(job.paused_at == nil and job.yielded_enough and state(job.pid) ~= "T", "waited YIELD_MAX: carries on, and isn't paused again meanwhile")
     Download.unyield()
+    -- GZreader's update downloads: the book waits however long that takes
+    Download.hold("an update downloads")
+    runLoop(function() return state(job.pid) == "T" end, 2)
+    check(Download.held and job.paused_at and state(job.pid) == "T", "an update downloads: the book download is paused")
+    runLoop(function() return false end, 1.6) -- (YIELD_MAX is 1 here)
+    check(job.paused_at and state(job.pid) == "T", "…past YIELD_MAX too")
+    Download.unyield()
+    check(job.paused_at and state(job.pid) == "T", "…and other requests finishing don't start it again")
+    Download.release()
+    check(not Download.held and job.paused_at == nil and state(job.pid) ~= "T", "the update downloaded: it carries on")
     Download.YIELD_MAX = was_max
     -- gzreader_async: a request batch makes it wait, and it goes on after
     local A = require("gzreader_async")
@@ -2995,7 +3028,19 @@ print("An update keeps the Kindle awake until GZreader restarts")
         poll()
         return held_while, held_still
     end
+    -- (what else waits: the background requests and the book downloads)
+    local A, D = require("gzreader_async"), require("gzreader_download")
+    local was_pause, was_resume, was_hold, was_release = A.pause, A.resume, D.hold, D.release
+    local others = {}
+    A.pause = function(reason, max) others[#others + 1] = "pause " .. reason .. " " .. tostring(max) end
+    A.resume = function(_why, reason) others[#others + 1] = "resume " .. tostring(reason) end
+    D.hold = function(reason) others[#others + 1] = "hold " .. reason end
+    D.release = function() others[#others + 1] = "release" end
     local during, still = run("ok", 10, true)
+    local o = table.concat(others, "|")
+    check(o == "pause an update downloads 600|hold an update downloads|release|resume an update downloads",
+        "while the update downloads, background requests and book downloads wait; after it, they carry on (" .. o .. ")")
+    others = {}
     check(during and still and cmds[#cmds]:match("preventScreenSaver 1"),
         "downloading an update: the Kindle doesn't go to sleep (screensaver blocked, autosuspend told)")
     check(Awake.held("update"), "installed: still kept awake until GZreader restarts")
@@ -3006,6 +3051,11 @@ print("An update keeps the Kindle awake until GZreader restarts")
     check(not Awake.held("update"), "incomplete download: let go")
     run("ok", 10, false)
     check(not Awake.held("update"), "install failed: let go")
+    o = table.concat(others, "|")
+    local _n, holds = o:gsub("hold ", "")
+    local _m, releases = o:gsub("release", "")
+    check(holds == 3 and releases == 3, "a failed or incomplete download lets them carry on too (" .. o .. ")")
+    A.pause, A.resume, D.hold, D.release = was_pause, was_resume, was_hold, was_release
     local src = io.open(PLUGIN .. "/gzreader_update.lua"):read("*a")
     check(src:find('Awake.hold("update"', 1, true) ~= nil, "Update.download holds it (source)")
     os.remove(zip)
