@@ -147,7 +147,7 @@ function Notepaper.dataURL(id)
     if not f then return nil end
     local data = f:read("*a")
     f:close()
-    cache[id] = "data:image/png;base64," .. require("ffi/sha2").bin_to_base64(data)
+    cache[id] = "data:image/png;base64," .. require("gzreader_b64").encode(data)
     return cache[id]
 end
 

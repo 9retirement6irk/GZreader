@@ -101,7 +101,7 @@ function PdfMarkup.scene(path, w, h, now)
         seed = Drawing.randomSeed(), locked = true, fileId = file_id, scale = Drawing.list({ 1, 1 }),
     }
     scene.files[file_id] = { mimeType = "image/png", created = now or (os.time() * 1000),
-        dataURL = "data:image/png;base64," .. require("ffi/sha2").bin_to_base64(data) }
+        dataURL = "data:image/png;base64," .. require("gzreader_b64").encode(data) }
     return scene
 end
 

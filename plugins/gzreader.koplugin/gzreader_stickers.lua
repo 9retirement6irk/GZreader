@@ -220,7 +220,7 @@ function Stickers.dataURL(item, w, h)
     if f then f:close() end
     os.remove(tmp)
     if not data or data:sub(1, 8) ~= "\137PNG\r\n\26\n" then return nil end
-    return "data:image/png;base64," .. require("ffi/sha2").bin_to_base64(data)
+    return "data:image/png;base64," .. require("gzreader_b64").encode(data)
 end
 
 --- The sticker and size last used (kept for next time): { slug, n }, size.
