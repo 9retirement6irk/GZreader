@@ -529,6 +529,10 @@ API to `/api` are found too.
     **Your own paper:** put a PNG file in `GZreader/app/settings/gzreader-notepaper`
     on the Kindle (at most 1440 pixels on its longer side and 600 KB); it's
     offered after the others, named after the file.
+    While you draw, **Paper** opens in the same window as a new drawing's,
+    over the drawing (in a journal entry's drawing too): tap a paper to
+    choose it, then **Done** to put the page on it; **Cancel**, or a tap
+    outside the window, leaves the page as it was.
     On a paper the ink goes on the screen a little more slowly than on a
     blank page, so it stays solid where it crosses the paper's lines. The
     same over a photo or a sticker, but only where the stroke crosses it:

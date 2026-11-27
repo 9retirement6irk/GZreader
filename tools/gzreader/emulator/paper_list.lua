@@ -1,8 +1,8 @@
 -- The drawing screen's papers, as the Kindle Scribe's templates: a new
 -- drawing asks which paper first (a grid of small square tiles, six to a
 -- row, four on a narrow screen; a tap chooses, Create starts the drawing,
--- Cancel leaves), and Paper on the drawing screen shows the same grid (a
--- tap picks). Six papers of your own are added (copies of a paper), after
+-- Cancel leaves), and Paper on the drawing screen opens the same window (a
+-- tap chooses, Done takes it). Six papers of your own are added (copies of a paper), after
 -- GZreader's eighteen; where the grid is longer than the screen it scrolls.
 --   GZ_EMU_MODEL=scribe GZ_EMU_TREE=<tree>/koreader run.sh paper_list.lua <out>
 -- Checks go to <out>/paper-list-checks.txt.
@@ -96,16 +96,19 @@ end, after = 3 })
 add({ shot = "4-paper", after = 0.5 })
 add({ fn = function(E)
     local l = list()
-    check(l and not l.create and l.current == "ruled-narrow" and E.findText("Create") == nil,
-        "Paper on the drawing screen: the same grid, the page's paper chosen, no Create (a tap picks)")
+    local pw = l and l.win
+    check(l and not l.create and l.window and l.current == "ruled-narrow" and E.findText("Create") == nil and E.findText("Done") ~= nil
+        and E.findText("Cancel") ~= nil and pw and l.covers_fullscreen == false and pw.x > 0 and pw.y > 0 and pw.x + pw.w < W and pw.y + pw.h < H,
+        "Paper on the drawing screen: the same window over the drawing, the page's paper chosen, Cancel and Done (no Create)")
     E.scrolls = l.scroller._is_scrollable
     E.offset0 = l.scroller:getScrolledOffset().y
     -- a drag up the grid (a finger: the pen draws, not scrolls)
     -- (opened at the chosen paper: at the end already, so the other way)
+    -- (inside the window's grid, clear of its buttons)
     if E.scrolls and E.offset0 > 0 then
-        E.finger({ { W * 0.5, H * 0.4 }, { W * 0.5, H * 0.6 }, { W * 0.5, H * 0.8 } }, 0.4)
+        E.finger({ { W * 0.5, H * 0.35 }, { W * 0.5, H * 0.5 }, { W * 0.5, H * 0.65 } }, 0.4)
     elseif E.scrolls then
-        E.finger({ { W * 0.5, H * 0.8 }, { W * 0.5, H * 0.6 }, { W * 0.5, H * 0.4 } }, 0.4)
+        E.finger({ { W * 0.5, H * 0.65 }, { W * 0.5, H * 0.5 }, { W * 0.5, H * 0.35 } }, 0.4)
     end
 end, after = 3 })
 add({ shot = "5-scrolled", after = 0.5 })
@@ -113,8 +116,8 @@ add({ fn = function(E)
     local l = list()
     local off = l.scroller:getScrolledOffset().y
     if E.scrolls then
-        check(off ~= E.offset0 and E.offset0 > 0,
-            "more rows than fit: opened at the chosen paper, and a drag scrolls the grid (" .. E.offset0 .. " -> " .. off .. " px)")
+        check(off ~= E.offset0,
+            "more rows than fit: a drag scrolls the grid (" .. E.offset0 .. " -> " .. off .. " px)")
     else
         check(off == 0, "every row fits this screen: nothing to scroll")
     end
@@ -131,8 +134,14 @@ add({ fn = function(E)
 end, after = 3 })
 add({ shot = "6-picked", after = 0.5 })
 add({ fn = function(E)
-    check(E.last_id ~= nil and E.last_id ~= "ruled-narrow" and list() == nil and screen().sketch:paper() == E.last_id,
-        "a tap on a tile: the page on that paper (" .. tostring(E.last_id) .. ")")
+    local l = list()
+    check(E.last_id ~= nil and E.last_id ~= "ruled-narrow" and l and l.current == E.last_id and screen().sketch:paper() == "ruled-narrow",
+        "a tap on a tile: chosen in the window, the page not changed yet (" .. tostring(E.last_id) .. ")")
+    E.tap("Done")
+end, after = 3 })
+add({ shot = "6b-done", after = 0.5 })
+add({ fn = function(E)
+    check(list() == nil and screen().sketch:paper() == E.last_id, "Done: the page on that paper")
     -- a new drawing, cancelled: nothing opens
     UIM():close(screen())
     require("gzreader_drawscreen").show{ title = "Papers", choose_paper = true, on_done = function() end,
