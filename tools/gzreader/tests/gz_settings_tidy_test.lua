@@ -159,7 +159,7 @@ print("== rows where they belong")
     local notes = Tidy.find(sec(p, "accounts"), "Notes")
     check(texts(notes.sub_item_table_func()) == "Layout | Storage used: 0 bytes", "…Notes keeps its own rows")
     local hl = Tidy.find(sec(p, "reader"), "Highlight / Lookup")
-    check(texts(hl.sub_item_table) == "Zen quick lookup | Show Wikipedia | Pen's eraser removes highlights",
+    check(texts(hl.sub_item_table) == "Quick lookup | Show Wikipedia | Pen's eraser removes highlights",
         "Reader → Highlight / Lookup: Pen's eraser removes highlights (it acts in books)")
     local transfer = Tidy.find(general, "Transfer or reset")
     check(texts(transfer.sub_item_table) == "Copy to or from another GZreader | Sync through a computer | Reset GZreader"
@@ -170,13 +170,65 @@ print("== rows where they belong")
     local screen = Tidy.find(sec(p, "display"), "Screen")
     check(texts(screen.sub_item_table_func()) == "Screen DPI | E-ink settings", "Display and light → Screen: no Notifications")
     check(texts(Tidy.rowsOf(adv.sub_item_table[2])) == "From gestures and profiles", "…its switches are Advanced → Notifications")
-    check(texts(sec(p, "home")) == "Home | Daily paper | Status bar | Downloads tab" and texts(sec(p, "accounts")) == "Books | Notes | Photos"
+    check(texts(sec(p, "home")) == "Home | Daily paper | Home's status bar | Downloads tab" and texts(sec(p, "accounts")) == "Books | Notes | Photos"
         and not sec(p, "accounts")[3].separator, "Daily paper: Home and tabs, after Home (no account; read on Home)")
     -- a Kindle without a pen: Handwriting to text stays in Notes, no Pen row
     local q = Tidy.apply(page(), { pen = false })
     check(not Tidy.find(sec(q, "general"), "Pen") and texts(Tidy.find(sec(q, "accounts"), "Notes").sub_item_table_func())
         == "Layout | Pen's shortcut button: Eraser | Handwriting to text: On the Kindle | Storage used: 0 bytes",
         "a Kindle without a pen: no Pen row; Handwriting to text stays in Notes")
+end)()
+
+print("== GZreader's own names and values")
+;(function()
+    local store = { memos = { server = "https://notes.example.com", token = "t" }, plex = {} }
+    local paired = false
+    local g = { store = store, api = { isPaired = function() return paired end } }
+    local paper_on = false
+    package.loaded["gzreader_memos"] = { new = function(_self, st) return { isConnected = function() return st.token ~= nil end } end }
+    package.loaded["gzreader_calendar"] = { hasNetSources = function() return false end }
+    package.loaded["gzreader_immich"] = { new = function() return { isConnected = function() return false end } end }
+    package.loaded["gzreader_daily"] = { enabled = function() return paper_on end }
+    local function page()
+        return {
+            { text = "Home and tabs", _zen_settings_root = "home", sub_item_table = { { text = "Home", sub_item_table = { { text = "Presets", sub_item_table = { { text = "Zen Default" }, { text_func = function() return "Zen Default" end } } } } },
+                { text = "Status bar" } } },
+            { text = "Reader", _zen_settings_root = "reader", sub_item_table = {
+                { text = "Highlight / Lookup", sub_item_table = { { text = "Zen quick lookup" }, { text = "Zen highlight menu" } } },
+                { text = "Gestures and controls", sub_item_table_func = function() return { { text = "Bottom swipe gesture", sub_item_table = { { text = "Zen page browser" } } } } end },
+                { text = "Appearance", sub_item_table = { { text = "Bottom status bar", sub_item_table = { { text = "Zen Presets", sub_item_table = { { text = "Backup of Original" } } } } } } },
+                { text = "Closing a book", sub_item_table_func = function() return { { text = "End of document action", sub_item_table = { { text = "Zen end of book" } } } } end } } },
+            { text = "Accounts and services", _zen_settings_root = "accounts", sub_item_table = {
+                { text = "Books", mandatory_func = function() return "BookOrbit" end }, { text = "Notes", mandatory = "Memos" },
+                { text = "Calendar", mandatory = "CalDAV" }, { text = "Photos", mandatory = "Immich" }, { text = "AI", mandatory_func = function() return "Claude" end },
+                { text = "Daily paper", mandatory = "Feeds" } } },
+        }
+    end
+    local p = Tidy.apply(page(), { gzreader = function() return g end, pen = false })
+    local reader = sec(p, "reader")
+    local hl = Tidy.find(reader, "Highlight / Lookup")
+    check(texts(hl.sub_item_table) == "Quick lookup | Highlight menu", "Reader: Quick lookup, Highlight menu (no \"Zen\")")
+    local gest = Tidy.find(reader, "Gestures and controls").sub_item_table_func()
+    check(texts(gest[1].sub_item_table) == "Page browser", "…the bottom swipe's Page browser, on a page built when it opens")
+    local bsb = Tidy.find(reader, "Appearance").sub_item_table[1].sub_item_table[1]
+    check(Tidy.label(bsb) == "Presets" and texts(bsb.sub_item_table) == "Your settings before a preset", "…the bottom status bar's Presets; Backup of Original named for what it is")
+    check(texts(Tidy.find(reader, "Closing a book").sub_item_table_func()[1].sub_item_table) == "End-of-book page", "…End of document action: End-of-book page")
+    local home = sec(p, "home")
+    check(texts(home) == "Home | Daily paper | Home's status bar" and texts(home[1].sub_item_table[1].sub_item_table) == "Standard | Standard",
+        "Home and tabs: Home's status bar (the reader has its own); Home's preset Standard")
+    local acc = sec(p, "accounts")
+    local function val(name) return Tidy.find(acc, name).mandatory_func() end
+    check(val("Books") == "Not connected" and val("Notes") == "Memos" and val("Calendar") == "Not connected" and val("Photos") == "Not connected",
+        "Accounts and services: Not connected on the right until connected, then the service")
+    paired = true
+    check(val("Books") == "BookOrbit", "…connected: the service (Books: the one signed in to)")
+    check(val("AI") == "Not connected", "…AI: Not connected until a key is set up")
+    package.loaded["gzreader_ai"] = { ready = function() return true end }
+    check(val("AI") == "Claude", "…then the service")
+    local paper = Tidy.find(home, "Daily paper")
+    check(paper.mandatory == nil and paper.mandatory_func() == "Off", "Home and tabs → Daily paper: Off")
+    paper_on = true
+    check(paper.mandatory_func() == "On", "…On")
 end)()
 
 print(string.format("%d passed, %d failed", pass, fail))

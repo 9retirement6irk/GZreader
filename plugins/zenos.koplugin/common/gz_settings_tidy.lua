@@ -342,6 +342,114 @@ function M.dailyPaperHome(root)
     if accounts[#accounts] then accounts[#accounts].separator = nil end
 end
 
+---------------------------------------------------------------- GZreader's own names and values
+
+--- ZenOS's names for things that are GZreader's here, wherever they show.
+M.RENAMES = {
+    ["Zen quick lookup"] = "Quick lookup",
+    ["Zen highlight menu"] = "Highlight menu",
+    ["Zen page browser"] = "Page browser",
+    ["Zen end of book"] = "End-of-book page",
+    ["Zen Presets"] = "Presets",
+    ["Zen Default"] = "Standard",
+    ["Backup of Original"] = "Your settings before a preset",
+}
+
+--- Every row of `list` (and of the pages under it, when they're built) named
+--- as M.RENAMES says. Only a row's text: what it does and saves stays.
+function M.renameAll(list, seen)
+    local _ = gettext()
+    seen = seen or {}
+    if type(list) ~= "table" or seen[list] then return end
+    seen[list] = true
+    for _i, item in ipairs(list) do
+        if type(item) == "table" then
+            local t = rawget(item, "text")
+            for from, to in pairs(M.RENAMES) do
+                if t == _(from) or t == from then item.text = _(to) end
+            end
+            -- (a name its row works out when shown: Home's presets)
+            local tf = rawget(item, "text_func")
+            if t == nil and type(tf) == "function" and not rawget(item, "_gz_renamed_text") then
+                item._gz_renamed_text = true
+                item.text_func = function(...)
+                    local v = tf(...)
+                    local to = type(v) == "string" and M.RENAMES[v]
+                    return to and _(to) or v
+                end
+            end
+            if type(item.sub_item_table) == "table" then
+                M.renameAll(item.sub_item_table, seen)
+            elseif type(item.sub_item_table_func) == "function" and not rawget(item, "_gz_renamed") then
+                item._gz_renamed = true
+                M.onPage(item, function(l) M.renameAll(l, {}) end)
+            end
+        end
+    end
+end
+
+function M.ownNames(root)
+    local _ = gettext()
+    M.renameAll(root)
+    -- (Home and tabs' Status bar is Home's: the reader has its own, in Reader → Appearance)
+    local _h, home = M.section(root, "home")
+    local status = M.find(home, _("Status bar"))
+    if status then status.text = _("Home's status bar") end
+end
+
+--- Is the service of Accounts and services' row `text` connected? nil when
+--- the row isn't one of these (its value stays as it is).
+function M.connected(text, g)
+    local _ = gettext()
+    if type(g) ~= "table" then return nil end
+    local st = type(g.store) == "table" and g.store or {}
+    local checks = {
+        [_("Books")] = function() return g.api ~= nil and g.api:isPaired() end,
+        [_("Music")] = function() return type(st.plex) == "table" and st.plex.token ~= nil end,
+        [_("Notes")] = function() return require("gzreader_memos"):new(st.memos or {}):isConnected() end,
+        [_("Calendar")] = function() return require("gzreader_calendar").hasNetSources(g) end,
+        [_("Photos")] = function() return require("gzreader_immich"):new(st.immich or {}):isConnected() end,
+        [_("House")] = function() return require("gzreader_house").client(g):isConnected() end,
+        [_("Recipes")] = function() return require("gzreader_recipes").client(g):isConnected() end,
+        [_("AI")] = function() return require("gzreader_ai").ready(g) end,
+    }
+    local f = checks[text]
+    if not f then return nil end
+    local ok, v = pcall(f)
+    return ok and v == true
+end
+
+--- Accounts and services' rows say "Not connected" on the right until their
+--- service is (then the service, as before); Home and tabs → Daily paper says
+--- On or Off.
+function M.accountValues(root, opts)
+    local _ = gettext()
+    local gz = opts and opts.gzreader
+    local _a, accounts = M.section(root, "accounts")
+    for _i, item in ipairs(accounts or {}) do
+        local text = M.label(item)
+        if type(item) == "table" and M.connected(text, gz and gz()) ~= nil then
+            local before, before_func = item.mandatory, item.mandatory_func
+            item.mandatory = nil
+            item.mandatory_func = function()
+                if M.connected(text, gz and gz()) == false then return _("Not connected") end
+                if type(before_func) == "function" then return before_func() end
+                return before
+            end
+        end
+    end
+    local _h, home = M.section(root, "home")
+    local paper = M.find(home, _("Daily paper"))
+    if paper then
+        paper.mandatory = nil
+        paper.mandatory_func = function()
+            local g = gz and gz()
+            local ok, on = pcall(function() return require("gzreader_daily").enabled(g) end)
+            return (ok and on) and _("On") or _("Off")
+        end
+    end
+end
+
 ---------------------------------------------------------------- all of it
 
 --- Settings' first page (gz_settings_tree.build's) made simpler. `opts`:
@@ -349,7 +457,7 @@ end
 --- (nil: asked of the device) }.
 function M.apply(root, opts)
     opts = opts or {}
-    for _i, step in ipairs({ M.noImmichCopy, M.aiOnce, M.flatSleep, M.menuText, M.penPage, M.transferOrReset, M.dailyPaperHome }) do
+    for _i, step in ipairs({ M.noImmichCopy, M.aiOnce, M.flatSleep, M.menuText, M.penPage, M.transferOrReset, M.dailyPaperHome, M.ownNames, M.accountValues }) do
         local ok, err = pcall(step, root, opts)
         if not ok then
             pcall(function() require("logger").warn("GZreader settings: a tidying step failed:", tostring(err)) end)
