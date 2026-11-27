@@ -710,6 +710,46 @@ do -- Paused books: the app's /continue-reading leaves them out, the web shows t
     b:openSimple("continue-reading", "Continue reading")
 end
 
+print("Setup on this device: the services to tick, and the list after the guide")
+;(function()
+    local Setup = require("gzreader_setupdevice")
+    local ids = {}
+    for _i, s in ipairs(Setup.SERVICES) do ids[#ids + 1] = s.id end
+    check(table.concat(ids, ",") == "grimmory,bookorbit,plex,memos,house,immich,mealie,calendar",
+        "the services, in the order asked: Grimmory, BookOrbit, Plex, Memos, Home Assistant, Immich, Mealie, Calendar")
+    local sel = Setup.exclusive({ grimmory = true, bookorbit = true, plex = true }, "bookorbit")
+    check(sel.bookorbit and sel.grimmory == nil and sel.plex, "one book server: ticking BookOrbit unticks Grimmory, nothing else")
+    sel = Setup.exclusive({ grimmory = true, bookorbit = true }, "grimmory")
+    check(sel.grimmory and sel.bookorbit == nil and Setup.exclusive({ bookorbit = true }, "grimmory").bookorbit, "…and the other way; unticking one leaves the other")
+    check(Setup.bookSource({ grimmory = true }) == "grimmory" and Setup.bookSource({ bookorbit = true }) == "bookorbit" and Setup.bookSource({ memos = true }) == "local",
+        "the book server ticked, or none (books sent from a browser)")
+    local saves, typed = 0, {}
+    local fake = { api = { isPaired = function() return true end }, backend = function() return "bookorbit" end,
+        store = { memos = { token = "t" } }, save = function() saves = saves + 1 end,
+        keyboardLogin = function(_s, _a, which) typed[#typed + 1] = which end }
+    check(Setup.isConnected(fake, "bookorbit") and not Setup.isConnected(fake, "grimmory") and Setup.isConnected(fake, "memos") and not Setup.isConnected(fake, "calendar"),
+        "connected: the book server signed in to (not the other one), Memos with its token, no calendar yet")
+    local picked = {}
+    for _i, c in ipairs(Setup.choices(fake)) do if c.checked then picked[#picked + 1] = c.id end end
+    check(table.concat(picked, ",") == "bookorbit,memos", "the guide's boxes: what's connected is ticked to start with")
+    local House = require("gzreader_house")
+    local was_set, house_on = House.setTabShown, nil
+    House.setTabShown = function(on) house_on = on end
+    local tabs = Setup.apply(fake, { grimmory = true, calendar = true, house = true })
+    House.setTabShown = was_set
+    check(fake.store.book_source == "grimmory" and saves == 1 and fake.store.setup_services[1] == "grimmory"
+        and fake.store.setup_services[#fake.store.setup_services] == "calendar" and tabs.ct_calendar == true and tabs.ct_notes == false and house_on == true,
+        "the answer: the book server and the ticked services kept; Calendar's tab on, Notes' off (Memos not ticked), the House tab switched on")
+    local rows = Setup.rows(fake, { "grimmory", "memos", "nonsense" })
+    check(#rows == 2 and rows[1].text == "Connect Grimmory" and rows[1].mandatory == "not yet" and rows[2].text == "Memos: connected" and rows[2].mandatory == "✓",
+        "the list after the guide: each ticked service, connected or not yet")
+    rows[1].callback()
+    check(typed[1] == "grimmory", "…picking one opens its own connect-by-typing window")
+    check(Setup.show(fake, {}) == false, "nothing ticked: no list")
+    local main_src = io.open(arg[5] .. "/plugins/gzreader.koplugin/main.lua"):read("*a")
+    check(main_src:find("function Grimmory:onGzSetupOnDevice()", 1, true), "the guide's event opens the list")
+end)()
+
 print("Catalog tab: Books, Audiobooks and Music pages")
 ;(function()
     local Catalog = require("gzreader_catalog")

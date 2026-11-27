@@ -1503,6 +1503,13 @@ function Grimmory:onGrimmoryKeyboardLogin()
     return true
 end
 
+--- The setup guide's "Set up on this device": the services ticked there, each
+--- to connect by typing (gzreader_setupdevice.lua).
+function Grimmory:onGzSetupOnDevice()
+    require("gzreader_setupdevice").show(self)
+    return true
+end
+
 --- Copy connections from / send them to another GZreader (setup guide, Settings).
 function Grimmory:onGzCopyReceive()
     require("gzreader_copy").receive(self)

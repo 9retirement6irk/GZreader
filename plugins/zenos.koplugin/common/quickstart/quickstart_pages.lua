@@ -720,53 +720,64 @@ local function buildGrimmoryPage(ctx)
                 .. _("Later: Menu → Sync with computer."),
         }
     end
-    -- GZreader: first, how it will be used (Grimmory, BookOrbit, or on its own with
-    -- books sent from a browser); the page after it offers what fits that answer.
+    -- GZreader: first, how to set up: with a phone (the setup page: every
+    -- connection is made there) or on this device (the page after it asks which
+    -- services, gzreader_setupdevice.lua; a list of them opens after the guide,
+    -- each connected by typing). What was chosen happens when the guide ends.
     local g = grimmoryPlugin(ctx)
+    local okS, Setup = pcall(require, "gzreader_setupdevice")
+    if not okS or type(Setup) ~= "table" then Setup = nil end
     local current = (state.paired and type(g.backend) == "function" and g:backend()) or nil
     local saved = type(g.store) == "table" and g.store.book_source or nil
     local mode = current or saved or "grimmory"
-    local connect = { choice_type = "radio" }
+    local way = state.paired and "keep" or "phone"
+    local after -- the event sent when the guide ends
+    local how
+    local connect = {}
+    local fillSync, fillRecent
 
     local function fillConnect()
         local touch = require("device"):isTouchDevice()
-        local later = touch and _("Later: swipe down → Connect.") or _("Later: Menu → Send books.")
-        local choices = {}
-        if mode == "local" then
-            connect.title = _("Send books from your browser")
-            connect.description = _("Scan the QR code with your phone, or open this Kindle's address in any browser on the same Wi‑Fi, and drop your books on the page. Notes and Calendar are connected there too.") .. "\n" .. later
-            choices[#choices + 1] = { id = "books", text = _("Show the QR code now"), checked = true }
-            choices[#choices + 1] = { id = "gz_copy", text = _("Copy from another GZreader"), checked = false }
+        connect.choice_type, connect.choices, connect.on_toggle = nil, nil, nil
+        if way == "device" and Setup then
+            connect.title = _("What do you want to set up?")
+            connect.description = _("Tick the services you use. When this guide ends, a list of them opens: pick each one to type its address and sign in.") .. "\n"
+                .. T(_("%1 and %2 are both book servers: tick one."), "Grimmory", "BookOrbit")
+            connect.choice_type = "checkbox"
+            connect.choices = Setup.choices(g)
+            connect.on_toggle = function(sel, id) return Setup.exclusive(sel, id) end
+        elseif way == "phone" then
+            connect.title = _("Set up with your phone")
+            connect.description = _("When this guide ends, a QR code shows. Scan it with your phone, or open this Kindle's address in any browser on the same Wi‑Fi: the page connects your book server, Notes, Calendar and the rest, and sends books.") .. "\n"
+                .. (touch and _("Later: swipe down → Connect.") or _("Later: Menu → Send books."))
+        elseif way == "keep" then
+            connect.title = _("Already connected")
+            connect.description = T(_("This Kindle stays connected as %1. Add or change connections in Settings → Accounts and services."), state.username or "?")
         else
-            local name = mode == "bookorbit" and "BookOrbit" or "Grimmory"
-            local keep = state.paired and current == mode
-            connect.title = _("Set up from your browser")
-            connect.description = T(_("Scan the QR code with your phone, or open this Kindle's address in any browser on the same Wi‑Fi, to connect %1, Notes and Calendar, or to send books."), name) .. "\n"
-                .. (mode == "bookorbit" and (T(_("BookOrbit asks for the %1 sync user name and password you made in its Settings → %1."), "KOReader") .. "\n") or "")
-                .. later
-            if keep then
-                choices[#choices + 1] = { id = "keep", text = T(_("Keep connection (%1)"), state.username or "?"), checked = true }
-            end
-            choices[#choices + 1] = { id = mode == "bookorbit" and "bo_qr" or "qr", text = _("Set up from a browser"), checked = not keep }
-            choices[#choices + 1] = { id = mode == "bookorbit" and "bo_type" or "type", text = T(_("Type my %1 login here"), name), checked = false }
-            -- GZreader: copy the connections of another GZreader on the Wi-Fi (PIN)
-            if mode ~= "bookorbit" then
-                choices[#choices + 1] = { id = "gz_copy", text = _("Copy from another GZreader"), checked = false }
-            end
+            connect.title = _("Set up later")
+            connect.description = _("Nothing is connected for now. When you're ready: Settings → Accounts and services, or run this guide again from Settings → General → Setup Guide.")
         end
-        if state.connected_any then
-            choices[#choices + 1] = { id = "gz_send", text = _("Send to another GZreader"), checked = false }
-        end
-        choices[#choices + 1] = { id = "skip", text = _("Skip for now"), checked = false }
-        connect.choices = choices
-        connect.reset_selection = true -- (the screen takes the new defaults when it shows the page)
+        connect.reset_selection = true -- (the screen takes the new ticks when it shows the page)
     end
     fillConnect()
     connect.on_apply = function(sel)
-        local events = { qr = "GrimmoryPair", type = "GrimmoryKeyboardLogin", bo_qr = "BookOrbitPair", bo_type = "BookOrbitKeyboardLogin",
-            books = "GzSendBooksPage", gz_copy = "GzCopyReceive", gz_send = "GzCopySend" }
-        for id, name in pairs(events) do
-            if sel[id] then sendGrimmoryEvent(name) end
+        after = nil
+        if way == "device" and Setup then
+            local tabs = Setup.apply(g, sel)
+            -- the Navbar Tabs page later in the guide: its ticks follow (Notes, Calendar, Music)
+            local tabs_page = how and how.tabs_page
+            if type(tabs_page) == "table" and type(tabs_page.choices) == "table" then
+                for _i, choice in ipairs(tabs_page.choices) do
+                    if tabs[choice.id] ~= nil then choice.checked = tabs[choice.id] end
+                end
+                tabs_page.reset_selection = true
+            end
+            mode = Setup.bookSource(sel)
+            if fillSync then fillSync() end
+            if fillRecent then fillRecent() end
+            if #Setup.ticked(sel) > 0 then after = "GzSetupOnDevice" end
+        elseif way == "phone" then
+            after = (mode == "bookorbit" and "BookOrbitPair") or (mode == "local" and "GzSendBooksPage") or "GrimmoryPair"
         end
     end
 
@@ -774,7 +785,7 @@ local function buildGrimmoryPage(ctx)
     -- with a book server; on its own, a note that it comes with one
     local Recent = require("common/gz_server_recent")
     local recent = Recent.available() and { choice_type = "radio", gz_server_recent = true } or nil
-    local function fillRecent()
+    fillRecent = function()
         if not recent then return end
         local server = mode == "bookorbit" and "BookOrbit" or "Grimmory"
         recent.title = _("Recently read on every device")
@@ -802,8 +813,7 @@ local function buildGrimmoryPage(ctx)
     end
 
     -- (the guide's later page about sync says what's true for the answer: build_install_pages gives it)
-    local how
-    local function fillSync()
+    fillSync = function()
         local page = how and how.sync_page
         if type(page) ~= "table" then return end
         if mode == "bookorbit" then
@@ -821,25 +831,26 @@ local function buildGrimmoryPage(ctx)
     end
     how = {
         fill_sync   = fillSync,
-        title       = _("How will you use GZreader?"),
-        description = _("GZreader can get its books from your own book server, or you can send them from a browser. You can change this later in Settings → Accounts and services → Books."),
+        -- (the guide's last page calls it: what was chosen happens then)
+        finish      = function()
+            if after then sendGrimmoryEvent(after) end
+            after = nil
+        end,
+        title       = _("Set up GZreader"),
+        description = _("GZreader shows what's on your own servers: books, audiobooks, music, notes, calendars, photos, your house. How do you want to connect them?") .. "\n"
+            .. _("With your phone, a page there does the typing. On this device, you tick the services you use and type each one's address here."),
         choice_type = "radio",
-        choices     = {
-            { id = "grimmory", text = _("With Grimmory, my book server"), checked = mode == "grimmory" },
-            { id = "bookorbit", text = _("With BookOrbit, my book server"), checked = mode == "bookorbit" },
-            { id = "local", text = _("On its own: I send books from my browser"), checked = mode == "local" },
-        },
+        choices     = gz_compact({
+            state.paired and { id = "keep", text = T(_("Keep what's connected (%1)"), state.username or "?"), checked = true } or false,
+            { id = "phone", text = _("Set up with my phone"), checked = not state.paired },
+            Setup and { id = "device", text = _("Set up on this device"), checked = false } or false,
+            { id = "skip", text = _("Skip for now"), checked = false },
+        }),
         on_apply    = function(sel)
-            local picked = (sel["bookorbit"] and "bookorbit") or (sel["local"] and "local") or "grimmory"
-            if type(g.store) == "table" and g.store.book_source ~= picked then
-                g.store.book_source = picked
-                if type(g.save) == "function" then pcall(g.save, g) end
-            end
-            if picked ~= mode then
-                mode = picked
+            local picked = (sel["device"] and "device") or (sel["skip"] and "skip") or (sel["keep"] and "keep") or "phone"
+            if picked ~= way then
+                way = picked
                 fillConnect()
-                fillSync()
-                fillRecent()
             end
         end,
     }
@@ -1202,6 +1213,18 @@ function M.build_install_pages(ctx)
                 end
             end
             pcall(grimmory_page.fill_sync)
+        end
+        -- (set up on this device: the Navbar Tabs page's ticks follow the services ticked;
+        -- what was chosen, the QR code or the list of services, comes when the guide ends)
+        for _i, page in ipairs(pages) do
+            if page.title == _("Navbar Tabs") then grimmory_page.tabs_page = page end
+            if page.finale and type(grimmory_page.finish) == "function" then
+                local apply = page.on_apply
+                page.on_apply = function(...)
+                    if apply then pcall(apply, ...) end
+                    pcall(grimmory_page.finish)
+                end
+            end
         end
         table.insert(pages, 1, grimmory_page)
     end
