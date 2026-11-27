@@ -1,16 +1,18 @@
 --[[--
 The daily paper's puzzles page (the puzzles themselves: gzreader_puzzles.lua).
 
-One screen, three puzzles, a tab each: Sudoku, Word search, Maze.
+One screen, four puzzles, a tab each: Sudoku, Word search, Crossword, Maze.
 
 - Touch (a finger or the pen): tap a tab; in the sudoku tap a square, then a
   number under the grid; in the word search draw along a word from its first
   letter to its last (as you'd circle it), or tap those two letters; in the
-  maze tap or swipe the way to go.
+  crossword tap a square (again to turn from across to down), then a letter
+  under the grid; in the maze tap or swipe the way to go.
 - Keys: the page keys change puzzle; the 5-way moves; Press writes the next
   number / marks a letter; on a keyboard, Q W E R T Y U I O (the keys under
   1–9) or the number keys write a number, Del rubs out, C checks, N starts
-  again; Menu is the quick panel.
+  again; in the crossword the letter keys write and Press turns from across
+  to down; Menu is the quick panel.
 
 What you've done is kept for the day (store.daily.puzzles).
 ]]
@@ -30,6 +32,7 @@ local Screen_ = {}
 function Screen_.tabLabel(kind)
     if kind == "sudoku" then return _("Sudoku") end
     if kind == "words" then return _("Word search") end
+    if kind == "cross" then return _("Crossword") end
     return _("Maze")
 end
 
@@ -50,6 +53,15 @@ function Screen_.statusText(kind, info)
         if info.checked then return _("Right so far.") end
         return T(_("%1 squares to go."), info.left)
     end
+    if kind == "cross" then
+        local line
+        if info.wrong and info.wrong > 0 then
+            line = info.wrong == 1 and _("1 letter isn't right (marked).") or T(_("%1 letters aren't right (marked)."), info.wrong)
+        elseif info.checked then line = _("Right so far.")
+        else line = T(_("%1 squares to go."), info.left) end
+        if info.news then line = line .. " " .. _("The clues are from the paper's stories.") end
+        return line
+    end
     if kind == "words" then
         local line = T(_("%1 of %2 found."), info.found, info.of)
         if info.news then line = line .. " " .. _("The words are from the paper's stories.") end
@@ -65,12 +77,80 @@ function Screen_.helpText(kind, touch, keyboard)
         if keyboard then return _("5-way: move · Q–O (or 1–9): write · Del: rub out · C: check · N: start again") end
         return _("5-way: move · Press: the next number")
     end
+    if kind == "cross" then
+        if touch then return _("Tap a square (again to turn), then a letter. Tap the clue for all the clues.") end
+        if keyboard then return _("5-way: move · letters: write · Del: rub out · Press: across or down") end
+        return _("5-way: move · Press: the next letter")
+    end
     if kind == "words" then
         if touch then return _("Draw along a word to circle it, or tap its first letter, then its last.") end
         return _("5-way: move · Press on a word's first letter, then on its last")
     end
     if touch then return _("Tap or swipe the way to go.") end
     return keyboard and _("5-way: go that way · N: start again") or _("5-way: go that way")
+end
+
+--- A crossword clue's heading and text: "4 Across", "Council votes to keep the old _____ open".
+function Screen_.clueHead(w)
+    return T(w.d == "a" and _("%1 Across") or _("%1 Down"), w.n)
+end
+
+--- Every clue of a crossword as text, Across then Down (the touch page's list).
+function Screen_.clueList(cw)
+    local out, last = {}, nil
+    for _i, w in ipairs(cw.words) do
+        if w.d ~= last then
+            out[#out + 1] = (last and "\n" or "") .. (w.d == "a" and _("ACROSS") or _("DOWN"))
+            last = w.d
+        end
+        out[#out + 1] = w.n .. ". " .. w.clue .. " (" .. #w.word .. ")"
+    end
+    return table.concat(out, "\n")
+end
+
+--- The gaps of a crossword to black out: the places without a square that
+--- have squares on two sides or more (left blank they'd pass for squares).
+function Screen_.crossBlacks(cells, cols, rows)
+    local out = {}
+    for y = 1, rows do
+        for x = 1, cols do
+            local idx = (y - 1) * cols + x
+            if not cells[idx] then
+                local n = 0
+                if x > 1 and cells[idx - 1] then n = n + 1 end
+                if x < cols and cells[idx + 1] then n = n + 1 end
+                if y > 1 and cells[idx - cols] then n = n + 1 end
+                if y < rows and cells[idx + cols] then n = n + 1 end
+                if n >= 2 then out[#out + 1] = idx end
+            end
+        end
+    end
+    return out
+end
+
+--- Where the 5-way goes in a crossword from a square towards a side: the
+--- next square that way in its row or column (over a gap too); with none,
+--- the nearest square lying that way at all; nil when there is none.
+--- `cells` = Puzzles.crossCells(cw).
+function Screen_.crossStep(cells, cols, rows, cell, side)
+    local x, y = (cell - 1) % cols + 1, math.floor((cell - 1) / cols) + 1
+    local dx = side == "e" and 1 or side == "w" and -1 or 0
+    local dy = side == "s" and 1 or side == "n" and -1 or 0
+    local cx, cy = x + dx, y + dy
+    while cx >= 1 and cx <= cols and cy >= 1 and cy <= rows do
+        if cells[(cy - 1) * cols + cx] then return (cy - 1) * cols + cx end
+        cx, cy = cx + dx, cy + dy
+    end
+    local best, best_d
+    for idx in pairs(cells) do
+        local ox, oy = (idx - 1) % cols + 1 - x, math.floor((idx - 1) / cols) + 1 - y
+        local along, off = ox * dx + oy * dy, math.abs(ox * dy) + math.abs(oy * dx)
+        if along > 0 then
+            local d = along + off * 2 + idx / 100000
+            if not best_d or d < best_d then best, best_d = idx, d end
+        end
+    end
+    return best
 end
 
 --- Where a stroke over the letters ends, straightened: from cell (x1, y1) to
@@ -158,13 +238,15 @@ local function pageClass()
                 PzPress = { { "Press" } },
             }
             if self.keyboard then
-                local row = { "Q", "W", "E", "R", "T", "Y", "U", "I", "O" }
-                for n = 1, 9 do
-                    self.key_events["PzNum" .. n] = { { tostring(n) }, { row[n] }, event = "PzNumber", args = n }
+                -- (a letter key means what the puzzle showing makes of it: Page:onPzKey)
+                for b = 65, 90 do
+                    local letter = string.char(b)
+                    self.key_events["PzKey" .. letter] = { { letter }, event = "PzKey", args = letter }
                 end
-                self.key_events.PzRub = { { "Del" }, { "Backspace" }, { "P" }, event = "PzNumber", args = 0 }
-                self.key_events.PzCheck = { { "C" } }
-                self.key_events.PzAgain = { { "N" } }
+                for n = 1, 9 do
+                    self.key_events["PzNum" .. n] = { { tostring(n) }, event = "PzNumber", args = n }
+                end
+                self.key_events.PzRub = { { "Del" }, { "Backspace" }, event = "PzNumber", args = 0 }
                 self.key_events.PzPanel = { { "Menu" } }
             end
         end
@@ -246,12 +328,14 @@ local function pageClass()
         elseif self.kind == "words" then
             ws, found = Pz.dayWords(self.plugin)
             extra_h = (self:glyph("A", 11, true):getSize().h + S(6)) * math.ceil(#ws.words / 4) + S(6)
+        elseif self.kind == "cross" then
+            extra_h = 0 -- (worked out below, with the crossword in hand)
         elseif self.touch then
             extra_h = self:glyph("A", 11, true):getSize().h + S(16)
         end
         local room_h = self.foot.y - y - status_h - extra_h - S(8)
         local room_w = W - margin * 2
-        self.board, self.pad, self.list, self.again = nil, nil, nil, nil
+        self.board, self.pad, self.list, self.again, self.clue, self.cpad, self.clues = nil, nil, nil, nil, nil, nil, nil
         local info
         if self.kind == "sudoku" then
             local s = Pz.daySudoku(self.plugin)
@@ -284,6 +368,75 @@ local function pageClass()
             info = { done = Pz.wordsDone(ws, found), found = n, of = #ws.words, news = ws.src ~= nil and ws.src ~= "list" }
             local line_h = self:glyph("A", 11, true):getSize().h + S(6)
             self.list = { y = y + side + S(8), col_w = math.floor(room_w / 4), line_h = line_h, x = margin }
+        elseif self.kind == "cross" then
+            local cw, fill = Pz.dayCross(self.plugin)
+            local cells = Pz.crossCells(cw)
+            self.cw, self.cfill, self.ccells = cw, fill, cells
+            if not self.ccur or not cells[self.ccur] then
+                local w1 = cw.words[1]
+                self.ccur, self.cdir = (w1.y - 1) * cw.cols + w1.x, w1.d
+            end
+            if not cells[self.ccur][self.cdir] then self.cdir = self.cdir == "a" and "d" or "a" end
+            local word = cw.words[cells[self.ccur][self.cdir]]
+            -- under the grid: the clue of the word you're in (three lines), then the letters
+            -- (touch) or as many of the clues as fit (keys)
+            local TextBoxWidget = require("ui/widget/textboxwidget")
+            local line_h = self:glyph("A", 11, true):getSize().h
+            local clue_h = line_h * 3 + S(6)
+            local under = clue_h + S(8)
+            local key_w = math.floor(room_w / 14)
+            local list_lines = 0
+            if self.touch then
+                under = under + key_w * 2 + S(10)
+            else
+                local across, down = 0, 0
+                for _i, w in ipairs(cw.words) do if w.d == "a" then across = across + 1 else down = down + 1 end end
+                list_lines = math.min(math.max(across, down) + 1, math.max(0, math.floor((room_h * 0.4 - clue_h) / (line_h + S(2)))))
+                under = under + list_lines * (line_h + S(2)) + S(6)
+            end
+            local grid_h = room_h - under
+            local cell = math.min(S(64), math.floor(math.min(room_w / cw.cols, grid_h / cw.rows)))
+            self.board = { x = math.floor((W - cell * cw.cols) / 2), y = y, w = cell * cw.cols, h = cell * cw.rows, cell = cell, n = cw.cols, rows = cw.rows }
+            local below = y + self.board.h + S(8)
+            local head = text(Screen_.clueHead(word), Font:getFace("smallinfofontbold", 11))
+            local body = TextBoxWidget:new{ text = word.clue .. " (" .. #word.word .. ")", face = Font:getFace("smallinfofont", 11),
+                width = room_w - head:getSize().w - S(10), height = clue_h, height_adjust = true, height_overflow_show_ellipsis = true, alignment = "left" }
+            self.widgets[#self.widgets + 1] = body
+            self.clue = { head = head, body = body, x = margin, y = below, w = room_w, h = clue_h }
+            below = below + clue_h + S(8)
+            if self.touch then
+                self.cpad = { x = margin, y = below, w = key_w, h = key_w, keys = {} }
+                for i = 1, 26 do self.cpad.keys[#self.cpad.keys + 1] = { text = string.char(64 + i), letter = string.char(64 + i) } end
+                -- (13 letters a row; rub out ends the first row, check the second)
+                table.insert(self.cpad.keys, 14, { text = "\u{232B}", rub = true })
+                self.cpad.keys[#self.cpad.keys + 1] = { text = "\u{2713}?", check = true }
+                local again = text(_("Start again"), small)
+                self.again = { widget = again, x = W - margin - again:getSize().w, y = self.foot.y + S(5), w = again:getSize().w + S(20), h = foot_h, in_foot = true }
+                help.max_width = W - margin * 3 - again:getSize().w
+            elseif list_lines > 1 then
+                -- the clues, Across beside Down, the one you're in in bold
+                self.clues = { x = margin, y = below, col_w = math.floor(room_w / 2), line_h = line_h + S(2), rows = {} }
+                local col = { a = {}, d = {} }
+                for i, w in ipairs(cw.words) do col[w.d][#col[w.d] + 1] = i end
+                for c, d in ipairs({ "a", "d" }) do
+                    local list = col[d]
+                    -- (when they don't all fit, the ones round the word you're in)
+                    local first = 1
+                    for k, i in ipairs(list) do if cw.words[i] == word and k > list_lines - 1 then first = k - (list_lines - 1) + 1 end end
+                    self.clues.rows[#self.clues.rows + 1] = { widget = text(d == "a" and _("ACROSS") or _("DOWN"), Font:getFace("smallinfofontbold", 9)), col = c, line = 0 }
+                    for k = first, math.min(#list, first + list_lines - 2) do
+                        local w = cw.words[list[k]]
+                        self.clues.rows[#self.clues.rows + 1] = { col = c, line = k - first + 1,
+                            widget = text(w.n .. ". " .. w.clue, Font:getFace(w == word and "smallinfofontbold" or "smallinfofont", 10), self.clues.col_w - S(10)) }
+                    end
+                end
+            end
+            local wrong, left, solved = Pz.crossCheck(cw, fill)
+            local wrong_n = 0
+            for _k in pairs(wrong) do wrong_n = wrong_n + 1 end
+            -- (wrong letters are only shown once asked for, or when every square is written)
+            self.cwrong = (self.checked or left == 0) and wrong or {}
+            info = { done = solved, left = left, wrong = (self.checked or left == 0) and wrong_n or 0, checked = self.checked, news = cw.src ~= nil and cw.src ~= "list" }
         else
             local cols, rows = Screen_.mazeSize(room_w, room_h, S(self.touch and 40 or 30))
             local cell = math.floor(math.min(room_w / cols, room_h / rows))
@@ -399,6 +552,55 @@ local function pageClass()
         end
     end
 
+    function Page:paintCross(bb, x, y)
+        local b, cw, cells = self.board, self.cw, self.ccells
+        local size = math.max(8, math.floor(b.cell * 0.5 * 160 / Screen:getDPI() + 0.5))
+        local num = math.max(5, math.floor(b.cell * 0.2 * 160 / Screen:getDPI() + 0.5))
+        local word = cells[self.ccur] and cells[self.ccur][self.cdir]
+        -- (a gap with squares on two sides or more would look like a square itself: blacked out)
+        for _i, idx in ipairs(Screen_.crossBlacks(cells, cw.cols, cw.rows)) do
+            bb:paintRect(x + b.x + ((idx - 1) % cw.cols) * b.cell + 1, y + b.y + math.floor((idx - 1) / cw.cols) * b.cell + 1, b.cell - 1, b.cell - 1, Blitbuffer.COLOR_BLACK)
+        end
+        for idx, c in pairs(cells) do
+            local cx, cy = x + b.x + ((idx - 1) % cw.cols) * b.cell, y + b.y + math.floor((idx - 1) / cw.cols) * b.cell
+            -- (the word you're in: on grey)
+            if not self.info.done and word and c[self.cdir] == word then bb:paintRect(cx, cy, b.cell, b.cell, Blitbuffer.COLOR_GRAY_E) end
+            bb:paintBorder(cx, cy, b.cell + 1, b.cell + 1, 1, Blitbuffer.COLOR_BLACK)
+            if c.n then self:glyph(tostring(c.n), num, false):paintTo(bb, cx + S(2), cy + 1) end
+            local ch = self.cfill:sub(idx, idx)
+            if ch ~= "." and ch ~= "" then
+                local g = self:glyph(ch, size, true)
+                local sz = g:getSize()
+                g:paintTo(bb, cx + math.floor((b.cell - sz.w) / 2), cy + b.cell - sz.h - math.max(0, math.floor((b.cell - sz.h) / 6)))
+            end
+            if self.cwrong[idx] then
+                local k = math.floor(b.cell / 4)
+                for d = 0, k do bb:paintRect(cx + b.cell - k + d, cy + 1, 1, d, Blitbuffer.COLOR_BLACK) end
+            end
+        end
+        if not self.info.done and cells[self.ccur] then
+            local cx, cy = x + b.x + ((self.ccur - 1) % cw.cols) * b.cell, y + b.y + math.floor((self.ccur - 1) / cw.cols) * b.cell
+            bb:paintBorder(cx + 1, cy + 1, b.cell - 1, b.cell - 1, S(3), Blitbuffer.COLOR_BLACK)
+        end
+        local cl = self.clue
+        cl.head:paintTo(bb, x + cl.x, y + cl.y)
+        cl.body:paintTo(bb, x + cl.x + cl.head:getSize().w + S(10), y + cl.y)
+        if self.cpad then
+            local p = self.cpad
+            local psize = math.max(8, math.floor(p.w * 0.42 * 160 / Screen:getDPI() + 0.5))
+            for i, k in ipairs(p.keys) do
+                local kx, ky = x + p.x + ((i - 1) % 14) * p.w, y + p.y + math.floor((i - 1) / 14) * (p.h + S(4))
+                bb:paintBorder(kx + 1, ky, p.w - 2, p.h, 1, Blitbuffer.COLOR_BLACK, S(4))
+                centred(bb, self:glyph(k.text, k.check and math.floor(psize * 0.8) or psize, true), kx, ky, p.w)
+            end
+        end
+        if self.clues then
+            for _i, r in ipairs(self.clues.rows) do
+                r.widget:paintTo(bb, x + self.clues.x + (r.col - 1) * self.clues.col_w, y + self.clues.y + r.line * self.clues.line_h)
+            end
+        end
+    end
+
     function Page:cellXY(at)
         local b = self.board
         return b.x + ((at - 1) % b.n) * b.cell, b.y + math.floor((at - 1) / b.n) * b.cell
@@ -467,6 +669,7 @@ local function pageClass()
         end
         if self.kind == "sudoku" then self:paintSudoku(bb, x, y)
         elseif self.kind == "words" then self:paintWords(bb, x, y)
+        elseif self.kind == "cross" then self:paintCross(bb, x, y)
         else self:paintMaze(bb, x, y) end
         self.status.widget:paintTo(bb, x + self.status.x, y + self.status.y)
         bb:paintRect(x + margin, y + self.foot.y, W - margin * 2, 1, Blitbuffer.COLOR_BLACK)
@@ -518,7 +721,55 @@ local function pageClass()
         return true
     end
 
+    --- The crossword: a square chosen (the one you're on again: turn from across to down).
+    function Page:square(cell)
+        local c = self.ccells[cell]
+        if not c or self.info.done then return true end
+        if cell == self.ccur and c.a and c.d then
+            self.cdir = self.cdir == "a" and "d" or "a"
+        else
+            self.ccur = cell
+            if not c[self.cdir] then self.cdir = c.a and "a" or "d" end
+        end
+        self:changed()
+        return true
+    end
+
+    --- The crossword: a letter written where you are (then on to the word's next square), or rubbed out.
+    function Page:letterIn(letter)
+        if self.kind ~= "cross" or self.info.done then return true end
+        local Pz = P()
+        local step = self.cdir == "a" and 1 or self.cw.cols
+        if letter then
+            Pz.crossSet(self.plugin, self.ccur, letter)
+            local nxt = self.ccur + step
+            if self.ccells[nxt] and self.ccells[nxt][self.cdir] == self.ccells[self.ccur][self.cdir] then self.ccur = nxt end
+        elseif not Pz.crossSet(self.plugin, self.ccur, "") then
+            -- (already empty: back a square, and that one rubbed out)
+            local prev = self.ccur - step
+            if self.ccells[prev] and self.ccells[prev][self.cdir] == self.ccells[self.ccur][self.cdir] then
+                self.ccur = prev
+                Pz.crossSet(self.plugin, prev, "")
+            end
+        end
+        self.checked = nil
+        self:changed()
+        return true
+    end
+
+    --- Every clue, in a window (the touch page shows only the one you're in).
+    function Page:allClues()
+        local TextViewer = require("ui/widget/textviewer")
+        UIManager:show(TextViewer:new{ title = _("Crossword clues"), text = Screen_.clueList(self.cw), justified = false })
+        return true
+    end
+
     function Page:check()
+        if self.kind == "cross" and not self.info.done then
+            self.checked = true
+            self:changed()
+            return true
+        end
         if self.kind ~= "sudoku" or self.info.done then return true end
         self.wrong = P().sudokuWrong(self.sudoku)
         self.checked = true
@@ -532,6 +783,9 @@ local function pageClass()
             self.wrong, self.checked, self.cur = nil, nil, nil
         elseif self.kind == "maze" then
             P().mazeClear(self.plugin)
+        elseif self.kind == "cross" then
+            P().crossClear(self.plugin)
+            self.checked, self.ccur = nil, nil
         else
             return true
         end
@@ -572,14 +826,38 @@ local function pageClass()
     function Page:onPzClose() UIManager:close(self, "full"); return true end
     function Page:onPzNextTab() return self:step(1) end
     function Page:onPzPrevTab() return self:step(-1) end
-    function Page:onPzCheck() return self:check() end
-    function Page:onPzAgain() return self:startAgain() end
-    function Page:onPzNumber(n) return self:write(n) end
+    function Page:onPzNumber(n)
+        if self.kind == "cross" then return n == 0 and self:letterIn(nil) or true end
+        return self:write(n)
+    end
+    --- A letter key: in the crossword, that letter. Elsewhere Q–O are 1–9 (the
+    --- keys under the numbers), P rubs out, C checks, N starts again.
+    function Page:onPzKey(letter)
+        if self.kind == "cross" then return self:letterIn(letter) end
+        local n = ("QWERTYUIO"):find(letter, 1, true)
+        if n then return self:write(n) end
+        if letter == "P" then return self:write(0) end
+        if letter == "C" then return self:check() end
+        if letter == "N" then return self:startAgain() end
+        return true
+    end
     function Page:onPzPanel() return require("gzreader_dailyscreen").openPanel(self.plugin, "Menu") end
 
     function Page:onPzMove(side)
         local d = P().SIDES[side]
         if self.kind == "maze" then return self:go(side) end
+        if self.kind == "cross" then
+            if self.info.done then return true end
+            local to = Screen_.crossStep(self.ccells, self.cw.cols, self.cw.rows, self.ccur, side)
+            if to then
+                self.ccur = to
+                -- (moving along a word is reading it that way)
+                local want = (side == "e" or side == "w") and "a" or "d"
+                if self.ccells[to][want] then self.cdir = want elseif not self.ccells[to][self.cdir] then self.cdir = want == "a" and "d" or "a" end
+                self:changed()
+            end
+            return true
+        end
         if self.kind == "sudoku" then
             local r, c = math.floor((self.cur - 1) / 9), (self.cur - 1) % 9
             r, c = (r + d[3]) % 9, (c + d[2]) % 9
@@ -598,6 +876,15 @@ local function pageClass()
             return self:write((tonumber(self.sudoku.fill:sub(self.cur, self.cur)) + 1) % 10)
         elseif self.kind == "words" then
             return self:letter(self.wcur[1], self.wcur[2])
+        elseif self.kind == "cross" then
+            if self.info.done then return true end
+            -- a keyboard writes with its letters, so Press turns; without one, Press is the next letter
+            if self.keyboard then return self:square(self.ccur) end
+            local ch = self.cfill:sub(self.ccur, self.ccur)
+            local nxt = ch == "." and "A" or ch == "Z" and "" or string.char(ch:byte() + 1)
+            P().crossSet(self.plugin, self.ccur, nxt)
+            self.checked = nil
+            self:changed()
         end
         return true
     end
@@ -621,6 +908,13 @@ local function pageClass()
             local k = p.keys[math.floor((px - p.x) / p.w) + 1]
             if k then return { "pad", k } end
         end
+        local cp = self.cpad
+        if cp and px >= cp.x and py >= cp.y - S(2) and py < cp.y + (cp.h + S(4)) * 2 then
+            local k = cp.keys[math.floor((py - cp.y + S(2)) / (cp.h + S(4))) * 14 + math.floor((px - cp.x) / cp.w) + 1]
+            if k and px < cp.x + cp.w * 14 then return { "pad", k } end
+        end
+        local cl = self.clue
+        if cl and px >= cl.x and px < cl.x + cl.w and py >= cl.y - S(4) and py < cl.y + cl.h + S(4) then return { "clue" } end
         local g = self.again
         if g and px >= g.x - S(10) and px < g.x + g.w and py >= g.y - S(6) and py < g.y + g.h + S(6) then return { "again" } end
     end
@@ -635,10 +929,14 @@ local function pageClass()
         if what[1] == "close" then return self:onPzClose() end
         if what[1] == "tab" then return self:show(what[2]) end
         if what[1] == "again" then return self:startAgain() end
+        if what[1] == "clue" then return self:allClues() end
         if what[1] == "pad" then
             if what[2].check then return self:check() end
+            if what[2].letter then return self:letterIn(what[2].letter) end
+            if what[2].rub then return self:letterIn(nil) end
             return self:write(what[2].value)
         end
+        if self.kind == "cross" then return self:square((what[3] - 1) * self.cw.cols + what[2]) end
         if self.kind == "sudoku" then
             self.cur = (what[3] - 1) * 9 + what[2]
             self:redraw()

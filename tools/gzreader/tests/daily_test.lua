@@ -1446,7 +1446,7 @@ check(Paper.puzzlesLabel(pl) == nil, "…and the paper's foot has no Puzzles")
 Pz.setOn(pl, true)
 check(Paper.puzzlesLabel(pl) == "Puzzles", "on: Puzzles at the paper's foot")
 pl.store.daily.puzzles.maze = { cols = 12, rows = 14, at = 168, seen = "1,168" }
-check(Paper.puzzlesLabel(pl) == "Puzzles 1/3", "…with how many are done")
+check(Paper.puzzlesLabel(pl) == "Puzzles 1/4", "…with how many are done")
 local prow
 for _i, r in ipairs(Paper.settingsItems(pl)) do if r.text == "Puzzles" then prow = r end end
 check(prow and prow.checked_func() == true, "Settings → Daily paper → Puzzles, ticked")
@@ -1465,7 +1465,8 @@ check(Scr.statusText("sudoku", { left = 47 }) == "47 squares to go." and Scr.sta
     and Scr.statusText("words", { found = 2, of = 8 }) == "2 of 8 found." and Scr.statusText("maze", { done = true }):find("Solved", 1, true), "the line under each puzzle")
 check(Scr.helpText("sudoku", true):find("Tap a square", 1, true) and Scr.helpText("sudoku", false, true):find("Q–O", 1, true) and Scr.helpText("sudoku", false, false):find("Press: the next number", 1, true)
     and Scr.helpText("words", false, true):find("Press on a word's first letter", 1, true) and Scr.helpText("maze", true):find("swipe", 1, true), "how to play, for touch, a keyboard and the 5-way alone")
-check(Scr.tabLabel("sudoku") == "Sudoku" and Scr.tabLabel("words") == "Word search" and Scr.tabLabel("maze") == "Maze", "the three tabs")
+check(Scr.tabLabel("sudoku") == "Sudoku" and Scr.tabLabel("words") == "Word search" and Scr.tabLabel("cross") == "Crossword" and Scr.tabLabel("maze") == "Maze"
+    and table.concat(Pz.KINDS, " ") == "sudoku words cross maze", "the four tabs")
 -- words from the paper's stories
 local paper = { day = "2031-06-01", sections = {
     { topic = "World", items = {
@@ -1530,6 +1531,148 @@ check(Pz.dayWords(pn).src == "list" and #Pz.dayWords(pn).grid == 100, "a kept pu
 check(Scr.statusText("words", { found = 2, of = 8, news = true }) == "2 of 8 found. The words are from the paper's stories." and Scr.statusText("words", { found = 2, of = 8 }) == "2 of 8 found.",
     "the page says when the words are the paper's")
 
+-- the crossword
+check(Pz.clueFrom("BRIDGE", "Council votes to keep the old bridge open through the winter") == "Council votes to keep the old _____ open through the winter",
+    "a clue from the paper: the headline with the word left out")
+check(Pz.clueFrom("BRIDGE", "The Bridge stays, and the bridge is sound.") == "The _____ stays, and the _____ is sound.", "…wherever it's written, capitals or not")
+check(Pz.clueFrom("RAIN", "Rain is forecast.") == nil and Pz.clueFrom("RAIN", "Trains run late again today") == nil and Pz.clueFrom("RAIN", nil) == nil,
+    "too little left to go on, or the word only inside another: no clue")
+local long_clue = Pz.clueFrom("SIGNAL", string.rep("Many words come before it in this very long sentence and ", 3) .. "the radio finds the strongest signal at last, " .. string.rep("and many more words follow after it ", 4))
+check(long_clue and #long_clue <= Pz.CLUE_LENGTH + 12 and long_clue:find("_____", 1, true) and long_clue:sub(1, 3) == "\u{2026}" and long_clue:sub(-3) == "\u{2026}",
+    "a long sentence is cut round the gap (" .. #(long_clue or "") .. " bytes)")
+local bank_ok, bank_n = true, 0
+for word, clue in pairs(Pz.CLUES) do
+    bank_n = bank_n + 1
+    if not word:match("^%u+$") or clue:upper():find(word, 1, true) then bank_ok = false end
+end
+check(bank_ok and bank_n >= 150, "the puzzles' own clues: one a word, none giving its word away (" .. bank_n .. ")")
+local function crossOK(cw)
+    local cells = Pz.crossCells(cw)
+    local grid = {}
+    for idx, c in pairs(cells) do grid[idx] = c.letter end
+    -- every run of two or more letters, across or down, must be one of the words, and only those
+    local runs, want = {}, {}
+    for _i, w in ipairs(cw.words) do want[w.d .. ":" .. w.x .. ":" .. w.y .. ":" .. w.word] = true end
+    for y = 1, cw.rows do
+        local x = 1
+        while x <= cw.cols do
+            if grid[(y - 1) * cw.cols + x] and not (x > 1 and grid[(y - 1) * cw.cols + x - 1]) then
+                local wd, k = "", x
+                while k <= cw.cols and grid[(y - 1) * cw.cols + k] do wd = wd .. grid[(y - 1) * cw.cols + k]; k = k + 1 end
+                if #wd > 1 then runs["a:" .. x .. ":" .. y .. ":" .. wd] = true end
+            end
+            x = x + 1
+        end
+    end
+    for x = 1, cw.cols do
+        for y = 1, cw.rows do
+            if grid[(y - 1) * cw.cols + x] and not (y > 1 and grid[(y - 2) * cw.cols + x]) then
+                local wd, k = "", y
+                while k <= cw.rows and grid[(k - 1) * cw.cols + x] do wd = wd .. grid[(k - 1) * cw.cols + x]; k = k + 1 end
+                if #wd > 1 then runs["d:" .. x .. ":" .. y .. ":" .. wd] = true end
+            end
+        end
+    end
+    for k in pairs(runs) do if not want[k] then return false, "a run that's no word: " .. k end end
+    for k in pairs(want) do if not runs[k] then return false, "a word that isn't there: " .. k end end
+    -- every word crosses another; numbers go up left to right, top to bottom; across before down
+    local last_n, last_d
+    for _i, w in ipairs(cw.words) do
+        local crosses = false
+        for k = 0, #w.word - 1 do
+            local c = cells[(w.y + (w.d == "d" and k or 0) - 1) * cw.cols + w.x + (w.d == "a" and k or 0)]
+            if c.a and c.d then crosses = true end
+        end
+        if not crosses then return false, w.word .. " crosses nothing" end
+        if w.d == last_d and w.n <= last_n then return false, "numbers out of order" end
+        last_n, last_d = w.n, w.d
+        if cells[(w.y - 1) * cw.cols + w.x].n ~= w.n then return false, "a word's number isn't in its first square" end
+    end
+    return true
+end
+local all_ok, why_not, fewest_w, widest = true, nil, 99, 0
+for d = 1, 25 do
+    local Rd = Pz.rng("t" .. d)
+    local es = {}
+    for _i, w in ipairs(Pz.WORD_LIST) do if Pz.CLUES[w] then es[#es + 1] = { word = w, clue = Pz.CLUES[w] } end end
+    Rd.shuffle(es)
+    local cw = Pz.crossword("t" .. d, es)
+    local okc, whyc = crossOK(cw)
+    if not okc then all_ok, why_not = false, whyc end
+    fewest_w, widest = math.min(fewest_w, #cw.words), math.max(widest, cw.cols, cw.rows)
+end
+check(all_ok, "25 crosswords: every run of letters is one of the words, every word crosses another, numbered as crosswords are" .. (why_not and (" — " .. why_not) or ""))
+check(fewest_w >= 7 and widest <= Pz.CROSS_SIZE, "…seven words or more each (" .. fewest_w .. "), none wider than " .. Pz.CROSS_SIZE .. " squares")
+local few = Pz.crossword("x", { { word = "BRIDGE", clue = "c1" }, { word = "bad", clue = "no" }, { word = "RADIO", clue = "" }, { word = "GARDEN", clue = "c2" }, { word = "BRIDGE", clue = "again" } })
+check(#few.words == 2 and crossOK(few) and #Pz.crossword("x", {}).words == 0, "odd entries are passed over; nothing to work with gives an empty one, not an error")
+-- the day's crossword, from the paper
+local pc = { store = { daily = { enabled = true } }, save = function() end, saveSoon = function() end }
+Pz.edition = function() return paper end
+local dcw, dfill = Pz.dayCross(pc)
+local news_clues, own_clues = 0, 0
+for _i, w in ipairs(dcw.words) do
+    if w.clue:find("_____", 1, true) then news_clues = news_clues + 1 else own_clues = own_clues + 1 end
+    if w.clue:upper():find(w.word, 1, true) then news_clues = -99 end
+end
+check(dcw.src == "2031-06-01" and crossOK(dcw) and news_clues >= 3 and #dfill == dcw.cols * dcw.rows and not dfill:find("[^%.]"),
+    "with a paper: a crossword with clues from its stories (" .. news_clues .. " of them, " .. own_clues .. " of the puzzles' own to fill it), nothing written yet")
+Pz.edition = function() error("not asked again") end
+local dcw2 = Pz.dayCross(pc)
+local same_c = #dcw2.words == #dcw.words
+for i, w in ipairs(dcw.words) do
+    local o = dcw2.words[i]
+    if not o or o.word ~= w.word or o.clue ~= w.clue or o.x ~= w.x or o.y ~= w.y or o.d ~= w.d or o.n ~= w.n then same_c = false end
+end
+check(same_c, "asked again: the kept crossword, word for word, without reading the paper")
+local ccells = Pz.crossCells(dcw)
+local a_cell, a_letter
+for idx, c in pairs(ccells) do if not a_cell or idx < a_cell then a_cell, a_letter = idx, c.letter end end
+local hole
+for i = 1, dcw.cols * dcw.rows do if not ccells[i] and not hole then hole = i end end
+check(Pz.crossSet(pc, a_cell, a_letter:lower()) == true and select(2, Pz.dayCross(pc)):sub(a_cell, a_cell) == a_letter and Pz.crossSet(pc, a_cell, a_letter) == false,
+    "a letter written in a square (small or capital); the same again: nothing")
+check((hole == nil or Pz.crossSet(pc, hole, "A") == false) and Pz.crossSet(pc, a_cell, "AB") == false and Pz.crossSet(pc, a_cell, "5") == false and Pz.crossSet(pc, 0, "A") == false,
+    "where there's no square, or what isn't a letter: nothing")
+local wrong_c, left_c, done_c = Pz.crossCheck(dcw, select(2, Pz.dayCross(pc)))
+local squares = 0
+for _k in pairs(ccells) do squares = squares + 1 end
+check(next(wrong_c) == nil and left_c == squares - 1 and done_c == false and Pz.finished(pc).cross == false, "one right letter: none wrong, the rest to go")
+local other = a_letter == "Z" and "Y" or "Z"
+Pz.crossSet(pc, a_cell, other)
+wrong_c = Pz.crossCheck(dcw, select(2, Pz.dayCross(pc)))
+check(wrong_c[a_cell] == true, "a wrong letter is found by the check")
+Pz.edition = function() return { day = "2031-06-09", sections = paper.sections } end
+check(Pz.freshen(pc) == false, "a crossword with a letter in it isn't made again for a newer paper")
+check(Pz.crossSet(pc, a_cell, "") == true and Pz.freshen(pc) == true and Pz.dayCross(pc).src == "2031-06-09", "rubbed out, it's untouched: made again from the newer paper")
+dcw = Pz.dayCross(pc)
+for idx, c in pairs(Pz.crossCells(dcw)) do Pz.crossSet(pc, idx, c.letter) end
+local fin_c, fin_cn = Pz.finished(pc)
+check(select(3, Pz.crossCheck(dcw, select(2, Pz.dayCross(pc)))) == true and fin_c.cross == true and fin_cn == 1, "every square right: solved, and counted")
+Pz.crossClear(pc)
+check(not select(2, Pz.dayCross(pc)):find("%u") and Pz.finished(pc).cross == false, "Start again: every square empty")
+pc.store.daily.puzzles.cross.words[1].w = "lower"
+Pz.edition = function() return nil end
+local own_cw = Pz.dayCross(pc)
+local own_only = true
+for _i, w in ipairs(own_cw.words) do if Pz.CLUES[w.word] ~= w.clue then own_only = false end end
+check(own_cw.src == "list" and crossOK(own_cw) and own_only and #own_cw.words >= 7, "a kept crossword that makes no sense is made again; without a paper: the puzzles' own words and clues")
+-- the page's part
+local cc = Pz.crossCells({ cols = 5, rows = 3, words = { { word = "ABCDE", x = 1, y = 1, d = "a", n = 1 }, { word = "CXY", x = 3, y = 1, d = "d", n = 2 }, { word = "YZ", x = 3, y = 3, d = "a", n = 3 } } })
+check(Scr.crossStep(cc, 5, 3, 1, "e") == 2 and Scr.crossStep(cc, 5, 3, 5, "e") == nil and Scr.crossStep(cc, 5, 3, 3, "s") == 8 and Scr.crossStep(cc, 5, 3, 13, "n") == 8,
+    "the 5-way in a crossword: the next square that way")
+check(Scr.crossStep(cc, 5, 3, 1, "s") == 8 and Scr.crossStep(cc, 5, 3, 5, "s") == 14 and Scr.crossStep(cc, 5, 3, 14, "n") == 4 and Scr.crossStep(cc, 5, 3, 1, "w") == nil,
+    "…with none in its row or column, the nearest lying that way; none at all: stay")
+-- (A B C D E / . . X . . / . . Y Z .: the gaps either side of X have a square above and one beside them)
+check(table.concat(Scr.crossBlacks(cc, 5, 3), ",") == "7,9", "gaps with squares on two sides or more are blacked out, so they don't pass for squares: " .. table.concat(Scr.crossBlacks(cc, 5, 3), ","))
+check(Scr.clueHead({ d = "a", n = 4 }) == "4 Across" and Scr.clueHead({ d = "d", n = 12 }) == "12 Down", "a clue's heading")
+local listed = Scr.clueList({ words = { { d = "a", n = 1, clue = "First", word = "ABCDE" }, { d = "d", n = 2, clue = "Second", word = "CXY" } } })
+check(listed == "ACROSS\n1. First (5)\n\nDOWN\n2. Second (3)", "all the clues as a list, each with its word's length")
+check(Scr.statusText("cross", { left = 31 }) == "31 squares to go." and Scr.statusText("cross", { left = 0, wrong = 2 }) == "2 letters aren't right (marked)."
+    and Scr.statusText("cross", { left = 4, wrong = 0, checked = true, news = true }) == "Right so far. The clues are from the paper's stories."
+    and Scr.statusText("cross", { done = true }):find("Solved", 1, true), "the line under the crossword")
+check(Scr.helpText("cross", true):find("Tap a square", 1, true) and Scr.helpText("cross", false, true):find("letters: write", 1, true) and Scr.helpText("cross", false, false):find("Press: the next letter", 1, true),
+    "how to do the crossword, for touch, a keyboard and the 5-way alone")
+
 -- circling a word: where a stroke ends, straightened; the ring drawn round a found word
 check(table.concat({ Scr.snap(2, 3, 7, 3, 10) }, ",") == "7,3" and table.concat({ Scr.snap(2, 3, 7, 4, 10) }, ",") == "7,3", "a stroke across, a square off at its end: still across")
 check(table.concat({ Scr.snap(4, 8, 5, 2, 10) }, ",") == "4,2", "a stroke up, a little crooked: straight up")
@@ -1561,6 +1704,8 @@ check(ssrc:find('PzPan = { GestureRange:new{ ges = "pan", range = range } }', 1,
     and ssrc:find("self:circle(ges.pos.x - self.dimen.x, ges.pos.y - self.dimen.y, ges.end_pos.x - self.dimen.x, ges.end_pos.y - self.dimen.y)", 1, true),
     "a word can be drawn along quickly (a swipe), slowly (a pan) or after a pause (a hold and pan)")
 check(Scr.helpText("words", true):find("Draw along a word to circle it", 1, true) and Scr.helpText("words", true):find("tap its first letter", 1, true), "the word search says so, and the two taps still work")
+check(ssrc:find('self.key_events["PzKey" .. letter] = { { letter }, event = "PzKey", args = letter }', 1, true) and ssrc:find('local n = ("QWERTYUIO"):find(letter, 1, true)', 1, true)
+    and ssrc:find('if self.kind == "cross" then return self:letterIn(letter) end', 1, true), "a letter key writes in the crossword, and is 1–9, rub out, check and start again elsewhere")
 check(ssrc:find('PzPanel = { { "Menu" } }', 1, true) and ssrc:find("Paper.pulledDown(ges)", 1, true), "Menu and a swipe from the top are the quick panel there too")
 local dsrc2 = read(PLUGIN .. "/gzreader_dailyscreen.lua")
 Pz.edition = real_edition

@@ -3,18 +3,25 @@ The daily paper's puzzles: a sudoku, a word search and a maze, made on the
 Kindle (no network), and how far you've got with each (kept until the next
 day's paper). The screen is gzreader_puzzlescreen.lua.
 
-The sudoku and the maze come from the day's date alone. The word search
-hides words from the paper's stories when there is a paper (the kept
-edition's headlines first), and from a list of its own otherwise; it is
-made once and kept for the day, so fetching the paper again doesn't change
-a puzzle you've started.
+The sudoku and the maze come from the day's date alone. The word search and
+the crossword take their words from the paper's stories when there is a
+paper (the kept edition's headlines first), and from a list of their own
+otherwise; they are made once and kept for the day, so fetching the paper
+again doesn't change a puzzle you've started. A crossword clue from the
+paper is the headline or sentence the word was read in, with the word left
+out.
 
 Kept in store.daily.puzzles = { off, day, sudoku = { given, answer, fill },
-words = { found = "1,4", of, src, grid, placed }, maze = { cols, rows, at, seen } }.
+words = { found = "1,4", of, src, grid, placed },
+cross = { src, cols, rows, words = { { w, c, x, y, d } }, fill },
+maze = { cols, rows, at, seen } }.
 ]]
 
 local Puzzles = {
-    KINDS = { "sudoku", "words", "maze" },
+    KINDS = { "sudoku", "words", "cross", "maze" },
+    CROSS_SIZE = 11,   -- the crossword is laid out in a square this big, then trimmed to what it uses
+    CROSS_WORDS = 9,   -- words wanted in it
+    CLUE_LENGTH = 110, -- bytes of a clue, about
     WORDS_SIZE = 10,   -- the word search's letters a side
     WORDS_COUNT = 8,
     SUDOKU_GIVEN = 34, -- numbers printed (about; never fewer than it takes for one answer)
@@ -314,6 +321,253 @@ function Puzzles.wordAt(ws, x1, y1, x2, y2)
     end
 end
 
+---------------------------------------------------------------- crossword
+
+-- Clues for the puzzles' own words (when there's no paper, or its words don't fit).
+Puzzles.CLUES = {
+    ANCHOR = "It holds a ship where it is", APPLE = "Fruit that keeps the doctor away", ATLAS = "Book of maps",
+    AUTUMN = "Season of falling leaves", BAKERY = "Where bread is made and sold", BALLOON = "It rises when filled with hot air",
+    BASKET = "Woven carrier for a picnic", BEACON = "Light that warns or guides", BICYCLE = "Two wheels and pedals",
+    BLANKET = "Warm cover for a bed", BOTTLE = "Glass container with a neck", BRANCH = "Arm of a tree",
+    BRIDGE = "It carries a road over a river", BUTTON = "It fastens a shirt", CABIN = "Small house of logs",
+    CACTUS = "Prickly desert plant", CAMERA = "It takes photographs", CANDLE = "Wax light with a wick",
+    CANOE = "Narrow boat moved with a paddle", CANYON = "Deep valley with steep sides", CARPET = "Floor covering",
+    CASTLE = "Fortress with towers and a moat", CELLAR = "Room under a house", CHERRY = "Small red fruit with a stone",
+    CHIMNEY = "Smoke leaves a house by it", CIRCLE = "Round shape", CLOUD = "It drifts across the sky and may bring rain",
+    CLOVER = "Lucky with four leaves", COFFEE = "Morning drink made from roasted beans", COMET = "Icy visitor with a tail",
+    COMPASS = "Its needle points north", COPPER = "Reddish metal of old coins", CORNER = "Where two walls meet",
+    COTTON = "Soft fibre for shirts", CRAYON = "Coloured wax stick for drawing", CUSHION = "Soft pad on a sofa",
+    DAISY = "White flower with a yellow middle", DESERT = "Dry land of sand", DINNER = "Evening meal",
+    DOLPHIN = "Clever sea mammal that leaps", DRAGON = "Fire-breathing beast of stories", DRAWER = "It slides out of a desk",
+    EAGLE = "Large bird of prey", ECHO = "A sound that comes back", ELBOW = "Joint in the middle of an arm",
+    ENGINE = "It makes a car go", FABLE = "Short tale with a moral", FALCON = "Fast hunting bird",
+    FEATHER = "A bird is covered in them", FERRY = "Boat that carries cars across", FIDDLE = "Another name for a violin",
+    FLOWER = "Bloom", FOREST = "Many trees together", FOSSIL = "Ancient remains in stone",
+    GARDEN = "Where flowers and vegetables grow", GINGER = "Spicy root", GLACIER = "Slow river of ice",
+    GOBLET = "Drinking cup with a stem", GRAVEL = "Small stones on a path", GUITAR = "Six strings and a neck",
+    HAMMER = "Tool for nails", HARBOR = "Shelter for ships", HARVEST = "Gathering in of crops",
+    HAZEL = "Tree with small round nuts", HELMET = "It protects the head", HERON = "Long-legged wading bird",
+    HONEY = "Sweet food made by bees", HORIZON = "Where the sky meets the land", ISLAND = "Land with water all round",
+    IVORY = "What a tusk is made of", JACKET = "Short coat", JIGSAW = "Puzzle of many pieces",
+    JUNGLE = "Thick tropical forest", KETTLE = "It boils water for tea", KITCHEN = "Room for cooking",
+    LADDER = "You climb it rung by rung", LAGOON = "Shallow water behind a reef", LANTERN = "Lamp you can carry",
+    LEMON = "Sour yellow fruit", LETTER = "It comes in an envelope", LIBRARY = "Place that lends books",
+    LIZARD = "Small reptile that basks in the sun", MAGNET = "It attracts iron", MAPLE = "Tree that gives syrup",
+    MARBLE = "Small glass ball, or a stone for statues", MARKET = "Place of stalls", MEADOW = "Field of grass and wild flowers",
+    MIRROR = "It shows your reflection", MITTEN = "Glove without fingers", MONSOON = "Season of heavy rain",
+    MORNING = "Start of the day", MUSEUM = "Building of exhibits", NEEDLE = "It pulls the thread",
+    NOVEL = "Long story in a book", OCEAN = "Vast body of salt water", OLIVE = "Small fruit pressed for oil",
+    ORANGE = "Fruit and colour", ORCHARD = "Field of fruit trees", OTTER = "Playful river mammal",
+    OYSTER = "Shellfish that may hold a pearl", PADDLE = "It moves a canoe", PARROT = "Bird that can copy speech",
+    PEBBLE = "Small smooth stone", PENCIL = "It writes in graphite", PEPPER = "Salt's partner",
+    PIANO = "Instrument with black and white keys", PICNIC = "Meal eaten outdoors", PIGEON = "Bird of city squares",
+    PILLOW = "Rest for a sleeping head", PLANET = "Mars or Venus", POCKET = "Pouch sewn into trousers",
+    POTTERY = "Things made of fired clay", PUDDLE = "Small pool after rain", PUMPKIN = "Large orange squash",
+    PUZZLE = "What you are doing now", QUARTZ = "Crystal in many watches", QUILT = "Padded bed cover of patches",
+    RABBIT = "Long-eared burrower", RAVEN = "Large black bird", RIBBON = "Strip of cloth for tying a gift",
+    RIVER = "It flows to the sea", ROCKET = "It carries astronauts up", SADDLE = "Seat on a horse",
+    SAILOR = "One who works on a ship", SALMON = "Fish that swims upstream", SANDAL = "Open summer shoe",
+    SCARF = "Worn round the neck in winter", SHADOW = "It follows you on a sunny day", SIGNAL = "Sign to stop or go",
+    SILVER = "Metal of second place", SKETCH = "Quick drawing", SPARROW = "Small brown garden bird",
+    SPIDER = "Eight-legged spinner of webs", SPONGE = "It soaks up water", SQUARE = "Shape with four equal sides",
+    STABLE = "Where horses are kept", STREAM = "Small river", SUMMER = "Warmest season",
+    SUNSET = "End of the day in the west", TEAPOT = "It pours a brew", THIMBLE = "Cap that protects a sewing finger",
+    THUNDER = "Sound that follows lightning", TICKET = "It lets you board the train", TIMBER = "Wood for building",
+    TRACTOR = "Farm vehicle", TULIP = "Spring flower from a bulb", TUNNEL = "Passage under a hill",
+    TURTLE = "Reptile with a shell", UMBRELLA = "Shelter from the rain you carry", VALLEY = "Low land between hills",
+    VELVET = "Soft cloth with a pile", VIOLIN = "Instrument played with a bow", VOYAGE = "Long journey by sea",
+    WAGON = "Four-wheeled cart", WALNUT = "Nut with a wrinkled kernel", WHISTLE = "A referee blows it",
+    WILLOW = "Tree that weeps by the water", WINDOW = "Glass you look out through", WINTER = "Coldest season",
+}
+
+--- A crossword clue from where a word was read: the headline or sentence
+--- with the word left out ("Council votes to keep the old _____ open"), cut
+--- to about CLUE_LENGTH round the gap. nil when too little is left to go on.
+function Puzzles.clueFrom(word, sentence)
+    if type(sentence) ~= "string" or type(word) ~= "string" or word == "" then return nil end
+    local text = sentence:gsub("%s+", " "):gsub("^ ", ""):gsub(" $", "")
+    local low, w = text:lower(), word:lower()
+    local parts, at, first = {}, 1, nil
+    while true do
+        local a, b = low:find("%f[%a\128-\255]" .. w .. "%f[^%a\128-\255]", at)
+        if not a then break end
+        first = first or (#table.concat(parts) + (a - at) + 1)
+        parts[#parts + 1] = text:sub(at, a - 1)
+        parts[#parts + 1] = "_____"
+        at = b + 1
+    end
+    if not first then return nil end
+    parts[#parts + 1] = text:sub(at)
+    local clue = table.concat(parts)
+    -- (what's left must say something: three other words at least)
+    local others = 0
+    for token in clue:gmatch("[%a\128-\255]+") do if #token > 1 then others = others + 1 end end
+    if others < 3 then return nil end
+    if #clue > Puzzles.CLUE_LENGTH then
+        -- (cut at spaces, keeping the gap in view)
+        local half = math.floor(Puzzles.CLUE_LENGTH / 2)
+        local from, to = math.max(1, first - half), math.min(#clue, first + 5 + half)
+        if from > 1 then from = (clue:find(" ", from, true) or from) + 1 end
+        if to < #clue then
+            local cut = clue:sub(1, to):match("^.*() ")
+            to = cut and cut - 1 or to
+        end
+        clue = (from > 1 and "\u{2026}" or "") .. clue:sub(from, to) .. (to < #clue and "\u{2026}" or "")
+    end
+    return clue
+end
+
+--- A crossword from words and their clues. `entries` = { { word = "BRIDGE",
+--- clue = "…" }, … }, the ones wanted most first. Returns { cols, rows,
+--- words = { { word, clue, x, y, d = "a" (across) | "d" (down), n = its
+--- number } } } with x, y from 1 inside cols × rows, numbered as crosswords
+--- are (left to right, top to bottom). Every word crosses another; no two
+--- words touch except where they cross.
+function Puzzles.crossword(seed, entries, size, count)
+    size, count = size or Puzzles.CROSS_SIZE, count or Puzzles.CROSS_WORDS
+    local pool, has = {}, {}
+    for _i, e in ipairs(entries or {}) do
+        if type(e) == "table" and type(e.word) == "string" and e.word:match("^[A-Z]+$") and #e.word >= 3 and #e.word <= size
+            and type(e.clue) == "string" and e.clue ~= "" and not has[e.word] then
+            has[e.word] = true
+            pool[#pool + 1] = e
+        end
+    end
+    local function attempt(order)
+        local letters, dirs, placed = {}, {}, {}
+        local function at(x, y) return letters[(y - 1) * size + x] end
+        local function inside(x, y) return x >= 1 and x <= size and y >= 1 and y <= size end
+        --- How many letters a word would share there, or nil when it can't go there.
+        local function fits(w, x, y, d)
+            local dx, dy = d == "a" and 1 or 0, d == "a" and 0 or 1
+            local ex, ey = x + dx * (#w - 1), y + dy * (#w - 1)
+            if not inside(x, y) or not inside(ex, ey) then return nil end
+            if (inside(x - dx, y - dy) and at(x - dx, y - dy)) or (inside(ex + dx, ey + dy) and at(ex + dx, ey + dy)) then return nil end
+            local shared = 0
+            for i = 0, #w - 1 do
+                local cx, cy = x + dx * i, y + dy * i
+                local have = at(cx, cy)
+                if have then
+                    if have ~= w:sub(i + 1, i + 1) or dirs[(cy - 1) * size + cx][d] then return nil end
+                    shared = shared + 1
+                else
+                    -- (an empty square's side neighbours must be empty, or two words would touch)
+                    if (inside(cx + dy, cy + dx) and at(cx + dy, cy + dx)) or (inside(cx - dy, cy - dx) and at(cx - dy, cy - dx)) then return nil end
+                end
+            end
+            return shared
+        end
+        local function put(e, x, y, d)
+            local dx, dy = d == "a" and 1 or 0, d == "a" and 0 or 1
+            for i = 0, #e.word - 1 do
+                local idx = (y + dy * i - 1) * size + x + dx * i
+                letters[idx] = e.word:sub(i + 1, i + 1)
+                dirs[idx] = dirs[idx] or {}
+                dirs[idx][d] = true
+            end
+            placed[#placed + 1] = { word = e.word, clue = e.clue, x = x, y = y, d = d }
+        end
+        local used = {}
+        -- the first: across the middle
+        local e1 = order[1]
+        if not e1 then return placed end
+        put(e1, math.floor((size - #e1.word) / 2) + 1, math.floor(size / 2) + 1, "a")
+        used[1] = true
+        for _pass = 1, 2 do
+            for k = 2, #order do
+                if #placed >= count then break end
+                if not used[k] then
+                    local w = order[k].word
+                    local best, best_score
+                    for i = 1, #w do
+                        local ch = w:sub(i, i)
+                        for idx, have in pairs(letters) do
+                            if have == ch then
+                                local cx, cy = (idx - 1) % size + 1, math.floor((idx - 1) / size) + 1
+                                for _j, d in ipairs({ "a", "d" }) do
+                                    local x, y = cx - (d == "a" and i - 1 or 0), cy - (d == "d" and i - 1 or 0)
+                                    local shared = fits(w, x, y, d)
+                                    if shared and shared >= 1 then
+                                        -- (more crossings first; then nearer the middle; then one fixed order)
+                                        local mid = (size + 1) / 2
+                                        local mx, my = x + (d == "a" and (#w - 1) / 2 or 0), y + (d == "d" and (#w - 1) / 2 or 0)
+                                        local score = shared * 100 - (math.abs(mx - mid) + math.abs(my - mid)) - (y * size + x) / 10000 - (d == "d" and 0.00001 or 0)
+                                        if not best_score or score > best_score then best, best_score = { x, y, d }, score end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    if best then
+                        put(order[k], best[1], best[2], best[3])
+                        used[k] = true
+                    end
+                end
+            end
+        end
+        return placed
+    end
+    -- a few tries, each starting from another of the first words; the fullest wins
+    -- (`seed` is in the order the caller shuffled `entries` into; the tries themselves are fixed)
+    local _ = seed
+    local best = {}
+    for try = 1, math.min(6, #pool) do
+        local order = {}
+        for i, e in ipairs(pool) do order[i] = e end
+        order[1], order[try] = order[try], order[1]
+        local placed = attempt(order)
+        if #placed > #best then best = placed end
+        if #best >= count then break end
+    end
+    -- trimmed to what it uses, and numbered
+    local x1, y1, x2, y2 = size, size, 1, 1
+    for _i, w in ipairs(best) do
+        local ex, ey = w.x + (w.d == "a" and #w.word - 1 or 0), w.y + (w.d == "d" and #w.word - 1 or 0)
+        x1, y1, x2, y2 = math.min(x1, w.x), math.min(y1, w.y), math.max(x2, ex), math.max(y2, ey)
+    end
+    if #best == 0 then return { cols = 0, rows = 0, words = {} } end
+    for _i, w in ipairs(best) do w.x, w.y = w.x - x1 + 1, w.y - y1 + 1 end
+    local out = { cols = x2 - x1 + 1, rows = y2 - y1 + 1, words = best }
+    Puzzles.crossNumber(out)
+    return out
+end
+
+--- Number a crossword's words as crosswords are: the squares where a word
+--- starts, left to right and top to bottom (an across and a down from the
+--- same square share a number); the words sorted by number, across first.
+function Puzzles.crossNumber(cw)
+    local starts = {}
+    for _i, w in ipairs(cw.words) do starts[(w.y - 1) * cw.cols + w.x] = true end
+    local keys = {}
+    for k in pairs(starts) do keys[#keys + 1] = k end
+    table.sort(keys)
+    local number = {}
+    for n, k in ipairs(keys) do number[k] = n end
+    for _i, w in ipairs(cw.words) do w.n = number[(w.y - 1) * cw.cols + w.x] end
+    table.sort(cw.words, function(a, b)
+        if a.d ~= b.d then return a.d == "a" end
+        return a.n < b.n
+    end)
+    return cw
+end
+
+--- A crossword's squares: { [cell] = { letter, n = number shown (or nil),
+--- a = its across word's place in cw.words, d = its down word's } }
+--- (cell = (row - 1) × cols + col).
+function Puzzles.crossCells(cw)
+    local cells = {}
+    for i, w in ipairs(cw.words) do
+        for k = 0, #w.word - 1 do
+            local idx = (w.y + (w.d == "d" and k or 0) - 1) * cw.cols + w.x + (w.d == "a" and k or 0)
+            local c = cells[idx] or { letter = w.word:sub(k + 1, k + 1) }
+            cells[idx] = c
+            c[w.d] = i
+            if k == 0 then c.n = w.n end
+        end
+    end
+    return cells
+end
+
 ---------------------------------------------------------------- maze
 
 -- A cell's open sides, added up: north 1, east 2, south 4, west 8.
@@ -392,7 +646,7 @@ function Puzzles.state(plugin, day)
     local p = st.puzzles
     day = day or D.day()
     if p.day ~= day then
-        p.day, p.sudoku, p.words, p.maze = day, nil, nil, nil
+        p.day, p.sudoku, p.words, p.cross, p.maze = day, nil, nil, nil, nil
     end
     return p
 end
@@ -523,6 +777,10 @@ function Puzzles.freshen(plugin, day)
         p.words = nil
         changed = true
     end
+    if type(p.cross) == "table" and p.cross.src ~= src and not tostring(p.cross.fill or ""):find("%u") then
+        p.cross = nil
+        changed = true
+    end
     if changed then keep(plugin) end
     return changed
 end
@@ -538,6 +796,94 @@ function Puzzles.wordFound(plugin, n)
     w.found, w.of = table.concat(list, ","), #ws.words
     keep(plugin)
     return true
+end
+
+--- The day's crossword and what you've written: cw (as Puzzles.crossword
+--- gives it, with cw.src), fill (cols × rows characters: a letter, or "."
+--- where nothing is written or there is no square). Made the first time
+--- it's asked for, from the paper's words and the sentences they came in
+--- when there is a paper, filled up from the puzzles' own; kept for the day.
+function Puzzles.dayCross(plugin, day)
+    local p = Puzzles.state(plugin, day)
+    local c = p.cross
+    local cw
+    if type(c) == "table" and type(c.words) == "table" and tonumber(c.cols) and tonumber(c.rows) then
+        cw = { cols = c.cols, rows = c.rows, src = c.src, words = {} }
+        for _i, w in ipairs(c.words) do
+            if type(w) == "table" and type(w.w) == "string" and w.w:match("^%u+$") and tonumber(w.x) and tonumber(w.y) and (w.d == "a" or w.d == "d") then
+                cw.words[#cw.words + 1] = { word = w.w, clue = tostring(w.c or ""), x = w.x, y = w.y, d = w.d }
+            end
+        end
+        if #cw.words < 2 or #cw.words ~= #c.words then cw = nil else Puzzles.crossNumber(cw) end
+    end
+    if not cw then
+        local edition = Puzzles.edition()
+        local src = Puzzles.source(edition)
+        local seed = p.day .. (src ~= "list" and (":" .. src) or "")
+        local R = Puzzles.rng("cross:" .. seed)
+        local entries, has = {}, {}
+        if src ~= "list" then
+            local news = {}
+            for _i, e in ipairs(Puzzles.newsWords(edition, 4, 9)) do
+                if #news >= 30 then break end
+                local clue = Puzzles.clueFrom(e.word, e.from)
+                if clue then news[#news + 1] = { word = e.word, clue = clue } end
+            end
+            -- (in their order: headline words first)
+            for _i, e in ipairs(news) do entries[#entries + 1] = e; has[e.word] = true end
+        end
+        local own = {}
+        for _i, w in ipairs(Puzzles.WORD_LIST) do
+            if Puzzles.CLUES[w] and not has[w] then own[#own + 1] = { word = w, clue = Puzzles.CLUES[w] } end
+        end
+        R.shuffle(own)
+        for i = 1, math.min(#own, 40) do entries[#entries + 1] = own[i] end
+        cw = Puzzles.crossword(seed, entries)
+        cw.src = src
+        local kept = {}
+        for i, w in ipairs(cw.words) do kept[i] = { w = w.word, c = w.clue, x = w.x, y = w.y, d = w.d } end
+        p.cross = { src = src, cols = cw.cols, rows = cw.rows, words = kept, fill = string.rep(".", cw.cols * cw.rows) }
+        keep(plugin)
+    end
+    local fill = p.cross.fill
+    if type(fill) ~= "string" or #fill ~= cw.cols * cw.rows or fill:find("[^%u%.]") then
+        fill = string.rep(".", cw.cols * cw.rows)
+        p.cross.fill = fill
+    end
+    return cw, fill
+end
+
+--- Write a letter ("" or nil rubs out) in a square of the day's crossword.
+--- Returns true when it changed.
+function Puzzles.crossSet(plugin, cell, letter)
+    local cw, fill = Puzzles.dayCross(plugin)
+    letter = type(letter) == "string" and letter:upper() or ""
+    if letter ~= "" and not letter:match("^%u$") then return false end
+    if not Puzzles.crossCells(cw)[cell] then return false end
+    local ch = letter == "" and "." or letter
+    if fill:sub(cell, cell) == ch then return false end
+    Puzzles.state(plugin).cross.fill = fill:sub(1, cell - 1) .. ch .. fill:sub(cell + 1)
+    keep(plugin)
+    return true
+end
+
+--- The squares written that aren't right { [cell] = true }, how many squares
+--- are still empty, and whether it's solved.
+function Puzzles.crossCheck(cw, fill)
+    local wrong, left = {}, 0
+    for cell, c in pairs(Puzzles.crossCells(cw)) do
+        local ch = fill:sub(cell, cell)
+        if ch == "." or ch == "" then left = left + 1
+        elseif ch ~= c.letter then wrong[cell] = true end
+    end
+    return wrong, left, left == 0 and next(wrong) == nil
+end
+
+--- Start the day's crossword again.
+function Puzzles.crossClear(plugin)
+    local cw = Puzzles.dayCross(plugin)
+    Puzzles.state(plugin).cross.fill = string.rep(".", cw.cols * cw.rows)
+    keep(plugin)
 end
 
 function Puzzles.wordsDone(ws, found)
@@ -585,7 +931,7 @@ end
 --- { sudoku = bool, words = bool, maze = bool }, and how many.
 function Puzzles.finished(plugin, day)
     local p = Puzzles.state(plugin, day)
-    local out = { sudoku = false, words = false, maze = false }
+    local out = { sudoku = false, words = false, cross = false, maze = false }
     if type(p.sudoku) == "table" and p.sudoku.fill and p.sudoku.fill == p.sudoku.answer then out.sudoku = true end
     if type(p.words) == "table" and type(p.words.found) == "string" then
         local n = 0
@@ -593,6 +939,11 @@ function Puzzles.finished(plugin, day)
         out.words = n >= (tonumber(p.words.of) or Puzzles.WORDS_COUNT)
     end
     if type(p.maze) == "table" and p.maze.cols and p.maze.at == p.maze.cols * p.maze.rows then out.maze = true end
+    if type(p.cross) == "table" and type(p.cross.fill) == "string" and p.cross.fill:find("%u") then
+        -- (only looked at once something is written: making it is left to the page)
+        local ok, cw, fill = pcall(Puzzles.dayCross, plugin, day)
+        if ok then out.cross = select(3, Puzzles.crossCheck(cw, fill)) end
+    end
     local n = 0
     for _i, k in ipairs(Puzzles.KINDS) do if out[k] then n = n + 1 end end
     return out, n

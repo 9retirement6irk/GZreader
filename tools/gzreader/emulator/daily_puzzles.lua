@@ -144,7 +144,7 @@ add({ fn = function(E)
         check(E, pz.info.found == before and pz.kind == "words" and pz.note ~= nil and pz.status.widget.text:find("isn't one of the words", 1, true) ~= nil,
             "a stroke that isn't a word: nothing found, and the page says so")
         pz:onPzSwipe(nil, { direction = "west", pos = { x = pz.dimen.x + 5, y = pz.foot.y - 4 }, end_pos = { x = pz.dimen.x + 200, y = pz.foot.y - 4 } })
-        check(E, pz.kind == "maze", "a swipe off the letters still changes puzzle")
+        check(E, pz.kind == "cross", "a swipe off the letters still changes puzzle")
         pz:show("words")
         b = pz.board
     end
@@ -153,8 +153,72 @@ add({ fn = function(E)
     if KEYS then pz.wcur = { w2.x, w2.y }; pz:onPzPress() else tap(pz, b.x + (w2.x - 1) * b.cell + 5, b.y + (w2.y - 1) * b.cell + 5) end
 end, after = 4 })
 add({ shot = "puzzles-3-words" })
--- the maze
+-- the crossword
 if KEYS then add({ key = "RPgFwd", after = 5 }) else add({ fn = function(E) tap(E.pz, E.pz.tabs[3].x + 10, E.pz.tabs[3].y + 5) end, after = 5 }) end
+add({ fn = function(E)
+    local pz = E.pz
+    local b = pz.board
+    check(E, pz.kind == "cross" and #pz.cw.words >= 7, "the next puzzle: the crossword (" .. #pz.cw.words .. " words, " .. pz.cw.cols .. " × " .. pz.cw.rows .. ")")
+    check(E, b.x >= 0 and b.x + b.w <= pz.dimen.w and b.y + b.h <= pz.clue.y and pz.clue.y + pz.clue.h <= pz.status.y, "the grid, the clue and the status line don't overlap")
+    if pz.cpad then
+        local p = pz.cpad
+        check(E, p.y >= pz.clue.y + pz.clue.h and p.y + (p.h + 4) * 2 <= pz.status.y + 4 and p.x + p.w * 14 <= pz.dimen.w and #p.keys == 28,
+            "the letters sit between the clue and the status line, two rows of fourteen")
+    else
+        check(E, pz.clues ~= nil and #pz.clues.rows >= 4, "the clues are listed under the grid, Across beside Down")
+    end
+    -- the first across word, written
+    local w = pz.cw.words[1]
+    E.cross_word = w
+    check(E, w.d == "a" and pz.ccur == (w.y - 1) * pz.cw.cols + w.x and pz.clue.head.text == "1 Across" or pz.clue.head.text:find("Across", 1, true) ~= nil,
+        "it starts in the first across word, with its clue showing (" .. pz.clue.head.text .. ")")
+    if not KEYS then
+        local p = pz.cpad
+        local function key(letter)
+            for i, k in ipairs(p.keys) do
+                if k.letter == letter then tap(pz, p.x + ((i - 1) % 14) * p.w + 5, p.y + math.floor((i - 1) / 14) * (p.h + 4) + 5) end
+            end
+        end
+        tap(pz, b.x + (w.x - 1) * b.cell + 5, b.y + (w.y - 1) * b.cell + 5)
+        for i = 1, #w.word do key(w.word:sub(i, i)) end
+    end
+end, after = 3 })
+if KEYS then
+    for i = 1, 9 do
+        add({ fn = function(E) local w = E.cross_word; if i <= #w.word then E.key(w.word:sub(i, i)) end end, after = 2 })
+    end
+end
+add({ shot = "puzzles-3b-crossword" })
+add({ fn = function(E)
+    local Pz = require("gzreader_puzzles")
+    local pz = E.pz
+    local w = E.cross_word
+    local fill = select(2, Pz.dayCross(plugin()))
+    local written = ""
+    for i = 0, #w.word - 1 do written = written .. fill:sub((w.y - 1) * pz.cw.cols + w.x + i, (w.y - 1) * pz.cw.cols + w.x + i) end
+    check(E, written == w.word, "its letters written one after another (" .. (KEYS and "letter keys" or "taps") .. "): " .. written)
+    check(E, pz.ccur == (w.y - 1) * pz.cw.cols + w.x + #w.word - 1 and pz.info.wrong == 0, "the cursor went along the word and stopped at its end; nothing marked wrong")
+    -- a wrong letter, checked; then put right
+    local last = w.word:sub(-1)
+    local bad = last == "Z" and "Y" or "Z"
+    pz:letterIn(bad)
+    pz:check()
+    check(E, pz.cwrong[pz.ccur] == true and pz.info.wrong == 1, "a wrong letter, checked: marked")
+    pz:letterIn(last)
+    -- turn to the word going down through one of its squares
+    local cells = Pz.crossCells(pz.cw)
+    local cross
+    for i = 0, #w.word - 1 do
+        local idx = (w.y - 1) * pz.cw.cols + w.x + i
+        if cells[idx].d and not cross then cross = idx end
+    end
+    if pz.ccur ~= cross then pz:square(cross) end
+    pz:square(cross)
+    check(E, pz.cdir == "d" and pz.clue.head.text:find("Down", 1, true) ~= nil, "the same square chosen again: the word going down, and its clue (" .. pz.clue.head.text .. ")")
+end, after = 3 })
+add({ shot = "puzzles-3c-crossword-down" })
+-- the maze
+if KEYS then add({ key = "RPgFwd", after = 5 }) else add({ fn = function(E) tap(E.pz, E.pz.tabs[4].x + 10, E.pz.tabs[4].y + 5) end, after = 5 }) end
 add({ fn = function(E)
     local Pz = require("gzreader_puzzles")
     local pz = E.pz
@@ -200,7 +264,7 @@ add({ fn = function(E)
     end
     check(E, pz.at == goal and pz.info.done, "walked to the way out: solved")
     local n = select(2, Pz.finished(plugin()))
-    check(E, n == 1 and require("gzreader_dailyscreen").puzzlesLabel(plugin()) == "Puzzles 1/3", "the paper's foot counts it: Puzzles 1/3")
+    check(E, n == 1 and require("gzreader_dailyscreen").puzzlesLabel(plugin()) == "Puzzles 1/4", "the paper's foot counts it: Puzzles 1/4")
 end, after = 5 })
 add({ shot = "puzzles-5-maze-solved" })
 -- closed and opened again: everything as left
@@ -217,7 +281,7 @@ add({ fn = function(E)
     local found = select(2, Pz.dayWords(p))
     check(E, s1.fill:sub(E.first, E.first) == tostring(E.right) and found[1] == true, "what was done is kept")
     local pz = Scr.show(p, "sudoku")
-    check(E, pz.kind == "sudoku" and pz.tabs[3].label.text:find("\u{2713}", 1, true) ~= nil, "opened again: the maze's tab is ticked")
+    check(E, pz.kind == "sudoku" and pz.tabs[4].label.text:find("\u{2713}", 1, true) ~= nil and #pz.tabs == 4, "opened again: the maze's tab is ticked")
 end, after = 4 })
 add({ shot = "puzzles-7-again" })
 -- with a paper: the word search hides the stories' words (an example edition; nothing is fetched)

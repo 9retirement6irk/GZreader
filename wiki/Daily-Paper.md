@@ -181,24 +181,25 @@ everything:
 
 ## Puzzles
 
-Each day's paper comes with three puzzles you do on the Kindle: a
-**sudoku**, a **word search** and a **maze**. Open the paper and choose
+Each day's paper comes with four puzzles you do on the Kindle: a
+**sudoku**, a **word search**, a **crossword** and a **maze**. Open the paper and choose
 **Puzzles** at its foot (with keys: move the frame to it with the 5-way and
-press; on a keyboard, **P**). The foot shows how many you've finished (**Puzzles 1/3**).
+press; on a keyboard, **P**). The foot shows how many you've finished (**Puzzles 1/4**).
 
 They are made on the Kindle, so they need no Wi‑Fi. The sudoku and the maze
-come from the date alone. The word search hides **words from the paper's
-stories** when there is a paper (see below), and words of its own when there
-isn't.
+come from the date alone. The word search and the crossword take their
+**words from the paper's stories** when there is a paper (see below), and
+words of their own when there isn't.
 What you've done is kept until the next day's paper (5 in the morning), when
 new ones take their place.
 
-The three are tabs across the top; tap one, or press a page-turn key.
+The four are tabs across the top; tap one, or press a page-turn key.
 
 | | Touch (finger or pen) | Keys |
 |---|---|---|
 | **Sudoku** | Tap a square, then a number under the grid. ⌫ rubs out, **✓?** checks, **Start again** clears what you wrote. | The 5-way moves. **Press** writes the next number (1 to 9, then empty). On a keyboard: **Q W E R T Y U I O** (the keys under 1–9) or the number keys write 1–9, **Del** rubs out, **C** checks, **N** starts again. |
 | **Word search** | Draw along a word with a finger or the pen, from its first letter to its last (either way round), as you'd circle it on paper. Or tap its first letter, then its last. | The 5-way moves; **Press** on the first letter, then on the last. |
+| **Crossword** | Tap a square, then a letter under the grid. Tap the square you're on again to turn from across to down. ⌫ rubs out, **✓?** checks, **Start again** clears. Tap the clue to see all the clues. | The 5-way moves from square to square (sideways reads across, up and down reads down). On a keyboard the letter keys write, **Del** rubs out and **Press** turns from across to down. Without a keyboard (Kindle 4), **Press** writes the next letter (A to Z, then empty). |
 | **Maze** | Tap or swipe the way to go. **Start again** goes back to the start. | The 5-way goes that way; **N** starts again on a keyboard. |
 
 - **Sudoku**: the printed numbers are on grey and can't be changed. Checking
@@ -220,6 +221,18 @@ The three are tabs across the top; tap one, or press a page-turn key.
   the last letter. Nothing is drawn while your finger moves; the ring
   appears when you lift it. A stroke that isn't one of the words changes
   nothing and the page says so.
+- **Crossword**: about nine words. The word you're in is on grey and its
+  clue is under the grid, with the number of letters. With a paper on the
+  Kindle the words are from its stories and each clue is **the headline or
+  sentence the word was read in, with the word left out** (*Council votes to
+  keep the old _____ open through the winter*); the puzzle's own words, with
+  ordinary clues, fill it up when the paper's don't cross enough, and are
+  all of it when there's no paper. Nothing is marked wrong until you ask
+  (**✓?**) or every square is written; wrong letters then get a cut corner.
+  On a Kindle with keys all the clues are listed under the grid, Across
+  beside Down. Like the word search it is made when first opened and kept
+  for the day. A clue from the paper is only as good as its sentence: some
+  will be easy and a few odd.
 - **Maze**: in at the top left, out at the bottom right. One move goes on
   until a wall, a turning or a crossing. Dots show where you've been. Its
   size follows the screen, so it differs between Kindles.
