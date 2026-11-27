@@ -286,7 +286,10 @@ end
 function Folder.syncStubs(plugin)
     local wrote = 0
     for id, e in pairs(plugin.store.audiobooks or {}) do
-        if type(e) == "table" and lfs.attributes(storeDir(plugin, id) .. "/audiobook.json", "mode") == "file" then
+        -- (a narrated book on the Kindle is one too, before it's made into an audiobook: gzreader_narratedopen.lua)
+        local here = lfs.attributes(storeDir(plugin, id) .. "/audiobook.json", "mode") == "file"
+            or (type(e) == "table" and type(e.narrated) == "string" and lfs.attributes(e.narrated, "mode") == "file")
+        if type(e) == "table" and here then
             local path = Folder.stubPath(plugin, id)
             if not path or lfs.attributes(path, "mode") ~= "file" or e.stub_version ~= Folder.STUB_VERSION then
                 if Folder.writeStub(plugin, id) then wrote = wrote + 1 end
@@ -401,6 +404,11 @@ function Folder.open(plugin, id)
     local Audiobook = require("gzreader_audiobook")
     local book = Audiobook.load(plugin, id)
     if book then return Audiobook.open(plugin, book) end
+    -- (a narrated book: listened to, made into an audiobook the first time)
+    local e = plugin.store.audiobooks and plugin.store.audiobooks[id]
+    if type(e) == "table" and type(e.narrated) == "string" and lfs.attributes(e.narrated, "mode") == "file" then
+        return require("gzreader_narratedopen").listen(e.narrated)
+    end
     local UIManager = require("ui/uimanager")
     local InfoMessage = require("ui/widget/infomessage")
     local _ = require("gettext")
@@ -411,6 +419,10 @@ end
 function Folder.start(plugin)
     Folder.migrate(plugin)
     Folder.install(plugin)
+    -- narrated books on the Kindle as audiobooks too, once Home is up (gzreader_narratedopen.lua)
+    require("ui/uimanager"):scheduleIn(15, function()
+        pcall(function() require("gzreader_narratedopen").scan(plugin) end)
+    end)
     if next(plugin.store.audiobooks or {}) then
         Folder.syncStubs(plugin)
         -- covers for stand-ins without one, once Wi-Fi is up anyway
