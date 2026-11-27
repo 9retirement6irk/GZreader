@@ -555,6 +555,42 @@ placed, nxt = Paper.fill(1, 2, 2, 100, 10, heights({ 40, 80 }))
 check(placedText(placed) == "1@1:0 2@2:0" and nxt == 3, "the last story waiting is still placed")
 placed, nxt = Paper.fill(1, 3, 1, 100, 10, heights({ 40, 80, 30 }))
 check(placedText(placed) == "1@1:0" and nxt == 2, "in the last column nothing is passed over (the next page starts with it)")
+-- the AI edition: a column filled exactly (Paper.fit)
+do
+    local function fitText(f)
+        local t = {}
+        for _i, v in ipairs(f) do t[#t + 1] = v.y .. "+" .. v.add end
+        return table.concat(t, " ")
+    end
+    local f = Paper.fit(400, 10, { { h = 100, grow = 60 }, { h = 100, grow = 20 }, { h = 100, grow = 0 } })
+    check(fitText(f) == "0+60 170+20 300+0", "a column's spare height goes to its pictures first, by how much each can grow … " .. fitText(f))
+    f = Paper.fit(400, 10, { { h = 100, grow = 30 }, { h = 100, grow = 0 }, { h = 100, grow = 0 } })
+    check(fitText(f) == "0+30 165+0 300+0" and f[3].y + 100 == 400, "what the pictures can't take is shared between the stories; the last ends at the foot … " .. fitText(f))
+    f = Paper.fit(400, 10, { { h = 100 }, { h = 100 }, { h = 77 } })
+    check(f[3].y + 77 == 400 and f[1].y == 0 and f[1].add == 0, "no pictures: the stories spread evenly, to the pixel")
+    f = Paper.fit(400, 10, { { h = 150, grow = 500 } })
+    check(fitText(f) == "0+250", "one story: its picture takes the rest")
+    f = Paper.fit(400, 10, { { h = 150, grow = 0 } })
+    check(fitText(f) == "0+0", "one story with no picture stays at the top")
+    f = Paper.fit(100, 10, { { h = 80, grow = 40 }, { h = 80, grow = 40 } })
+    check(fitText(f) == "0+0 90+0", "a column that's full already is left alone")
+    local ends = true
+    for seed = 1, 60 do
+        local list, used = {}, 0
+        for k = 1, 2 + seed % 4 do list[k] = { h = 40 + (seed * 13 + k * 29) % 70, grow = (seed + k) % 3 == 0 and (seed * 7) % 50 or 0 }; used = used + list[k].h end
+        local col = used + 10 * (#list - 1) + (seed * 11) % 180
+        local r = Paper.fit(col, 10, list)
+        local last = r[#r].y + list[#list].h + r[#r].add
+        if last ~= col then ends = false end
+        for k = 2, #r do if r[k].y < r[k - 1].y + list[k - 1].h + r[k - 1].add + 10 then ends = false end end
+    end
+    check(ends, "60 columns: every one ends exactly at the foot, no story closer than the gap to the one above")
+    local low, high = Paper.aiPicture(900, 2480)
+    check(low == 306 and high == 720 and select(1, Paper.aiPicture(1000, 800)) == 176, "an article's picture: a third of the column wide to start, up to four fifths to fill (less on a short page)")
+    local src = io.open(PLUGIN .. "/gzreader_dailyscreen.lua"):read("*a")
+    check(src:find("Paper.fit(col_h, gap, hs)", 1, true) and src:find("if col < last_col or nxt <= self.n then", 1, true)
+        and src:find("self:growPicture(built[list[k].i], f.add)", 1, true), "the AI edition fits every column that has stories after it")
+end
 -- Home's folded newspaper
 local sizes = { shadow = 3, pad = 6, margin = 2, top = 2, gutter = 14, mast_h = 24, rules_h = 7, lead_h = 20, line_h = 16 }
 local L = Paper.homeLayout(576, 130, sizes)

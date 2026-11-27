@@ -146,6 +146,9 @@ Claude*).
   how they begin, as in the ordinary paper. If no story got a summary (a
   refused key, no connection), the paper is the ordinary one that day; the
   log says why.
+- **Full pages:** every page but the last is filled to its foot. Each
+  column's pictures are shown taller until it's full, and what's left is
+  shared evenly between its stories.
 - A story of only a line or two isn't sent: it is its own summary.
 - Summaries are written by a machine and can be wrong; the story itself is
   one tap away.

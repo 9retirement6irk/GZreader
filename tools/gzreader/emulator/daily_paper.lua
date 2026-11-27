@@ -274,6 +274,13 @@ add({ fn = function(E)
     check(E, page.ai == true and #page.blocks >= 1 and cols == Paper.aiColumns(page.dimen.w, require("device").screen:getDPI()) and cols < math.max(2, E.plain_cols),
         "the front page is articles one after another (" .. #page.blocks .. " on it, " .. cols .. " across; the ordinary paper had " .. E.plain_blocks .. " in " .. E.plain_cols .. " columns)")
     check(E, inside and whole, "every article fits inside the page and shows its summary")
+    -- every column ends at the foot of the page, to the pixel (Paper.fit)
+    local ends, foot = {}, 0
+    for _i, b in ipairs(page.blocks) do ends[b.x] = math.max(ends[b.x] or 0, b.y + b.h) end
+    for _x, e in pairs(ends) do foot = math.max(foot, e) end
+    local level = page.has_next
+    for _x, e in pairs(ends) do if e ~= foot then level = false end end
+    check(E, level and page.foot.y - foot <= require("device").screen:scaleBySize(6), "every column is filled to the foot of the page (" .. foot .. " of " .. page.foot.y .. ")")
     check(E, page.blocks[1].w > page.dimen.w * 0.4 and page.has_next, "an article is as wide as its column; more pages behind")
     check(E, Paper.statusText(plugin()):find("summaries by Claude", 1, true) ~= nil, "the date line says the summaries are Claude's")
     E.ai_pages = 1
