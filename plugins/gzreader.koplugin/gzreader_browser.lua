@@ -585,6 +585,8 @@ function Browser:fetchAllAudiobooks()
     while page < pages and page < Browser.AUDIO_ALL_PAGES do
         local data, err = self.api:listBooks{ page = page, size = 50, sort = "title", dir = "asc", fileType = Browser.AUDIO_TYPES }
         if not data then return nil, err end
+        -- (BookOrbit without its API key can't list them: not kept as "none")
+        if data.gz_needs_key then return nil, "bookorbit_needs_key" end
         pages = tonumber(data.totalPages) or 1
         for _i, b in ipairs(type(data.content) == "table" and data.content or {}) do
             if isAudiobook(b) then
@@ -624,6 +626,19 @@ function Browser.groupAudiobooks(list)
     return { authors = authors, series = series, genres = genres }
 end
 
+--- How many audiobooks the server has: the count the Audiobooks page last had
+--- from it (`counted`), else the most the saved lists know (`all`: every
+--- audiobook's authors and series; `listed`: All audiobooks' first page). A
+--- saved list can be empty from before an API key was set. Pure.
+function Browser.audioTotal(counted, all, listed)
+    local c = type(counted) == "table" and tonumber(counted.total) or nil
+    if c and c > 0 then return c end
+    local a = type(all) == "table" and tonumber(all.total) or nil
+    local l = type(listed) == "table" and tonumber(listed.totalElements) or nil
+    if a and l then return math.max(a, l) end
+    return a or l
+end
+
 local function audioCount(n)
     n = tonumber(n)
     if not n then return nil end
@@ -647,7 +662,8 @@ function Browser:audiobookItems()
     local Cache = require("gzreader_listcache")
     local all = self.plugin and Cache.get(Browser.savedKey(self, "audio-all"))
     local listed = self.plugin and Cache.get(Browser.savedKey(self, "audiobooks"))
-    local n = type(all) == "table" and tonumber(all.total) or (type(listed) == "table" and tonumber(listed.totalElements)) or nil
+    local counted = self.plugin and Cache.get(Browser.savedKey(self, "audio-count"))
+    local n = Browser.audioTotal(counted, all, listed)
     local groups = type(all) == "table" and Browser.groupAudiobooks(all.content) or nil
     local function count(map)
         if not map then return nil end

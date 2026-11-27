@@ -1048,7 +1048,11 @@ end
 --- A page of audiobooks (the main API's book query), as the Catalog reads one.
 function BookOrbit:listAudiobooks(params)
     local page, size = tonumber(params.page) or 0, math.min(tonumber(params.size) or 20, BookOrbit.PAGE_MAX)
-    if not self:hasApiKey() then return emptyPage(page, size) end
+    if not self:hasApiKey() then
+        local empty = emptyPage(page, size)
+        empty.gz_needs_key = true -- (none listed without the key: not "no audiobooks")
+        return empty
+    end
     local Json = require("gzreader_json")
     local field = ({ title = "title", addedOn = "addedAt", lastReadTime = "lastReadAt" })[params.sort] or "title"
     local body = {
