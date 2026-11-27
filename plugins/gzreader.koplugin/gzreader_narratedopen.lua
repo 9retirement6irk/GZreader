@@ -18,6 +18,11 @@ audiobook was last at when you listened after reading.
 Settings → Audio → Narrated books → "Ask how to open them" (on by default;
 off: they open as books). A Kindle without sound never asks.
 
+On the walkman: every narrated EPUB on the Kindle is an audiobook in
+Downloads → Audiobooks too (Open.scan at start, Open.onWalkman after each
+download): a cassette with the book's cover, title and author; a tap
+listens to it (Open.listen: made into an audiobook the first time).
+
 Also BookOrbit: a book's download asks Narrated book (its size) or Book only,
 when the book has narration (Open.chooseDownload), and Home's recently read
 list shows a BookOrbit book and its audiobook as one (gzreader_serverrecent).
@@ -246,6 +251,148 @@ function Open.listen(path)
     -- (after the message has gone and Home has been drawn again)
     UIManager():nextTick(function() AB.open(p, book) end)
     return true
+end
+
+---------------------------------------------------------------- on the walkman
+
+local function unescape(s)
+    return (s:gsub("&lt;", "<"):gsub("&gt;", ">"):gsub("&quot;", '"'):gsub("&apos;", "'"):gsub("&amp;", "&"))
+end
+
+--- From an EPUB's OPF (at `opf_path` in it): { title, author, cover = the
+--- cover picture's path in the EPUB }. Pure.
+function Open.parseMeta(xml, opf_path)
+    xml = xml or ""
+    local function dc(name)
+        local v = xml:match("<dc:" .. name .. "[^>]*>(.-)</dc:" .. name .. ">")
+        v = v and unescape(v:gsub("<[^>]+>", "")):gsub("^%s+", ""):gsub("%s+$", "") or nil
+        return v ~= "" and v or nil
+    end
+    local items, cover = {}, nil
+    for tag in xml:gmatch("<[%w:]*item%s[^>]*>") do
+        local id, href = tag:match('%sid="([^"]*)"'), tag:match('%shref="([^"]*)"')
+        if id and href then
+            items[id] = href
+            if (tag:match('%sproperties="([^"]*)"') or ""):match("cover%-image") then cover = href end
+        end
+    end
+    if not cover then
+        for tag in xml:gmatch("<[%w:]*meta%s[^>]*>") do
+            if tag:match('name="cover"') then
+                local id = tag:match('content="([^"]*)"')
+                cover = id and items[id] or cover
+            end
+        end
+    end
+    local N = require("gzreader_narration")
+    return { title = dc("title"), author = dc("creator"), cover = cover and N.resolve(opf_path, unescape(cover)) or nil }
+end
+
+--- The EPUB at `path`: { title, author, cover = its picture's bytes } (any of them nil).
+function Open.aboutFile(path)
+    local out = {}
+    pcall(function()
+        local N = require("gzreader_narration")
+        local r = require("ffi/archiver").Reader:new()
+        if not r:open(path) then return end
+        for _e in r:iterate() do end
+        local function read(name) return name and r:extractToMemory(name) or nil end
+        local opf = N.parseContainer(read("META-INF/container.xml"))
+        local xml = opf and read(opf)
+        if xml then
+            local m = Open.parseMeta(xml, opf)
+            out.title, out.author = m.title, m.author
+            if m.cover then out.cover = read(m.cover) end
+        end
+        r:close()
+    end)
+    return out
+end
+
+--- The narrated EPUB at `path` as an audiobook in Downloads → Audiobooks (the
+--- walkman): its cassette with the book's cover, title and author; a tap
+--- listens to it (gzreader_abfolder.lua's open). Returns true when it's there.
+function Open.onWalkman(p, path)
+    if not (p and p.store) or require("gzreader_narration").quickCheck(path) ~= true then return false end
+    local lfs = require("libs/libkoreader-lfs")
+    local AB = require("gzreader_audiobook")
+    local Folder = require("gzreader_abfolder")
+    local id = Open.idFor(path)
+    p.store.audiobooks = p.store.audiobooks or {}
+    local e = p.store.audiobooks[id] or {}
+    local fresh = e.narrated ~= path or not e.title
+    if fresh then
+        local a = Open.aboutFile(path)
+        local title, author = about(path)
+        e.title, e.author, e.narrated = a.title or title, a.author or author, path
+        local dir = AB.dir(p, id)
+        require("util").makePath(dir)
+        if a.cover and a.cover ~= "" and lfs.attributes(dir .. "/cover.jpg", "mode") ~= "file" then
+            local f = io.open(dir .. "/cover.jpg", "wb")
+            if f then f:write(a.cover); f:close() end
+        end
+        p.store.audiobooks[id] = e
+        Log.info("narration: a narrated book on the walkman")
+    end
+    local stub = Folder.stubPath(p, id)
+    if fresh or not stub or lfs.attributes(stub, "mode") ~= "file" then Folder.writeStub(p, id) end
+    return true
+end
+
+--- Every narrated EPUB on the Kindle as an audiobook on the walkman, and off
+--- it again when its book has gone. `done(n)`: how many are on it.
+--- A few books a tick, so the Kindle keeps answering; a book seen not to be
+--- narrated (its size and time unchanged) isn't looked into again.
+function Open.scan(p, done)
+    if not (p and p.store and p.libraryDir) or not Open.sound() then return end
+    local lfs = require("libs/libkoreader-lfs")
+    local Folder = require("gzreader_abfolder")
+    local root, skip = p:libraryDir(), Folder.entryDir(p)
+    local found = {}
+    local function walk(dir, depth)
+        if depth > 6 or dir == skip then return end
+        local ok, iter, st = pcall(lfs.dir, dir)
+        if not ok then return end
+        for name in iter, st do
+            if name:sub(1, 1) ~= "." and not name:match("%.sdr$") then
+                local path = dir .. "/" .. name
+                local mode = lfs.attributes(path, "mode")
+                if mode == "directory" then walk(path, depth + 1)
+                elseif mode == "file" and name:lower():match("%.epub$") then found[#found + 1] = path end
+            end
+        end
+    end
+    walk(root, 0)
+    p.store.narration_no = p.store.narration_no or {}
+    local no, n, i = p.store.narration_no, 0, 1
+    local function key(path)
+        local a = lfs.attributes(path) or {}
+        return tostring(a.size) .. "|" .. tostring(a.modification)
+    end
+    local function step()
+        for _k = 1, 8 do
+            local path = found[i]
+            if not path then
+                -- (a narrated book that's gone, not made into an audiobook: off the walkman)
+                for id, e in pairs(p.store.audiobooks or {}) do
+                    if type(e) == "table" and e.narrated and lfs.attributes(e.narrated, "mode") ~= "file"
+                        and lfs.attributes(require("gzreader_audiobook").dir(p, id) .. "/audiobook.json", "mode") ~= "file" then
+                        Folder.removeStub(p, id)
+                        p.store.audiobooks[id] = nil
+                    end
+                end
+                if p.save then p:save() end
+                if done then done(n) end
+                return
+            end
+            i = i + 1
+            if no[path] ~= key(path) then
+                if Open.onWalkman(p, path) then n = n + 1; no[path] = nil else no[path] = key(path) end
+            end
+        end
+        UIManager():scheduleIn(0.2, step)
+    end
+    step()
 end
 
 --- Where the narration is now, kept for the audiobook (narration's place).
