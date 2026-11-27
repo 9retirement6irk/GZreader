@@ -49,6 +49,15 @@ by Patrick Wagesreiter, used for the Notes tab's sticky notes. It's a subset
 `pyftsubset`; the glyphs are unchanged. Licensed under the SIL Open Font
 License 1.1: see `fonts/PatrickHand-OFL.txt`.
 
+## Caveat (font)
+
+`fonts/Caveat-Regular.ttf` is [Caveat](https://fonts.google.com/specimen/Caveat)
+by the Caveat Project Authors (Impallari Type), used for the pen pal's answers in drawings. It's the
+variable font set to one weight (fonttools' `varLib.instancer`, wght 450)
+and subset to Latin, Latin-1, punctuation and a few maths signs with
+`pyftsubset`; the glyphs are unchanged. Licensed under the SIL Open Font
+License 1.1: see `fonts/Caveat-OFL.txt`.
+
 ## OpenMoji (emoji fonts)
 
 All emojis designed by [OpenMoji](https://openmoji.org/) – the open-source emoji and icon project. License: [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)

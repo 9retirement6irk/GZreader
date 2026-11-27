@@ -743,6 +743,36 @@ API to `/api` are found too.
   take up to five minutes on slow Wi‑Fi; if it's tried again, GZreader first
   looks whether the note has that drawing already, so it isn't added twice.
 
+## A pen pal: the AI writes back
+
+With the [AI connection](Setup-Page-and-Connections#ai) set up, a drawing's
+top bar has **✦** (Write back). Write a question, a note or a few sums on the
+page with the pen and tap **✦**: the AI writes back under each one, in a
+handwriting font (Caveat) about the size of your writing. Your writing stays
+as you wrote it.
+
+- **Short answers**: a sentence or two (about 20 words). A longer one is cut
+  at the end of a sentence.
+- **Where it goes**: under its question when there's room; otherwise beside
+  it, or the nearest free place on the page as you see it (above, when you
+  wrote at the bottom). Never over your writing or another box, and never
+  below the bottom of the screen; when the page is full, the writing gets
+  smaller first.
+- **Several at once**: separate pieces of writing (two sums side by side, a
+  question under them) each get their own answer, under it and as wide as
+  the room beside it. The lines of one question are answered together.
+- **Follow-ups**: what was asked and answered earlier on the page goes along
+  with the next question, so "what is the square root of it?" follows on.
+- **What's asked**: only writing that hasn't been asked about yet. It's sent
+  as a black-and-white picture, its pieces boxed and numbered, never the rest
+  of the page, its pictures or your other notes. Wi‑Fi turns on for it.
+- **No Wi‑Fi, or no reply**: the box says so and waits. Tap **✦** to try
+  again, or open the page again later with Wi‑Fi on and it's asked by itself.
+- **The eraser** takes an answer off (Undo brings it back). Answers are
+  text boxes too: move one, change its words or delete it as any other.
+- Text boxes are drawn as ink on the page: the paper's lines show through
+  them. Memos shows the answers too, in a cursive font.
+
 ## Saving
 
 - **Saving…** shows in the middle of the screen while a note or a drawing

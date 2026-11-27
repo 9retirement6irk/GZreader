@@ -368,6 +368,8 @@ function DrawScreen:showPage(i, first)
     self:repaintCanvas()
     if not first then UIManager:setDirty(self, "ui") end
     if Log.enabled then self:noteMemory(i, first) end
+    -- (a pen pal's answers still waiting: asked again, with Wi-Fi on)
+    UIManager:nextTick(function() if not self._closed and self.sketch == sk then pcall(require("gzreader_drawask").resume, self) end end)
 end
 
 -- ---------------------------------------------------------------- numbers for the log
@@ -738,6 +740,8 @@ function DrawScreen:topIcons()
             icons[#icons + 1] = { id = "immich", icon = "photos", label = _("Picture from Immich…") }
         end
     end
+    -- (a pen pal: the AI writes back under what was written; gzreader_drawask.lua)
+    if require("gzreader_drawask").available(self.plugin) then icons[#icons + 1] = { id = "ask", icon = "ask", label = _("Write back (AI)") } end
     icons[#icons + 1] = { id = "paper", icon = "paper", label = _("Paper") }
     icons[#icons + 1] = { id = "pages", icon = "pages", label = _("All pages") }
     if self.journal then table.insert(icons, 2, { id = "typing", label = _("Aa") }) end -- (back to typing the entry)
@@ -2335,7 +2339,10 @@ function DrawScreen:textWidget(el)
     local sk = self.sketch
     local px = math.max(6, math.floor((tonumber(el.fontSize) or 20) * sk.per_unit))
     local one = Screen:scaleBySize(100) / 100
-    return TextBoxWidget:new{ text = el.text ~= "" and el.text or " ", face = Font:getFace("cfont", math.max(6, math.floor(px / one))),
+    local size = math.max(6, math.floor(px / one))
+    -- (a pen pal's answer: in a handwriting font, gzreader_drawask.lua)
+    local face = require("gzreader_drawask").face(el, size) or Font:getFace("cfont", size)
+    return TextBoxWidget:new{ text = el.text ~= "" and el.text or " ", face = face,
         width = math.max(S(20), math.floor((tonumber(el.width) or 100) * sk.per_unit)), fgcolor = Blitbuffer.COLOR_BLACK }
 end
 
@@ -2347,12 +2354,26 @@ function DrawScreen:textHeight(el)
     return h / self.sketch.per_unit
 end
 
+--- `tw`'s letters onto `dst` at (x, y), the page showing through between
+--- them (TextBoxWidget paints a white box: the paper's lines went under it).
+function DrawScreen.inkText(dst, tw, x, y)
+    local src = tw._bb
+    if not src then return tw:paintTo(dst, x, y) end
+    local w, h = src:getWidth(), src:getHeight()
+    -- (its letters as a mask: dark where the ink is)
+    local mask = Blitbuffer.new(w, h, Blitbuffer.TYPE_BB8)
+    mask:blitFrom(src, 0, 0, 0, 0, w, h)
+    mask:invertRect(0, 0, w, h)
+    dst:colorblitFrom(mask, x, y, 0, 0, w, h, Blitbuffer.COLOR_BLACK)
+    mask:free()
+end
+
 --- A box into the page (and the PNG's ink).
 function DrawScreen:paintText(el)
     local cx, cy = self.sketch:toCanvas(tonumber(el.x) or 0, tonumber(el.y) or 0)
     local tw = self:textWidget(el)
-    tw:paintTo(self.canvas_bb, math.floor(cx), math.floor(cy))
-    tw:paintTo(self.ink_bb, math.floor(cx), math.floor(cy))
+    DrawScreen.inkText(self.canvas_bb, tw, math.floor(cx), math.floor(cy))
+    DrawScreen.inkText(self.ink_bb, tw, math.floor(cx), math.floor(cy))
     tw:free()
 end
 
@@ -3138,6 +3159,7 @@ function DrawScreen:use(t)
     elseif t.id == "next" then if self.index < #self.pages then self:showPage(self.index + 1) end
     elseif t.id == "newpage" or t.id == "newpage2" then self.flyout = nil; self:newPage()
     elseif t.id == "immich" then self:setFlyout(nil); self:pickPictures()
+    elseif t.id == "ask" then self:setFlyout(nil); require("gzreader_drawask").tap(self)
     elseif t.fn and t.id:sub(1, 5) == "note-" then
         -- (the note's own icons: the editor behind does it, as in its bar)
         self:setFlyout(nil)
