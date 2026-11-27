@@ -235,11 +235,30 @@ passage is saying, in about 150 words and without giving away what happens
 later. The answer shows in a window over the page, under the text you
 selected. It also works from an existing highlight's menu.
 
-Sent, only when you tap the question mark: the selected text (its first
-3,000 characters or so) and the book's title and author. Nothing else of the
-book, and nothing asked or answered is kept or written to the log. An AI
-wrote the answer and it can be wrong; the window says so. Without a key
-there is no question mark.
+Under the answer are four buttons that carry on about the same selection:
+
+- **Ask…**: type a question of your own about it.
+- **Simpler**: the selected text said again in simpler words.
+- **Summarize**: a few sentences.
+- **Translate…**: pick a language.
+
+The window then shows the new answer first, with what you asked over it, and
+the earlier ones under **Earlier**. Each new question goes with the
+conversation so far, so "it" is understood.
+
+**Translate with AI.** With a key set up, the selection menu's **Translate**
+opens a list of languages: GZreader's own language first (or the one you
+picked last), then fourteen others. The translation comes from your AI
+service, in the same window with the same four buttons. The list's last row,
+**Without AI (Google Translate)**, is the translator that was there
+before.
+
+Sent, only when you tap one of these: the selected text (its first
+3,000 characters or so), the book's title and author, and that window's own
+questions and answers. Nothing else of the book. Nothing asked or answered
+is kept once the window closes, or written to the log. An AI wrote the
+answers and they can be wrong; the window says so. Without a key there is no
+question mark, and Translate is KOReader's own.
 
 ## Copy connections from another GZreader
 

@@ -125,6 +125,7 @@ local function apply()
         wikipedia = true, dictionary = true, add_note = true,
         ai_assistant = true,
         gz_explain = true, -- GZreader: its own icon in the row
+        gz_translate = true, -- GZreader: behind the row's Translate
     }
 
     local function get_selection_anchor(self, dialog, index)
@@ -227,10 +228,15 @@ local function apply()
                 self:onClose()
             end,
         })
+        -- GZreader: with an AI key set up, Translate opens GZreader's list of languages and the
+        -- translation comes from that service; Google Translate, as before, is the list's last row
+        local ai_translate = find_highlight_button(self, index, "gz_translate")
+        if ai_translate and ai_translate.show_in_highlight_dialog_func and not ai_translate.show_in_highlight_dialog_func() then ai_translate = nil end
         table.insert(buttons[1], {
             icon = "lookup.translate",
             text = labels and _("Translate") or nil,
             callback = function()
+                if ai_translate then return ai_translate.callback() end
                 self:translate(index)
             end,
         })

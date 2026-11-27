@@ -43,4 +43,42 @@ add({ fn = function(E)
     end
 end, after = 4 })
 add({ shot = "explain-2-answer" })
+-- the window's buttons carry the conversation on: Simpler, then a translation
+local function top() local st = UIM()._window_stack; return st[#st] and st[#st].widget end
+local function press(w, text)
+    for _i, row in ipairs(w.buttons_table or w.buttons or {}) do
+        for _k, b in ipairs(row) do if b.text == text then b.callback(); return true end end
+    end
+    return false
+end
+add({ fn = function(E)
+    local AI = require("gzreader_ai")
+    AI.ask = function(_p, q, cb)
+        E.say("asked:", (q.text:gsub("\n", " / ")), "with", tostring(q.history and #q.history or 0), "earlier turns")
+        if q.text:find("simpler", 1, true) then return cb("April is the hardest month.") end
+        cb("Avril est le mois le plus cruel")
+    end
+    E.say("Simpler pressed:", tostring(press(top(), "Simpler")))
+end, after = 4 })
+add({ shot = "explain-3-simpler" })
+add({ fn = function(E)
+    E.say("the window:", (tostring(top().text):gsub("\n", " / ")))
+    press(top(), "Close")
+    -- the selection menu's Translate: the languages
+    local h = reader().highlight
+    h.selected_text = { text = "April is the cruellest month", pos0 = {}, pos1 = {} }
+    pcall(h.onShowHighlightMenu, h)
+    for _i, row in ipairs(h.highlight_dialog.buttons) do
+        for _k, b in ipairs(row) do if b.icon == "lookup.translate" then b.callback() end end
+    end
+end, after = 4 })
+add({ shot = "explain-4-languages" })
+add({ fn = function(E)
+    local rows = {}
+    for _i, row in ipairs(top().buttons or {}) do for _k, b in ipairs(row) do rows[#rows + 1] = b.text end end
+    E.say("the languages:", table.concat(rows, " | "))
+    press(top(), "French")
+end, after = 4 })
+add({ shot = "explain-5-translated" })
+add({ fn = function(E) E.say("translated:", (tostring(top().text):gsub("\n", " / "))) end, after = 1 })
 return s
