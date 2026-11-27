@@ -493,6 +493,29 @@ print("== pinch to zoom")
     run(pk, { { penGone() } }, 121)
     pinch(pk, { 400, 500 }, { 500, 500 }, { 350, 500 }, { 550, 500 }, 125, Sketch.PINCH_PAIR + 0.1)
     check(not pk.zoomed, "…two fingers landing " .. Sketch.PINCH_PAIR .. " s apart: no zoom")
+    -- a pinch's steps are a quick look; the fingers lifting asks for the page drawn properly (view_final)
+    do
+        local vk = Sketch.new{ canvas = CANVAS, per_unit = 2 }
+        local outs = {}
+        local frames = { { finger(0, 400, 500) }, { finger(0, 400, 500), finger(1, 500, 500) },
+            { finger(0, 380, 500), finger(1, 520, 500) }, { finger(0, 350, 500), finger(1, 550, 500) }, { lift(1) }, { lift(0) } }
+        local t = 200
+        for i, f in ipairs(frames) do outs[#outs + 1] = vk:frame(f, t); t = t + (i == 1 and 0.05 or 0.4) end
+        local steps, final_at = 0, nil
+        for i, o in ipairs(outs) do
+            if o.view and not o.view_final then steps = steps + 1 end
+            if o.view_final then final_at = i end
+        end
+        check(steps >= 1 and final_at == 5 and outs[5].redraw and outs[5].view, "a pinch: its steps only move the view (" .. steps
+            .. "), the fingers lifting asks once for the page drawn properly")
+        -- a finger moving a zoomed page (a pen Kindle): the same, at its lift
+        local pz = Sketch.new{ canvas = CANVAS, pen_only = true, pen_slot = PEN_SLOT, per_unit = 2 }
+        pz:zoomBy(2, 500, 500, 500, 500)
+        local po = {}
+        t = 300
+        for _i, f in ipairs({ { finger(0, 500, 500) }, { finger(0, 400, 500) }, { finger(0, 300, 500) }, { lift(0) } }) do po[#po + 1] = pz:frame(f, t); t = t + 0.4 end
+        check(po[2].view and not po[2].view_final and po[4].view_final and po[4].redraw, "a finger moving a zoomed page: the same, drawn properly when it lifts")
+    end
     -- zoomed, the page kept for the PNG: the scene doesn't change with the view
     local zk = Sketch.new{ canvas = CANVAS, per_unit = 2 }
     run(zk, { { finger(0, 200, 300) }, { finger(0, 300, 300) }, { lift(0) } })

@@ -13880,10 +13880,10 @@ print("Notes (Memos v0.31)")
                 and dsrcs:find('local again = self:settleWait()', 1, true) ~= nil
                 and dsrcs:find('local st = PenMode.unhook()', 1, true) ~= nil,
                 "drawing: on the Scribe a stroke's ink goes out in the display's pen mode; what a stroke leaves to do waits for a pause; pen mode off when the screen closes")
-            check(dsrcs:find('if out.view or not self:repaintArea(out.area) then self:redrawAll() end', 1, true) ~= nil
+            check(dsrcs:find('elseif out.view or not self:repaintArea(out.area) then self:redrawAll() end', 1, true) ~= nil
                 and dsrcs:find('if self:repaintArea(area) then self:refreshBar() else self:redrawAll() end', 1, true) ~= nil
-                and dsrcs:find('if not area or sk.zoomed then return false end', 1, true) ~= nil,
-                "drawing: a rubbed-out stroke, an Undo, a Redo draw and refresh only their part of the page (all of it when zoomed in)")
+                and dsrcs:find('if sk.zoomed and not (zp and sameView(zp.view, DrawScreen.viewOf(sk))', 1, true) ~= nil,
+                "drawing: a rubbed-out stroke, an Undo, a Redo draw and refresh only their part of the page (zoomed in: from the paper kept for the view)")
             -- tilt per tool (sketch_test.lua has the numbers): the redraw uses each point's tilt as the live ink does
             check(dsrcs:find("local t = b[4] and (a[4] and (a[4] + b[4]) / 2 or b[4]) or nil", 1, true) ~= nil
                 and dsrcs:find("local pr = Sketch.toolRadius(st.kind, r, w, t)", 1, true) ~= nil
@@ -13968,27 +13968,27 @@ print("Notes (Memos v0.31)")
                 end
                 return false
             end
-            -- the page drawn again: which strokes were inked (each stroke's segments, the same numbers as the old list's, in order)
+            -- the page drawn again: which strokes were inked (their segments, the same numbers as the old list's, in
+            -- order; zoomed in, only the segments that reach the canvas, all of a first coloured one)
             local function paint()
                 calls = {}
                 local before = copyPoints()
                 d:repaintCanvas()
                 local k, inked, skipped, ok, missed = 1, {}, 0, true, false
+                local function key(sg) return table.concat({ sg[1], sg[2], sg[3], sg[4], sg[5] }, ",") end
                 for _i, st in ipairs(order) do
                     local segs = DS.strokeSegments(sk, st)
-                    local match = #segs > 0
-                    for j, sg in ipairs(segs) do
-                        local got = calls[k + j - 1]
-                        if not got then match = false; break end
-                        for m = 1, 8 do if got[m] ~= sg[m] then match = false end end
+                    local any = false
+                    for _j, sg in ipairs(segs) do
+                        local got = calls[k]
+                        if got and key(got) == key(sg) then
+                            for m = 1, 8 do if got[m] ~= sg[m] then ok = false end end
+                            k, any = k + 1, true
+                        elseif reaches({ sg }) and not (sg[6] and not d.tint_bb) then
+                            missed = true -- (a bit on the canvas not inked)
+                        end
                     end
-                    if match then
-                        k = k + #segs
-                        inked[st] = true
-                    else
-                        skipped = skipped + 1
-                        if reaches(segs) then missed = true end
-                    end
+                    if any then inked[st] = true else skipped = skipped + 1 end
                 end
                 if k ~= #calls + 1 then ok = false end
                 return ok and not missed and samePoints(before), inked, skipped
@@ -14139,6 +14139,71 @@ print("Notes (Memos v0.31)")
             DS.eraseShown = real_shown
             UIMe.setDirty, UIMe.scheduleIn, UIMe.unschedule = real.dirty, real.sched, real.unsched
             PM.ink, PM.queued, PM.on = real.ink, real.queued, real.on
+        end)()
+        -- zoomed in: a pinch's steps show the page as it was drawn, scaled (no whole page from its strokes at
+        -- each), and a rubbed-out stroke draws only its place again, from the paper kept for that view
+        ;(function()
+            local DSz = require("gzreader_drawscreen")
+            local Skz = require("gzreader_sketch")
+            local UIMz = require("ui/uimanager")
+            local zreal_dirty = UIMz.setDirty
+            local zdirty = {}
+            UIMz.setDirty = function(_s, _w, mode) zdirty[#zdirty + 1] = mode end
+            -- where a page drawn for one view shows in another
+            local zfit = { per_unit = 1, ox = 0, oy = 0, w = 100, h = 130 }
+            local zm = DSz.viewMap(zfit, { per_unit = 2, ox = 25, oy = 0, w = 100, h = 130 })
+            check(zm and zm.sx == 25 and zm.sy == 0 and zm.sw == 50 and zm.sh == 65 and zm.dx == 0 and zm.dy == 0 and zm.dw == 100 and zm.dh == 130,
+                "drawing, zoomed: a page drawn fitted, seen at 2x from a quarter across: its middle half, twice as big")
+            local zback = DSz.viewMap({ per_unit = 2, ox = 25, oy = 0, w = 100, h = 130 }, zfit)
+            check(zback and zback.sx == 0 and zback.sw == 100 and zback.dx == 25 and zback.dw == 50 and zback.dh == 65,
+                "…pinched back out: the zoomed page, half as big, where it is on the page (the rest white until drawn)")
+            check(DSz.viewMap(zfit, { per_unit = 1, ox = 500, oy = 0, w = 100, h = 130 }) == nil, "…a view showing none of it: nothing")
+            -- the quick look: the shown page scaled, a fast refresh, nothing drawn from strokes
+            -- (Blitbuffer is a stand-in here: pages that note what's done to them)
+            local zcv = { x = 0, y = 0, w = 100, h = 130 }
+            local zsk = Skz.new{ canvas = zcv, per_unit = 1 }
+            local zlog = {}
+            local function zfake(label)
+                local zf = { name = label }
+                function zf.copy(zb) zlog[#zlog + 1] = { "copy", zb.name }; return zfake(zb.name .. "-copy") end
+                function zf.fill(zb) zlog[#zlog + 1] = { "fill", zb.name } end
+                function zf.free() end
+                function zf.viewport(zb, zx, zy, zw, zh) zlog[#zlog + 1] = { "viewport", zb.name, zx, zy, zw, zh }; return zfake(zb.name .. "-part") end
+                function zf.blitFrom(zb, zsrc, zdx, zdy, zsx, zsy, zw, zh) zlog[#zlog + 1] = { "blit", zb.name, zsrc.name, zdx, zdy, zsx, zsy, zw, zh } end
+                function zf.paintRect(zb, zx, zy, zw, zh) zlog[#zlog + 1] = { "rect", zb.name, zx, zy, zw, zh } end
+                return zf
+            end
+            local zwas_scaled = DSz.scaled
+            DSz.scaled = function(zpart, zw, zh) zlog[#zlog + 1] = { "scale", zpart.name, zw, zh }; return zfake("scaled") end
+            local zpage = zfake("page")
+            local zd = setmetatable({ sketch = zsk, canvas = zcv, canvas_bb = zpage, ink_bb = zfake("ink"), ox = 0, oy = 0,
+                _painted_view = DSz.viewOf(zsk) }, { __index = function(_t, k) return rawget(DSz, k) end })
+            zsk:zoomBy(2, 50, 65, 50, 65)
+            local zshown = zd:previewView()
+            local function zfind(kind, label)
+                for _i, ze in ipairs(zlog) do if ze[1] == kind and ze[2] == label then return ze end end
+            end
+            local zvp, zsc, zbl = zfind("viewport", "page-copy"), zfind("scale", "page-copy-part"), zfind("blit", "page")
+            check(zshown and zfind("copy", "page") and zfind("fill", "page") and zvp and zvp[3] == 25 and zvp[4] == 32 and zvp[5] == 50 and zvp[6] == 65
+                and zsc and zsc[3] == 100 and zsc[4] == 130 and zbl and zbl[3] == "scaled" and zbl[4] == 0 and zbl[5] >= -1 and zbl[5] <= 0
+                and zdirty[#zdirty] == "fast" and zd._view_base ~= nil,
+                "…a pinch going on: the shown page's middle (as it was drawn) scaled to the screen about the fingers, a quick refresh")
+            -- a colour page: as before (no quick look)
+            zd.color_bb = {}
+            check(zd:previewView() == false, "…a colour page: drawn from its strokes as before")
+            zd.color_bb = nil
+            -- a rubbed-out stroke, zoomed in: its place from the paper kept for this view
+            zd._zoom_paper = { canvas = zfake("paper"), ink = zfake("paper-ink"), view = DSz.viewOf(zsk), locked_n = 0 }
+            zd.ink = function() end
+            zlog = {}
+            local zok = zd:repaintArea({ x0 = 10, y0 = 10, x1 = 30, y1 = 30 }, true)
+            local zpb = zfind("blit", "page")
+            check(zok == true and zpb and zpb[3] == "paper" and zpb[4] == 10 and zpb[5] == 10 and zpb[8] == 20 and zpb[9] == 20 and not zfind("rect", "page"),
+                "…zoomed in, a rubbed-out stroke: only its place drawn again, from the paper kept for the view")
+            zsk:zoomBy(1.2, 50, 65, 50, 65)
+            check(zd:repaintArea({ x0 = 10, y0 = 10, x1 = 30, y1 = 30 }, true) == false, "…the view moved since: the whole page (the kept paper is for another view)")
+            DSz.scaled = zwas_scaled
+            UIMz.setDirty = zreal_dirty
         end)()
         local dsrcp = io.open(PLUGIN .. "/gzreader_drawscreen.lua"):read("*a")
         -- the drawing screen as the Kindle Scribe's notebook (walked through by emulator/notebook_ui.lua)

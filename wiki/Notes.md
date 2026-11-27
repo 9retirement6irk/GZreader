@@ -614,6 +614,9 @@ API to `/api` are found too.
     finger has to land within a third of a second of the first (later, it's
     ignored as before); on the Scribe, two fingers zoom when the pen is
     away, and a whole hand, or any touch while the pen is near, doesn't.
+    While the fingers move, the page follows as a quick, slightly rougher
+    picture; it's drawn properly once they lift. Zoomed in, rubbing out a
+    line or Undo redraws only that place.
   - **With a pen** (Kindle Scribe): only the pen draws (unless the toolbar's
     pen / finger button is on finger). Fingers on the page
     draw nothing, and while the pen is near the screen, and for a moment
