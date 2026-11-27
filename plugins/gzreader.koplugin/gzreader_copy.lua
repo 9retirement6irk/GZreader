@@ -17,7 +17,10 @@ in), asks for the PIN, shows what the other one has, and copies what's ticked:
   own sign-in (its refresh tokens can't be shared: using one on two devices
   signs both out) and GZreader never keeps your password, so this device
   then signs in itself: the password, or the phone page for single sign-on,
-  with everything else filled in.
+  with everything else filled in;
+- settings, the game board's records, and what's downloaded there (books,
+  narrated books, audiobooks, music: downloaded again here):
+  gzreader_copymore.lua.
 
 Each copy is checked by connecting with it (as when typed in). The PIN and
 the keys are SPAKE2 (gzreader_spake.lua): nothing secret crosses the Wi-Fi
@@ -122,12 +125,41 @@ function Copy.offer(plugin)
     for i, f in ipairs(store.calendar_feeds or {}) do
         if f.url then out.links[#out.links + 1] = { n = i, name = feedName(f), host = host(f.url) } end
     end
+    -- settings, games, downloads (gzreader_copymore.lua): what they'd be, without the lists
+    local More = require("gzreader_copymore")
+    pcall(function()
+        local s = More.settings(Copy.readerSettings(), store, Copy.zenosConfig())
+        local n = More.count(s)
+        -- (not "n": LuaJSON takes a table's n for an array's length)
+        if n > 0 then out.settings = { count = n } end
+    end)
+    pcall(function()
+        local g = type(store.games) == "table" and store.games or nil
+        if g then out.games = { finished = type(g.stats) == "table" and g.stats.total or 0, history = type(g.history) == "table" and #g.history or 0 } end
+    end)
+    pcall(function()
+        local d = More.downloads(plugin)
+        local text = More.downloadsText(d)
+        if text ~= "" then out.downloads = { text = text, server = d.server } end
+    end)
     return out
+end
+
+--- G_reader_settings' data (the settings to copy are picked from it).
+function Copy.readerSettings()
+    return type(G_reader_settings) == "table" and type(G_reader_settings.data) == "table" and G_reader_settings.data or {}
+end
+
+--- ZenOS's own settings file (Home, tabs, the shelf), or nil.
+function Copy.zenosConfig()
+    local ok, cfg = pcall(function() return require("config/manager").get() end)
+    return ok and type(cfg) == "table" and cfg or nil
 end
 
 --- Anything to send at all?
 function Copy.hasAnything(offer)
     return offer.grimmory ~= nil or offer.memos ~= nil or offer.caldav ~= nil or #offer.links > 0
+        or offer.settings ~= nil or offer.games ~= nil or offer.downloads ~= nil
 end
 
 --- The chosen connections, secrets included. want = { grimmory, memos,
@@ -155,6 +187,12 @@ function Copy.payload(plugin, want)
             out.links[#out.links + 1] = { url = f.url, name = f.name, enabled = f.enabled ~= false }
         end
     end
+    local More = require("gzreader_copymore")
+    if want.settings then out.settings = More.settings(Copy.readerSettings(), store, Copy.zenosConfig()) end
+    if want.games then out.games = More.games(store) end
+    if want.downloads then
+        out.downloads = More.downloads(plugin, function(path) return require("gzreader_narration").quickCheck(path) end)
+    end
     return out
 end
 
@@ -166,6 +204,12 @@ function Copy.describe(t)
     if t.caldav then parts[#parts + 1] = _("the CalDAV account") end
     local n = t.links and #t.links or 0
     if n == 1 then parts[#parts + 1] = _("1 calendar link") elseif n > 1 then parts[#parts + 1] = T(_("%1 calendar links"), n) end
+    if t.settings then parts[#parts + 1] = _("settings") end
+    if t.games then parts[#parts + 1] = _("the game board's records") end
+    if t.downloads then
+        local d = require("gzreader_copymore").downloadsText(t.downloads)
+        parts[#parts + 1] = d ~= "" and T(_("the list of downloads (%1)"), d) or _("the list of downloads")
+    end
     return table.concat(parts, ", ")
 end
 
@@ -483,6 +527,34 @@ function Copy.apply(plugin, data)
         end
     end
     if res.calendar then Calendar.calendarsChanged() end
+    local More = require("gzreader_copymore")
+    if type(data.settings) == "table" then
+        local n = More.applySettings(data.settings, plugin.store, function(k, v) G_reader_settings:saveSetting(k, v) end)
+        if type(data.settings.zenos) == "table" then
+            local okz = pcall(function() require("config/manager").save(More.plain(data.settings.zenos)) end)
+            if okz then n = n + 1 end
+        end
+        pcall(function() G_reader_settings:flush() end)
+        plugin:save()
+        res.restart = true
+        line(true, T(_("Settings: %1 copied (they apply once GZreader restarts)."), n))
+    end
+    if type(data.games) == "table" then
+        More.mergeGames(plugin.store, data.games)
+        plugin:save()
+        local g = plugin.store.games or {}
+        line(true, T(_("Game board: %1 puzzles in the history, %2 achievements."), type(g.history) == "table" and #g.history or 0,
+            (function() local k = 0 for _x in pairs(type(g.unlocked) == "table" and g.unlocked or {}) do k = k + 1 end return k end)()))
+    end
+    if type(data.downloads) == "table" then
+        local n = More.keepDownloads(plugin, data.downloads)
+        if n == 0 then
+            line(true, _("Downloads: everything there is already on this Kindle."))
+        else
+            line(true, T(_("Downloads: %1 to download here."), More.downloadsText(data.downloads)))
+            res.downloads = true
+        end
+    end
     if type(data.grimmory) == "table" and data.grimmory.server then
         local store = plugin.store
         if plugin.api:isPaired() and store.server == data.grimmory.server and store.username == data.grimmory.username then
@@ -556,6 +628,10 @@ function Copy.defaults(plugin, offer, only)
     want.grimmory = offer.grimmory ~= nil and (only == "grimmory" or (only == nil and not has.grimmory))
     want.memos = offer.memos ~= nil and (only == "notes" or (only == nil and not has.memos))
     want.caldav = offer.caldav ~= nil and (only == "calendar" or (only == nil and not has.caldav))
+    -- (settings, the game board and the downloads: all of them, from the setup guide or Settings)
+    want.settings = offer.settings ~= nil and only == nil
+    want.games = offer.games ~= nil and only == nil
+    want.downloads = offer.downloads ~= nil and only == nil
     local mine = {}
     for _i, f in ipairs(store.calendar_feeds or {}) do mine[f.name or f.own_name or ""] = true end
     for _i, l in ipairs(offer.links) do
@@ -599,12 +675,28 @@ function Copy.choose(plugin, ch, opts)
             toggle({ text = l.name, gz_icon = "calendar", _zen_settings_breadcrumb = _("Calendar link") },
                 function() return want.links[l.n] == true end, function(v) want.links[l.n] = v or nil end)
         end
+        if offer.settings then
+            toggle({ text = _("Settings"), gz_icon = "settings",
+                    _zen_settings_breadcrumb = T(_("%1 settings: Home, tabs, the reader, the daily paper… (no passwords)"), offer.settings.count or 0) },
+                function() return want.settings end, function(v) want.settings = v end)
+        end
+        if offer.games then
+            toggle({ text = _("Game board"), gz_icon = "widgets",
+                    _zen_settings_breadcrumb = T(_("%1 puzzles finished, achievements, themes"), offer.games.finished or 0) },
+                function() return want.games end, function(v) want.games = v end)
+        end
+        if offer.downloads then
+            toggle({ text = _("Downloads"), gz_icon = "name:downloads",
+                    _zen_settings_breadcrumb = T(_("%1, downloaded again here"), offer.downloads.text or "") },
+                function() return want.downloads end, function(v) want.downloads = v end)
+        end
         items[#items + 1] = { text = _("Copy the ones switched on"), bold = true, gz_icon = "copy", callback = function()
             local list = {}
             for n in pairs(want.links) do list[#list + 1] = n end
             table.sort(list)
-            local w = { grimmory = want.grimmory or nil, memos = want.memos or nil, caldav = want.caldav or nil, links = list }
-            if not (w.grimmory or w.memos or w.caldav or #list > 0) then
+            local w = { grimmory = want.grimmory or nil, memos = want.memos or nil, caldav = want.caldav or nil, links = list,
+                settings = want.settings or nil, games = want.games or nil, downloads = want.downloads or nil }
+            if not (w.grimmory or w.memos or w.caldav or #list > 0 or w.settings or w.games or w.downloads) then
                 return UIManager:show(InfoMessage:new{ text = _("Nothing is switched on."), timeout = 3 })
             end
             UIManager:close(menu)
@@ -634,6 +726,26 @@ function Copy.copy(plugin, ch, want, opts)
         return UIManager:show(InfoMessage:new{ text = _("Something went wrong while connecting.") })
     end
     Log.info("copy: received from " .. tostring(ch.offer.name) .. ": " .. Copy.describe(data))
+    if res.downloads then
+        -- (what can start now goes into the download queue; the rest waits for a sign-in)
+        local More = require("gzreader_copymore")
+        local started = More.resume(plugin)
+        if started > 0 then res.lines[#res.lines + 1] = T(_("Downloading %1 of them now (the Downloads tab shows how far)."), started) end
+        local waiting = More.waitingText(plugin)
+        if waiting then res.lines[#res.lines + 1] = waiting end
+    end
+    if res.restart and res.grimmory then
+        -- (signing in comes first; the settings wait for the next start)
+        res.lines[#res.lines + 1] = _("Restart GZreader after signing in to use the copied settings.")
+    elseif res.restart then
+        UIManager:nextTick(function()
+            UIManager:show(require("ui/widget/confirmbox"):new{
+                text = _("Restart GZreader now to use the copied settings?"),
+                ok_text = _("Restart"), cancel_text = _("Later"),
+                ok_callback = function() UIManager:restartKOReader() end,
+            })
+        end)
+    end
     local text = table.concat(res.lines, "\n")
     if res.grimmory then
         Copy.grimmorySignIn(plugin, res.grimmory, text)
