@@ -7979,7 +7979,7 @@ do
         check(not stripped:find("experiences", 1, true) and stripped:find('<p class="after">x</p>', 1, true) and stripped:find("p1.jpg", 1, true),
             "…the layer cut out up to its own closing tag (nested ones too), the rest of the page kept")
         local style = PB.css(99, {}, layers)
-        check(style:find(".tx { display: none !important; }", 1, true) and style:find("body { width: auto !important; height: auto !important; }", 1, true),
+        check(style:find(".tx { display: none !important; }", 1, true) and style:find("html, body, div, section, figure, p, center, blockquote { width: auto !important; height: auto !important;", 1, true),
             "fitted: the layer hidden (no blank page after each picture), the body's own 1359 px dropped (the picture was cut off on the right)")
         check(#PB.textLayers(epubOf(scans)) == 0 and not PB.css(99, {}):find("display: none", 1, true),
             "a reflowable picture book: no layers, nothing hidden")
@@ -8132,8 +8132,8 @@ do
     check(reopened == 4 and ui.styletweak.book_style_tweak:find("/* v" .. PB.VERSION .. " */", 1, true), "fitted by an older version: fitted again once")
     ui.styletweak.book_style_tweak = "/* GZreader picture book: begin */ /* v5 */ img{} /* GZreader picture book: end */"
     PB.onOpen(ui)
-    check(reopened == 5 and PB.VERSION == 7 and ui.styletweak.book_style_tweak:find("/* v7 */", 1, true),
-        "fitted by an earlier build (v5, v6: a fixed-layout book's text layers still showing): fitted again once")
+    check(reopened == 5 and PB.VERSION == 8 and ui.styletweak.book_style_tweak:find("/* v8 */", 1, true),
+        "fitted by an earlier build (v5 to v7: text layers still showing, a page's own px size kept): fitted again once")
     PB.onOpen(ui)
     check(reopened == 5, "…and not again")
 
@@ -15525,6 +15525,70 @@ print("The reader's top status bar stays drawn under KOReader's layout menu")
     check(fn:find('require("common/gz_header_overlay").leavesHeader(view, top_widget)', 1, true) ~= nil,
         "ZenOS's top bar asks it when the book isn't the topmost window")
     package.path = saved_path
+end)()
+
+print("Fit pictures: a fixed-layout page's own size dropped, and fitted by the side that fills the screen")
+;(function()
+    local PB = require("gzreader_picturebook")
+    local css = PB.css(99, {}, {})
+    check(css:find("html, body, div, section, figure, p, center, blockquote { width: auto !important; height: auto !important; max-width: none !important;", 1, true),
+        "the blocks around a picture lose their own width and height (a page div 1700px wide held the picture to it, or pushed it right and cut it off)")
+    check(css:find("height: 99.0vh !important; width: auto !important;", 1, true) and css:find("max-width: 100vw !important;", 1, true)
+        and css == PB.css(99, {}, {}, "height"), "pages narrower than the room: as tall as the room, as before")
+    local wcss = PB.css(99, {}, { ".tx" }, "width")
+    check(wcss:find("width: 100vw !important; height: auto !important;", 1, true) and wcss:find("max-height: 99.0vh !important;", 1, true)
+        and not wcss:find("height: 99.0vh !important; width: auto", 1, true) and wcss:find(".tx { display: none !important; }", 1, true),
+        "pages wider than the room: as wide as the screen, the height following (the text layers still hidden)")
+    -- which side: a letter page (0.773) on a Scribe (1860 wide)
+    check(PB.fitBy(1700 / 2200, 1860, 2384, 99) == "height" and PB.fitBy(1700 / 2200, 1860, 2470, 99) == "width",
+        "a letter page on a 3:4 screen: by its height with the bars shown, by its width with them hidden")
+    check(PB.fitBy(1654 / 2339, 1860, 2384, 99) == "height" and PB.fitBy(1654 / 2339, 1860, 2470, 99) == "height"
+        and PB.fitBy(1800 / 2175, 1860, 2384, 99) == "width" and PB.fitBy(1800 / 2175, 1860, 2470, 99) == "width",
+        "a taller page: always by its height; a squarer one: always by its width")
+    check(PB.fitBy(nil, 1860, 2470) == "height" and PB.fitBy(false, 1860, 2470) == "height" and PB.fitBy(0.8, nil, nil) == "height",
+        "a shape that isn't known: by its height, as before")
+    -- the page's shape, from a fixed-layout book
+    local function book(head, body)
+        local files = {
+            ["META-INF/container.xml"] = '<container><rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles></container>',
+            ["OEBPS/content.opf"] = '<package version="3.0"><metadata><meta property="rendition:layout">pre-paginated</meta></metadata><manifest>'
+                .. '<item id="p1" href="p1.xhtml" media-type="application/xhtml+xml"/><item id="p2" href="p2.xhtml" media-type="application/xhtml+xml"/>'
+                .. '<item id="p3" href="p3.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="p1"/><itemref idref="p2"/><itemref idref="p3"/></spine></package>',
+            ["OEBPS/images/p3.png"] = "\137PNG\r\n\26\n\0\0\0\13IHDR" .. "\0\0\3\232" .. "\0\0\5\220" .. "\8\2\0\0\0", -- 1000 x 1500
+        }
+        for i = 1, 3 do
+            files["OEBPS/p" .. i .. ".xhtml"] = "<html><head>" .. (i == 3 and head or '<meta name="viewport" content="width=600, height=600"/>')
+                .. "</head><body>" .. body .. "</body></html>"
+        end
+        return function(path) return files[path] end
+    end
+    local shape = PB.pageShape(book('<meta name="viewport" content="width=1700, height=2200"/>', '<div class="page"><img src="images/p3.png" alt=""/></div>'))
+    check(shape and math.abs(shape - 1700 / 2200) < 0.0001, "a fixed-layout page's shape: its viewport (1700 x 2200), from a page inside the book, not the cover")
+    shape = PB.pageShape(book("<title>3</title>", '<div class="page"><img src="images/p3.png" alt=""/></div>'))
+    check(shape and math.abs(shape - 1000 / 1500) < 0.0001, "…no viewport: the page's picture (1000 x 1500)")
+    check(PB.pageShape(book("", "<p>words</p>")) == nil and PB.pageShape(function() return nil end) == nil, "…neither: not known")
+    -- the bars hidden or shown: the room's shape changes, and the side with it
+    local was_layout = PB.layout
+    local room_h = 2384
+    PB.layout = function() return { top = 0, bottom = 4, vh = 99, avail_w = 1860, avail_h = room_h } end
+    local applied = 0
+    local d = { gzreader_pb_shape = 1700 / 2200, gzreader_pb_by = "height", gzreader_pb_layers = { ".tx" } }
+    local ui = { document = {}, doc_settings = { readSetting = function(_s, k) return d[k] end, saveSetting = function(_s, k, v) d[k] = v end },
+        styletweak = { book_style_tweak_enabled = true, book_style_tweak = "p { color: black; }\n" .. PB.css(99, {}, { ".tx" }, "height"),
+            updateCssText = function(_s, apply) if apply then applied = applied + 1 end end } }
+    check(PB.checkFit(ui) == false and applied == 0, "bars shown, a letter page: by its height already, nothing changes")
+    room_h = 2470
+    check(PB.checkFit(ui) == true and applied == 1 and d.gzreader_pb_by == "width"
+        and ui.styletweak.book_style_tweak:find("width: 100vw !important; height: auto", 1, true)
+        and ui.styletweak.book_style_tweak:find("p { color: black; }", 1, true) and ui.styletweak.book_style_tweak:find(".tx { display: none", 1, true),
+        "bars hidden: the page now fills the width; the style is changed and applied (the book's own tweak and the hidden layers kept)")
+    check(PB.checkFit(ui) == false and applied == 1, "…once")
+    room_h = 2384
+    check(PB.checkFit(ui) == true and d.gzreader_pb_by == "height" and applied == 2, "bars shown again: back to its height")
+    d.gzreader_pb_shape = false
+    room_h = 2470
+    check(PB.checkFit(ui) == false, "a book whose page shape isn't known: left as it is")
+    PB.layout = was_layout
 end)()
 
 print("Fit pictures: bigger when the bars are hidden, and its options")

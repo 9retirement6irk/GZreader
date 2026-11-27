@@ -23,7 +23,9 @@ local function state(tag)
         local m = d._document and d._document.getPageMargins and d._document:getPageMargins()
         note(tag, "pages", d:getPageCount(), "fitted", tostring(require("gzreader_picturebook").isOn(R())),
             "reserve", tostring(d._zen_top_status_bar_reserved_height), "freed", tostring(d._gz_top_freed),
-            "margins", m and (m.top .. "/" .. m.bottom) or "?")
+            "margins", m and (m.top .. "/" .. m.bottom) or "?",
+            "fitted by", tostring(R().doc_settings:readSetting("gzreader_pb_by")),
+            "room", (function() local l = require("gzreader_picturebook").layout(R()); return l.avail_w .. "x" .. l.avail_h end)())
     end, after = 1 }
 end
 

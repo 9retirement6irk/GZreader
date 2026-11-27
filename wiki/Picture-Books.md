@@ -68,6 +68,14 @@ to be a picture book before it is checked again (unless Fit pictures was
 turned off in it). The layer's style rules are found in the book's CSS files
 and in the pages' own `<style>` blocks (a converter that writes them into
 every page: such a book showed each page's picture, then a page of its text).
+The page's own size in the book (1700 × 2200 px on its page block, say) is
+dropped from every block around the picture, not only the body: on a screen
+wider than that the picture was held to that width, and on a narrower one
+pushed to the right and cut off. And a fixed-layout book's pages are fitted
+by the side that fills the room: a page narrower than the screen's shape is
+as tall as the room, a wider one as wide as the screen. A letter-size
+magazine page on a 3:4 screen (a Scribe) is in between: fitted by its height
+with the bars shown, by its width once a tap hides them, changing by itself.
 Its pictures aren't measured first: every one is a page
 (The BOOK's 410 pictures, 264 MB, were read for 13 minutes in the background
 on a Paperwhite 3, and the job then failed). A very big book is slow to open

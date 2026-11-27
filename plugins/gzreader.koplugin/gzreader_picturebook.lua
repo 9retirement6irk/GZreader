@@ -43,19 +43,30 @@ local PB = {}
 
 local MARK_BEGIN = "/* GZreader picture book: begin */"
 local MARK_END = "/* GZreader picture book: end */"
-PB.VERSION = 7
+PB.VERSION = 8
 PB.INLINE_PAGES = 4 -- pages whose own <style> blocks are read for a fixed-layout book's text layer
 
 --- The style tweak, with pictures `vh` tall. In crengine 1vh is 1% of the
 --- page's text area (inside the margins), and vh is honoured for pictures
 --- on the Kindle (1.0.30's height:100% was ignored there).
-function PB.css(vh, wide, layers)
+--- The blocks around a picture lose their own width and height: a
+--- fixed-layout page gives its html, body and page div the page's size in
+--- px (1700 x 2200, say). On a screen wider than that the picture was held
+--- to the div's width and stretched to the screen's height; on a narrower
+--- one it was centred in the wider div, so pushed right and cut off.
+--- by = "width": the pictures are wider than the room's shape (PB.fitBy):
+--- as wide as the screen, their height following. crengine keeps a
+--- picture's shape for one given side only; held by max-width or
+--- max-height it's squeezed.
+function PB.css(vh, wide, layers, by)
+    local size = by == "width"
+        and string.format("width: 100vw !important; height: auto !important;\n      max-width: none !important; max-height: %.1fvh !important;", vh)
+        or string.format("height: %.1fvh !important; width: auto !important;\n      max-height: none !important; max-width: 100vw !important;", vh)
     local out = { MARK_BEGIN .. string.format([[ /* v%d */
 body, p, div, section, h1, h2, h3, h4, h5, h6, figure, blockquote, center { margin: 0 !important; padding: 0 !important; text-indent: 0 !important; }
-body { width: auto !important; height: auto !important; }
+html, body, div, section, figure, p, center, blockquote { width: auto !important; height: auto !important; max-width: none !important; min-height: 0 !important; }
 img { display: block !important; margin: 0 auto !important; padding: 0 !important;
-      height: %.1fvh !important; width: auto !important;
-      max-height: none !important; max-width: 100vw !important; }]], PB.VERSION, vh) }
+      %s }]], PB.VERSION, size) }
     -- pictures wider than the page's shape (a publisher's logo): their own
     -- size, never wider than the screen, so they keep their shape
     for _i, name in ipairs(wide or {}) do
@@ -199,6 +210,36 @@ function PB.imageSize(data)
     return nil
 end
 
+--- A fixed-layout book's page shape, width / height (0.773 for a letter
+--- page): from a page's viewport (<meta name="viewport" content="width=1700,
+--- height=2200">), else that page's first picture. nil when it can't be
+--- told. read(path) -> a file in the EPUB.
+function PB.pageShape(read)
+    local ok_s, Sync = pcall(require, "gzreader_sync")
+    if not ok_s or type(read) ~= "function" then return nil end
+    local ok, spine = pcall(Sync.parseSpine, read)
+    if not ok or not spine or #spine.frag < 1 then return nil end
+    -- (not the cover: the third page when there are that many)
+    local href = spine.frag[math.min(3, #spine.frag)]
+    local html = read(href) or ""
+    local view = html:match("<meta[^>]-name%s*=%s*[\"']viewport[\"'][^>]*>") or ""
+    local w, h = tonumber(view:match("width%s*=%s*([%d.]+)")), tonumber(view:match("height%s*=%s*([%d.]+)"))
+    if not (w and h and w > 0 and h > 0) then
+        local src = html:match("<[%w:]*img[^>]-src%s*=%s*[\"']([^\"']+)[\"']")
+        if src then w, h = PB.imageSize(read(Sync.normalizeHref((href:match("^(.*/)") or "") .. src))) end
+    end
+    if w and h and w > 0 and h > 0 then return w / h end
+    return nil
+end
+
+--- Which side of the room a page of this shape fills: "width" when a
+--- picture `vh` percent of the room's height would be wider than the room,
+--- else "height" (also when the shape isn't known). Pure.
+function PB.fitBy(shape, room_w, room_h, vh)
+    if type(shape) ~= "number" or shape <= 0 or not (tonumber(room_w) and tonumber(room_h)) or room_h <= 0 then return "height" end
+    return shape * room_h * (vh or PB.VH) / 100 > room_w and "width" or "height"
+end
+
 --- File names of the book's pictures that are wider than w:h.
 --- read(path) -> the file's bytes inside the EPUB.
 function PB.widePictures(read, w, h)
@@ -258,8 +299,13 @@ function PB.layout(ui)
     if footer and (footer.reclaim_height or (footer.settings and footer.settings.reclaim_height)) then
         bottom = bottom + math.ceil(footer_h / scale)
     end
+    -- (the room a page gets: without the title bar's height where ZenOS reserves it)
+    local reserved = zen_reserved > 1 and zen_reserved or 0
+    -- (a status bar hidden with a tap keeps its height, but its room goes to the pictures)
+    local footer_room = footer_h
+    if footer and footer.mode_list and footer.mode == footer.mode_list.off and PB.fillOn() then footer_room = 0 end
     return { top = top, bottom = bottom, vh = PB.VH, header = header_h, footer = footer_h, screen = H,
-        avail_w = Screen:getWidth(), avail_h = H - math.ceil((top + bottom) * scale) - footer_h }
+        avail_w = Screen:getWidth(), avail_h = H - math.ceil((top + bottom) * scale) - footer_room - reserved }
 end
 
 --- The style tweak for this book on this screen (wide pictures looked up once per book).
@@ -475,7 +521,17 @@ function PB.set(ui, on, opts)
         end
         local layers = PB.layersOf(ui.document)
         ui.doc_settings:saveSetting("gzreader_pb_layers", layers)
-        st.book_style_tweak = (rest and (rest .. "\n") or "") .. PB.css(lay.vh, wide, layers)
+        -- a fixed-layout book's pages are all one shape: which side of the room they fill
+        local shape = ui.doc_settings:readSetting("gzreader_pb_shape")
+        if shape == nil then
+            local read = PB.reader(ui.document)
+            local oks, a = pcall(function() return PB.isFixedLayout(read) and PB.pageShape(read) or false end)
+            shape = oks and a or false
+            ui.doc_settings:saveSetting("gzreader_pb_shape", shape)
+        end
+        local by = PB.fitBy(shape, lay.avail_w, lay.avail_h, lay.vh)
+        ui.doc_settings:saveSetting("gzreader_pb_by", by)
+        st.book_style_tweak = (rest and (rest .. "\n") or "") .. PB.css(lay.vh, wide, layers, by)
         st.book_style_tweak_enabled = true
         ui.doc_settings:saveSetting("gzreader_pb_vh", lay.vh)
         if not ui.doc_settings:readSetting("gzreader_pb_margins") then
@@ -496,7 +552,8 @@ function PB.set(ui, on, opts)
             avail_w = lay.avail_w, avail_h = lay.avail_h })
         ui.doc_settings:saveSetting("gzreader_pb_fit", { top = lay.top, bottom = lay.bottom })
         Log.info("picture book layout: screen", lay.screen, "title bar", lay.header, "footer", lay.footer,
-            "margins top", lay.top, "bottom", lay.bottom, "pictures", lay.vh .. "vh", "wide ones kept as they are", #wide)
+            "margins top", lay.top, "bottom", lay.bottom, "pictures", lay.vh .. "vh", "wide ones kept as they are", #wide,
+            "room", lay.avail_w .. "x" .. lay.avail_h, "page shape", shape and string.format("%.3f", shape) or "?", "fitted by", by)
     else
         st.book_style_tweak = rest
         if not rest then st.book_style_tweak_enabled = nil end
@@ -640,16 +697,18 @@ function PB.prepareNext()
         for _e in r:iterate() do end
         local read = function(p) return r:extractToMemory(p) end
         local yes = PB.detectWith(read)
-        local wide = yes and not PB.isFixedLayout(read) and PB.widePictures(read, w, h) or {}
+        local fixed = yes and PB.isFixedLayout(read)
+        local wide = yes and not fixed and PB.widePictures(read, w, h) or {}
         local layers = yes and PB.textLayers(read) or {}
+        local shape = fixed and PB.pageShape(read) or false
         r:close()
-        return { yes = yes, wide = wide, layers = layers }
+        return { yes = yes, wide = wide, layers = layers, shape = shape }
     end, function(res, err)
         if err == "busy" then return UIManager:scheduleIn(30, PB.safeNext) end -- (another job: later)
         table.remove(PB.queue, 1)
         if type(res) == "table" then
             local ok, e = pcall(PB.prefit, file, res.yes == true, type(res.wide) == "table" and res.wide or {},
-                type(res.layers) == "table" and res.layers or {})
+                type(res.layers) == "table" and res.layers or {}, tonumber(res.shape) or false)
             if not ok then Log.warn("picture book: couldn't prepare", tostring(e)) end
         else
             Log.info("picture book: not checked before opening:", tostring(err))
@@ -659,7 +718,7 @@ function PB.prepareNext()
 end
 
 --- Save what was found with the book (not when it was opened meanwhile).
-function PB.prefit(file, yes, wide, layers)
+function PB.prefit(file, yes, wide, layers, shape)
     if openNow(file) then return false end
     local DocSettings = require("docsettings")
     local ds = DocSettings:open(file)
@@ -689,7 +748,10 @@ function PB.prefit(file, yes, wide, layers)
             ds:saveSetting("copt_b_page_margin", lay.bottom)
             ds:saveSetting("copt_sync_t_b_page_margins", 0)
             ds:saveSetting("copt_smooth_scaling", 1)
-            ds:saveSetting("book_style_tweak", PB.css(vh, wide, layers))
+            local by = PB.fitBy(shape, lay.avail_w, lay.avail_h, vh)
+            if shape ~= nil then ds:saveSetting("gzreader_pb_shape", shape) end
+            ds:saveSetting("gzreader_pb_by", by)
+            ds:saveSetting("book_style_tweak", PB.css(vh, wide, layers, by))
             ds:saveSetting("book_style_tweak_enabled", true)
             ds:saveSetting("gzreader_pb_fit", { top = lay.top, bottom = lay.bottom })
             fitted = true
@@ -729,6 +791,35 @@ function PB.onBarsChanged(ui)
     local Event = require("ui/event")
     Log.info("picture book: bars hidden or shown, pictures laid out again")
     ui:handleEvent(Event:new("SetPageBottomMargin", ui.document.configurable.b_page_margin))
+    -- the room's shape changed with the bars: a page that filled its height
+    -- may now fill its width (a letter page on a 3:4 screen), or back. Looked
+    -- at once the bars have settled (here they still say how they were).
+    pcall(function()
+        if PB.checkFitLater then UIManager:unschedule(PB.checkFitLater) end
+        PB.checkFitLater = function() pcall(PB.checkFit, ui) end
+        UIManager:scheduleIn(0.3, PB.checkFitLater)
+    end)
+end
+
+--- The open, fitted book's pages fitted by the side that fills the room as
+--- it is now (PB.fitBy); the style changed and applied when it isn't. True
+--- when it changed.
+function PB.checkFit(ui)
+    if not (ui and ui.document and not ui.tearing_down) then return false end
+    local ds, st = ui.doc_settings, ui.styletweak
+    local shape = ds and ds:readSetting("gzreader_pb_shape")
+    if type(shape) ~= "number" or not st or not PB.isOn(ui) then return false end
+    local lay = PB.layout(ui)
+    local by = PB.fitBy(shape, lay.avail_w, lay.avail_h, lay.vh)
+    if by == (ds:readSetting("gzreader_pb_by") or "height") then return false end
+    local wide, layers = ds:readSetting("gzreader_pb_wide"), ds:readSetting("gzreader_pb_layers")
+    local rest = stripOurs(st.book_style_tweak)
+    st.book_style_tweak = (rest and (rest .. "\n") or "")
+        .. PB.css(lay.vh, type(wide) == "table" and wide or {}, type(layers) == "table" and layers or {}, by)
+    ds:saveSetting("gzreader_pb_by", by)
+    Log.info("picture book: pages now fitted by", by, "(room", lay.avail_w .. "x" .. lay.avail_h .. ")")
+    if type(st.updateCssText) == "function" then pcall(st.updateCssText, st, true) end
+    return true
 end
 
 --- The options, shown by Fit pictures while a book's pictures are fitted.
@@ -747,6 +838,7 @@ function PB.showOptions(ui)
                 local Event = require("ui/event")
                 if ui.document and ui.document.configurable and ui.handleEvent then
                     ui:handleEvent(Event:new("SetPageBottomMargin", ui.document.configurable.b_page_margin))
+                    UIManager:scheduleIn(0.3, function() pcall(PB.checkFit, ui) end) -- (the room changed: which side the pages fill)
                 end
                 again()
             end } },
