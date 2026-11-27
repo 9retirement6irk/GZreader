@@ -573,6 +573,22 @@ end
 HA.VOLUME_STEP = 5
 HA.VOLUME_LEVELS = { 10, 20, 30, 50 }
 
+-- Actions that set a level outright: pressed several times in a row, only
+-- the last matters (House:level).
+HA.LEVELS = { volume = true, brightness = true, target = true }
+
+--- Put a level into `e` as if it had been set (what the screen shows
+--- until Home Assistant says how it is). False: not a level, or no device.
+function HA.setLevel(e, what, value)
+    value = tonumber(value)
+    if type(e) ~= "table" or not HA.LEVELS[what] or not value then return false end
+    if what == "volume" then e.vol = math.max(0, math.min(100, math.floor(value + 0.5)))
+    elseif what == "brightness" then
+        e.state, e.bri = "on", math.max(1, math.min(100, math.floor(value + 0.5)))
+    else e.target = value end
+    return true
+end
+
 --- Home Assistant answers a media player's action before the player has
 --- changed, so the answer often has no states: what `what` should have
 --- done to `e`, put into it for now (the next refresh has the truth).

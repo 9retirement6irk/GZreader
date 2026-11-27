@@ -46,6 +46,9 @@ local function Net() return require("gzreader_net") end
 local House = {
     TAB_ID = "ct_house",
     REFRESH = 30, -- seconds, while the tab is on the screen
+    GATHER = 0.7, -- seconds: presses of a level this close together are sent as one (the last)
+    HOLD = 4,     -- seconds a level that was set stays as asked before Home Assistant is believed again
+    STUCK = 45,   -- seconds after which an answer that never came stops holding its device up
 }
 House.__index = House
 
@@ -280,6 +283,8 @@ function House:refresh(asked)
             if house then
                 house.at = os.time()
                 self.house, self.err = house, nil
+                -- (a level just asked for stays as asked until it's let go)
+                self:keepHeld()
                 HA().saveCache(house)
                 -- (found out in the background process: not an administrator's token)
                 if house.by_kind and not store(plugin).no_template then
@@ -344,9 +349,17 @@ function House:run(e, what, arg, after)
     local domain, service, data = Ha.service(e, what, arg)
     if not domain then return end
     local client = House.client(self.plugin)
+    -- (pressed again before Home Assistant answered the first: once is enough)
+    self.running = self.running or {}
+    local doing = e.id .. "|" .. what
+    if self.running[doing] then return end
+    local mark = {}
+    self.running[doing] = mark
+    UIManager:scheduleIn(House.STUCK, function() if self.running[doing] == mark then self.running[doing] = nil end end)
     Log.info("house:", domain .. "." .. service, e.id)
     Net().run(function()
         Async().run(nil, function() return client:call(domain, service, data) end, function(changed, err)
+            self.running[doing] = nil
             if self.closed then return end
             if not changed then
                 Log.warn("house:", domain .. "." .. service, "failed:", tostring(err))
@@ -355,6 +368,7 @@ function House:run(e, what, arg, after)
             local answered = false
             for _i, st in ipairs(changed) do if type(st) == "table" and st.entity_id == e.id then answered = true end end
             local known = Ha.applyChanged(self.house, changed)
+            self:keepHeld()
             -- (a media player answers before it has changed: what it should be, for now)
             if not answered and Ha.assume(Ha.find(self.house, e.id), what, arg) then known = true end
             if known then Ha.saveCache(self.house) end
@@ -367,6 +381,107 @@ function House:run(e, what, arg, after)
             if after then after(Ha.find(self.house, e.id) or e) end
         end, "house " .. service)
     end, { reason = "Home Assistant" })
+end
+
+--- Set a level (a volume, a brightness, a thermostat's target) from a
+--- control that can be pressed again and again (the panels' lights, − and
+--- +). The screen shows it at once; Home Assistant is told once the
+--- presses stop (House.GATHER), and never while an earlier one for the
+--- same device is still on its way: the last press wins, the ones between
+--- are never sent. Sent one after another they would each take their time,
+--- arrive in a row and move a speaker's volume up and down.
+function House:level(e, what, value)
+    local Ha = HA()
+    if self.closed or not Ha.LEVELS[what] then return end
+    self.levels = self.levels or {}
+    local key = e.id .. "|" .. what
+    local L = self.levels[key] or { id = e.id, what = what }
+    self.levels[key] = L
+    L.want = value
+    self:hold(e.id, what, value)
+    if self.panel and not self.panel.closed then self.panel:sync() end
+    if L.busy then return end
+    if L.timer then UIManager:unschedule(L.timer) end
+    L.timer = function()
+        L.timer = nil
+        self:sendLevel(key)
+    end
+    UIManager:scheduleIn(House.GATHER, L.timer)
+end
+
+--- A level that was asked for stays on the screen, whatever a refresh
+--- says in the meantime (a player takes a moment to report it): kept in
+--- `held` until it's let go (House.HOLD seconds after the last answer).
+function House:hold(id, what, value)
+    self.held = self.held or {}
+    self.held[id] = self.held[id] or {}
+    self.held[id][what] = value
+    HA().setLevel(HA().find(self.house, id), what, value)
+end
+
+--- The levels held, put back into the devices as they are now (after
+--- Home Assistant's states came in).
+function House:keepHeld()
+    local Ha = HA()
+    for id, levels in pairs(self.held or {}) do
+        local e = Ha.find(self.house, id)
+        for what, value in pairs(levels) do Ha.setLevel(e, what, value) end
+    end
+end
+
+function House:sendLevel(key)
+    local Ha = HA()
+    local L = self.levels and self.levels[key]
+    if not L or L.busy or self.closed then return end
+    local e = Ha.find(self.house, L.id)
+    local value = L.want
+    local domain, service, data = Ha.service(e, L.what, value)
+    if not domain then self.levels[key] = nil; return end
+    L.busy, L.sent = true, value
+    -- (an answer that never comes, e.g. Wi-Fi gone: not busy for ever)
+    UIManager:scheduleIn(House.STUCK, function()
+        if self.levels and self.levels[key] == L and L.busy and L.sent == value then L.busy = false end
+    end)
+    local client = House.client(self.plugin)
+    Log.info("house:", domain .. "." .. service, L.id)
+    Net().run(function()
+        Async().run(nil, function() return client:call(domain, service, data) end, function(changed, err)
+            self:levelBack(key, changed, err)
+        end, "house " .. service)
+    end, { reason = "Home Assistant" })
+end
+
+--- Home Assistant answered a level (or didn't). A newer press since it
+--- was sent: that one goes now. Otherwise it's done: the level is let go
+--- of in a moment, and the tab fetched again.
+function House:levelBack(key, changed, err)
+    local Ha = HA()
+    local L = self.levels and self.levels[key]
+    if not L then return end
+    L.busy = false
+    if self.closed then return end
+    if not changed then
+        Log.warn("house: a level wasn't set:", L.what, L.id, tostring(err))
+        self.levels[key] = nil
+        if self.held and self.held[L.id] then self.held[L.id][L.what] = nil end
+        info(Ha.why(err))
+        return self:refresh(false)
+    end
+    if Ha.applyChanged(self.house, changed) then self:keepHeld() end
+    if L.want ~= L.sent then return self:sendLevel(key) end
+    self.levels[key] = nil
+    Ha.saveCache(self.house)
+    self:redraw()
+    -- let go of it once the device has had time to report it
+    local id, what, value = L.id, L.what, L.sent
+    UIManager:scheduleIn(House.HOLD, function()
+        if self.closed then return end
+        local busy = self.levels and self.levels[key]
+        if busy or not (self.held and self.held[id]) or self.held[id][what] ~= value then return end
+        self.held[id][what] = nil
+        if next(self.held[id]) == nil then self.held[id] = nil end
+        self:refresh(false)
+    end)
 end
 
 --- Every light in a room on or off (the wall's All lights): Home

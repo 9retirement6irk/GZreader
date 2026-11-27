@@ -15,7 +15,8 @@ a thermostat or a speaker is tapped, drawn as the thing itself.
   the player can do.
 
 Each press does what the window's button did (House:run), and the panel
-stays open, showing what came back. A tap outside it, × or Back closes it.
+stays open, showing what came back. A level (a volume, a brightness, a
+target) shows at once and is sent when the presses stop (House:level). A tap outside it, × or Back closes it.
 On a Kindle with a keyboard the keys carry letters (not the twenty lights:
 the 5-way reaches those) and the 5-way moves a frame from control to
 control; Press presses.
@@ -536,7 +537,9 @@ function Widget:press(c)
         tab:musicDialog(self.e)
         return true
     end
-    tab:run(self.e, c.act[1], c.act[2])
+    -- a level (a volume, a brightness, a target): shown at once, sent when the presses stop
+    if HA().LEVELS[c.act[1]] then tab:level(self.e, c.act[1], c.act[2])
+    else tab:run(self.e, c.act[1], c.act[2]) end
     return true
 end
 

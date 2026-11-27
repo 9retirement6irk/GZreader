@@ -1187,7 +1187,9 @@ print("House tab in the Bookshelf view: a device's controls as a panel (the dimm
 
     -- pressing: what the window's button did
     local ran, opened, closed = {}, nil, 0
-    local tab = { run = function(_t, e, what, arg, after) ran[#ran + 1] = { e, what, arg, after } end, musicDialog = function(_t, e) opened = e end }
+    local levelled = {}
+    local tab = { run = function(_t, e, what, arg, after) ran[#ran + 1] = { e, what, arg, after } end, musicDialog = function(_t, e) opened = e end,
+        level = function(_t, e, what, value) levelled[#levelled + 1] = { e, what, value } end }
     local w = { tab = tab, e = sp, P = M, onClose = function() closed = closed + 1; return true end }
     local UIM = require("ui/uimanager")
     local was_close = UIM.close
@@ -1195,11 +1197,16 @@ print("House tab in the Bookshelf view: a device's controls as a panel (the dimm
     Panel.Widget.press(w, get(M, "volume50"))
     Panel.Widget.press(w, get(M, "shuffle"))
     Panel.Widget.press(w, get(dark, "down"))
-    check(#ran == 2 and ran[1][1] == sp and ran[1][2] == "volume" and ran[1][3] == 50 and ran[1][4] == nil and ran[2][2] == "shuffle" and closed == 0,
-        "pressing a control does what the window's button did (House:run), and the panel stays open; a key that can't be pressed does nothing")
+    check(#ran == 1 and ran[1][1] == sp and ran[1][2] == "shuffle" and ran[1][4] == nil and closed == 0
+        and #levelled == 1 and levelled[1][1] == sp and levelled[1][2] == "volume" and levelled[1][3] == 50,
+        "pressing a control does what the window's button did (House:run), a level through House:level, and the panel stays open; a key that can't be pressed does nothing")
+    Panel.Widget.press(w, get(P, "level60"))
+    Panel.Widget.press(w, get(C, "warmer"))
+    check(#levelled == 3 and levelled[2][2] == "brightness" and levelled[2][3] == 60 and levelled[3][2] == "target" and #ran == 1,
+        "a brightness and a thermostat's target are levels too")
     Panel.Widget.press(w, get(M, "close"))
     Panel.Widget.press(w, get(M, "music"))
-    check(closed == 2 and opened == sp and #ran == 2, "×: closed; Music…: the panel closes for Music Assistant's lists")
+    check(closed == 2 and opened == sp and #ran == 1, "×: closed; Music…: the panel closes for Music Assistant's lists")
     UIM.close = was_close
 
     -- when: the Bookshelf view (the other views keep the windows of buttons)
@@ -1512,6 +1519,66 @@ print("House tab (Home Assistant): connecting, rooms, switching, Settings, the p
             and HA.stateText(HA.entity({ i = "media_player.y", s = "idle" })) == "Idle" and HA.stateText(HA.entity({ i = "media_player.y", s = "standby" })) == "Off"
             and HA.stateText(HA.entity({ i = "media_player.y", s = "playing" })) == "Playing" and HA.action(HA.entity({ i = "media_player.y", s = "unavailable" })) == nil,
             "House: something of Music Assistant's needs its address; what a player's row says; an unavailable one does nothing")
+    end)()
+
+    -- a level pressed several times in a row (a panel's volume lights, − and +): shown at once, sent once
+    ;(function()
+        local Hs = require("gzreader_house")
+        local SP = "media_player.living_room_speaker"
+        local function vol() return hstate(SP).attributes.volume_level end
+        local function sets() local n = 0 for _i, l in ipairs(json.decode(hctl(HP, "GET", "/__state")).log) do if l:match("volume_set") then n = n + 1 end end return n end
+        local function timers(delay) local t = {} for f, d in pairs(UI.scheduled) do if d == delay then t[#t + 1] = f end end return t end
+        local function fire(delay) for _i, f in ipairs(timers(delay)) do UI.scheduled[f] = nil; f() end end
+        tab:refresh(false)
+        UI.scheduled = {}
+        local before, sent = vol(), sets()
+        local sp = HA.find(tab.house, SP)
+        tab:level(sp, "volume", 40)
+        tab:level(sp, "volume", 60)
+        tab:level(sp, "volume", 20)
+        check(HA.find(tab.house, SP).vol == 20 and vol() == before and sets() == sent and #timers(Hs.GATHER) == 1 and tab.held[SP].volume == 20,
+            "House tab: a volume pressed three times in a row: the screen has the last at once, nothing is sent yet, one timer waits for the presses to stop")
+        fire(Hs.GATHER)
+        check(vol() == 0.2 and sets() == sent + 1 and next(tab.levels) == nil and row("Speaker").mandatory ~= nil,
+            "House tab: …then Home Assistant is told once, the last one (the ones between are never sent)")
+        -- a press while the one before is still on its way: sent when that one is back
+        local key = SP .. "|volume"
+        tab.levels[key] = { id = SP, what = "volume", busy = true, sent = 20, want = 20 }
+        tab:level(HA.find(tab.house, SP), "volume", 70)
+        tab:level(HA.find(tab.house, SP), "volume", 50)
+        check(#timers(Hs.GATHER) == 0 and sets() == sent + 1 and HA.find(tab.house, SP).vol == 50,
+            "House tab: a press while an earlier one is on its way waits for it (never two at once for one device)")
+        tab:levelBack(key, {}, nil)
+        check(vol() == 0.5 and sets() == sent + 2 and next(tab.levels) == nil, "House tab: …and goes when it's back: the last press, once")
+        -- what was asked for stays on the screen while the player catches up
+        HA.find(tab.house, SP).vol = 10
+        tab:keepHeld()
+        Hs.client(tab.plugin):call("media_player", "volume_set", { entity_id = SP, volume_level = 0.9 })
+        tab:refresh(false)
+        check(HA.find(tab.house, SP).vol == 50 and vol() == 0.9, "House tab: a refresh that still has another volume doesn't move the lights back")
+        fire(Hs.HOLD)
+        check(tab.held[SP] == nil and HA.find(tab.house, SP).vol == 90, "House tab: a few seconds after the answer it's let go, and Home Assistant is believed again")
+        -- it couldn't be set: said once, nothing held
+        hctl(HP, "POST", "/__offline?on=1")
+        captured.info = nil
+        tab:level(HA.find(tab.house, SP), "volume", 30)
+        fire(Hs.GATHER)
+        hctl(HP, "POST", "/__offline?on=0")
+        check(tab.held[SP] == nil or tab.held[SP].volume == nil, "House tab: a level that couldn't be set isn't held on the screen")
+        check(next(tab.levels) == nil, "House tab: …and nothing waits behind it")
+        tab:refresh(false)
+        -- the same key pressed again before Home Assistant answered: once
+        tab.running = { [SP .. "|mute"] = {} }
+        local muted = hstate(SP).attributes.is_volume_muted
+        tab:run(HA.find(tab.house, SP), "mute")
+        check(hstate(SP).attributes.is_volume_muted == muted, "House tab: a key pressed again before Home Assistant answered the first press isn't sent twice")
+        tab.running = {}
+        -- brightness and a thermostat's target are levels; other things aren't
+        local lampe = HA.entity({ i = "light.x", s = "off", d = true })
+        check(HA.setLevel(lampe, "brightness", 40) and lampe.state == "on" and lampe.bri == 40 and HA.setLevel({}, "target", 21.5)
+            and HA.setLevel(lampe, "mute", 1) == false and HA.setLevel(nil, "volume", 10) == false and HA.setLevel(lampe, "volume", "x") == false,
+            "House: what counts as a level (a volume, a brightness, a target)")
+        UI.scheduled = {}
     end)()
 
     -- what Settings hides

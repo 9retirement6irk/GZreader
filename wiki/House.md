@@ -153,6 +153,11 @@ or Back closes it.
   lamp each that is lit when on; **Music…** and the power key. Only what
   the player can do is there.
 
+A level (a volume, a brightness, the thermostat's target) shows on the
+panel at once, and Home Assistant is told when you stop pressing: press a
+few lights or **+** several times and only the last is sent. What you asked
+for stays shown for a few seconds while the device catches up.
+
 On a Kindle with a keyboard each key carries a letter, and the 5-way moves
 a frame from control to control (that's how to reach the indicator lights);
 Press presses what's framed.
