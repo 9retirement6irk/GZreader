@@ -38,10 +38,26 @@ token can read. With another user's token the tab still works, grouped by kind
 
 ## What the tab shows
 
-In the **Bookshelf** view (quick panel → **View**) the tab is a wall, each
-room a stretch of it with its devices mounted there:
+In the **Bookshelf** view (quick panel → **View**) the tab is a wall with
+your devices mounted on it. With two rooms or more it starts in the
+**hallway**, and each room is behind its plate:
 
-<img src="https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/pw-house-wall.png" alt="The House tab as a wall of fittings on a Paperwhite" width="300"> <img src="https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/house-wall.png" alt="The same on a Kindle Keyboard, with a letter beside each fitting" width="300">
+<img src="https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/pw-house-wall.png" alt="The hallway on a Paperwhite: the home's thermostat, lock and garage door, and a plate for each room" width="300"> <img src="https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/house-wall.png" alt="A room on a Kindle Keyboard, with a letter beside each fitting" width="300">
+
+- **Home**: what belongs to the whole home rather than one room:
+  thermostats, locks, garage doors and gates. (They're in their rooms too.)
+- **Rooms**: a plate for each room. Its lever is up when a light is on
+  there, and beside it are how many of the room's lights are on, its
+  temperature and humidity, and what is playing there. Tapping the plate
+  (or its letter) opens the room. Things in no room are behind **Other**.
+- **Scenes**: the scenes' keypad.
+- **In a room**: its name on tape and all its fittings. A room with several
+  lights has **All lights** first: it turns every light in the room off
+  when any is on, and on when none is. The **‹ Home** sign, or the Back
+  key, returns to the hallway.
+
+With only one room, or a token that brings no rooms, everything is on the
+one wall, room after room. The fittings:
 
 - a room's name is on a strip of **label tape**, its devices in rows under
   it (four a row on a 6" Kindle, more on a bigger screen);
