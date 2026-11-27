@@ -12,6 +12,12 @@ local ffi = require("ffi")
 
 local Gzip = {}
 
+-- (GZreader's own names for zlib's functions, `__asm__` naming the real
+-- symbols: another plugin can declare inflateInit2_ & co. its own way, with
+-- its own z_stream type, and neither gets in the other's way. A plugin
+-- installed through ZenPM did, and every compressed reply failed: "bad
+-- argument #1 to 'inflateInit2_' (cannot convert 'struct gz_z_stream_s' to
+-- 'struct z_stream_s *')".)
 local ok_cdef = pcall(ffi.cdef, [[
 typedef struct gz_z_stream_s {
     const unsigned char *next_in; unsigned int avail_in; unsigned long total_in;
@@ -20,10 +26,10 @@ typedef struct gz_z_stream_s {
     void *zalloc; void *zfree; void *opaque;
     int data_type; unsigned long adler; unsigned long reserved;
 } gz_z_stream;
-int inflateInit2_(gz_z_stream *strm, int windowBits, const char *version, int stream_size);
-int inflate(gz_z_stream *strm, int flush);
-int inflateEnd(gz_z_stream *strm);
-const char *zlibVersion(void);
+int gz_zlib_inflateInit2_(gz_z_stream *strm, int windowBits, const char *version, int stream_size) __asm__("inflateInit2_");
+int gz_zlib_inflate(gz_z_stream *strm, int flush) __asm__("inflate");
+int gz_zlib_inflateEnd(gz_z_stream *strm) __asm__("inflateEnd");
+const char *gz_zlib_version(void) __asm__("zlibVersion");
 ]])
 
 local libz
@@ -39,7 +45,7 @@ local function lib()
     }
     for _i, t in ipairs(tries) do
         local ok, l = pcall(t)
-        if ok and l and pcall(function() return l.inflateInit2_ end) then libz = l; return l end
+        if ok and l and pcall(function() return l.gz_zlib_inflateInit2_ end) then libz = l; return l end
     end
     return nil
 end
@@ -53,7 +59,7 @@ function Gzip.inflate(data, max)
     local strm = ffi.new("gz_z_stream")
     strm.next_in = ffi.cast("const unsigned char *", data)
     strm.avail_in = #data
-    if z.inflateInit2_(strm, 15 + 32, z.zlibVersion(), ffi.sizeof("gz_z_stream")) ~= 0 then
+    if z.gz_zlib_inflateInit2_(strm, 15 + 32, z.gz_zlib_version(), ffi.sizeof("gz_z_stream")) ~= 0 then
         return nil, "inflateInit failed"
     end
     local chunk = math.max(65536, #data * 4)
@@ -64,19 +70,19 @@ function Gzip.inflate(data, max)
     repeat
         strm.next_out = buf
         strm.avail_out = chunk
-        ret = z.inflate(strm, 0)
+        ret = z.gz_zlib_inflate(strm, 0)
         if ret ~= 0 and ret ~= 1 then
-            z.inflateEnd(strm)
+            z.gz_zlib_inflateEnd(strm)
             return nil, "inflate error " .. tostring(ret)
         end
         parts[#parts + 1] = ffi.string(buf, chunk - strm.avail_out)
         total = total + chunk - strm.avail_out
         if max and total > max then
-            z.inflateEnd(strm)
+            z.gz_zlib_inflateEnd(strm)
             return nil, "too big"
         end
     until ret == 1 or (strm.avail_in == 0 and strm.avail_out ~= 0)
-    z.inflateEnd(strm)
+    z.gz_zlib_inflateEnd(strm)
     return table.concat(parts)
 end
 
@@ -89,7 +95,7 @@ function Gzip.inflateRaw(data, max)
     local strm = ffi.new("gz_z_stream")
     strm.next_in = ffi.cast("const unsigned char *", data)
     strm.avail_in = #data
-    if z.inflateInit2_(strm, -15, z.zlibVersion(), ffi.sizeof("gz_z_stream")) ~= 0 then
+    if z.gz_zlib_inflateInit2_(strm, -15, z.gz_zlib_version(), ffi.sizeof("gz_z_stream")) ~= 0 then
         return nil, "inflateInit failed"
     end
     local chunk = math.max(65536, #data * 4)
@@ -99,19 +105,19 @@ function Gzip.inflateRaw(data, max)
     repeat
         strm.next_out = buf
         strm.avail_out = chunk
-        ret = z.inflate(strm, 0)
+        ret = z.gz_zlib_inflate(strm, 0)
         if ret ~= 0 and ret ~= 1 then
-            z.inflateEnd(strm)
+            z.gz_zlib_inflateEnd(strm)
             return nil, "inflate error " .. tostring(ret)
         end
         parts[#parts + 1] = ffi.string(buf, chunk - strm.avail_out)
         total = total + chunk - strm.avail_out
         if max and total > max then
-            z.inflateEnd(strm)
+            z.gz_zlib_inflateEnd(strm)
             return nil, "too big"
         end
     until ret == 1 or (strm.avail_in == 0 and strm.avail_out ~= 0)
-    z.inflateEnd(strm)
+    z.gz_zlib_inflateEnd(strm)
     return table.concat(parts)
 end
 
