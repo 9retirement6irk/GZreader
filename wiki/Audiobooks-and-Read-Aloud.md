@@ -4,8 +4,8 @@ Listening on Kindles with a speaker or headphone jack (Kindle 2, 3, DX, Touch), 
 
 Catalog tab → **Audiobooks** page (swipe left from Books, or the page-turn
 button). It's laid out like the Books page: **Search audiobooks…** at the top
-(titles, authors and series, audiobooks only), two shelves with covers face
-out, **Continue listening** (what you've listened to on this Kindle, latest
+(titles, authors and series, audiobooks only), two shelves of cassettes facing
+out (each with its cover and title on the label), **Continue listening** (what you've listened to on this Kindle, latest
 first, then what Grimmory has in progress, with a ribbon and how far you
 are) and **Recently added**, each ending in a bundle that opens the whole
 list, then a bookcase with **All audiobooks**, **Authors**, **Shelves**,

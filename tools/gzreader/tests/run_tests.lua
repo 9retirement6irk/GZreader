@@ -2550,6 +2550,21 @@ print("Catalog: the Audiobooks page (search, All audiobooks, Authors, Shelves, S
     ab:openSection("audiobooks")
     check(abItem("ab_all").mandatory == "3 audiobooks" and abItem("ab_authors").mandatory == "2 · A–Z" and abItem("ab_series").mandatory == "2 series",
         "the page's cards count what's known (from the list Authors fetched)")
+    check(Browser.audioTotal({ total = 30 }, { total = 0 }, { totalElements = 20 }) == 30
+        and Browser.audioTotal(nil, { total = 0 }, { totalElements = 30 }) == 30
+        and Browser.audioTotal(nil, { total = 12 }, nil) == 12 and Browser.audioTotal(nil, nil, nil) == nil
+        and Browser.audioTotal({ total = 0 }, nil, { totalElements = 5 }) == 5,
+        "All audiobooks' count: the server's, else the most a saved list knows (an empty one from before the API key isn't \"0\")")
+    local nokey = setmetatable({ api = { listBooks = function() return { content = {}, totalPages = 0, totalElements = 0, gz_needs_key = true } end } }, { __index = Browser })
+    local nk_data, nk_err = nokey:fetchAllAudiobooks()
+    check(nk_data == nil and nk_err == "bookorbit_needs_key", "BookOrbit without its API key: the audiobooks aren't kept as none")
+    local ShopT = require("gzreader_bookshop")
+    check(ShopT.isTape({ primaryFileType = "AUDIOBOOK" }) and ShopT.isTape({ primaryFileType = "audiobook" }) and not ShopT.isTape({ primaryFileType = "EPUB" })
+        and not ShopT.isTape(nil), "the Audiobooks page's ledges: an audiobook is drawn as a cassette")
+    local shopsrc = io.open(PLUGIN .. "/gzreader_bookshop.lua"):read("*a")
+    check(shopsrc:find("if Shop.isTape(item.book) then", 1, true) and shopsrc:find("local r = Shop.paintTape(bb,", 1, true)
+        and shopsrc:find('Cache.put(require("gzreader_browser").savedKey(browser, "audio-count"), { total = res.total })', 1, true),
+        "…its cover and name on the label; the count kept from the page's own fetch")
     ab:openAudioSeries()
     local series = {}
     for _i, it in ipairs(m.item_table) do series[#series + 1] = it.text end
