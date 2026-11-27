@@ -883,7 +883,7 @@ function BookOrbit:listAudiobooks(params)
     local field = ({ title = "title", addedOn = "addedAt", lastReadTime = "lastReadAt" })[params.sort] or "title"
     local body = {
         sort = Json.list({ { field = field, dir = (params.dir == "desc") and "desc" or "asc" } }),
-        pagination = { page = page + 1, size = size },
+        pagination = { page = page, size = size }, -- (BookOrbit counts pages from 0, as GZreader does)
         filter = { type = "group", join = "AND", rules = Json.list({
             { type = "rule", field = "format", operator = "includesAny", value = Json.list(formats) } }) },
         q = s(params.search),

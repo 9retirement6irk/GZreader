@@ -150,6 +150,8 @@ BookOrbit keeps its audiobook routes apart from the e-reader sign-in, so audiobo
 
 Then the Catalog's Audiobooks page lists BookOrbit's audiobooks. Downloading, chapters and playing work as with Grimmory's; an interrupted download continues where it stopped. Where you stopped listening is sent to BookOrbit and, when you start an audiobook, taken from it if BookOrbit's place is more than a minute from the Kindle's.
 
+Which books count as audiobooks: every book with at least one audio file (M4B, MP3, M4A, FLAC, OGG or Opus), in any library the API key may see. A book with both an EPUB and audio files is on the Books pages as an ebook and on the Audiobooks page as an audiobook. A read-aloud EPUB on its own (narration inside the EPUB, no separate audio files) isn't an audiobook here: the Kindle can't play that narration, so it's a book, and BookOrbit sends it text-only unless you chose "Original EPUB with narration".
+
 The same key lets the Kindle change your **collections**: a book's menu gets *Add to shelf* and *Remove from shelf*, listing the collections that are yours (not ones shared with you). A change shows on the Kindle at once and is sent to BookOrbit when there's Wi-Fi. Without the key, collections can still be browsed and auto-downloaded; the menu says where to enter the key.
 
 ## Book requests

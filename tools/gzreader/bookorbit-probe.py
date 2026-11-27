@@ -261,7 +261,7 @@ def main():
     line("key: book requests", code, err or (code == 200 and "total %s; fields: %s" % (j.get("total"), items and ", ".join(keys(items[0])) or "-")
                                             or code == 403 and "the key (or the account) lacks \"Request books\"" or ""))
     audio = ["m4b", "mp3", "m4a", "flac", "ogg", "opus"]
-    query = {"sort": [{"field": "title", "dir": "asc"}], "pagination": {"page": 1, "size": 1},
+    query = {"sort": [{"field": "title", "dir": "asc"}], "pagination": {"page": 0, "size": 1},
              "filter": {"type": "group", "join": "AND", "rules": [
                  {"type": "rule", "field": "format", "operator": "includesAny", "value": audio + [f.upper() for f in audio]}]}}
     code, j, _, err = call(A, "/books/query", api, "POST", query)

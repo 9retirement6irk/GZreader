@@ -282,13 +282,15 @@ try:
     check(call("DELETE", state, API, raw=True)[0] == 204 and call("GET", state, API, raw=True)[1] == b"", "position cleared")
 
     # --- finding the audiobooks, and the probe script
-    q = {"sort": [{"field": "title", "dir": "asc"}], "pagination": {"page": 1, "size": 5},
+    q = {"sort": [{"field": "title", "dir": "asc"}], "pagination": {"page": 0, "size": 5},
          "filter": {"type": "group", "join": "AND", "rules": [{"type": "rule", "field": "format", "operator": "includesAny", "value": ["MP3"]}]}}
     code, j = call("POST", "/api/v1/books/query", API, q)
     check(code == 201 and j["total"] == 1 and j["items"][0]["id"] == 201, "books/query finds the audiobook by format")
     q["filter"]["rules"][0]["value"] = ["epub"]
     check(call("POST", "/api/v1/books/query", API, q)[1]["total"] == 0, "books/query: no audio format, no audiobook")
     check(call("POST", "/api/v1/books/query", API, {"page": 1})[0] == 400, "books/query needs sort and pagination")
+    q2 = dict(q, pagination={"page": 1, "size": 5})
+    check(call("POST", "/api/v1/books/query", API, q2)[1]["items"] == [], "books/query counts pages from 0: page 1 is the second")
     call("POST", "/_mock/set", body={"api_key_write": False})
     check(call("POST", "/api/v1/books/query", API, q)[0] == 201, "a read-only key can run books/query")
     call("POST", "/_mock/set", body={"api_key_write": True})
