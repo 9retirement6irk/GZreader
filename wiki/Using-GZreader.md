@@ -23,7 +23,8 @@ keep each tile under an inch wide (seven on a Scribe, eight turned sideways).
 - **This book** (while reading): Sync with Grimmory, Contents, Bookmark,
   Bookmarks, Go to page, Search book, Font (the list of fonts), Layout (size,
   margins, spacing: KOReader's bottom panel), Fit pictures, Read aloud,
-  **Quick note** while [Memos](Notes) is connected, and Music and Audiobook
+  **Quick note** and **Mark up** (draw on the page, kept as a note) while
+  [Memos](Notes) is connected, and Music and Audiobook
   while one plays or is paused.
 
 On a touch Kindle with a frontlight the panel also has a light slider (the swipe that opens the panel leaves the light alone; tap or

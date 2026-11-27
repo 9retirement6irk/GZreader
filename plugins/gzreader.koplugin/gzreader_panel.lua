@@ -225,6 +225,7 @@ function Panel.catalog()
             { id = "fitpictures", label = _("Fit pictures"), note = _("EPUBs") },
             { id = "readaloud", label = _("Read aloud"), available = Touch.tts },
             { id = "note", label = _("Quick note"), note = _("while Memos is connected") },
+            { id = "markup", label = _("Mark up"), note = _("draw on the page, kept in Memos with the book and chapter; touch Kindles, while Memos is connected") },
             { id = "split", label = _("Notes"), note = _("beside the book, on big screens, while Memos is connected"),
                 available = function() return require("gzreader_splitview").available() end },
             { id = "music", label = _("Music"), note = _("while it plays"), available = Touch.player },
@@ -572,6 +573,9 @@ function Panel.bookTiles(plugin, ui)
         list[#list + 1] = { id = "readaloud", icon = "readaloud", label = _("Read aloud"), on = tts.active == true, run = function() tts:toggle() end }
     end
     list[#list + 1] = quickNoteTile(plugin)
+    -- (the page as a drawing's background, the markup kept in Memos: gzreader_bookmarkup.lua)
+    local okm, BookMarkup = pcall(require, "gzreader_bookmarkup")
+    if okm then list[#list + 1] = BookMarkup.tile(plugin, ui) end
     -- (a big screen: the book in one half, a page for notes in the other)
     list[#list + 1] = require("gzreader_splitview").tile(plugin)
     list[#list + 1] = musicTile(plugin)

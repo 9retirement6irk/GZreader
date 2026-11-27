@@ -3240,6 +3240,8 @@ function Notes.edit(plugin, memo, opts)
             or (opts and opts.markup_pages ~= nil)) and Notes.canDraw(plugin),
         -- Draw (a new note): after Done, the New drawing window (title, tags, Save)
         new_drawing = memo == nil and opts and opts.draw or nil,
+        -- a book's page marked up: its name (the book and chapter); Done saves it with the top bar's tags
+        markup_title = memo == nil and opts and opts.markup_title or nil,
         -- a note that's only a drawing, tapped: its drawing screen, named and tagged there; Done saves and closes
         drawing_note = memo ~= nil and opts and opts.drawing_note or nil,
         on_save = function(content, visibility, vis_changed, space, space_changed, drawings, photos, atts)

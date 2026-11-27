@@ -18400,6 +18400,94 @@ if os.getenv("GZ_SYNC_DUMP") and require("lfs").attributes(os.getenv("GZ_SYNC_DU
     end)()
 end
 
+print("Mark up a book's page: the page as a drawing's background, the note in Memos")
+;(function()
+    local BM = require("gzreader_bookmarkup")
+    check(BM.title("Moby-Dick", "Chapter 36. The Quarter-Deck") == "Moby-Dick — Chapter 36. The Quarter-Deck"
+        and BM.title("Moby-Dick", nil) == "Moby-Dick" and BM.title(nil, "  ") == "A book" and BM.title("A\nB", " Ch 1 ") == "A B — Ch 1",
+        "the drawing's name: the book and the chapter (what's known)")
+    -- the page
+    local paging = { paging = { current_page = 7 }, document = { getPageCount = function() return 20 end } }
+    local rolling = { document = { getCurrentPage = function() return 41 end, getPageCount = function() return 250 end } }
+    local p1, t1 = BM.pageOf(paging)
+    local p2, t2 = BM.pageOf(rolling)
+    check(p1 == 7 and t1 == 20 and p2 == 41 and t2 == 250, "the page shown: a PDF's, or a flowing book's")
+    -- the tile: only when Memos is connected and the Kindle draws
+    local Notes = require("gzreader_notes")
+    local was_can, was_edit = BM.canDraw, Notes.edit
+    BM.canDraw = function() return false end
+    local ui = { document = rolling.document, view = {}, doc_props = { display_title = "Moby-Dick", authors = "Herman Melville" },
+        toc = { getTocTitleByPage = function(_t, pg) return pg == 41 and "Chapter 36. The Quarter-Deck" or nil end } }
+    check(BM.tile(plugin, ui) == nil, "no drawing here (Memos not connected, or a Kindle without touch): no tile")
+    BM.canDraw = function() return true end
+    local tile = BM.tile(plugin, ui)
+    check(tile and tile.id == "markup" and tile.icon == "markup" and tile.label == "Mark up"
+        and io.open(PLUGIN .. "/icons/panel/markup.svg") ~= nil, "Memos connected on a touch Kindle: Mark up, with its icon")
+    -- tapped: the page taken, the drawing screen opened on it in a new note
+    local was_snap, was_scene = BM.snapshot, require("gzreader_pdfmarkup").scene
+    local shot
+    BM.snapshot = function(_u, path) shot = path; local f = io.open(path, "wb"); f:write("png"); f:close(); return 600, 800, false end
+    require("gzreader_pdfmarkup").scene = function(path, w, h) return { from = path, w = w, h = h } end
+    local opened
+    Notes.edit = function(_p, memo, opts) opened = { memo = memo, opts = opts } end
+    tile.run()
+    local pg = opened and opened.opts.markup_pages[1]
+    check(opened and opened.memo == nil and pg and pg.new and pg.modified and pg.scene.w == 600 and pg.scene.from == shot and pg.book_page == 41
+        and io.open(shot) == nil, "tapped: the page becomes a new note's first drawing page (the picture made on the way removed)")
+    check(opened.opts.markup_title == "Moby-Dick — Chapter 36. The Quarter-Deck" and opened.opts.content_with == nil,
+        "…named for the book and the chapter the page is in")
+    BM.snapshot = function() return nil, "no screen" end
+    local shown = {}
+    local UIM = require("ui/uimanager")
+    local was_show, was_im = UIM.show, package.loaded["ui/widget/infomessage"]
+    package.loaded["ui/widget/infomessage"] = { new = function(_c, o) return o end }
+    UIM.show = function(_s, w) shown[#shown + 1] = w end
+    opened = nil
+    tile.run()
+    check(BM.start(plugin, ui) == false and opened == nil and #shown == 2 and shown[1].text == "Couldn't take this page.", "the page couldn't be taken: said so, nothing opened")
+    UIM.show, package.loaded["ui/widget/infomessage"] = was_show, was_im
+    BM.snapshot, require("gzreader_pdfmarkup").scene = was_snap, was_scene
+    -- Notes.edit: the editor opens straight on the drawing, named, Done saving it (no text after); no Paper icon
+    Notes.edit = was_edit
+    local NE = require("gzreader_noteeditor")
+    local was_show_ne = NE.show
+    local got
+    NE.show = function(o) got = o end
+    local queued
+    local was_enqueue, was_soon, was_reload = Notes.enqueue, Notes.sendSoon, Notes.reloadBoard
+    Notes.enqueue = function(_p, q) queued = q; q.id = "q1"; return q end
+    Notes.sendSoon, Notes.reloadBoard = function() end, function() end
+    Notes.edit(plugin, nil, { markup_pages = {}, markup_title = "T — Ch 1" })
+    check(got and got.markup_title == "T — Ch 1", "…the editor is given the drawing's name")
+    got.on_save("# T — Ch 1\n\n#reading", "PRIVATE", false, nil, false, nil, nil, nil)
+    check(queued and queued.op == "create" and queued.content == "# T — Ch 1\n\n#reading", "saved: the note is the drawing's name and the tags chosen")
+    NE.show = was_show_ne
+    local nesrc = io.open(PLUGIN .. "/gzreader_noteeditor.lua"):read("*a")
+    check(nesrc:find("if opts.markup_title and e.drawing_first then", 1, true) and nesrc:find("e.popup_only, e.covers_fullscreen = true, false", 1, true)
+        and nesrc:find("no_paper = self.markup_title ~= nil or nil", 1, true), "…opened as a new drawing is: Done saves with the top bar's name and tags")
+    local DSm = require("gzreader_drawscreen")
+    local function has(list, id) for _i, t in ipairs(list) do if t.id == id then return true end end return false end
+    check(has(DSm.topIcons({}), "paper") and not has(DSm.topIcons({ no_paper = true }), "paper"), "…no Paper icon (the book's page is the paper)")
+    Notes.enqueue, Notes.sendSoon, Notes.reloadBoard = was_enqueue, was_soon, was_reload
+    BM.canDraw = was_can
+    local Touch = require("gzreader_touch")
+    local was_on, was_keys = Touch.on, Touch.keys
+    Touch.on, Touch.keys = function() return true end, function() return false end
+    local mstore = { server = "https://memos.example.com", token = "t" }
+    local with_memos = { store = { memos = mstore } }
+    local connected = require("gzreader_memos"):new(mstore):isConnected()
+    check(BM.canDraw(with_memos) == connected and BM.canDraw({ store = {} }) == false, "it asks the Memos connection, without loading the Notes tab")
+    Touch.keys = function() return true end
+    check(BM.canDraw(with_memos) == false, "…a Kindle with a keyboard: no")
+    Touch.on, Touch.keys = was_on, was_keys
+    -- the quick panel lists it
+    local found = false
+    for _i, g in ipairs(require("gzreader_panel").catalog()) do
+        if g.id == "book" then for _j, t in ipairs(g.tiles) do if t.id == "markup" then found = true end end end
+    end
+    check(found, "Settings → Quick panel lists Mark up under This book")
+end)()
+
 print("Immich: an album's pictures for the sleep screen and the Home wallpaper")
 ;(function()
     local Immich = require("gzreader_immich")
