@@ -124,22 +124,43 @@ In BookOrbit's **Settings → Devices → KOReader**, for the sync sign-in the K
 |---|---|---|
 | **Progress sync** | **on** | off, the Kindle can't sign in at all |
 | **Hide audiobook-only books** | either | GZreader leaves audiobook-only books out of its book lists anyway and lists audiobooks through the API key. On (BookOrbit's default) makes the book lists a little quicker to fetch |
-| **Read-aloud EPUB delivery** | **Original EPUB with narration** on a Kindle with sound (Scribe, Paperwhite 5 and newer over Bluetooth; Kindle 2, 3, DX, Touch with a headphone socket) to hear the narration; otherwise **Automatic** (BookOrbit's default) or **Text-only EPUB** | a Kindle with sound plays a read-along book's own narration, the sentence highlighted (Quick panel → **Narration**, see below). The original files are much bigger. Automatic sends the text-only copy when it can and the original otherwise; Text-only refuses a book it can't make a safe copy of |
+| **Read-aloud EPUB delivery** | **Original EPUB with narration** on a Kindle with sound (Scribe, Paperwhite 5 and newer over Bluetooth; Kindle 2, 3, DX, Touch with a headphone socket) to hear the narration; otherwise **Automatic** (BookOrbit's default) or **Text-only EPUB** | a Kindle with sound plays a read-along book's own narration, the sentence highlighted (Quick panel → **Read aloud**, see below). Whatever is set here, downloading a read-along book asks **Narrated book** or **Book only**. The original files are much bigger. Automatic sends the text-only copy when it can and the original otherwise; Text-only refuses a book it can't make a safe copy of |
 
 When the Kindle makes the sync sign-in itself (signing in with just an API key, on an account with none), it sends only a user name and a password, so these stay on BookOrbit's defaults: Progress sync on, audiobook-only books hidden, delivery Automatic. It never changes a sign-in that exists: those settings are shared with your other e-readers. If the key can see the sign-in and delivery is set to Original, the setup page says so and where to change it.
 
 ## Read-along books: the narration
 
-A narrated EPUB (BookOrbit's read-along books sent as the original, or any
-EPUB 3 with "media overlays") plays its own narration on a Kindle with
-sound: in the book, **Quick panel → Narration → Play from this page**. The
-sentence being read is highlighted and the pages turn with it; **Pause**,
-**Resume** and **Stop** are in the same place, and closing the book stops
-it. The narration's audio is copied out of the book the first time it
-plays, into GZreader's cache; a book's audio not played for 60 days is
-removed, and the oldest go first when the cache is over 2 GB. MP3
-narration plays; the audio test (Settings → Audio → Test audiobook
-playback) has to have found a player for MP3 on Kindles without Bluetooth.
+A narrated EPUB (BookOrbit's read-along books sent with their narration, or
+any EPUB 3 with "media overlays") plays its own narration on a Kindle with
+sound.
+
+- **Downloading one** (from its page or the Catalog) asks **Narrated book**
+  (with its size) or **Book only** (the text and pictures: much smaller;
+  its size shows once BookOrbit has made that copy).
+- **Opening one** asks **Read**, **Read with narration** or **Listen as
+  audiobook**:
+  - *Read with narration*: the book, its narration playing from where you
+    are, the sentence being read highlighted and the pages turning with it.
+  - *Listen as audiobook*: the audiobook player, with the book's chapters,
+    the sleep timer and the cover. If BookOrbit's audiobook of the same
+    book is downloaded, that plays; otherwise the book's own narration,
+    copied out of it once (nothing to download; it then shows in
+    Downloads → Audiobooks too). It starts where the narration was; opening
+    the book after listening goes to where the audiobook was.
+- **In the book**, the quick panel's **Read aloud** plays the narration from
+  this page (tap again to stop). Books without narration are read aloud with
+  the Kindle's voice, as before; Settings → Audio → **Narrated books** can
+  read narrated books with the Kindle's voice too, and turn the question
+  off (they then open as books).
+- **On Home**, Recently read on every device shows a book and its BookOrbit
+  audiobook once; tapped, it asks Read or Listen (or, when the narrated book
+  is on the Kindle, the three choices above).
+
+The narration's audio is copied out of the book the first time it plays,
+into GZreader's cache; a book's audio not played for 60 days is removed,
+and the oldest go first when the cache is over 2 GB. MP3 narration plays;
+the audio test (Settings → Audio → Test audiobook playback) has to have
+found a player for MP3 on Kindles without Bluetooth.
 
 ## Signing in with just an API key
 

@@ -138,7 +138,8 @@ function Download.start(plugin, book, dest_path, on_done, from_queue, token_read
         require("gzreader_async").lowerPriority(require("gzreader_async").NICE) -- (page turns first)
         -- Child: never refresh or persist tokens here (see header).
         api.no_refresh = true
-        local dl_ok, dl_err = api:downloadToFile(book.id, part, true)
+        -- (BookOrbit: a narrated book with or without its narration, as chosen: gzreader_narratedopen.lua)
+        local dl_ok, dl_err = api:downloadToFile(book.id, part, true, book.gz_variant)
         local sub = ""
         if dl_ok then
             -- the subtitle ("Diary of a Wimpy Kid: Old School") isn't in the app API's lists

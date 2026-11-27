@@ -4,8 +4,10 @@ read-along books BookOrbit can send with their audio, or any EPUB 3 made
 that way) plays its narration in the reader, with the sentence being read
 highlighted and the pages turning by themselves.
 
-- Quick panel → Narration (shown in a book that has narration): Play from
-  this page, Pause / Resume, Stop.
+- Quick panel → Read aloud, in a book that has narration: its own
+  narration from this page (tap again: stop), instead of the Kindle's voice
+  (Settings → Audio → Narrated books chooses). Opening such a book asks
+  Read / Read with narration / Listen as audiobook (gzreader_narratedopen.lua).
 - The book's SMIL files say which part of which audio file reads which
   sentence (a <par> with a <text src="chapter.xhtml#id"> and an
   <audio src clipBegin clipEnd>). Only those and the book's OPF are read;
@@ -15,8 +17,9 @@ highlighted and the pages turning by themselves.
 - The cache: a book's audio not played for 60 days is removed, and the
   oldest go first when it's over 2 GB (Narration.prune, at each start).
 - BookOrbit leaves the narration out of a book sent to KOReader unless asked
-  for the original file (its read-along books); a book without it simply
-  has no Narration tile.
+  for the original file (its read-along books); downloading one asks which
+  (gzreader_narratedopen.lua). A book without narration is read aloud with
+  the Kindle's voice.
 ]]
 
 local Log = require("gzreader_log")
@@ -91,6 +94,7 @@ function Narration.parseOpf(xml, opf_path)
         local a = attrs(tag)
         if a.id and a.href then
             items[a.id] = { href = Narration.resolve(opf_path, unescape(a.href)), type = a["media-type"], overlay = a["media-overlay"] }
+            if (a.properties or ""):match("nav") then items._nav = items[a.id].href end
         end
     end
     local spine = {}
@@ -103,7 +107,21 @@ function Narration.parseOpf(xml, opf_path)
             spine[#spine + 1] = { href = it.href, smil = ov and ov.href or nil, index = #spine }
         end
     end
+    spine.nav = items._nav
     return spine
+end
+
+--- The contents' titles of an EPUB 3 nav document: { [chapter path] = title }
+--- (the first link to each file).
+function Narration.parseNav(xml, nav_path)
+    local out = {}
+    local toc = (xml or ""):match("<[%w:]*nav[^>]-toc.-</[%w:]*nav>") or xml or ""
+    for href, text in toc:gmatch('<a[^>]-href%s*=%s*"([^"]+)"[^>]*>(.-)</a>') do
+        local file = Narration.resolve(nav_path, unescape(href))
+        local title = unescape((text:gsub("<[^>]+>", ""):gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")))
+        if out[file] == nil and title ~= "" then out[file] = title end
+    end
+    return out
 end
 
 --- A SMIL file's sentences, in order: { file (the chapter's path), id, audio
@@ -191,6 +209,8 @@ function Narration.load(path)
         local function read(name) return name and r:extractToMemory(name) or nil end
         local opf = Narration.parseContainer(read("META-INF/container.xml"))
         local spine = opf and Narration.parseOpf(read(opf), opf) or {}
+        local titles = spine.nav and Narration.parseNav(read(spine.nav), spine.nav) or {}
+        for _i, s in ipairs(spine) do s.title = titles[s.href] end
         local smils, any = {}, false
         for _i, s in ipairs(spine) do
             if s.smil and not smils[s.smil] then
@@ -202,6 +222,7 @@ function Narration.load(path)
         if not any then return nil end
         local b = Narration.build(spine, smils)
         b.path = path
+        b.spine = spine
         return b
     end)
     if not ok then Log.warn("narration: the book couldn't be read:", tostring(book)) end
@@ -209,6 +230,53 @@ function Narration.load(path)
     Narration.books[path] = book or false
     if book then Log.info("narration: the book has", #book.pars, "narrated sentences") end
     return book
+end
+
+--- Whether the EPUB at `path` has narration, from its zip's list of files
+--- alone (a .smil file in it): a few KB read, whatever the book's size. nil
+--- when it can't be told.
+function Narration.quickCheck(path)
+    if type(path) ~= "string" or not path:lower():match("%.epub$") then return false end
+    local lfs = require("libs/libkoreader-lfs")
+    local attr = lfs.attributes(path)
+    if not attr or attr.mode ~= "file" then return false end
+    local key = path .. "|" .. tostring(attr.size) .. "|" .. tostring(attr.modification)
+    Narration.checked = Narration.checked or {}
+    if Narration.checked[key] ~= nil then return Narration.checked[key] end
+    local f = io.open(path, "rb")
+    if not f then return nil end
+    local yes = nil
+    pcall(function()
+        local size = attr.size
+        local tail = math.min(size, 66000)
+        f:seek("set", size - tail)
+        local data = f:read(tail) or ""
+        local at = nil
+        local i = #data - 21
+        while i >= 1 do
+            if data:sub(i, i + 3) == "PK\5\6" then at = i; break end
+            i = i - 1
+        end
+        if not at then return end
+        local function u16(str, o) local a, b = str:byte(o, o + 1); return a + b * 256 end
+        local function u32(str, o) local a, b, c, d = str:byte(o, o + 3); return a + b * 256 + c * 65536 + d * 16777216 end
+        local count, cd_size, cd_at = u16(data, at + 10), u32(data, at + 12), u32(data, at + 16)
+        if cd_size > 8 * 1024 * 1024 then return end
+        f:seek("set", cd_at)
+        local cd = f:read(cd_size) or ""
+        local o = 1
+        yes = false
+        for _n = 1, count do
+            if cd:sub(o, o + 3) ~= "PK\1\2" then break end
+            local nlen, elen, clen = u16(cd, o + 28), u16(cd, o + 30), u16(cd, o + 32)
+            local name = cd:sub(o + 46, o + 45 + nlen)
+            if name:lower():match("%.smil$") then yes = true; break end
+            o = o + 46 + nlen + elen + clen
+        end
+    end)
+    f:close()
+    Narration.checked[key] = yes
+    return yes
 end
 
 --- The book open in `ui` has narration.
@@ -234,6 +302,9 @@ end
 --- first time; nil when it can't be.
 function Narration.audioFile(book, audio)
     local lfs = require("libs/libkoreader-lfs")
+    -- (the book made into an audiobook already has it: gzreader_narratedopen.lua)
+    local okl, there = pcall(function() return require("gzreader_narratedopen").copiedAudio(book.path, audio) end)
+    if okl and there then return there end
     local dir = bookDir(book.path)
     local name = audio:gsub("[^%w%._%-]", "_")
     local out = dir .. "/" .. name
@@ -259,6 +330,19 @@ function Narration.audioFile(book, audio)
     local f = io.open(dir .. "/.used", "w")
     if f then f:write(tostring(os.time())); f:close() end
     return out
+end
+
+--- The narration's copy of a book's audio removed (the audiobook made from
+--- the book has its own, which the narration then plays).
+function Narration.forgetCopy(path)
+    local lfs = require("libs/libkoreader-lfs")
+    local dir = bookDir(path)
+    if lfs.attributes(dir, "mode") ~= "directory" then return false end
+    for file in lfs.dir(dir) do
+        if file ~= "." and file ~= ".." then os.remove(dir .. "/" .. file) end
+    end
+    lfs.rmdir(dir)
+    return true
 end
 
 --- The cache trimmed: books not played for KEEP_DAYS removed, then the
@@ -345,6 +429,8 @@ function Player:firstOnPage()
 end
 
 function Player:highlight(p)
+    -- (the place, for the audiobook made from the book: gzreader_narratedopen.lua)
+    pcall(function() require("gzreader_narratedopen").noteSentence(self.book.path, self.i) end)
     local doc = self.ui.document
     local xp = self:xpOf(p)
     if not xp then return end
@@ -472,47 +558,78 @@ end
 
 function Narration.stop(why) if Narration.current then Narration.current:stop(why) end end
 
----------------------------------------------------------------- the quick panel
+---------------------------------------------------------------- read aloud
 
---- Its tile in a book with narration (nil otherwise).
-function Narration.tile(plugin, ui)
-    if not Narration.available(ui) then return nil end
-    local _ = require("gettext")
-    local cur = Narration.current
-    local playing = cur and cur.ui == ui and cur.playing and not cur.paused_at
-    return { id = "narration", icon = "narration", label = playing and _("Narration ▶") or _("Narration"), on = playing == true,
-        run = function() Narration.menu(ui) end }
+--- Narrated books are read aloud with their own narration (the default), or
+--- with the Kindle's voice (Settings → Audio → Narrated books).
+Narration.VOICE = "gzreader_narrated_voice"
+Narration.OPEN = "gzreader_narrated_open" -- "read": open without asking (gzreader_narratedopen.lua)
+function Narration.useNarration(settings)
+    settings = settings or G_reader_settings
+    return settings:readSetting(Narration.VOICE) ~= "kindle"
 end
 
-function Narration.menu(ui)
+--- The narration, when the quick panel's Read aloud is for it here (a narrated
+--- book, a Kindle with sound, narration chosen): true.
+function Narration.forReadAloud(ui)
+    local ok, Touch = pcall(require, "gzreader_touch")
+    if not (ok and Touch.player()) or not Narration.useNarration() then return false end
+    return Narration.available(ui)
+end
+
+local function couldnt(why, fmt)
     local _ = require("gettext")
-    local ButtonDialog = require("ui/widget/buttondialog")
+    local T = require("ffi/util").template
+    local text = why == "player" and T(_("No player has been found for %1 audio on this Kindle yet: run Settings → Audio → Test audiobook playback first."), (fmt or "?"):upper())
+        or _("The narration couldn't be played (its audio couldn't be copied out of the book).")
+    UIManager():show(require("ui/widget/infomessage"):new{ text = text })
+end
+Narration.couldnt = couldnt
+
+--- Read aloud's tap in a narrated book: the narration from this page, or stopped.
+function Narration.toggle(ui)
     local cur = Narration.current
-    local d
-    local function close() UIManager():close(d) end
-    local buttons = {}
-    buttons[#buttons + 1] = { { text = _("Play from this page"), callback = function()
-        close()
-        local ok, why, fmt = Narration.play(ui)
-        if not ok then
-            local InfoMessage = require("ui/widget/infomessage")
-            local T = require("ffi/util").template
-            local text = why == "player" and T(_("No player has been found for %1 audio on this Kindle yet: run Settings → Audio → Test audiobook playback first."), (fmt or "?"):upper())
-                or _("The narration couldn't be played (its audio couldn't be copied out of the book).")
-            UIManager():show(InfoMessage:new{ text = text })
-        end
-    end } }
-    if cur and cur.playing then
-        if cur.paused_at then
-            buttons[#buttons + 1] = { { text = _("Resume"), callback = function() close(); cur:resume() end } }
-        else
-            buttons[#buttons + 1] = { { text = _("Pause"), callback = function() close(); cur:pause() end } }
-        end
-        buttons[#buttons + 1] = { { text = _("Stop"), callback = function() close(); cur:stop("stopped by you") end } }
+    if cur and cur.playing and cur.ui == ui then
+        cur:stop("stopped by you")
+        return false
     end
-    d = ButtonDialog:new{ title = _("Narration"), buttons = buttons }
-    UIManager():show(d)
-    return d
+    local ok, why, fmt = Narration.play(ui)
+    if not ok then couldnt(why, fmt) end
+    return ok
+end
+
+--- Whether the narration is playing in `ui`.
+function Narration.playingIn(ui)
+    local cur = Narration.current
+    return cur ~= nil and cur.playing == true and cur.ui == ui
+end
+
+--- Settings → Audio: its row.
+function Narration.settingsItem()
+    local _ = require("gettext")
+    local T = require("ffi/util").template
+    local function name()
+        if Narration.useNarration() then return _("their own narration") end
+        return _("the Kindle's voice")
+    end
+    local function ask() return G_reader_settings:readSetting(Narration.OPEN) ~= "read" end
+    return {
+        text_func = function() return T(_("Narrated books: %1"), name()) end,
+        help_text = _("A book with its own narration (an EPUB 3 read-along book, such as BookOrbit's) is read aloud with that narration, the sentence being read highlighted; or with the Kindle's voice, as other books are."),
+        sub_item_table = {
+            { text = _("Read aloud with their own narration"), radio = true,
+              checked_func = function() return Narration.useNarration() end,
+              callback = function() G_reader_settings:delSetting(Narration.VOICE) end },
+            { text = _("Read aloud with the Kindle's voice"), radio = true,
+              checked_func = function() return not Narration.useNarration() end,
+              callback = function() G_reader_settings:saveSetting(Narration.VOICE, "kindle") end, separator = true },
+            { text = _("Ask how to open them (read, with narration, or listen)"),
+              checked_func = ask,
+              callback = function()
+                  if ask() then G_reader_settings:saveSetting(Narration.OPEN, "read") else G_reader_settings:delSetting(Narration.OPEN) end
+              end },
+        },
+    }
 end
 
 return Narration

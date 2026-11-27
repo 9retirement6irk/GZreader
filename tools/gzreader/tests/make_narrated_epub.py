@@ -4,7 +4,8 @@
   make_narrated_epub.py <narration.mp3> <out.epub>
 
 Two chapters of four sentences each; each sentence is a <span id> that a
-SMIL file ties to three seconds of the MP3 (chapter 2 to the same audio).
+SMIL file ties to three seconds of the MP3 (24 s: chapter 1 the first half,
+chapter 2 the second).
 The OPF marks the chapters' media-overlay and the total duration, as a
 narrated EPUB from BookOrbit (or any EPUB 3 read-along book) does.
 """
@@ -31,7 +32,7 @@ def smil(n, count):
     pars = "".join(
         '<par id="p%d"><text src="../text/ch%d.xhtml#c%ds%d"/>'
         '<audio src="../audio/narration.mp3" clipBegin="%s" clipEnd="%s"/></par>'
-        % (i + 1, n, n, i + 1, "0:00:%02d.000" % (3 * i), "%ds" % (3 * (i + 1)))
+        % (i + 1, n, n, i + 1, "0:00:%02d.000" % (12 * (n - 1) + 3 * i), "%ds" % (12 * (n - 1) + 3 * (i + 1)))
         for i in range(count))
     return ('<?xml version="1.0" encoding="utf-8"?>\n<smil xmlns="http://www.w3.org/ns/SMIL" '
             'xmlns:epub="http://www.idpf.org/2007/ops" version="3.0"><body>'

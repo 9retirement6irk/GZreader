@@ -222,7 +222,6 @@ function Panel.catalog()
             { id = "searchbook", label = _("Search book") },
             { id = "font", label = _("Font"), note = _("books that reflow") },
             { id = "layout", label = _("Layout") },
-            { id = "narration", label = _("Narration"), note = _("narrated EPUBs (EPUB 3 read-along books)"), available = Touch.player },
             { id = "fitpictures", label = _("Fit pictures"), note = _("EPUBs") },
             { id = "readaloud", label = _("Read aloud"), available = Touch.tts },
             { id = "storyguide", label = _("Story guide"), note = _("people, places, terms and what's happened, made from the book's text by your AI service; with an AI key") },
@@ -566,18 +565,19 @@ function Panel.bookTiles(plugin, ui)
         list[#list + 1] = { id = "font", icon = "font", label = _("Font"), run = function() Panel.showFonts(ui) end }
     end
     list[#list + 1] = { id = "layout", icon = "layout", label = _("Layout"), run = function() Panel.showLayout(ui) end }
-    -- (a narrated EPUB: its own narration, the sentence highlighted: gzreader_narration.lua)
-    if Touch.player() then
-        local okn, nt = pcall(function() return require("gzreader_narration").tile(plugin, ui) end)
-        if okn and nt then list[#list + 1] = nt end
-    end
     if ui.document and not ui.document.info.has_pages and ui.styletweak then
         local PB = require("gzreader_picturebook")
         local item = PB.menuItem(ui)
         list[#list + 1] = { id = "fitpictures", icon = "fitpictures", label = _("Fit pictures"), on = PB.isOn(ui) == true, run = item.callback }
     end
     local tts = plugin.tts
-    if tts and tts:supported() then
+    -- (a narrated book: Read aloud plays its own narration, the sentence highlighted: gzreader_narration.lua)
+    local okn, narrated = pcall(function() return require("gzreader_narration").forReadAloud(ui) end)
+    if okn and narrated then
+        local N = require("gzreader_narration")
+        list[#list + 1] = { id = "readaloud", icon = "readaloud", label = _("Read aloud"), on = N.playingIn(ui),
+            run = function() N.toggle(ui) end }
+    elseif tts and tts:supported() then
         list[#list + 1] = { id = "readaloud", icon = "readaloud", label = _("Read aloud"), on = tts.active == true, run = function() tts:toggle() end }
     end
     -- (people, places, terms and what's happened so far, from the book's text: gzreader_storyguide.lua)

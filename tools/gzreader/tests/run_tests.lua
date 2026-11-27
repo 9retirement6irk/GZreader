@@ -5576,8 +5576,8 @@ do
     local d = texts(gen.diagnostics)
     check(d:match("|Diagnostic logging|Send debug reports automatically|Report a problem|Send diagnostic log to a browser %(QR code%)|Save diagnostic log %(USB%)|"),
         "Privacy and diagnostics: logging, automatic debug reports, Report a problem, send to a browser and save the log (no usage statistics) " .. d)
-    check(texts(plugin:sectionItems("reader")) == "|Read aloud|Test audiobook playback|Pause when headphones are unplugged|Find the headphone jack|",
-        "Audio: Read aloud, Test audiobook playback, the headphones (laying out new books is in Performance)")
+    check(texts(plugin:sectionItems("reader")) == "|Read aloud|Test audiobook playback|Narrated books: their own narration|Pause when headphones are unplugged|Find the headphone jack|",
+        "Audio: Read aloud, Test audiobook playback, Narrated books, the headphones (laying out new books is in Performance)")
     check(texts(plugin:sectionItems("interface")) == "||", "a Kindle: nothing for Display and light (Pre-size covers is in Performance)")
     local perf = texts(plugin:sectionItems("performance"))
     check(perf:match("^|Pre%-size covers|") and perf:match("|Keep connections open %(experimental%)|$"),
@@ -5658,8 +5658,8 @@ do
     Device.model = "KindleTouch"
     Device.hasKeys = function() return true end -- (its Home button)
     check(Touch.on() and Touch.audio() and Touch.tts() and not Touch.dpad(), "Kindle Touch: touch, audiobooks, read aloud")
-    check(texts(plugin:sectionItems("reader")) == "|Read aloud|Test audiobook playback|Pause when headphones are unplugged|Find the headphone jack|",
-        "Kindle Touch: Read aloud, the audiobook test, the headphones")
+    check(texts(plugin:sectionItems("reader")) == "|Read aloud|Test audiobook playback|Narrated books: their own narration|Pause when headphones are unplugged|Find the headphone jack|",
+        "Kindle Touch: Read aloud, the audiobook test, Narrated books, the headphones")
     check(texts(Browser.rootItems({})):match("|Audiobooks|$"), "Kindle Touch: Audiobooks in the Grimmory tab")
     -- the Kindle 4: the 5-way and Menu, no keyboard, no touch, no audio
     Device.model = "Kindle4"
@@ -17857,7 +17857,7 @@ print("Narrated EPUBs (gzreader_narration.lua): EPUB 3 media overlays, the sente
     local book = N.load(epub)
     check(book and #book.pars == 8 and book.pars[1].file == "OEBPS/text/ch1.xhtml" and book.pars[1].id == "c1s1"
         and book.pars[2].b == 3000 and book.pars[2].e == 6000 and book.pars[5].index == 1 and book.pars[5].id == "c2s1"
-        and book.pars[1].audio == "OEBPS/audio/narration.mp3" and book.duration["OEBPS/audio/narration.mp3"] == 12000,
+        and book.pars[1].audio == "OEBPS/audio/narration.mp3" and book.duration["OEBPS/audio/narration.mp3"] == 24000,
         "Narration: the book's sentences, in reading order, with their audio and times (" .. tostring(book and #book.pars) .. ")")
     N.load(epub)
     check(opened == 1, "Narration: the book read once a run")
@@ -17869,8 +17869,14 @@ print("Narrated EPUBs (gzreader_narration.lua): EPUB 3 media overlays, the sente
     local pars = book.pars
     local i1 = N.at(pars, 1, pars[1].audio, 4200)
     local i2 = N.at(pars, 1, pars[1].audio, 11999)
-    local i3, n3 = N.at(pars, 1, pars[1].audio, 12500)
-    check(i1 == 2 and i2 == 4 and i3 == nil and n3 == 5, "Narration: the sentence at a time in the audio; past chapter 1's last, chapter 2's first next")
+    local i3 = N.at(pars, 1, pars[1].audio, 12500)
+    local i4, n4 = N.at(pars, 1, pars[1].audio, 24500)
+    local jump = {}
+    for k, v in ipairs(pars) do jump[k] = v end
+    jump[5] = { file = pars[5].file, id = pars[5].id, audio = pars[5].audio, b = 0, e = 3000, index = 1 }
+    local i5, n5 = N.at(jump, 1, pars[1].audio, 12500)
+    check(i1 == 2 and i2 == 4 and i3 == 5 and i4 == nil and n4 == 9 and i5 == nil and n5 == 5,
+        "Narration: the sentence at a time in the audio, into the next chapter; past the last: none; a jump back in the audio: the next stretch")
     -- the audio copied out of the book, once, into the cache; and the cache trimmed
     N.CACHE_DIR = WORK .. "/narration-cache"
     os.execute("rm -rf '" .. N.CACHE_DIR .. "'")
@@ -17893,7 +17899,18 @@ print("Narrated EPUBs (gzreader_narration.lua): EPUB 3 media overlays, the sente
     N.MAX_BYTES = saved_max
     -- the quick panel's tile only in a book with narration
     local function uiFor(path) return { document = { file = path, info = {} } } end
-    check(N.tile(nil, uiFor(epub)) ~= nil and N.tile(nil, uiFor(WORK .. "/plain.epub")) == nil, "Narration: a tile in a narrated book only")
+    check(N.quickCheck(epub) == true and N.quickCheck(WORK .. "/plain.epub") == false and N.quickCheck(WORK .. "/none.epub") == false,
+        "Narration: a narrated book told from its zip's list of files alone")
+    check(N.available(uiFor(epub)) and not N.available(uiFor(WORK .. "/plain.epub")), "Narration: only in a narrated book")
+    check(book.spine and book.spine[1].title == "Chapter 1" and book.spine[2].title == "Chapter 2", "Narration: the chapters' titles from the book's contents")
+    -- made into an audiobook: one track per audio file, a chapter per part of the book
+    local Open = require("gzreader_narratedopen")
+    local lay = Open.layout(book, "Narrated test", "Someone")
+    check(#lay.tracks == 1 and lay.tracks[1].durationMs == 24000 and lay.durationMs == 24000 and #lay.chapters == 2
+        and lay.chapters[1].title == "Chapter 1" and lay.chapters[2].startTimeMs == 12000 and lay.epub_audio[book.pars[1].audio] == "track-001.mp3",
+        "Listen as audiobook: the book's narration as tracks and chapters")
+    check(Open.msAt(lay, book, 3) == 6000 and Open.sentenceAt(lay, book, 7500) == 3 and Open.sentenceAt(lay, book, 0) == 1,
+        "Listen as audiobook: a sentence's place in it, and the sentence at a place")
     -- playing: the sentences followed as the audio goes on (a player stood in for, its time set by hand)
     local Engine = require("gzreader_audioengine")
     local saved = { chosen = Engine.chosen, play = Engine.play, running = Engine.running, stop = Engine.stop }
@@ -17922,15 +17939,98 @@ print("Narrated EPUBs (gzreader_narration.lua): EPUB 3 media overlays, the sente
     check(cur.i == 3 and shown[#shown]:find("c1s3", 1, true) ~= nil, "Narration: the highlight follows the audio (third sentence at 6.5 s)")
     cur.t0 = cur.t0 - 6
     cur:tick()
-    check(cur.i == 5 and played[#played] == 0 and shown[#shown]:find("DocFragment[2]/c2s1", 1, true) ~= nil,
-        "Narration: past chapter 1's narration: chapter 2's started, from its own place in the audio")
+    check(cur.i == 5 and #played == 1 and shown[#shown]:find("DocFragment[2]/c2s1", 1, true) ~= nil,
+        "Narration: into chapter 2, the audio carrying on (its sentence highlighted on its own page)")
     cur:pause()
     local at = cur:pos()
     check(cur.paused_at ~= nil and at >= 0 and math.abs(cur:pos() - at) < 1, "Narration: paused: the place kept")
     cur:resume()
-    check(cur.paused_at == nil and cur.i == 5 and played[#played] == 0, "Narration: resumed from the sentence it was on")
+    check(cur.paused_at == nil and cur.i == 5 and played[#played] == 12000, "Narration: resumed from the sentence it was on")
     N.stop("test")
     check(N.current == nil and not cur.playing, "Narration: stopped")
+    -- Read aloud in a narrated book: the narration (tap again: stopped); the Kindle's voice when chosen
+    local Touch = require("gzreader_touch")
+    local saved_player = Touch.player
+    Touch.player = function() return true end
+    local for_n = N.forReadAloud(ui)
+    gsettings.gzreader_narrated_voice = "kindle"
+    local for_k = N.forReadAloud(ui)
+    gsettings.gzreader_narrated_voice = nil
+    local on1 = N.toggle(ui)
+    local playing1 = N.playingIn(ui)
+    local on2 = N.toggle(ui)
+    check(for_n and not for_k and on1 and playing1 and on2 == false and not N.playingIn(ui),
+        "Read aloud in a narrated book: its narration from this page, tap again to stop; the Kindle's voice when chosen in Settings → Audio")
+    -- opening it asks how (not reloading, not without sound, not when turned off)
+    check(Open.wants(epub) and not Open.wants(WORK .. "/plain.epub"), "opening a narrated book: asked how")
+    gsettings.gzreader_narrated_open = "read"
+    local off = Open.wants(epub)
+    gsettings.gzreader_narrated_open = nil
+    Touch.player = function() return false end
+    local silent = Open.wants(epub)
+    Touch.player = function() return true end
+    check(not off and not silent, "…not when turned off, nor on a Kindle without sound")
+    local saved_bd = package.loaded["ui/widget/buttondialog"]
+    local shown_d
+    package.loaded["ui/widget/buttondialog"] = { new = function(_c, o) shown_d = o; return o end }
+    local picked
+    Open.ask(epub, function(how) picked = how end)
+    local labels = {}
+    for _i, row in ipairs(shown_d.buttons) do labels[#labels + 1] = row[1].text end
+    shown_d.buttons[2][1].callback()
+    check(table.concat(labels, "|") == "Read|Read with narration|Listen as audiobook" and picked == "narration",
+        "the question: Read, Read with narration, Listen as audiobook")
+    -- Listen: the book's own narration made into an audiobook, its audio copied out once
+    Open.PLUGIN = plugin
+    local AB = require("gzreader_audiobook")
+    local saved_open = AB.open
+    local opened_ab
+    AB.open = function(_p, b) opened_ab = b end
+    plugin.store.narration_at = { [epub] = { i = 3, at = os.time() + 5 } }
+    local listened = Open.listen(epub)
+    local abook = opened_ab
+    local copy = abook and (abook.dir .. "/" .. abook.files[1])
+    check(listened and abook and abook.id == Open.idFor(epub) and copy and lfs.attributes(copy, "size") == lfs.attributes(PLUGIN .. "/../../tools/gzreader/tests/media/narration.mp3", "size")
+        and plugin.store.audiobooks[abook.id].pos_ms == 6000,
+        "Listen as audiobook: the narration made into one (the audio copied out), starting where the narration was")
+    check(Open.copiedAudio(epub, book.pars[1].audio) == copy and N.audioFile(book, book.pars[1].audio) == copy,
+        "…and the narration plays from that copy (not a second one)")
+    -- the server's audiobook of the book, downloaded: that one
+    plugin.store.downloads["777"] = { path = epub }
+    local saved_load = AB.load
+    AB.load = function(_p, id) if id == "a777" then return { id = "a777", tracks = {} } end return saved_load(_p, id) end
+    opened_ab = nil
+    Open.listen(epub)
+    check(opened_ab and opened_ab.id == "a777", "Listen as audiobook: the server's audiobook when it's downloaded")
+    AB.load = saved_load
+    plugin.store.downloads["777"] = nil
+    AB.open = saved_open
+    if abook then os.execute("rm -rf '" .. abook.dir .. "'") end
+    Open.PLUGIN = nil
+    -- BookOrbit: downloading a narrated book asks with or without its narration, with the sizes
+    local Async = require("gzreader_async")
+    local saved_run = Async.run
+    Async.run = function(api, fn, done) done(fn(api)) end
+    local fake = { api = { readAloudChoices = function(_a, id) if id == 104 then return { narrated = 5 * 1048576 } end end } }
+    local got_b, got_plain
+    Open.chooseDownload(fake, { id = 101, title = "Plain" }, function(b) got_plain = b end)
+    Open.chooseDownload(fake, { id = 104, title = "Night Trains" }, function(b) got_b = b end)
+    local qlabels = {}
+    for _i, row in ipairs(shown_d.buttons) do qlabels[#qlabels + 1] = row[1].text end
+    shown_d.buttons[1][1].callback()
+    check(got_plain and got_plain.gz_variant == nil and table.concat(qlabels, "|") == "Narrated book (5 MB)|Book only (smaller)|Cancel"
+        and got_b and got_b.gz_variant == "original" and got_b.fileSizeKb == 5120,
+        "downloading a narrated BookOrbit book: Narrated book (its size) or Book only; other books not asked")
+    Async.run = saved_run
+    package.loaded["ui/widget/buttondialog"] = saved_bd
+    Touch.player = saved_player
+    -- Home: a BookOrbit book and its audiobook are one
+    local Recent = require("gzreader_serverrecent")
+    local items = Recent.combine({ { id = 104, title = "Night Trains", lastReadTime = "2026-11-20T10:00:00Z" } },
+        { { id = "a104", title = "Night Trains", primaryFileType = "AUDIOBOOK", lastReadTime = "2026-11-25T10:00:00Z" },
+          { id = "a201", title = "Other", primaryFileType = "AUDIOBOOK" } })
+    check(#items == 2 and items[1].id == "104" and items[1].listen and items[1].listen.id == "a104" and items[1].at == Recent.epoch("2026-11-25T10:00:00Z")
+        and items[2].id == "a201", "Home: a BookOrbit book and its audiobook shown once (asks Read or Listen); other audiobooks as they were")
     Engine.chosen, Engine.play, Engine.running, Engine.stop = saved.chosen, saved.play, saved.running, saved.stop
     package.loaded["ffi/archiver"] = saved_arch
     N.CACHE_DIR = nil
@@ -19698,6 +19798,19 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
     os.remove(require("gzreader_download").sizePath(file))
     d_ok, d_err = plugin.api:downloadToFile(999, file .. "x")
     check(d_ok == false and d_err == "http_404" and lfs.attributes(file .. "x") == nil, "a missing book's file: an error, nothing left behind")
+    -- a read-along book (its EPUB has narration): with it or without, as chosen, and the sizes
+    local rc1 = plugin.api:readAloudChoices(104)
+    local nfile = WORK .. "/bo-narrated.epub"
+    local n_ok = plugin.api:downloadToFile(104, nfile, true, "original")
+    local nsize, nvar = lfs.attributes(nfile, "size"), bctl("/_mock/state").last_download_variant
+    local t_ok = plugin.api:downloadToFile(104, nfile, true, "audioless_epub")
+    local tsize, tvar = lfs.attributes(nfile, "size"), bctl("/_mock/state").last_download_variant
+    local rc2 = plugin.api:readAloudChoices(104)
+    check(rc1 and rc1.narrated and rc1.narrated > 20000 and rc1.text == nil and plugin.api:readAloudChoices(101) == nil
+        and plugin.api:readAloudChoices("a201") == nil, "a read-along book: its size with narration; without, not known yet; other books: none")
+    check(n_ok and nsize == rc1.narrated and nvar == "original" and t_ok and tvar == "audioless_epub" and tsize < nsize
+        and rc2 and rc2.text == tsize, "…downloaded with its narration or without, as asked; the size without is known once made")
+    os.remove(nfile)
     local seen = bctl("/_mock/state").seen
     local only_get = #seen > 10
     -- (match-check is a POST that only asks which of the Kindle's files BookOrbit has)

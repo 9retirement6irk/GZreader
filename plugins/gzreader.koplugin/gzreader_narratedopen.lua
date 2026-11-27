@@ -1,0 +1,401 @@
+--[[--
+A narrated EPUB (one with its own narration: EPUB 3 media overlays, such as
+BookOrbit's read-along books) opened from anywhere asks how:
+
+  * Read: the book, as any other;
+  * Read with narration: the book, its narration playing from where you are,
+    the sentence being read highlighted (gzreader_narration.lua);
+  * Listen as audiobook: the audiobook player, with chapters and the sleep
+    timer. When the server's audiobook of the same book is downloaded
+    (BookOrbit's "a<id>"), that one; otherwise the narration of the EPUB
+    itself, made into an audiobook once (its audio copied out of the book:
+    no download, and the narration plays from that copy too).
+
+Where you were carries over: the audiobook made from the book starts at the
+sentence the narration was last at, and the book opens at the sentence the
+audiobook was last at when you listened after reading.
+
+Settings → Audio → Narrated books → "Ask how to open them" (on by default;
+off: they open as books). A Kindle without sound never asks.
+
+Also BookOrbit: a book's download asks Narrated book (its size) or Book only,
+when the book has narration (Open.chooseDownload), and Home's recently read
+list shows a BookOrbit book and its audiobook as one (gzreader_serverrecent).
+]]
+
+local Log = require("gzreader_log")
+
+local Open = {
+    PREFIX = "narr-", -- the audiobook made from a book: "narr-<md5 of its path>"
+}
+
+local function UIManager() return require("ui/uimanager") end
+local function _(t) return require("gettext")(t) end
+local function T(...) return require("ffi/util").template(...) end
+
+--- A Kindle with sound.
+function Open.sound()
+    local ok, yes = pcall(function() return require("gzreader_touch").player() end)
+    return ok and yes and true or false
+end
+
+--- Whether to ask for `path`.
+function Open.wants(path, settings)
+    settings = settings or G_reader_settings
+    if settings:readSetting(require("gzreader_narration").OPEN) == "read" then return false end
+    if not Open.sound() then return false end
+    return require("gzreader_narration").quickCheck(path) == true
+end
+
+---------------------------------------------------------------- the audiobook from the book
+
+--- The id of the audiobook made from the book at `path`.
+function Open.idFor(path)
+    return Open.PREFIX .. require("ffi/sha2").md5(path)
+end
+
+local function plugin()
+    if Open.PLUGIN then return Open.PLUGIN end -- (tests)
+    local ok, p = pcall(function()
+        local RUI = require("apps/reader/readerui").instance
+        if RUI and RUI.gzreader then return RUI.gzreader end
+        local FM = require("apps/filemanager/filemanager").instance
+        return FM and FM.gzreader
+    end)
+    return ok and p or nil
+end
+Open.plugin = plugin
+
+--- The layout of the audiobook made from `book` (gzreader_narration's
+--- parsed book): the audiobook player's (tracks, chapters, files) and
+--- `epub_audio`, the copy of each audio file. Pure.
+function Open.layout(book, title, author)
+    local order, seen = {}, {}
+    for _i, p in ipairs(book.pars) do
+        if not seen[p.audio] then
+            seen[p.audio] = true
+            order[#order + 1] = p.audio
+        end
+    end
+    local tracks, files, starts, map = {}, {}, {}, {}
+    local at = 0
+    for i, audio in ipairs(order) do
+        local ext = (audio:match("%.(%w+)$") or "mp3"):lower()
+        local name = string.format("track-%03d.%s", i, ext)
+        local dur = book.duration[audio] or 0
+        files[i] = name
+        tracks[i] = { file = name, index = i - 1, start = at, durationMs = dur, title = nil }
+        starts[audio] = at
+        map[audio] = name
+        at = at + dur
+    end
+    local chapters, done = {}, {}
+    local titles = {}
+    for _i, s in ipairs(book.spine or {}) do titles[s.index] = s.title end
+    for _i, p in ipairs(book.pars) do
+        if not done[p.index] then
+            done[p.index] = true
+            chapters[#chapters + 1] = { title = titles[p.index] or T(_("Part %1"), #chapters + 1), startTimeMs = starts[p.audio] + p.b }
+        end
+    end
+    return { title = title, author = author, folder = true, durationMs = at, tracks = tracks, files = files,
+        chapters = chapters, epub_audio = map, narrated_from = book.path }
+end
+
+--- Where sentence `i` is in the audiobook made from `book` (ms from its start).
+function Open.msAt(layout, book, i)
+    local p = book.pars[i]
+    if not p then return 0 end
+    for _k, t in ipairs(layout.tracks) do
+        if layout.epub_audio[p.audio] == t.file then return t.start + p.b end
+    end
+    return 0
+end
+
+--- The sentence at `ms` of the audiobook made from `book`: its index.
+function Open.sentenceAt(layout, book, ms)
+    local best = 1
+    for i, p in ipairs(book.pars) do
+        if Open.msAt(layout, book, i) <= ms then best = i else
+            -- (later sentences of another file can come before in the list only if the book jumps back)
+            if p.audio == book.pars[best].audio then break end
+        end
+    end
+    return best
+end
+
+local function readJson(path)
+    local f = io.open(path, "rb")
+    if not f then return nil end
+    local ok, data = pcall(require("gzreader_json").decode, f:read("*a"))
+    f:close()
+    return ok and type(data) == "table" and data or nil
+end
+
+--- The copy of `audio` (a path in the EPUB at `epub`) made for its audiobook, or nil.
+function Open.copiedAudio(epub, audio)
+    local p = plugin()
+    if not p then return nil end
+    local AB = require("gzreader_audiobook")
+    local dir = AB.dir(p, Open.idFor(epub))
+    local data = readJson(dir .. "/audiobook.json")
+    local name = data and type(data.epub_audio) == "table" and data.epub_audio[audio]
+    if not name then return nil end
+    local file = dir .. "/" .. name
+    local lfs = require("libs/libkoreader-lfs")
+    return lfs.attributes(file, "mode") == "file" and file or nil
+end
+
+--- The audiobook made from the EPUB at `path`, made now if it isn't yet (its
+--- audio copied out of the book). Returns the player's book, or nil, why.
+function Open.make(p, path, title, author)
+    local Narration = require("gzreader_narration")
+    local AB = require("gzreader_audiobook")
+    local id = Open.idFor(path)
+    local have = AB.load(p, id)
+    if have then return have end
+    local book = Narration.load(path)
+    if not book then return nil, "no narration" end
+    local lfs = require("libs/libkoreader-lfs")
+    local dir = AB.dir(p, id)
+    require("util").makePath(dir)
+    local layout = Open.layout(book, title, author)
+    layout.id = id
+    local r = require("ffi/archiver").Reader:new()
+    if not r:open(path) then return nil, "the book couldn't be opened" end
+    for _e in r:iterate() do end
+    for audio, name in pairs(layout.epub_audio) do
+        local out = dir .. "/" .. name
+        if lfs.attributes(out, "mode") ~= "file" then
+            local ok = r:extractToPath(audio, out)
+            if not ok or lfs.attributes(out, "mode") ~= "file" then
+                r:close()
+                os.remove(out)
+                return nil, "its audio couldn't be copied out of the book"
+            end
+        end
+    end
+    r:close()
+    local f = io.open(dir .. "/audiobook.json", "wb")
+    if not f then return nil, "couldn't write" end
+    f:write(require("gzreader_json").encode(layout))
+    f:close()
+    Log.info("narration: the book made into an audiobook,", #layout.files, "audio files,", #layout.chapters, "chapters")
+    -- (the narration plays from this copy now: its own copy goes)
+    pcall(Narration.forgetCopy, path)
+    return AB.load(p, id)
+end
+
+--- The server's audiobook of the book at `path`, downloaded: its player book, or nil.
+function Open.serverAudiobook(p, path)
+    local AB = require("gzreader_audiobook")
+    for id, e in pairs(p.store.downloads or {}) do
+        if type(e) == "table" and e.path == path and tostring(id):match("^%d+$") then
+            local b = AB.load(p, "a" .. tostring(id))
+            if b then return b end
+        end
+    end
+    return nil
+end
+
+--- The book's title and author, from its file's metadata as KOReader keeps them.
+local function about(path)
+    local title, author
+    pcall(function()
+        local DocSettings = require("docsettings")
+        local ds = DocSettings:open(path)
+        local props = ds:readSetting("doc_props") or {}
+        title, author = props.title, props.authors
+    end)
+    return title or path:match("([^/]+)%.%w+$"), author
+end
+
+--- Listen to the book at `path` as an audiobook.
+function Open.listen(path)
+    local p = plugin()
+    if not p then return false end
+    local AB = require("gzreader_audiobook")
+    local server = Open.serverAudiobook(p, path)
+    if server then
+        Log.info("narration: listening to the server's audiobook of the book")
+        AB.open(p, server)
+        return true
+    end
+    local title, author = about(path)
+    local InfoMessage = require("ui/widget/infomessage")
+    local wait = InfoMessage:new{ text = _("Getting the narration ready…") }
+    UIManager():show(wait)
+    UIManager():forceRePaint()
+    local book, why = Open.make(p, path, title, author)
+    UIManager():close(wait)
+    if not book then
+        UIManager():show(InfoMessage:new{ text = T(_("The narration couldn't be made into an audiobook: %1."), tostring(why)) })
+        return false
+    end
+    -- (where the narration was last: the audiobook starts there, if it's further on)
+    local Narration = require("gzreader_narration")
+    local nb = Narration.load(path)
+    local kept = p.store.narration_at and p.store.narration_at[path]
+    p.store.audiobooks = p.store.audiobooks or {}
+    local e = p.store.audiobooks[book.id] or {}
+    if nb and type(kept) == "table" and (kept.at or 0) > (e.updated or 0) then
+        e.pos_ms = Open.msAt(book, nb, kept.i or 1)
+        e.updated = kept.at
+        p.store.audiobooks[book.id] = e
+    end
+    -- (after the message has gone and Home has been drawn again)
+    UIManager():nextTick(function() AB.open(p, book) end)
+    return true
+end
+
+--- Where the narration is now, kept for the audiobook (narration's place).
+function Open.noteSentence(path, i)
+    local p = plugin()
+    if not (p and path and i) then return end
+    p.store.narration_at = p.store.narration_at or {}
+    p.store.narration_at[path] = { i = i, at = os.time() }
+end
+
+--- After the book opens: at the sentence the audiobook made from it was
+--- last at, when that's newer than the book's own place.
+function Open.catchUp(ui)
+    local p = plugin()
+    local path = ui and ui.document and ui.document.file
+    if not (p and path) then return end
+    local e = p.store.audiobooks and p.store.audiobooks[Open.idFor(path)]
+    if type(e) ~= "table" or not e.pos_ms or not e.updated then return end
+    local kept = p.store.narration_at and p.store.narration_at[path]
+    if type(kept) == "table" and (kept.at or 0) >= e.updated then return end
+    local lfs = require("libs/libkoreader-lfs")
+    local DocSettings = require("docsettings")
+    local sidecar = DocSettings:findSidecarFile(path)
+    local read_at = sidecar and lfs.attributes(sidecar, "modification") or 0
+    if read_at >= e.updated then return end
+    local AB = require("gzreader_audiobook")
+    local ab = AB.load(p, Open.idFor(path))
+    local nb = require("gzreader_narration").load(path)
+    if not (ab and nb) then return end
+    local i = Open.sentenceAt(ab, nb, e.pos_ms)
+    local par = nb.pars[i]
+    local Narration = require("gzreader_narration")
+    local link = Narration.linkFor(par.index, par.id)
+    local ok = pcall(function()
+        if ui.document:isXPointerInDocument(link) then
+            local xp = ui.document:getNormalizedXPointer(link)
+            ui:handleEvent(require("ui/event"):new("GotoXPointer", xp, xp))
+        end
+    end)
+    Log.info("narration: the book opened where the audiobook was", ok and "" or "(not found)")
+end
+
+---------------------------------------------------------------- asking
+
+--- The question for `path`: go("read" | "narration" | "listen").
+function Open.ask(path, go)
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local title = about(path)
+    local d
+    local function pick(how) return function() UIManager():close(d); go(how) end end
+    d = ButtonDialog:new{
+        title = T(_("“%1” has its own narration."), title),
+        buttons = {
+            { { text = _("Read"), callback = pick("read") } },
+            { { text = _("Read with narration"), callback = pick("narration") } },
+            { { text = _("Listen as audiobook"), callback = pick("listen") } },
+        },
+    }
+    UIManager():show(d)
+    return d
+end
+
+--- Opening books asks first, for narrated EPUBs (wraps ReaderUI.showReader).
+function Open.install()
+    local ReaderUI = require("apps/reader/readerui")
+    if ReaderUI._gz_narrated_hook then return end
+    ReaderUI._gz_narrated_hook = true
+    local orig = ReaderUI.showReader
+    function ReaderUI:showReader(file, provider, seamless, forced, after_open, ...)
+        local reloading = rawget(self, "reloading")
+        if reloading or seamless or Open.skip or not Open.wants(file) then
+            Open.skip = nil
+            if not reloading and not seamless and Open.sound() and require("gzreader_narration").quickCheck(file) then
+                -- (opened without asking: still at the audiobook's place when that's newer)
+                local cb = after_open
+                after_open = function(ui, ...)
+                    pcall(Open.catchUp, ui)
+                    if cb then return cb(ui, ...) end
+                end
+            end
+            return orig(self, file, provider, seamless, forced, after_open, ...)
+        end
+        local rest = { ... }
+        local me = self
+        Open.ask(file, function(how)
+            Log.info("narration: a narrated book opened:", how)
+            if how == "listen" then return Open.listen(file) end
+            local cb = after_open
+            local function opened(ui, ...)
+                pcall(Open.catchUp, ui)
+                if how == "narration" then
+                    UIManager():scheduleIn(1, function()
+                        local ok, why, fmt = require("gzreader_narration").play(ui)
+                        if not ok then require("gzreader_narration").couldnt(why, fmt) end
+                    end)
+                end
+                if cb then return cb(ui, ...) end
+            end
+            return orig(me, file, provider, seamless, forced, opened, unpack(rest))
+        end)
+    end
+    return true
+end
+
+---------------------------------------------------------------- BookOrbit: downloading
+
+--- A size in MB, for the question.
+local function mb(bytes)
+    if not tonumber(bytes) then return nil end
+    return string.format("%.0f MB", math.max(1, bytes / 1048576))
+end
+
+--- The question for a narrated BookOrbit book being downloaded: `info` =
+--- { narrated = bytes, text = bytes or nil }; go("original" | "audioless_epub").
+function Open.askDownload(title, info, go)
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local d
+    local function pick(v) return function() UIManager():close(d); go(v) end end
+    local narrated = mb(info.narrated)
+    local text = mb(info.text)
+    d = ButtonDialog:new{
+        title = T(_("“%1” has its own narration. Download:"), title or ""),
+        buttons = {
+            { { text = narrated and T(_("Narrated book (%1)"), narrated) or _("Narrated book"), callback = pick("original") } },
+            { { text = text and T(_("Book only (%1)"), text) or _("Book only (smaller)"), callback = pick("audioless_epub") } },
+            { { text = _("Cancel"), callback = function() UIManager():close(d) end } },
+        },
+    }
+    UIManager():show(d)
+    return d
+end
+
+--- Before a BookOrbit book downloads (asked from a book's page or the
+--- Catalog): if it has narration, ask which; then cont(book) with
+--- book.gz_variant set ("original" or "audioless_epub"), or not at all
+--- (Cancel). Books without narration: cont(book) at once.
+function Open.chooseDownload(p, book, cont)
+    if not (p and p.api and p.api.readAloudChoices) or book.gz_variant then return cont(book) end
+    require("gzreader_async").run(p.api, function(api) return api:readAloudChoices(book.id) end, function(info)
+        if type(info) ~= "table" or not info.narrated then return cont(book) end
+        Open.askDownload(book.title, info, function(v)
+            local b = {}
+            for k, val in pairs(book) do b[k] = val end
+            b.gz_variant = v
+            if v == "original" and info.narrated then b.fileSizeKb = math.ceil(info.narrated / 1024) end
+            if v == "audioless_epub" then b.fileSizeKb = info.text and math.ceil(info.text / 1024) or nil end
+            Log.info("narration: downloading a narrated book as", v)
+            cont(b)
+        end)
+    end, "read-aloud choices")
+end
+
+return Open

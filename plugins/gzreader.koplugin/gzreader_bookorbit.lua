@@ -613,8 +613,24 @@ function BookOrbit:listShelves()
     return out
 end
 
-local function detail(self, book_id)
-    return get(self, BookOrbit.CATALOG .. "/books/" .. tostring(book_id), { 10, 20 })
+local function detail(self, book_id, variant)
+    local q = (variant == "original" or variant == "audioless_epub") and ("?variant=" .. variant) or ""
+    return get(self, BookOrbit.CATALOG .. "/books/" .. tostring(book_id) .. q, { 10, 20 })
+end
+
+--- Whether a book has narration, and its sizes with and without:
+--- { narrated = bytes, text = bytes (nil until BookOrbit has made that copy once) },
+--- or nil (no narration, or not known).
+function BookOrbit:readAloudChoices(book_id)
+    if BookOrbit.isAudioId(tostring(book_id)) then return nil end
+    local d = detail(self, book_id, "original")
+    local f = d and BookOrbit.pickFile(d)
+    if not (f and f.sourceMediaOverlayAvailable == true) then return nil end
+    local out = { narrated = n(f.sourceSizeBytes) or n(f.sizeBytes) }
+    local t = detail(self, book_id, "audioless_epub")
+    local tf = t and BookOrbit.pickFile(t)
+    out.text = tf and n(tf.sizeBytes) or nil
+    return out
 end
 
 --- The file of a book's detail that GZreader downloads: one of the book's own files
@@ -725,8 +741,8 @@ end
 
 --- A book's file straight into `path`. BookOrbit's download doesn't continue a part
 --- (no Range), so a part left by an interrupted download is started again.
-function BookOrbit:downloadToFile(book_id, path, _resume)
-    local d, err = detail(self, book_id)
+function BookOrbit:downloadToFile(book_id, path, _resume, variant)
+    local d, err = detail(self, book_id, variant)
     if not d then return false, err end
     local f = BookOrbit.pickFile(d)
     if not f then return false, "bookorbit_no_file" end

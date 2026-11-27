@@ -642,6 +642,8 @@ end
 --- Offer Grimmory's position when it differs from ours by more than a minute.
 function Player:pull(on_done)
     if self.book.plex then return self:pullPlex(on_done) end
+    -- (an audiobook made from a narrated book on the Kindle: no server has it)
+    if tostring(self.book.id):match("^narr%-") then return on_done() end
     -- Grimmory's progress kept when it was downloaded (syncing through a
     -- computer, no Wi-Fi now): the first opening only
     local kept = self.plugin.store.audiobooks and self.plugin.store.audiobooks[self.book.id]
