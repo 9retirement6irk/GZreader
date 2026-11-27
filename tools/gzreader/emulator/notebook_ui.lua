@@ -272,7 +272,15 @@ add({ fn = function(E)
 end, after = 3 })
 add({ shot = "13-options", after = 0.5 })
 add({ fn = function(E)
-    check(screen().flyout == "options" and ids("flyout") == "newpage2,clear,cancel", "Options: New page, Erase page, Close without saving (" .. ids("flyout") .. ")")
+    check(screen().flyout == "options" and ids("flyout") == "cancel", "Options: Close without saving only (a new page is +, Erase page beside the page buttons) (" .. ids("flyout") .. ")")
+    local erase, prev
+    for _i, b in ipairs(screen().buttons) do
+        if b.tool.id == "clear" and b.group == "erase" then erase = b.rect end
+        if b.tool.id == "prev" then prev = b.rect end
+    end
+    check(erase and prev and erase.y == prev.y and erase.x + erase.w < prev.x, "Erase page: a button of its own left of the page buttons")
+    check(ids("top"):find("options", 1, true) and not ids("top"):find("archive", 1, true) and not ids("top"):find("delete", 1, true),
+        "the top bar: no Archive or Delete (" .. ids("top") .. ")")
     tap(E, (button("options")))
 end, after = 3 })
 add({ fn = function(E) tap(E, (button("done"))) end, after = 5 })
