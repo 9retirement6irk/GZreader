@@ -342,6 +342,42 @@ local function houseSection(st, base)
     return table.concat(parts)
 end
 
+-- Mealie (the Recipes tab): an API token, or single sign-on.
+local function recipesSection(st, base)
+    local r = st.recipes
+    if not r then return "" end
+    local parts = { '<section id="recipes" class="tab"><h2>Recipes (Mealie)</h2>',
+        '<p class="what">The Recipes tab shows the recipes of your <a href="https://mealie.io">Mealie</a>, to search and read on the Kindle. Turn the tab on in Settings → Accounts and services → Recipes.</p>' }
+    if r.connected then
+        parts[#parts + 1] = status(true, "Connected as <b>" .. esc(r.name or "?") .. "</b> · " .. esc(r.host)
+            .. (r.sso and " · single sign-on" or ""))
+        parts[#parts + 1] = form(base .. "/recipes/disconnect",
+            '<button class="danger" type="submit"' .. confirmJs(r.sso
+                and "Disconnect from Mealie? The address and token are removed from the Kindle, and Mealie is asked to delete the token GZreader made."
+                or "Disconnect from Mealie? The address and token are removed from the Kindle (delete the token in Mealie too).")
+            .. ">Disconnect</button>", "Disconnecting…")
+        parts[#parts + 1] = "<details><summary>Change the address or sign in again</summary><div style=\"margin-top:12px\">"
+    else
+        parts[#parts + 1] = status(false, "Not connected")
+    end
+    if r.error then parts[#parts + 1] = '<p class="err">' .. esc(r.error) .. "</p>" end
+    parts[#parts + 1] = form(base .. "/recipes",
+        input("r_server", "server", "Mealie address", (r.form or {}).server, 'required placeholder="mealie.example.com" ' .. URL_ATTRS)
+        .. '<label for="r_token">API token</label><input id="r_token" name="token" type="password" ' .. NAME_ATTRS .. ">"
+        .. '<button type="submit" name="action" value="token">Connect</button>'
+        .. '<div class="or">or</div>'
+        .. '<button class="alt" type="submit" name="action" value="sso">Sign in with single sign-on</button>'
+        .. '<details><summary>Where do I get a token?</summary><p class="note">In Mealie: your profile (top right) → API tokens → name it and Generate. Copy it here: Mealie shows it only once. The Kindle keeps the token, never your password, and never writes it to its log.</p></details>'
+        .. '<details><summary>Single sign-on</summary><p class="note">For a Mealie that signs you in through an identity provider (OIDC: Authentik, Authelia, Keycloak, Pocket ID…). Leave the token empty and press the button: you sign in at your provider in this browser, and the Kindle then asks Mealie for an API token of its own, listed as <b>GZreader</b> in your Mealie profile. It needs a Mealie new enough to sign apps in, and this address allowed as a redirect for Mealie at your provider:<br><code>'
+        .. esc(r.redirect_uri or "") .. "</code>"
+        .. (r.sso_relay and " (the same for every Kindle; the browser just needs to be on the Kindle's Wi‑Fi to finish)" or "")
+        .. "</p></details>",
+        "Connecting…")
+    if r.connected then parts[#parts + 1] = "</div></details>" end
+    parts[#parts + 1] = "</section>"
+    return table.concat(parts)
+end
+
 -- The daily paper (gzreader_daily.lua): on/off, on the shelf, which feeds.
 local function paperSection(st, base)
     local p = st.paper
@@ -731,6 +767,7 @@ function PairPage.hub(st)
     local tabs = { { "grimmory", "Books", (st.grimmory or {}).connected }, { "notes", "Notes", (st.memos or {}).connected },
         { "calendar", "Calendar", (st.caldav or {}).connected or #((st.links or {}).list or {}) > 0 or (st.holidays or {}).enabled } }
     if st.house then tabs[#tabs + 1] = { "house", "House", st.house.connected } end
+    if st.recipes then tabs[#tabs + 1] = { "recipes", "Recipes", st.recipes.connected } end
     if st.paper then tabs[#tabs + 1] = { "paper", "Daily paper", st.paper.enabled } end
     if st.plex then tabs[#tabs + 1] = { "music", "Music", st.plex.connected } end
     tabs[#tabs + 1] = { "immich", "Immich", (st.immich or {}).connected }
@@ -754,6 +791,7 @@ function PairPage.hub(st)
         immichSection(st, base), booksSection(st, base), sleepSection(st, base), accessSection(st, base), diagnosticsSection(st, base),
         '<p class="note">This page works while setup is open on the Kindle\'s screen; press Back (or Done) there when you\'re done.</p>',
         houseSection(st, base), -- (after the note: one tab at a time with JavaScript; below the rest without)
+        recipesSection(st, base),
         paperSection(st, base),
         "</div></div>",
         '<script>(function(){var A=', alias, ';function show(id){id=A[id]||id;var s=document.getElementById(id);if(!s||!/\\btab\\b/.test(s.className))id="', ({ handwriting = "notes", caldav = "calendar", links = "calendar" })[st.start or ""] or st.start or "grimmory", '";',

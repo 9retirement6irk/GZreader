@@ -146,11 +146,17 @@ do
     local order = table.concat(cfg.navbar.tab_order, ",")
     check(cfg.navbar.show_tabs.favorites == true and cfg.navbar.show_tabs.ct_notes == false and cfg.navbar.show_tabs.ct_grimmory == true,
         "setup tabs: Favorites on, Notes off, Grimmory untouched")
-    check(order == "home,books,ct_grimmory,ct_notes,ct_calendar,continue,favorites,ct_music,ct_audiobooks,ct_house,history", "setup tabs: a tab turned on is added to the list (" .. order .. ")")
+    check(order == "home,books,ct_grimmory,ct_notes,ct_calendar,continue,favorites,ct_music,ct_audiobooks,ct_house,ct_recipes,history", "setup tabs: a tab turned on is added to the list (" .. order .. ")")
     local house_tab
     for _, t in ipairs(defaults.navbar.custom_tabs) do if t.id == "ct_house" then house_tab = t end end
     check(house_tab and house_tab.action.gzreader_house and house_tab.icon == "tab_house" and house_tab.label == "House"
         and defaults.navbar.show_tabs.ct_house == false, "the House tab (Home Assistant): defined, off by default")
+    local recipes_tab
+    for _, t in ipairs(defaults.navbar.custom_tabs) do if t.id == "ct_recipes" then recipes_tab = t end end
+    local icon_f = io.open(ZEN .. "/icons/tab_recipes.svg", "rb")
+    check(recipes_tab and recipes_tab.action.gzreader_recipes and recipes_tab.icon == "tab_recipes" and recipes_tab.label == "Recipes"
+        and defaults.navbar.show_tabs.ct_recipes == false and icon_f ~= nil, "the Recipes tab (Mealie): defined, off by default, with its icon")
+    if icon_f then icon_f:close() end
     local ab_tab
     for _, t in ipairs(defaults.navbar.custom_tabs) do if t.id == "ct_audiobooks" then ab_tab = t end end
     check(ab_tab and ab_tab.action.gzreader_audiobooks and ab_tab.icon == "tab_audiobooks" and defaults.navbar.show_tabs.ct_audiobooks == false

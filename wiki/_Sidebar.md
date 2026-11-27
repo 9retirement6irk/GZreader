@@ -32,6 +32,7 @@
 - [Calendar](Calendar)
 - [Music](Music)
 - [House (Home Assistant)](House)
+- [Recipes (Mealie)](Recipes)
 - [Daily paper](Daily-Paper)
 - [Audiobooks and read aloud](Audiobooks-and-Read-Aloud)
 - [Sync with a computer](Sync-with-a-Computer)

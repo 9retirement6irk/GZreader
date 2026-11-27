@@ -40,6 +40,7 @@ local Secrets = {
         { "memos", "token" },
         { "plex", "token" }, { "plex", "server", "token" },
         { "homeassistant", "token" },
+        { "mealie", "token" },
         { "immich", "key" },
         { "access", "key" }, { "access", "cf_id" }, { "access", "cf_secret" },
         { "handwriting", "claude", "key" }, { "handwriting", "openai", "key" },

@@ -8,6 +8,8 @@ and for sending books.
 - Calendar: a CalDAV account (connect, disconnect, show or hide each of its
   calendars) and calendar links (add, rename, replace the link, show or hide,
   remove).
+- House (Home Assistant): address and long-lived token, or disconnect.
+- Recipes (Mealie): address and API token, or single sign-on, or disconnect.
 - Immich: address and API key, the album, what its pictures are for (the
   sleep screen, the Home wallpaper; gzreader_immich.lua), or disconnect.
 - Sleep screen: pictures made in the browser for this screen (its size; grey,
@@ -215,6 +217,14 @@ local function state(S, flash)
         local hs = store.homeassistant or {}
         st.house = { connected = hs.server ~= nil and hs.token ~= nil, name = hs.name, host = host(hs.server),
             form = sec == "house" and flash.form or { server = hs.server }, error = sec == "house" and flash.error or nil }
+    end
+    -- Mealie (the Recipes tab): not on the Kindles without Wi-Fi
+    if not require("gzreader_usbsync").noWifi() then
+        local ml = store.mealie or {}
+        local redirect_uri, relay = Phone.ssoRedirect(plugin, S.origin)
+        st.recipes = { connected = ml.server ~= nil and ml.token ~= nil, name = ml.name or ml.username, host = host(ml.server),
+            sso = ml.sso == true, redirect_uri = redirect_uri, sso_relay = relay,
+            form = sec == "recipes" and flash.form or { server = ml.server }, error = sec == "recipes" and flash.error or nil }
     end
     -- the daily paper (gzreader_daily.lua): not on the Kindles without Wi-Fi
     st.paper = require("gzreader_daily").pageState(plugin)
@@ -665,6 +675,75 @@ function Phone.open(plugin, opts)
         S.changes.house = true
         toast(_("House: disconnected from Home Assistant."))
         return back({ ok = true, text = _("Disconnected from Home Assistant."), section = "house" })
+    end
+    -- Mealie (gzreader_mealie.lua): single sign-on through the same hand-off
+    -- as Grimmory's. Mealie's sign-on for apps gives what the browser needs;
+    -- the state is ours (Mealie keeps none for an app).
+    local function recipesFailed(form, err)
+        return back({ section = "recipes", error = err, form = { server = form and form.server } })
+    end
+    local function startMealieSso(form)
+        local Mealie = require("gzreader_mealie")
+        local sso, err = Mealie.ssoStart(form.server or "")
+        if not sso then return recipesFailed(form, err) end
+        local redirect_uri, relay = Phone.ssoRedirect(plugin, S.origin)
+        S.sso = { kind = "mealie", base = sso.base, about = sso.about, server = form.server,
+            state = PairServer.randomToken(16), verifier = PairServer.randomToken(32), nonce = PairServer.randomToken(16),
+            redirect_uri = redirect_uri, relay = relay }
+        local q = Api.query{
+            response_type = "code", client_id = sso.client_id, redirect_uri = redirect_uri, scope = sso.scope,
+            code_challenge = Api.pkceChallenge(S.sso.verifier), code_challenge_method = "S256",
+            state = S.sso.state, nonce = S.sso.nonce,
+        }
+        Log.info("recipes: single sign-on: redirecting the browser to", Phone.originOf(sso.authorization_endpoint), "redirect_uri", redirect_uri)
+        local sep = sso.authorization_endpoint:find("?", 1, true) and "&" or "?"
+        local auth_url = sso.authorization_endpoint .. sep .. q:sub(2)
+        if not relay then return 302, nil, auth_url end
+        local esc = require("socket.url").escape
+        return 302, nil, redirect_uri .. "#back=" .. esc(S.origin .. "/oauth2-callback") .. "&go=" .. esc(auth_url)
+    end
+    local function finishMealieSso(params, session)
+        if params.error then
+            S.sso = nil
+            return recipesFailed(session, T(_("Sign-in didn't complete: %1"), params.error_description or params.error))
+        end
+        if not params.code or params.state ~= session.state then
+            return 200, "text/html", PairPage.gone()
+        end
+        S.sso = nil -- single use
+        local ok, err = require("gzreader_mealie").ssoFinish(plugin, session, params.code)
+        if not ok then return recipesFailed(session, err) end
+        S.changes.recipes = true
+        local said = T(_("Recipes: connected to Mealie as %1."), (plugin.store.mealie or {}).name or "?")
+        toast(said)
+        return back({ ok = true, text = T(_("Connected to Mealie as %1. Turn the Recipes tab on in Settings → Accounts and services → Recipes."),
+            (plugin.store.mealie or {}).name or "?"), section = "recipes" })
+    end
+    -- (back at /oauth2-callback: Mealie's sign-ins are finished here, any other as before)
+    local otherSso = finishSso
+    finishSso = function(query)
+        local session = S.sso
+        if session and session.kind == "mealie" then return finishMealieSso(PairServer.parseForm(query), session) end
+        return otherSso(query)
+    end
+    -- Mealie (gzreader_mealie.lua): address and API token, or single sign-on
+    routes["/recipes"] = function(form)
+        if form.action == "sso" then return startMealieSso(form) end
+        local ok, err = require("gzreader_mealie").connect(plugin, form.server or "", form.token or "")
+        if not ok then
+            if failedLogin() then return 200, "text/html", PairPage.gone() end
+            return recipesFailed(form, err)
+        end
+        S.changes.recipes = true
+        local name = plugin.store.mealie.name or "?"
+        toast(T(_("Recipes: connected to Mealie as %1."), name))
+        return back({ ok = true, text = T(_("Connected to Mealie as %1. Turn the Recipes tab on in Settings → Accounts and services → Recipes."), name), section = "recipes" })
+    end
+    routes["/recipes/disconnect"] = function()
+        require("gzreader_mealie").disconnect(plugin)
+        S.changes.recipes = true
+        toast(_("Recipes: disconnected from Mealie."))
+        return back({ ok = true, text = _("Disconnected from Mealie."), section = "recipes" })
     end
     -- the daily paper: its switches and feeds (addresses are never logged)
     routes["/paper"] = function(form)
@@ -1211,6 +1290,10 @@ function Phone.afterClose(S)
     if ch.house then
         local hs = plugin.store.homeassistant or {}
         lines[#lines + 1] = hs.token and T(_("House: connected to %1."), hs.name or _("Home Assistant")) or _("House: disconnected.")
+    end
+    if ch.recipes then
+        local ms = plugin.store.mealie or {}
+        lines[#lines + 1] = ms.token and T(_("Recipes: connected to Mealie as %1."), ms.name or "?") or _("Recipes: disconnected.")
     end
     if ch.books then
         lines[#lines + 1] = T(_("%1 books received (the Downloads tab shows them)."), ch.books)
