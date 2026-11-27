@@ -189,6 +189,7 @@ function Grimmory:init()
     self.store.pending.ratings = self.store.pending.ratings or {}
     Log.enabled = self.store.logging_disabled ~= true
     self.api = Api:new(self.store, function() self:save() end)
+    pcall(function() require("gzreader_hwkeyboard").install() end) -- (the keyboard's ✍ key: a writing pad)
     if self.store.backend == "bookorbit" then self:useBackend("bookorbit") end
     -- no Wi-Fi (Kindle 2, DX): Grimmory through a computer, the library
     -- from the copy the sync page left (gzreader_usbsync.lua)

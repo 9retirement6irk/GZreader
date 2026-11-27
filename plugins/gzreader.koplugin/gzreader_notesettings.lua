@@ -470,9 +470,17 @@ function NoteSettings.handwritingItem(plugin, icon)
           help_text = _("The same as Settings → Accounts and services → AI: one key for handwriting and whatever uses AI next."),
           sub_item_table_func = function() return AI.settingsItems(plugin) end },
     }
+    -- (the keyboard's ✍ key: gzreader_hwkeyboard.lua)
+    local okk, HwKb = pcall(require, "gzreader_hwkeyboard")
+    if okk then
+        local kb = HwKb.menuItem()
+        kb.separator = nil
+        table.insert(sub, 1, kb)
+        sub[1].separator = true
+    end
     local item = {
         text_func = function() return T(_("Handwriting to text: %1"), engineName()) end,
-        help_text = _("While drawing: the text tool's Write by hand turns what you write into typed text a moment after you lift the pen (as on the Apple Newton), and the lasso's To text turns writing you choose into a text box. This is how the writing is read."),
+        help_text = _("The keyboard's ✍ key gives a writing pad that types what you write. While drawing: the text tool's Write by hand turns what you write into typed text a moment after you lift the pen (as on the Apple Newton), and the lasso's To text turns writing you choose into a text box. This is how the writing is read."),
         sub_item_table = sub,
     }
     return icon and icon("edit", item) or item

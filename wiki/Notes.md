@@ -776,7 +776,8 @@ API to `/api` are found too.
 ## Handwriting to text
 
 Settings → Notes → **Handwriting to text** says how your writing is read,
-for the text tool's **Write by hand** and the lasso's **To text**:
+for the keyboard's **✍** key, the text tool's **Write by hand** and the
+lasso's **To text**:
 
 - **On the Kindle** (the default): nothing leaves the Kindle and no Wi‑Fi is
   needed. It reads printed writing best: letters apart, English words and
@@ -797,4 +798,18 @@ you choose **With AI** here.
 With AI, only the writing being read is sent, as a black-and-white picture:
 never the page, its pictures or your other notes. Wi‑Fi turns on for it. If
 a reading fails, the writing stays as you wrote it and a message says why.
+
+### Writing on the keyboard
+
+On a touch Kindle, the on-screen keyboard's **🌐** key is **✍** (with more
+than one keyboard layout, hold 🌐 and pick ✍). It swaps the keys for a
+writing pad, in any text box: a search, a note, a title. Write a word or a
+few; a moment after you lift the pen it's read (the way chosen above) and
+typed into the box, with a space before it when it follows a word. The
+pad's own row has **⌨** (the keys again), **space**, **⌫** (hold it: the
+whole word) and **Enter**. On a Kindle with a pen, fingers don't write on
+the pad, so a resting hand leaves no marks; the pen's other end clears it.
+The keyboard opens on the pad next time if that's what you used last.
+**Handwriting on the keyboard (✍ key)**, the first row of Handwriting to
+text, turns the key off.
 
