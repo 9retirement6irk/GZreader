@@ -7,7 +7,7 @@
 <p align="center">
   <b>Your self-hosted library on a Kindle.</b><br>
   An e-reader for the services you run yourself: books from
-  <a href="https://grimmory.org">Grimmory</a>, notes from Memos, music from Plex, photos from Immich,
+  <a href="https://grimmory.org">Grimmory</a> or <a href="https://github.com/bookorbit/bookorbit">BookOrbit</a>, notes from Memos, music from Plex, photos from Immich,
   your calendars and Home Assistant. On Kindles from the Kindle 2 to the Scribe, on Kobos, and on
   the first Nooks. Every connection is optional.
 </p>
@@ -29,7 +29,7 @@ books since:
 
 | Your server | What the e-reader does with it |
 |---|---|
-| [Grimmory](https://grimmory.org) (books; [BookOrbit](https://github.com/bookorbit/bookorbit) is in testing) | browse and download your books and audiobooks; keep your place, bookmarks, highlights and notes in sync |
+| [Grimmory](https://grimmory.org) or [BookOrbit](https://github.com/bookorbit/bookorbit) (your book server: either one) | browse and download your books and audiobooks; keep your place, bookmarks, highlights, notes and ratings in sync; request books (BookOrbit) |
 | [Memos](https://usememos.com) | sticky notes, a rich text editor, drawings, a journal |
 | [Plex](https://www.plex.tv) | music, and audiobooks from a Plex library |
 | [Immich](https://immich.app) | your photos as the sleep screen and wallpaper, and in notes |
@@ -57,15 +57,18 @@ and the Nook Simple Touch: which ones have been tried is in
 
 - 📖 **Reading:** EPUB, PDF, MOBI, AZW3, FB2, CBZ and more, with KOReader's reader
   and the ZenOS interface. Your **place (to the exact spot), bookmarks, highlights
-  and notes sync both ways with Grimmory**, with ratings and reading sessions for
-  its statistics, so you can carry on in Grimmory's web reader or another Kindle.
+  and notes sync both ways with your book server, Grimmory or BookOrbit**, with
+  ratings and reading time for its statistics, so you can carry on in its web
+  reader or on another Kindle.
 - 📚 **The Catalog:** one tab, three pages you swipe (or page) between, each laid out
   like a shop: covers on display ledges, then a bookcase of lists. Pick something,
   and it downloads in the background:
-  - **Books** from Grimmory: Continue reading, Recently added, All books, libraries,
-    shelves, authors, series and search. *Download* or *Download & open*; your
-    **place, bookmarks, highlights and ratings stay in sync** with Grimmory.
-  - **Audiobooks** from Grimmory (or a Plex library): Continue listening, Recently
+  - **Books** from Grimmory or BookOrbit: Continue reading, Recently added, All books,
+    libraries, shelves (BookOrbit's collections and SmartScopes), authors, series,
+    genres and search. *Download* or *Download & open*; your **place, bookmarks,
+    highlights and ratings stay in sync** with your server. With BookOrbit, a
+    Requests page asks for books it doesn't have yet.
+  - **Audiobooks** from Grimmory or BookOrbit (or a Plex library): Continue listening, Recently
     added, authors, shelves, series. *Download & listen* opens the player, and your
     place is kept.
   - **Music** from Plex: Recently played, Recently added, playlists, albums and
@@ -91,7 +94,7 @@ and the Nook Simple Touch: which ones have been tried is in
 - 🔁 **Copy connections** from another GZreader over the Wi‑Fi with a PIN.
 - 🔌 **No Wi‑Fi? Sync with a computer** *(Kindle 2, DX)*: plug the Kindle in and open
   the [sync page](https://9retirement6irk.github.io/GZreader/sync/) in Chrome or Edge.
-  Your reading goes to Grimmory; books, audiobooks and Plex music (chosen on the Kindle
+  Your reading goes to Grimmory (BookOrbit doesn't work this way yet); books, audiobooks and Plex music (chosen on the Kindle
   or the page), notes, calendars, GZreader updates and a copy of your library (to browse
   the Catalog tab) come back.
 - 📝 **Notes:** your [Memos](https://usememos.com) notes as sticky notes; tick
@@ -121,7 +124,7 @@ and the Nook Simple Touch: which ones have been tried is in
   the stock Kindle.
 - 🎧 **Audiobooks** *(Kindles with audio or Bluetooth)*: a cassette walkman with
   chapters, a sleep timer and the volume keys; your place syncs with Grimmory's
-  audiobook progress.
+  or BookOrbit's audiobook progress.
 - 🎧 **Bluetooth** *(Scribe, Paperwhite 5 and newer…)*: pair and connect headphones
   or a speaker in Settings; audiobooks, music and read aloud play through them.
 - 🔋 Wi‑Fi only when needed, a built-in English dictionary, updates from GitHub.
@@ -179,7 +182,7 @@ reports automatically ([what's sent](https://github.com/9retirement6irk/GZreader
 
 Built on **[KOReader](https://github.com/koreader/koreader)** (AGPL-3.0) and
 **[ZenOS](https://github.com/xZenLabs/zen-os)**, connecting to
-**[Grimmory](https://grimmory.org)**. Dictionary: [Open English WordNet](https://en-word.net)
+**[Grimmory](https://grimmory.org)** and **[BookOrbit](https://github.com/bookorbit/bookorbit)**. Dictionary: [Open English WordNet](https://en-word.net)
 (CC BY 4.0). All emojis designed by [OpenMoji](https://openmoji.org/) – the
 open-source emoji and icon project. License: [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
 GZreader is free software under the
