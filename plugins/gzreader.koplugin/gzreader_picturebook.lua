@@ -43,7 +43,8 @@ local PB = {}
 
 local MARK_BEGIN = "/* GZreader picture book: begin */"
 local MARK_END = "/* GZreader picture book: end */"
-PB.VERSION = 6
+PB.VERSION = 7
+PB.INLINE_PAGES = 4 -- pages whose own <style> blocks are read for a fixed-layout book's text layer
 
 --- The style tweak, with pictures `vh` tall. In crengine 1vh is 1% of the
 --- page's text area (inside the margins), and vh is honoured for pictures
@@ -96,10 +97,24 @@ function PB.textLayers(read)
     if not opf then return {} end
     local base = opf_path:match("^(.*/)") or ""
     local absolute, invisible = {}, {}
+    -- the stylesheets: the book's CSS files, and the pages' own <style>
+    -- blocks (some converters write the rules into every page instead of a
+    -- file: the first few pages' are read, they're all alike)
+    local sheets, pages = {}, 0
     for item in opf:gmatch("<[%w:]*item%s[^>]*>") do
         local href = item:match("%shref%s*=%s*[\"']([^\"']+)[\"']")
         if href and item:match("media%-type%s*=%s*[\"']text/css[\"']") then
-            local css = (read(Sync.normalizeHref(base .. href)) or ""):gsub("/%*.-%*/", "")
+            sheets[#sheets + 1] = read(Sync.normalizeHref(base .. href)) or ""
+        elseif href and pages < PB.INLINE_PAGES and item:match("media%-type%s*=%s*[\"']application/xhtml%+xml[\"']")
+            and not item:match("properties%s*=%s*[\"'][^\"']*nav") then
+            pages = pages + 1
+            local html = read(Sync.normalizeHref(base .. href)) or ""
+            for style in html:gmatch("<[%w:]*style[^>]*>(.-)</[%w:]*style>") do sheets[#sheets + 1] = style end
+        end
+    end
+    for _i, sheet in ipairs(sheets) do
+        do
+            local css = sheet:gsub("/%*.-%*/", "")
             for sels, body in css:gmatch("([^{}]+){([^{}]*)}") do
                 body = body:lower():gsub("%s+", "")
                 local abs = body:find("position:absolute", 1, true) ~= nil
@@ -383,7 +398,7 @@ end
 PB.FEW_FILES = 6
 --- The check's version, kept with each book checked (2: fixed-layout books'
 --- invisible text layers left out).
-PB.CHECK = 2
+PB.CHECK = 3
 
 local function stripOurs(css)
     if not css then return nil end

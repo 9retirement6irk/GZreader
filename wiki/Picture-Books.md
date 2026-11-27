@@ -65,7 +65,10 @@ the pictures are fitted, its text doesn't count when the book is recognized
 width is dropped so the picture is centred and fills the screen. A book
 fitted before the fix is fitted again once when it opens, and one found not
 to be a picture book before it is checked again (unless Fit pictures was
-turned off in it). Its pictures aren't measured first: every one is a page
+turned off in it). The layer's style rules are found in the book's CSS files
+and in the pages' own `<style>` blocks (a converter that writes them into
+every page: such a book showed each page's picture, then a page of its text).
+Its pictures aren't measured first: every one is a page
 (The BOOK's 410 pictures, 264 MB, were read for 13 minutes in the background
 on a Paperwhite 3, and the job then failed). A very big book is slow to open
 whatever GZreader does: KOReader's EPUB engine reads the whole file each time
