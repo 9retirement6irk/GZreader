@@ -615,6 +615,12 @@ API to `/api` are found too.
     chooses what holding it does: **Eraser** (the default), or a writing
     tool: **Pen**, **Pencil**, **Fountain pen** or **Highlighter** (draw
     with it while the button is held, then you're back to the tool in hand).
+  - **The pen's eraser in a book** (a Kindle Scribe's Premium Pen, or a Kobo
+    with a pen and its eraser button): rub the eraser over a highlight and
+    it's removed, as **Delete** in its menu would (its note goes with it).
+    The tip works as before (a tap on a highlight opens its menu). Nothing
+    happens with a menu open over the book. **Settings → Notes → Pen's
+    eraser removes highlights** turns it off.
   - Not on Kindles syncing through a computer (the sync page doesn't send
     drawings).
 

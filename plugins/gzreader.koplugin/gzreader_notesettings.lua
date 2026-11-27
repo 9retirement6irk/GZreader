@@ -369,6 +369,7 @@ function NoteSettings._items(plugin)
             sub_item_table = files_items,
         }),
         NoteSettings.shortcutItem(icon) or false,
+        NoteSettings.eraserItem(icon) or false,
         NoteSettings.handwritingItem(plugin, icon) or false,
         -- (last, as on every service's page: what's kept on the Kindle; a tap
         -- opens Settings → General → Storage → Notes, with the Free up space
@@ -416,6 +417,23 @@ function NoteSettings.shortcutItem(icon, device)
         sub_item_table = sub,
     }
     return icon and icon("edit", item) or item
+end
+
+--- The pen's eraser removes highlights in books (gzreader_peneraser.lua). Nil
+--- without a pen (the menu leaves it out).
+function NoteSettings.eraserItem(icon, device)
+    if not require("gzreader_sketch").penDevice(device or require("device")) then return nil end
+    local Eraser = require("gzreader_peneraser")
+    local item = {
+        text = _("Pen's eraser removes highlights"),
+        help_text = _("In a book, rub the pen's eraser end over a highlight to remove it (its note goes with it). The pen's tip works as before."),
+        checked_func = function() return Eraser.enabled() end,
+        callback = function()
+            G_reader_settings:saveSetting(Eraser.SETTING, not Eraser.enabled())
+            Log.info("notes: the pen's eraser removes highlights:", tostring(Eraser.enabled()))
+        end,
+    }
+    return icon and icon("delete", item) or item
 end
 
 --- Handwriting to text (gzreader_handwriting.lua): read on the Kindle, or by
