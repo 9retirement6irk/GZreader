@@ -342,152 +342,392 @@ local function pageClass()
         return w
     end
 
-    --- Lay it out: the heading, then sections of tiles and buttons (self.items,
-    --- each { x, y, w, h, label, sub, run, row }).
+    --- A font size whose letters are about `px` pixels tall.
+    local function sizeFor(px) return math.max(5, math.floor(px * 160 / Screen:getDPI() + 0.5)) end
+
+    --- Lay it out as a game table (everything drawn in paintTo):
+    --- - the board's frame, its name and the date on a banner, a round close token;
+    --- - TODAY'S PAPER: four playing cards, each a picture of its puzzle;
+    --- - the theme's box lid (tap: choose a theme) and a die (New puzzles), then its four cards;
+    --- - the trophy cabinet (every achievement, the ones won dark) and the score card.
+    --- self.items: what a tap or Press runs, { x, y, w, h, row, run, … }.
     function Page:build()
         self:freeWidgets()
         local B = Board()
         local plugin = self.plugin
         local W, H = self.dimen.w, self.dimen.h
-        local margin = S(12)
+        local frame = S(10)
+        local margin = frame + S(10)
         local room = W - margin * 2
-        self.close_w = self.touch and S(44) or 0
-        local title = self:text(_("GAME BOARD"), face("NotoSerif-Bold.ttf", 18, "smallinfofontbold"))
-        local date = self:text(require("gzreader_dailyscreen").dateText(os.time()), face("NotoSerif-Italic.ttf", 9, "smallinfofont"),
-            room - margin - title:getSize().w - self.close_w)
-        self.head = { title = title, date = date, y = S(8), h = title:getSize().h }
-        local y = self.head.y + self.head.h + S(6)
-        self.rule_y = y
-        y = y + S(3) + S(12)
-        self.items, self.heads = {}, {}
-        local head_face = face("NotoSerif-Bold.ttf", 10, "smallinfofontbold")
-        local label_face = Font:getFace("smallinfofontbold", 12)
-        local sub_face = Font:getFace("smallinfofont", 9)
-        local row = 0
-        local function heading(str)
-            local w = self:text(str, head_face, room)
-            self.heads[#self.heads + 1] = { widget = w, y = y }
-            y = y + w:getSize().h + S(6)
+        self.frame = frame
+        self.items = {}
+        -- the banner
+        local white = Blitbuffer.COLOR_WHITE
+        local title = TextWidget:new{ text = _("GAME BOARD"), face = face("NotoSerif-Bold.ttf", 16, "smallinfofontbold"), fgcolor = white }
+        self.widgets[#self.widgets + 1] = title
+        local close_d = self.touch and math.max(S(34), title:getSize().h + S(8)) or 0
+        local date = TextWidget:new{ text = require("gzreader_dailyscreen").dateText(os.time()), face = face("NotoSerif-Italic.ttf", 9, "smallinfofont"),
+            max_width = room - title:getSize().w - close_d - S(40), fgcolor = white }
+        self.widgets[#self.widgets + 1] = date
+        local banner_h = title:getSize().h + S(12)
+        self.banner = { title = title, date = date, x = margin, y = frame + S(8), w = room - close_d - S(10), h = banner_h }
+        self.close = self.touch and { x = W - margin - close_d, y = frame + S(8) + math.floor((banner_h - close_d) / 2), d = close_d } or nil
+        local y = self.banner.y + banner_h + S(10)
+        local label_face = face("NotoSerif-Bold.ttf", 10, "smallinfofontbold")
+        local card_face = Font:getFace("smallinfofontbold", 12)
+        local note_face = Font:getFace("smallinfofont", 9)
+        local keys_hint = (not self.touch) and self:text(_("5-way: move · Press: open · Back: close"), Font:getFace("smallinfofont", 9), room) or nil
+        local bottom = H - frame - S(8) - (keys_hint and keys_hint:getSize().h + S(6) or 0)
+        self.hint = keys_hint and { widget = keys_hint, y = bottom + S(4) } or nil
+        -- how tall each part can be
+        local gap = S(10)
+        local cw = math.floor((room - gap * 3) / 4)
+        local label_h = self:text("Ag", label_face):getSize().h + S(10)
+        local lid_h = math.max(S(44), label_h + S(18))
+        local fixed = label_h * 2 + lid_h + gap * 5
+        local avail = bottom - y - fixed
+        local ch = math.floor(math.min(cw * 1.3, avail * 0.31))
+        self.labels, self.cards = {}, {}
+        local function label(str, right)
+            local l = self:text(str, label_face, room)
+            local r = right and self:text(right, note_face, room - l:getSize().w - S(20)) or nil
+            self.labels[#self.labels + 1] = { widget = l, right = r, y = y }
+            y = y + label_h
         end
-        local function tiles(list)
-            row = row + 1
-            local n = #list
-            local gap = S(8)
-            local tw = math.floor((room - gap * (n - 1)) / n)
-            local th = S(56)
-            local lh = 0
-            for _i, t in ipairs(list) do
-                t.label_w = self:text(t.label, label_face, tw - S(10))
-                t.sub_w = t.sub and self:text(t.sub, sub_face, tw - S(10)) or nil
-                lh = math.max(lh, t.label_w:getSize().h + (t.sub_w and t.sub_w:getSize().h + S(4) or 0))
+        local function cards(kinds, done, began, row, run)
+            for i, kind in ipairs(kinds) do
+                local c = { kind = kind, done = done[kind], began = began and began[kind], row = row,
+                    x = margin + (i - 1) * (cw + gap), y = y, w = cw, h = ch, run = function() return run(kind) end }
+                c.name = self:text(PzScreen().tabLabel(kind), card_face, cw - S(12))
+                c.note = (not c.done and c.began) and self:text(_("Started"), note_face, cw - S(12)) or nil
+                self.cards[#self.cards + 1] = c
+                self.items[#self.items + 1] = c
             end
-            th = math.max(th, lh + S(16))
-            for i, t in ipairs(list) do
-                t.x, t.y, t.w, t.h, t.row = margin + (i - 1) * (tw + gap), y, tw, th, row
-                self.items[#self.items + 1] = t
-            end
-            y = y + th + S(12)
+            y = y + ch + gap
         end
-        -- today's paper puzzles: the paper's own
+        -- today's paper
         local pdone, pn, pof = Screen_.paperDone(plugin)
-        heading(T(_("TODAY'S PAPER PUZZLES · %1/%2"), pn, pof))
-        local list = {}
-        for _i, kind in ipairs(Pz().KINDS) do
-            list[#list + 1] = { label = PzScreen().tabLabel(kind), sub = pdone[kind] and _("Done \u{2713}") or nil, done = pdone[kind],
-                run = function() return self:open(kind) end }
-        end
-        tiles(list)
-        -- the themed set
+        local pstate = {}
+        pcall(function() pstate = Pz().state(plugin) end)
+        label(_("TODAY'S PAPER"), T(_("%1 of %2 done"), pn, pof))
+        cards(Pz().KINDS, pdone, type(pstate.began) == "table" and pstate.began or nil, 1, function(kind) return self:open(kind) end)
+        -- the theme: its lid, the die, its cards
         local set = B.current(plugin)
         local sdone, sn, sof = Screen_.setDone(plugin, set)
-        heading(T(_("THEME: %1 · %2/%3"), tostring(set.title or ""):upper(), sn, sof))
-        list = {}
-        for _i, kind in ipairs(Pz().kindsOf(Pz().forSet(plugin, set))) do
-            list[#list + 1] = { label = PzScreen().tabLabel(kind), sub = sdone[kind] and _("Done \u{2713}") or nil, done = sdone[kind],
-                run = function() return self:open(kind, set) end }
-        end
-        tiles(list)
-        tiles({
-            { label = _("Choose a theme"), sub = _("Your books, seasons, categories, AI"), run = function()
-                Screen_.chooseTheme(plugin, function() self:rebuild() end)
-                return true
-            end },
-            { label = _("New puzzles"), sub = _("The same theme, new puzzles"), run = function()
-                B.again(plugin)
-                self:rebuild()
-                return true
-            end },
-        })
-        -- records
-        local an = select(2, B.achievements(plugin))
+        local die_w = lid_h + S(6)
+        local lid = { row = 2, x = margin, y = y, w = room - die_w - gap, h = lid_h,
+            run = function() Screen_.chooseTheme(plugin, function() self:rebuild() end) return true end }
+        lid.small = self:text(_("THEME · tap to change"), note_face, lid.w - S(24))
+        lid.title = self:text(tostring(set.title or ""), Font:getFace("smallinfofontbold", 13), lid.w - S(24))
+        lid.count = self:text(T(_("%1 of %2"), sn, sof), note_face)
+        local die = { row = 2, x = margin + room - die_w, y = y, w = die_w, h = lid_h, die = true,
+            run = function() B.again(plugin); self:rebuild(); return true end }
+        die.label = self:text(_("New"), note_face)
+        self.lid, self.die = lid, die
+        self.items[#self.items + 1] = lid
+        self.items[#self.items + 1] = die
+        y = y + lid_h + gap
+        cards(Pz().kindsOf(Pz().forSet(plugin, set)), sdone, type(set.began) == "table" and set.began or nil, 3,
+            function(kind) return self:open(kind, set) end)
+        -- the cabinet and the score card
+        local list, an = B.achievements(plugin)
         local stats = B.store(plugin).stats
-        heading(_("RECORDS"))
-        tiles({
-            { label = T(_("\u{2605} Achievements %1/%2"), an, #B.ACHIEVEMENTS), run = function() return self:viewer(_("Achievements"), B.achievementsText(plugin)) end },
-            { label = _("History"), sub = (function()
-                local run = B.streak(stats.days, os.date("%Y-%m-%d"))
-                return T(_("%1 finished"), stats.total or 0) .. " · " .. (run == 1 and _("1 day running") or T(_("%1 days running"), run))
-            end)(),
-              run = function() return self:viewer(_("History"), B.historyText(plugin)) end },
-        })
-        if self.focus > #self.items then self.focus = #self.items end
-        local small = Font:getFace("smallinfofont", 10)
-        local help = self.touch and _("Tap a puzzle to play. The paper's puzzles are the same here and in the paper.")
-            or _("5-way: move · Press: open · Back: close")
-        local help_w = self:text(help, small, room)
-        self.foot = { help = help_w, y = H - S(8) - help_w:getSize().h }
-        -- the room left: the puzzles finished last, as many as fit
-        self.recent = {}
+        local run_days = B.streak(stats.days, os.date("%Y-%m-%d"))
+        label(_("TROPHIES AND SCORES"), T(_("%1 of %2 won"), an, #list))
+        local cab_w = math.floor(room * 0.56)
+        local cab = { row = 4, x = margin, y = y, w = cab_w, h = math.max(S(80), bottom - y), trophies = list,
+            run = function() return self:viewer(_("Achievements"), B.achievementsText(plugin)) end }
+        cab.title = self:text(_("Achievements"), card_face, cab_w - S(20))
+        local card = { row = 4, x = margin + cab_w + gap, y = y, w = room - cab_w - gap, h = cab.h,
+            run = function() return self:viewer(_("History"), B.historyText(plugin)) end }
+        card.title = self:text(_("Score card"), card_face, card.w - S(30))
+        card.sum = self:text(T(_("%1 finished"), stats.total or 0) .. " · " .. (run_days == 1 and _("1 day running") or T(_("%1 days running"), run_days)),
+            note_face, card.w - S(30))
+        card.lines = {}
+        local line_face = Font:getFace("smallinfofont", 9)
+        local lh = self:text("Ag", line_face):getSize().h + S(6)
+        local room_lines = math.floor((card.h - card.title:getSize().h - card.sum:getSize().h - S(30)) / lh)
         local history = B.store(plugin).history
-        local line_face = Font:getFace("smallinfofont", 11)
-        local probe = self:text("Ag", line_face)
-        local line_h = probe:getSize().h + S(8)
-        local head_h = self:text("A", head_face):getSize().h + S(6)
-        local room_lines = math.floor((self.foot.y - S(10) - y - head_h) / line_h)
-        if #history > 0 and room_lines >= 2 then
-            heading(_("FINISHED LATELY"))
-            for i = 1, math.min(#history, room_lines - 1) do
-                local h = history[i]
-                local took = B.tookText(h.d)
-                local when = os.date("%d %b", h.t):gsub("^0", "")
-                local line = when .. "  ·  " .. B.kindName(h.k) .. "  ·  " .. (h.s or _("the daily paper")) .. (took and ("  ·  " .. took) or "")
-                self.recent[#self.recent + 1] = { widget = self:text(line, line_face, room), y = y }
-                y = y + line_h
+        for i = 1, math.min(#history, math.max(0, room_lines)) do
+            local h = history[i]
+            local when = os.date("%d %b", h.t):gsub("^0", "")
+            card.lines[i] = self:text(when .. "  " .. B.kindName(h.k) .. " · " .. (h.s or _("the paper")), line_face, card.w - S(36))
+        end
+        if #history == 0 then card.lines[1] = self:text(_("Nothing finished yet."), line_face, card.w - S(36)) end
+        card.line_h = lh
+        self.cab, self.score = cab, card
+        self.items[#self.items + 1] = cab
+        self.items[#self.items + 1] = card
+        if self.focus > #self.items then self.focus = #self.items end
+    end
+
+    ---------------------------------------------------------------- drawing
+
+    local function shade(v) return Blitbuffer.gray(v) end
+
+    --- A card's shadow, then the card.
+    local function cardBox(bb, x, y, w, h, r, fill)
+        local off = math.max(2, S(3))
+        bb:paintRoundedRect(x + off, y + off, w, h, shade(0.55), r)
+        bb:paintRoundedRect(x, y, w, h, fill or Blitbuffer.COLOR_WHITE, r)
+        bb:paintBorder(x, y, w, h, math.max(1, S(1)), Blitbuffer.COLOR_BLACK, r)
+    end
+
+    function Page:glyph(ch, px)
+        self.glyphs = self.glyphs or {}
+        local key = ch .. ":" .. px
+        if not self.glyphs[key] then
+            self.glyphs[key] = TextWidget:new{ text = ch, face = Font:getFace("smallinfofontbold", sizeFor(px)) }
+            self.widgets[#self.widgets + 1] = self.glyphs[key]
+        end
+        return self.glyphs[key]
+    end
+
+    local function centred(bb, w, x, y, cw, chh)
+        local sz = w:getSize()
+        w:paintTo(bb, x + math.floor((cw - sz.w) / 2), y + math.floor(((chh or cw) - sz.h) / 2))
+    end
+
+    --- The picture on a card: a little puzzle of its kind in a square of side `d`.
+    function Page:picture(bb, kind, x, y, d)
+        local black = Blitbuffer.COLOR_BLACK
+        local thin = math.max(1, math.floor(d / 120))
+        if kind == "sudoku" then
+            local c = math.floor(d / 9)
+            local g = c * 9
+            local digits = { [1] = "5", [5] = "3", [11] = "7", [13] = "9", [19] = "1", [24] = "6", [30] = "8", [34] = "2", [40] = "4",
+                [44] = "7", [49] = "3", [57] = "6", [61] = "1", [66] = "9", [70] = "5", [75] = "2", [80] = "8" }
+            for i = 0, 80 do
+                if digits[i] and c >= S(8) then centred(bb, self:glyph(digits[i], math.floor(c * 0.6)), x + (i % 9) * c, y + math.floor(i / 9) * c, c)
+                elseif digits[i] then bb:paintRect(x + (i % 9) * c + math.floor(c / 3), y + math.floor(i / 9) * c + math.floor(c / 3), math.max(1, math.floor(c / 3)), math.max(1, math.floor(c / 3)), shade(0.5)) end
             end
+            for k = 0, 9 do
+                local t = (k % 3 == 0) and thin * 2 or thin
+                bb:paintRect(x + k * c - math.floor(t / 2), y, t, g, black)
+                bb:paintRect(x, y + k * c - math.floor(t / 2), g, t, black)
+            end
+        elseif kind == "words" then
+            local rows = { "GAMEBO", "RTWORD", "AXPUZL", "SEARCH", "ZLEFUN", "MQBOOK" }
+            local c = math.floor(d / 6)
+            for r, line in ipairs(rows) do
+                for k = 1, 6 do
+                    if c >= S(7) then centred(bb, self:glyph(line:sub(k, k), math.floor(c * 0.55)), x + (k - 1) * c, y + (r - 1) * c, c)
+                    else bb:paintRect(x + (k - 1) * c + math.floor(c / 3), y + (r - 1) * c + math.floor(c / 3), 2, 2, shade(0.6)) end
+                end
+            end
+            -- a word found: ringed
+            bb:paintBorder(x + 1, y + 3 * c + math.floor(c * 0.1), c * 6 - 2, math.floor(c * 0.8), math.max(1, thin * 2), black, math.floor(c * 0.4))
+            bb:paintBorder(x + 3 * c + math.floor(c * 0.1), y + 1, math.floor(c * 0.8), c * 3 - 2, math.max(1, thin * 2), black, math.floor(c * 0.4))
+        elseif kind == "cross" then
+            local n = 7
+            local c = math.floor(d / n)
+            local blacks = { [1] = true, [3] = true, [5] = true, [15] = true, [17] = true, [19] = true, [29] = true, [31] = true, [33] = true,
+                [43] = true, [45] = true, [47] = true, [8] = true, [12] = true, [36] = true, [40] = true }
+            for i = 0, n * n - 1 do
+                local cx, cy = x + (i % n) * c, y + math.floor(i / n) * c
+                if blacks[i] then bb:paintRect(cx, cy, c, c, black)
+                else bb:paintBorder(cx, cy, c + thin, c + thin, thin, black) end
+            end
+            local word = "BOOK"
+            for k = 1, 4 do
+                if c >= S(8) then centred(bb, self:glyph(word:sub(k, k), math.floor(c * 0.55)), x + k * c, y + 3 * c, c) end
+            end
+            if c >= S(8) then
+                for _i, at in ipairs({ 0, 2, 4, 6, 14, 28 }) do
+                    bb:paintRect(x + (at % n) * c + thin * 2, y + math.floor(at / n) * c + thin * 2, math.max(2, math.floor(c / 6)), math.max(2, math.floor(c / 6)), shade(0.6))
+                end
+            end
+        elseif kind == "maze" then
+            local n = 7
+            local m = Pz().maze("game board picture", n, n)
+            local c = math.floor(d / n)
+            local t = math.max(2, thin * 2)
+            for i = 1, n * n do
+                local open = m.cells[i] or 0
+                local cx, cy = x + ((i - 1) % n) * c, y + math.floor((i - 1) / n) * c
+                if open % 2 == 0 then bb:paintRect(cx, cy, c + t, t, black) end                          -- north
+                if math.floor(open / 8) % 2 == 0 then bb:paintRect(cx, cy, t, c + t, black) end          -- west
+                if i > n * (n - 1) and math.floor(open / 4) % 2 == 0 then bb:paintRect(cx, cy + c, c + t, t, black) end
+                if i % n == 0 and math.floor(open / 2) % 2 == 0 then bb:paintRect(cx + c, cy, t, c + t, black) end
+            end
+            bb:paintCircle(x + math.floor(c / 2), y + math.floor(c / 2), math.max(2, math.floor(c / 4)), black)
+            bb:paintRect(x + (n - 1) * c + math.floor(c / 3), y + (n - 1) * c + math.floor(c / 3), math.max(2, math.floor(c / 3)), math.max(2, math.floor(c / 3)), shade(0.4))
+        else -- the scramble: letter tiles, out of line
+            local word = "PUZLE"
+            local c = math.floor(d / 5.6)
+            local r = math.max(2, math.floor(c / 6))
+            local ups = { 0.15, -0.1, 0.2, -0.15, 0.05 }
+            for k = 1, 5 do
+                local tx = x + math.floor((d - c * 5.3) / 2) + (k - 1) * math.floor(c * 1.08)
+                local ty = y + math.floor(d / 2 - c / 2 + ups[k] * c)
+                bb:paintRoundedRect(tx + 2, ty + 2, c, c, shade(0.55), r)
+                bb:paintRoundedRect(tx, ty, c, c, shade(0.08), r)
+                bb:paintBorder(tx, ty, c, c, math.max(1, thin), black, r)
+                centred(bb, self:glyph(word:sub(k, k), math.floor(c * 0.55)), tx, ty, c)
+            end
+        end
+    end
+
+    --- A trophy cup in a box `w` × `h`: dark when won, an outline when not.
+    local function trophy(bb, x, y, w, h, won)
+        local ink = won and Blitbuffer.COLOR_BLACK or shade(0.45)
+        local cw = math.floor(w * 0.56)
+        local cx = x + math.floor((w - cw) / 2)
+        local bowl_h = math.floor(h * 0.46)
+        local function bar(yy, ww, hh) bb:paintRect(x + math.floor((w - ww) / 2), yy, ww, hh, ink) end
+        if won then
+            for k = 0, bowl_h - 1 do
+                local ww = math.floor(cw * (1 - 0.45 * (k / bowl_h) ^ 2))
+                bar(y + k, ww, 1)
+            end
+        else
+            bb:paintBorder(cx, y, cw, bowl_h, math.max(1, math.floor(w / 24)), ink, math.floor(cw / 3))
+        end
+        -- handles
+        local hw = math.max(2, math.floor(w * 0.14))
+        bb:paintBorder(cx - hw, y + math.floor(bowl_h * 0.12), hw + 1, math.floor(bowl_h * 0.5), math.max(1, math.floor(w / 28)), ink)
+        bb:paintBorder(cx + cw - 1, y + math.floor(bowl_h * 0.12), hw + 1, math.floor(bowl_h * 0.5), math.max(1, math.floor(w / 28)), ink)
+        -- stem and base
+        bar(y + bowl_h, math.max(2, math.floor(w * 0.1)), math.floor(h * 0.24))
+        bar(y + bowl_h + math.floor(h * 0.24), math.floor(w * 0.42), math.max(2, math.floor(h * 0.08)))
+        bar(y + bowl_h + math.floor(h * 0.32), math.floor(w * 0.6), math.max(2, math.floor(h * 0.12)))
+    end
+
+    --- A die showing five, `d` across.
+    local function die(bb, x, y, d)
+        local r = math.floor(d / 6)
+        bb:paintRoundedRect(x + 3, y + 3, d, d, shade(0.55), r)
+        bb:paintRoundedRect(x, y, d, d, Blitbuffer.COLOR_WHITE, r)
+        bb:paintBorder(x, y, d, d, math.max(2, S(2)), Blitbuffer.COLOR_BLACK, r)
+        local p = math.max(2, math.floor(d / 11))
+        for _i, at in ipairs({ { 0.27, 0.27 }, { 0.73, 0.27 }, { 0.5, 0.5 }, { 0.27, 0.73 }, { 0.73, 0.73 } }) do
+            bb:paintCircle(x + math.floor(d * at[1]), y + math.floor(d * at[2]), p, Blitbuffer.COLOR_BLACK)
         end
     end
 
     function Page:paintTo(bb, x, y)
         self.dimen.x, self.dimen.y = x, y
         local W, H = self.dimen.w, self.dimen.h
-        local margin = S(12)
-        bb:paintRect(x, y, W, H, Blitbuffer.COLOR_WHITE)
-        local h = self.head
-        h.title:paintTo(bb, x + margin, y + h.y)
-        h.date:paintTo(bb, x + margin + h.title:getSize().w + margin, y + h.y + h.h - h.date:getSize().h - S(3))
-        local red = require("gzreader_dailyscreen").ink(require("gzreader_dailyscreen").MAST_COLOR)
-        if red and bb.paintRectRGB32 then bb:paintRectRGB32(x + margin, y + self.rule_y, W - margin * 2, S(3), red)
-        else bb:paintRect(x + margin, y + self.rule_y, W - margin * 2, S(3), Blitbuffer.COLOR_BLACK) end
-        if self.close_w > 0 then
-            local cx, cy, arm = x + W - math.floor(self.close_w / 2), y + math.floor(self.close_w / 2), S(7)
-            for d = -arm, arm do
-                bb:paintRect(cx + d, cy + d, 2, 2, Blitbuffer.COLOR_BLACK)
-                bb:paintRect(cx + d, cy - d, 2, 2, Blitbuffer.COLOR_BLACK)
+        local f = self.frame
+        local black = Blitbuffer.COLOR_BLACK
+        -- the board: a dark frame, chequered at its corners, a light playing field
+        bb:paintRect(x, y, W, H, shade(0.75))
+        local sq = f
+        for k = 0, 5 do
+            for _i, corner in ipairs({ { 0, 0 }, { W - sq * 6, 0 }, { 0, H - f }, { W - sq * 6, H - f } }) do
+                if k % 2 == 0 then bb:paintRect(x + corner[1] + k * sq, y + corner[2], sq, f, Blitbuffer.COLOR_WHITE) end
             end
         end
-        for _i, hd in ipairs(self.heads) do hd.widget:paintTo(bb, x + margin, y + hd.y) end
-        for _i, r in ipairs(self.recent or {}) do r.widget:paintTo(bb, x + margin, y + r.y) end
-        for i, t in ipairs(self.items) do
-            if t.done then bb:paintRect(x + t.x, y + t.y, t.w, t.h, Blitbuffer.COLOR_GRAY_E) end
-            local focused = self.keys and i == self.focus
-            bb:paintBorder(x + t.x, y + t.y, t.w, t.h, focused and S(3) or 1, Blitbuffer.COLOR_BLACK, S(6))
-            local lh = t.label_w:getSize().h + (t.sub_w and t.sub_w:getSize().h + S(4) or 0)
-            local ty = y + t.y + math.floor((t.h - lh) / 2)
-            t.label_w:paintTo(bb, x + t.x + math.floor((t.w - t.label_w:getSize().w) / 2), ty)
-            if t.sub_w then t.sub_w:paintTo(bb, x + t.x + math.floor((t.w - t.sub_w:getSize().w) / 2), ty + t.label_w:getSize().h + S(4)) end
+        bb:paintRect(x + f, y + f, W - f * 2, H - f * 2, shade(0.06))
+        bb:paintBorder(x + f, y + f, W - f * 2, H - f * 2, math.max(1, S(1)), black)
+        -- the banner
+        local b = self.banner
+        bb:paintRoundedRect(x + b.x + 3, y + b.y + 3, b.w, b.h, shade(0.55), S(4))
+        bb:paintRoundedRect(x + b.x, y + b.y, b.w, b.h, black, S(4))
+        b.title:paintTo(bb, x + b.x + S(12), y + b.y + math.floor((b.h - b.title:getSize().h) / 2))
+        b.date:paintTo(bb, x + b.x + S(24) + b.title:getSize().w, y + b.y + math.floor((b.h - b.date:getSize().h) / 2))
+        if self.close then
+            local c = self.close
+            local cx, cy, r = x + c.x + math.floor(c.d / 2), y + c.y + math.floor(c.d / 2), math.floor(c.d / 2)
+            bb:paintCircle(cx + 2, cy + 2, r, shade(0.55))
+            bb:paintCircle(cx, cy, r, Blitbuffer.COLOR_WHITE)
+            bb:paintCircle(cx, cy, r, black, math.max(1, S(1)))
+            local arm = math.floor(r * 0.45)
+            for d = -arm, arm do
+                bb:paintRect(cx + d - 1, cy + d - 1, 3, 3, black)
+                bb:paintRect(cx + d - 1, cy - d - 1, 3, 3, black)
+            end
         end
-        bb:paintRect(x + margin, y + self.foot.y - S(5), W - margin * 2, 1, Blitbuffer.COLOR_BLACK)
-        self.foot.help:paintTo(bb, x + margin, y + self.foot.y)
+        -- the parts' labels
+        local margin = self.banner.x
+        for _i, l in ipairs(self.labels) do
+            l.widget:paintTo(bb, x + margin, y + l.y)
+            if l.right then l.right:paintTo(bb, x + self.dimen.w - margin - l.right:getSize().w, y + l.y + l.widget:getSize().h - l.right:getSize().h) end
+            bb:paintRect(x + margin, y + l.y + l.widget:getSize().h + S(3), self.dimen.w - margin * 2, 1, shade(0.5))
+        end
+        -- the cards
+        for _i, c in ipairs(self.cards) do
+            local r = S(8)
+            cardBox(bb, x + c.x, y + c.y, c.w, c.h, r)
+            local name_h = c.name:getSize().h + (c.note and c.note:getSize().h or 0) + S(12)
+            local d = math.min(c.w - S(24), c.h - name_h - S(20))
+            local px, py = x + c.x + math.floor((c.w - d) / 2), y + c.y + S(12)
+            self:picture(bb, c.kind, px, py, d)
+            local ny = y + c.y + c.h - name_h + S(2)
+            c.name:paintTo(bb, x + c.x + math.floor((c.w - c.name:getSize().w) / 2), ny)
+            if c.note then c.note:paintTo(bb, x + c.x + math.floor((c.w - c.note:getSize().w) / 2), ny + c.name:getSize().h) end
+            if c.done then
+                -- a stamp: a ringed tick over the card's corner
+                local sr = math.max(S(12), math.floor(c.w / 7))
+                local sx, sy = x + c.x + c.w - sr - S(4), y + c.y + sr + S(4)
+                bb:paintCircle(sx, sy, sr, black)
+                bb:paintCircle(sx, sy, sr - math.max(2, S(2)), Blitbuffer.COLOR_WHITE)
+                local tick = self:glyph("\u{2713}", math.floor(sr * 1.2))
+                tick:paintTo(bb, sx - math.floor(tick:getSize().w / 2), sy - math.floor(tick:getSize().h / 2))
+                bb:lightenRect(x + c.x + S(6), y + c.y + S(6), c.w - sr * 2 - S(14), c.h - name_h - S(12), 0.5)
+            end
+        end
+        -- the theme's lid and the die
+        local lid = self.lid
+        cardBox(bb, x + lid.x, y + lid.y, lid.w, lid.h, S(6), shade(0.2))
+        bb:paintRect(x + lid.x + S(6), y + lid.y + S(6), lid.w - S(12), lid.h - S(12), Blitbuffer.COLOR_WHITE)
+        local th = lid.small:getSize().h + lid.title:getSize().h
+        local ty = y + lid.y + math.floor((lid.h - th) / 2)
+        lid.small:paintTo(bb, x + lid.x + S(14), ty)
+        lid.title:paintTo(bb, x + lid.x + S(14), ty + lid.small:getSize().h)
+        lid.count:paintTo(bb, x + lid.x + lid.w - S(14) - lid.count:getSize().w, y + lid.y + math.floor((lid.h - lid.count:getSize().h) / 2))
+        local dd = self.die
+        local dsz = math.min(dd.w, dd.h) - dd.label:getSize().h - S(4)
+        die(bb, x + dd.x + math.floor((dd.w - dsz) / 2), y + dd.y, dsz)
+        dd.label:paintTo(bb, x + dd.x + math.floor((dd.w - dd.label:getSize().w) / 2), y + dd.y + dsz + S(3))
+        -- the trophy cabinet: glass-fronted shelves, a cup for every achievement
+        local cab = self.cab
+        cardBox(bb, x + cab.x, y + cab.y, cab.w, cab.h, S(6), shade(0.6))
+        local ix, iy, iw, ih = x + cab.x + S(8), y + cab.y + S(8) + cab.title:getSize().h + S(6), cab.w - S(16), cab.h - S(16) - cab.title:getSize().h - S(6)
+        bb:paintRect(x + cab.x + S(8), y + cab.y + S(6), cab.w - S(16), cab.title:getSize().h + S(4), Blitbuffer.COLOR_WHITE)
+        cab.title:paintTo(bb, x + cab.x + math.floor((cab.w - cab.title:getSize().w) / 2), y + cab.y + S(8))
+        bb:paintRect(ix, iy, iw, ih, shade(0.1))
+        local n = #cab.trophies
+        local best_cols, best_size = 1, 0
+        for cols = 1, n do
+            local rows = math.ceil(n / cols)
+            local size = math.min(math.floor(iw / cols), math.floor(ih / rows))
+            if size > best_size then best_cols, best_size = cols, size end
+        end
+        local cols, size = best_cols, best_size
+        local rows = math.ceil(n / cols)
+        local row_h = math.floor(ih / rows)
+        local ox = ix + math.floor((iw - cols * size) / 2)
+        for i, t in ipairs(cab.trophies) do
+            local col, row = (i - 1) % cols, math.floor((i - 1) / cols)
+            local ty2 = iy + row * row_h
+            trophy(bb, ox + col * size + math.floor(size * 0.12), ty2 + math.floor((row_h - size) / 2) + math.floor(size * 0.1), math.floor(size * 0.76), math.floor(size * 0.76), t.at ~= nil)
+            if col == 0 then bb:paintRect(ix, ty2 + row_h - math.max(2, S(3)), iw, math.max(2, S(3)), shade(0.6)) end
+        end
+        -- the score card: ruled paper, a margin line, the last finishes
+        local sc = self.score
+        cardBox(bb, x + sc.x, y + sc.y, sc.w, sc.h, S(4))
+        local tx = x + sc.x + S(22)
+        sc.title:paintTo(bb, tx, y + sc.y + S(8))
+        local ly = y + sc.y + S(8) + sc.title:getSize().h
+        sc.sum:paintTo(bb, tx, ly)
+        ly = ly + sc.sum:getSize().h + S(10)
+        local red = require("gzreader_dailyscreen").ink(require("gzreader_dailyscreen").MAST_COLOR)
+        if red and bb.paintRectRGB32 then bb:paintRectRGB32(x + sc.x + S(14), y + sc.y + S(2), math.max(1, S(1)), sc.h - S(4), red)
+        else bb:paintRect(x + sc.x + S(14), y + sc.y + S(2), math.max(1, S(1)), sc.h - S(4), shade(0.5)) end
+        local k = 0
+        while ly + k * sc.line_h + sc.line_h < y + sc.y + sc.h - S(4) do
+            bb:paintRect(x + sc.x + S(4), ly + (k + 1) * sc.line_h - 1, sc.w - S(8), 1, shade(0.3))
+            local line = sc.lines[k + 1]
+            if line then line:paintTo(bb, tx, ly + k * sc.line_h + sc.line_h - line:getSize().h - S(3)) end
+            k = k + 1
+        end
+        -- the frame round what Press would open
+        if self.keys then
+            local t = self.items[self.focus]
+            if t then bb:paintBorder(x + t.x - S(4), y + t.y - S(4), t.w + S(8), t.h + S(8), math.max(3, S(3)), black, S(10)) end
+        end
+        if self.hint then self.hint.widget:paintTo(bb, x + margin, y + self.hint.y) end
     end
 
     function Page:rebuild()
@@ -507,7 +747,8 @@ local function pageClass()
     end
 
     function Page:at_(px, py)
-        if self.close_w > 0 and px >= self.dimen.w - self.close_w and py <= self.close_w then return "close" end
+        local c = self.close
+        if c and px >= c.x - S(8) and px < c.x + c.d + S(8) and py >= c.y - S(8) and py < c.y + c.d + S(8) then return "close" end
         for i, t in ipairs(self.items) do
             if px >= t.x and px < t.x + t.w and py >= t.y and py < t.y + t.h then return i end
         end
@@ -584,7 +825,7 @@ function Screen_.show(plugin)
     return self
 end
 
----------------------------------------------------------------- Settings → Home and tabs → Home
+---------------------------------------------------------------- Settings → Home and tabs → Game board
 
 function Screen_.settingsItems(plugin)
     local B = Board()

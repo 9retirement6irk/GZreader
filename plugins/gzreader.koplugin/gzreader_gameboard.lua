@@ -1,6 +1,6 @@
 --[[--
 The game board: a box of puzzles on Home's shelf, beside the daily paper
-(off unless chosen: Settings → Home and tabs → Home → Game board, or the
+(off unless chosen: Settings → Home and tabs → Game board, or the
 setup guide). Its screen is gzreader_gameboardscreen.lua; the puzzles
 themselves are gzreader_puzzles.lua's, on gzreader_puzzlescreen.lua's page.
 

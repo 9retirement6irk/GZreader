@@ -342,6 +342,19 @@ function M.dailyPaperHome(root)
     if accounts[#accounts] then accounts[#accounts].separator = nil end
 end
 
+--- GZreader's game board (its rows come inside Home's page): Home and tabs →
+--- Game board, right after the daily paper (the owner, 2026-11-27).
+function M.gameBoardHome(root)
+    local _ = gettext()
+    local _h, home = M.section(root, "home")
+    local home_row = M.find(home, _("Home"))
+    local board = home_row and M.take(home_row.sub_item_table, _("Game board"))
+    if not board then return end
+    local _p, at = M.find(home, _("Daily paper"))
+    if not at then _p, at = M.find(home, _("Home")) end
+    table.insert(home, (at or 0) + 1, board)
+end
+
 ---------------------------------------------------------------- GZreader's own names and values
 
 --- ZenOS's names for things that are GZreader's here, wherever they show.
@@ -420,8 +433,8 @@ function M.connected(text, g)
 end
 
 --- Accounts and services' rows say "Not connected" on the right until their
---- service is (then the service, as before); Home and tabs → Daily paper says
---- On or Off.
+--- service is (then the service, as before); Home and tabs → Daily paper and
+--- Game board say On or Off.
 function M.accountValues(root, opts)
     local _ = gettext()
     local gz = opts and opts.gzreader
@@ -439,13 +452,15 @@ function M.accountValues(root, opts)
         end
     end
     local _h, home = M.section(root, "home")
-    local paper = M.find(home, _("Daily paper"))
-    if paper then
-        paper.mandatory = nil
-        paper.mandatory_func = function()
-            local g = gz and gz()
-            local ok, on = pcall(function() return require("gzreader_daily").enabled(g) end)
-            return (ok and on) and _("On") or _("Off")
+    for text, module in pairs({ [_("Daily paper")] = "gzreader_daily", [_("Game board")] = "gzreader_gameboard" }) do
+        local row = M.find(home, text)
+        if row then
+            row.mandatory = nil
+            row.mandatory_func = function()
+                local g = gz and gz()
+                local ok, on = pcall(function() return require(module).enabled(g) end)
+                return (ok and on) and _("On") or _("Off")
+            end
         end
     end
 end
@@ -586,7 +601,7 @@ end
 --- (nil: asked of the device) }.
 function M.apply(root, opts)
     opts = opts or {}
-    for _i, step in ipairs({ M.noImmichCopy, M.aiOnce, M.flatSleep, M.menuText, M.penPage, M.transferOrReset, M.dailyPaperHome, M.ownNames, M.accountValues, M.connectionRows }) do
+    for _i, step in ipairs({ M.noImmichCopy, M.aiOnce, M.flatSleep, M.menuText, M.penPage, M.transferOrReset, M.dailyPaperHome, M.gameBoardHome, M.ownNames, M.accountValues, M.connectionRows }) do
         local ok, err = pcall(step, root, opts)
         if not ok then
             pcall(function() require("logger").warn("GZreader settings: a tidying step failed:", tostring(err)) end)

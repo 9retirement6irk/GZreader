@@ -89,9 +89,20 @@ add({ fn = function(E)
     local G = require("gzreader_gameboardscreen")
     local b = G.instance
     E.board = b
-    check(E, b ~= nil and #b.items == 12, "opened: the board's tiles (4 paper puzzles, 4 themed, 2 buttons, 2 records): " .. (b and #b.items or 0))
-    local last = b and b.items[#b.items]
-    check(E, last and last.y + last.h <= b.foot.y - 2 and last.x + last.w <= b.dimen.w, "every tile on the screen, above the foot")
+    check(E, b ~= nil and #b.items == 12 and #b.cards == 8 and b.lid and b.die and b.cab and b.score,
+        "opened: a game table: 4 paper cards, the theme's lid and die, 4 theme cards, the trophy cabinet and the score card: " .. (b and #b.items or 0))
+    local inside, apart = true, true
+    for i, t in ipairs(b.items) do
+        if t.x < b.frame or t.y < b.frame or t.x + t.w > b.dimen.w - b.frame or t.y + t.h > b.dimen.h - b.frame then inside = false end
+        for j = i + 1, #b.items do
+            local u = b.items[j]
+            if t.x < u.x + u.w and u.x < t.x + t.w and t.y < u.y + u.h and u.y < t.y + t.h then apart = false end
+        end
+    end
+    check(E, inside and apart, "every part inside the board's frame, none over another")
+    local spare = b.dimen.h - b.frame - (b.score.y + b.score.h)
+    check(E, spare < b.dimen.h * 0.08, "the board fills the screen (" .. spare .. " px spare at the bottom)")
+    check(E, b.cards[1].h >= b.dimen.h * 0.12, "the cards are big (" .. b.cards[1].w .. " × " .. b.cards[1].h .. " px)")
     -- the paper's word search, from the board
     if TOUCH then
         local t = b.items[2]
@@ -138,7 +149,7 @@ add({ fn = function(E)
     B.choose(plugin(), B.categorySet("animals"))
     E.board:rebuild()
     local t
-    for _i, it in ipairs(E.board.items) do if it.label == "Scramble" then t = it end end
+    for _i, it in ipairs(E.board.cards) do if it.kind == "scramble" then t = it end end
     check(E, t ~= nil, "Animals on the board, its scramble a tile")
     t.run()
 end, after = 5 })
@@ -201,9 +212,11 @@ add({ fn = function(E)
 end, after = 5 })
 add({ shot = "games-9-board-after" })
 add({ fn = function(E)
-    local item
-    for _i, it in ipairs(E.board.items) do if it.label == "History" then item = it end end
-    check(E, item and item.sub and item.sub:find("1 finished", 1, true), "the board's History: one finished")
+    local item = E.board.score
+    local card
+    for _i, c in ipairs(E.board.cards) do if c.kind == "scramble" then card = c end end
+    check(E, card and card.done and E.board.cab.trophies[1].at ~= nil and #item.lines == 1 and item.sum.text:find("1 finished", 1, true),
+        "on the board: the scramble's card stamped done, a trophy won, the score card's first line")
     item.run()
 end, after = 4 })
 add({ shot = "games-10-history" })
@@ -211,14 +224,14 @@ add({ fn = function(E)
     local v = top()
     UIM():close(v)
     local item
-    for _i, it in ipairs(E.board.items) do if it.label:find("Achievements", 1, true) then item = it end end
+    item = E.board.cab
     item.run()
 end, after = 4 })
 add({ shot = "games-11-achievements" })
 add({ fn = function(E)
     UIM():close(top())
     -- Choose a theme
-    for _i, it in ipairs(E.board.items) do if it.label == "Choose a theme" then it.run() end end
+    E.board.lid.run()
 end, after = 4 })
 add({ shot = "games-12-themes" })
 add({ fn = function(E)

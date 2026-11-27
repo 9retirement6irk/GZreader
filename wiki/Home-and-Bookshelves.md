@@ -213,7 +213,7 @@ A **game box** can stand beside it: the paper's puzzles of the day, and a
 crossword, a word search, a word scramble and a maze on a theme from your own
 books, the season or a category, with achievements and a history. Picked, it
 shows its lid; another tap opens it. Off until you turn it on in the setup
-guide or **Settings → Home and tabs → Home → Game board**. → [Game board](Game-Board)
+guide or **Settings → Home and tabs → Game board**. → [Game board](Game-Board)
 
 ## Sleep screen
 

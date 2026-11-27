@@ -10,9 +10,10 @@ It's off until you turn it on.
 
 - In the setup guide: the page **On Home's shelf** asks whether you want the
   daily paper, the game board, or both.
-- Later: **Settings → Home and tabs → Home → Game board → Game board on
-  Home's bookshelf**. **Open the game board** is there too, for Home's other
-  views (Tiles, List), which have no shelf.
+- Later: **Settings → Home and tabs → Game board** (right under Daily paper;
+  it says On or Off) **→ Game board on Home's bookshelf**. **Open the game
+  board** is there too, for Home's other views (Tiles, List), which have no
+  shelf.
 
 The box stands on its side at the start of the first shelf, after the daily
 paper when that's on: a dark game box with chequered ends and **GAME BOARD**
@@ -23,21 +24,30 @@ Tap it again (or press) to open it.
 
 ## On the board
 
-- **Today's paper puzzles**: the sudoku, word search, crossword and maze of
-  the [daily paper](Daily-Paper#puzzles). They are the paper's own, kept in
-  the same place: a word found on the board is found in the paper, and a
-  sudoku finished in the paper is ticked on the board. They come with each
-  day's paper (without a paper, from the puzzles' own word list).
-- **Theme**: a crossword, a word search, a **word scramble** and a maze on
-  the theme on the board. They stay until you choose another theme or tap
-  **New puzzles** (the same theme, new puzzles); a new day doesn't change
-  them.
-- **Choose a theme**, **New puzzles**.
-- **Records**: **Achievements** and **History** (each opens a list), and under
-  them the puzzles you finished last.
+The board is drawn as a game table, everything on it big enough to tap:
 
-Touch: tap a tile. Keys: the 5-way moves the frame, **Press** opens, **Back**
-closes; on a keyboard, **Menu** is the quick panel.
+- **Today's paper**: four playing cards, one for each of the [daily
+  paper's](Daily-Paper#puzzles) puzzles (sudoku, word search, crossword,
+  maze), each with a picture of its puzzle. They are the paper's own, kept in
+  the same place: a word found on the board is found in the paper, and a
+  sudoku finished in the paper is ticked on the board. A card says
+  **Started** once you've begun it, and gets a ✓ stamp when it's done. They
+  come with each day's paper (without a paper, from the puzzles' own word
+  list).
+- **The theme's box lid**: the theme on the board and how many of its
+  puzzles are done. Tap it to choose another theme. The **die** beside it
+  gives **New puzzles** on the same theme.
+- **The theme's cards**: a crossword, a word search, a **word scramble** and
+  a maze. They stay until you choose another theme or roll the die; a new
+  day doesn't change them.
+- **The trophy cabinet**: a cup for every achievement, the ones you've won
+  in black. Tap it for the list.
+- **The score card**: how many puzzles you've finished, your streak, and the
+  last ones finished. Tap it for the whole history.
+
+Touch: tap anything; the round ✕ token closes the board. Keys: the 5-way moves
+a frame from card to card, **Press** opens what's framed, **Back** closes; on
+a keyboard, **Menu** is the quick panel.
 
 ## Themes
 
