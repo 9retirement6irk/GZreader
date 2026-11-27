@@ -1882,10 +1882,94 @@ check(not q.text:find("example.com", 1, true) and not q.system:find("example.com
     check(okn == false and whyn and oe.order == mixed and not oe.ordered_by_ai, "…no order in its answer: the paper keeps its mix")
     check(Dz.orderFrom('{"order":[1]}', Dz.ordered(oe)) == nil, "…an order naming too few stories isn't trusted")
     local dsrc2 = io.open(PLUGIN .. "/gzreader_daily.lua"):read("*a")
-    check(dsrc2:find("local ordered, owhy = Daily.aiOrder(edition, function(q) return AI.complete(ai, q) end)", 1, true)
+    check(dsrc2:find('local ordered, owhy = Daily.aiOrder(edition, function(q) return AI.complete(ai, q) end, how.style == "mixed_good")', 1, true)
         and dsrc2:find("edition.summaries, edition.summaries_asked, why = Daily.addSummaries", 1, true)
         and dsrc2:find("Daily.aiOrder(edition", 1, true) < dsrc2:find("edition.summaries, edition.summaries_asked", 1, true),
         "…asked before the summaries (they go to the paper's first stories)")
+end)()
+;(function()
+    print("== the story order's settings")
+    local old_ed = Dz.load()
+    local function mk() return { day = "2026-12-03", at = os.time(), sections = {
+        { topic = "World", items = { { title = "w1" }, { title = "w2" }, { title = "w3" } } },
+        { topic = "Science", items = { { title = "s1" }, { title = "s2" } } },
+        { topic = "Good news", items = { { title = "g1" }, { title = "g2" } } } } } end
+    local function titles(e) local t = {} for _i, st in ipairs(Dz.ordered(e)) do t[#t + 1] = st.item.title end return table.concat(t, " ") end
+    local pl = { store = { daily = { enabled = true } }, save = function() end }
+    check(Dz.orderStyle(pl) == "mixed_good" and Dz.aiOrders(pl) == true and Dz.how(pl).ai == false,
+        "as it comes: mixed, good news first; the AI's order on (used once the AI edition is ticked)")
+    pl.store.daily.order = "whatever"
+    check(Dz.orderStyle(pl) == "mixed_good", "an unknown order: the usual one")
+    local e = Dz.arrange(mk(), { style = "sections" })
+    check(e.order == nil and titles(e) == "w1 w2 w3 s1 s2 g1 g2", "By section: each section's stories together, in the feeds' order")
+    check(Dz.front(e, 3)[1].title == "w1" and Dz.front(e, 3)[2].title == "s1", "…the front page takes each section's first")
+    e = Dz.arrange(mk(), { style = "mixed_good" })
+    check(Dz.ordered(e)[1].topic == "Good news", "Mixed, good news first: good news leads")
+    local leads, early = 0, 0
+    for d = 1, 28 do
+        local m = mk(); m.day = "2026-12-" .. string.format("%02d", d)
+        Dz.arrange(m, { style = "mixed" })
+        local list = Dz.ordered(m)
+        if list[1].topic == "Good news" then leads = leads + 1 end
+        for k = 1, 3 do if list[k].topic == "Good news" then early = early + 1 end end
+        local last
+        for _i, st in ipairs(list) do assert(st.topic ~= last or _i == #list); last = st.topic end
+    end
+    check(leads < 28 and leads > 0, "Mixed: good news isn't put first (it led " .. leads .. " of 28 days)")
+    local m1, m2 = Dz.arrange(mk(), { style = "mixed" }), Dz.arrange(mk(), { style = "mixed" })
+    check(titles(m1) == titles(m2) and #Dz.ordered(m1) == 7, "…the same order all day, every story once")
+    -- the AI's order, kept beside the others
+    local a = mk()
+    Dz.arrange(a, { style = "sections", ai = true })
+    local oka = Dz.aiOrder(a, function() return '{"order":[7,6,5,4,3,2,1]}' end, false)
+    check(oka and titles(a) == "g2 g1 s2 s1 w3 w2 w1" and a.ai_order and a.ordered_by_ai, "the AI's order used, and kept")
+    Dz.arrange(a, { style = "sections", ai = false })
+    check(titles(a) == "w1 w2 w3 s1 s2 g1 g2" and not a.ordered_by_ai, "…the AI's order turned off: the chosen order, at once")
+    Dz.arrange(a, { style = "sections", ai = true })
+    check(titles(a) == "g2 g1 s2 s1 w3 w2 w1", "…and on again: the AI's, without asking again")
+    local q_good = Dz.orderQuestion(Dz.ordered(mk()))
+    local q_plain = Dz.orderQuestion(Dz.ordered(mk()), false)
+    check(q_good.system:find("good news", 1, true) and not q_plain.system:find("good", 1, true),
+        "the AI is asked to put good news first only with Mixed, good news first")
+    -- Settings → Daily paper → Story order
+    local saved = 0
+    local sp = { store = { daily = { enabled = true } }, save = function() saved = saved + 1 end }
+    local kept = mk(); Dz.arrange(kept, Dz.how(sp)); Dz.keep(kept)
+    local rows = Paper.settingsItems(sp)
+    local orow
+    for _i, r in ipairs(rows) do if r.text == "Story order" then orow = r end end
+    check(orow and orow.text_func() == "Story order: Mixed, good news first" and orow.sub_item_table_func, "Settings → Daily paper → Story order, showing the choice")
+    local sub = orow.sub_item_table_func()
+    check(#sub == 4 and sub[1].text == "Mixed, good news first" and sub[2].text == "Mixed" and sub[3].text == "By section"
+        and sub[1].radio and sub[1].checked_func() and not sub[3].checked_func() and sub[4].text == "The AI chooses the order"
+        and sub[4].enabled_func() == false, "…three orders to choose from, and the AI's (greyed without the AI edition)")
+    sub[3].callback()
+    check(sp.store.daily.order == "sections" and saved == 1 and sub[3].checked_func() and orow.text_func() == "Story order: By section",
+        "By section chosen: kept")
+    Dz.loaded, Dz.edition = false, nil
+    check(titles(Dz.load()) == "w1 w2 w3 s1 s2 g1 g2", "…today's kept paper is in the new order at once")
+    sub[1].callback()
+    check(sp.store.daily.order == nil and Dz.ordered(Dz.load())[1].topic == "Good news", "back to Mixed, good news first: not stored (the usual)")
+    local aiOk = Dz.aiOn
+    Dz.aiOn = function() return true end
+    sp.store.daily.ai = true
+    check(sub[4].enabled_func() and sub[4].checked_func() and orow.text_func() == "Story order: the AI's", "the AI edition: the AI chooses, as it comes")
+    sub[4].callback()
+    check(sp.store.daily.ai_order == false and not sub[4].checked_func() and Dz.how(sp).ai == false, "…unticked: the order above")
+    sub[4].callback()
+    check(sp.store.daily.ai_order == nil and Dz.how(sp).ai == true, "…ticked again")
+    Dz.aiOn = aiOk
+    net.usb = true
+    local urows = Paper.settingsItems(sp)
+    local has
+    for _i, r in ipairs(urows) do if r.text == "Story order" then has = true end end
+    check(has, "a Kindle without Wi-Fi has Story order too (the paper from the sync is put in it)")
+    net.usb = false
+    local dsrc3 = io.open(PLUGIN .. "/gzreader_daily.lua"):read("*a")
+    check(dsrc3:find("Daily.arrange(edition, Daily.how(plugin))\n        Daily.keep(edition)", 1, true)
+        and dsrc3:find("if not edition then return nil, err end\n        Daily.arrange(edition, how)", 1, true),
+        "a paper fetched, or brought by the sync page, is put in the chosen order")
+    if old_ed then Dz.keep(old_ed) else Dz.loaded, Dz.edition = false, nil; os.remove(Dz.cachePath()) end
 end)()
 -- the summaries
 local e = edition()
