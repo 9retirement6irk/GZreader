@@ -47,18 +47,19 @@ add({ fn = function(E)
         if w.widget.name == "setup guide" or w.widget.name == "QR code screen" then UIM():close(w.widget) end
     end
     check(G_reader_settings:isTrue("lock_rotation"), "at start: Home and books keep the screen's rotation (lock_rotation ticked once)")
-    -- the Auto-rotate tile: as on an Oasis or Scribe
+    -- the Rotate tile: as on an Oasis or Scribe
     local Device = require("device")
     Device.hasGSensor = function() return true end
     local Panel = require("gzreader_panel")
     local tile
-    for _i, t in ipairs(Panel.controls(plugin())) do if t.id == "autorotate" then tile = t end end
-    check(tile and tile.on and tile.label == "Auto-rotate", "a Kindle with an accelerometer: Auto-rotate tile, on")
+    for _i, t in ipairs(Panel.controls(plugin())) do if t.id == "rotate" then tile = t end end
+    check(tile and tile.on and tile.label == "Rotate" and tile.sub == "Auto", "a Kindle with an accelerometer: Rotate tile, Auto")
     if tile then tile.run() end
-    check(G_reader_settings:isTrue("input_ignore_gsensor"), "a tap: off")
-    for _i, t in ipairs(Panel.controls(plugin())) do if t.id == "autorotate" then tile = t end end
+    check(G_reader_settings:isTrue("input_ignore_gsensor"), "a tap: Manual")
+    for _i, t in ipairs(Panel.controls(plugin())) do if t.id == "rotate" then tile = t end end
+    check(tile and tile.sub == "Manual" and tile.side, "…the tile says Manual, the turn on its side")
     if tile then tile.run() end
-    check(not G_reader_settings:isTrue("input_ignore_gsensor"), "a tap again: on")
+    check(not G_reader_settings:isTrue("input_ignore_gsensor"), "a tap again: Auto")
     local p = plugin()
     p.store.memos = { server = "http://127.0.0.1:18090", token = "memos-test-token", prefix = "/api/v1", user = "Will" }
     note = require("gzreader_memos"):new(p.store.memos):create("Rotation test\n\n- [ ] one\n- [x] two", "PRIVATE")

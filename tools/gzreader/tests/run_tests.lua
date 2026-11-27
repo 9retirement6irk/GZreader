@@ -15457,7 +15457,7 @@ print("Sync through a computer (Kindles without Wi-Fi)")
         local icons = {}
         for _i, t in ipairs(Panel.controls(plugin)) do icons[#icons + 1] = t.icon end
         local list = table.concat(icons, ",")
-        check(list:match("^usb,") and not list:match("wifi") and not list:match("updates"),
+        check(list:match("^home,usb,") and not list:match("wifi") and not list:match("updates"),
             "no Wi-Fi: the quick panel has Sync instead of Wi-Fi, no Updates (" .. list .. ")")
     end
     -- Connect to computer: GZreader quits with 86 (koreader.sh lets the Kindle share its drive)

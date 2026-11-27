@@ -10,9 +10,9 @@ black when it's on (Wi‑Fi, night mode, a bookmark on this page).
 Five tiles go across; on a big touch screen (the Kindle Scribe) as many as
 keep each tile under an inch wide (seven on a Scribe, eight turned sideways).
 
-- **Controls:** Wi‑Fi (a tap goes on → off → [auto](Wi-Fi), and the panel stays open; on the Kindle 2
+- **Controls:** Home, Wi‑Fi (a tap goes on → off → [auto](Wi-Fi), and the panel stays open; on the Kindle 2
   and DX: **Sync**, [with a computer](Sync-with-a-Computer)), [Bluetooth](Bluetooth) (Kindles with Bluetooth: a tap turns it
-  on or off, the panel staying open; a hold opens Bluetooth devices), Night mode, Rotate, Restart, Sleep, Home,
+  on or off, the panel staying open; a hold opens Bluetooth devices), Night mode, Rotate, Auto light, Restart, Sleep,
   Updates, Settings, Diagnostics (while diagnostic logging is on, Settings →
   Privacy and diagnostics) and Exit to Kindle (Exit to Kobo, Exit to Nook).
 - **Home:** Manage book (the highlighted book), Continue, Connect (your phone or computer: send books, set up), Search,
@@ -68,8 +68,11 @@ across views**, ticked by GZreader; untick it in Settings → Privacy and diagno
 rotation again.)
 
 On a Kindle that turns the screen by itself when you turn it (Oasis,
-Scribe), Controls also has **Auto-rotate**: a tap turns that on or off (on
-by default; the tile is white on black while it's on). Notes turn with the
+Scribe), the **Rotate** tile says **Auto** or **Manual** under its name. A
+tap on it switches between the two, and the panel stays open (Auto is the
+default; the tile is white on black while it's Auto). While it's Manual,
+the tile's bottom quarter shows the rotate icon: a tap there turns the
+screen a quarter turn. Notes turn with the
 screen too: a note open from the Notes tab, the note editor (what you've
 typed, its tags, space and drawings stay), a quick note's window and a
 journal entry are laid out again for the new shape, and so is the Notes tab

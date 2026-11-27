@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Quick panel: Home first; one Rotate tile (Auto or Manual)", text = "The quick panel's Controls start with Home. On a Kindle that turns the screen by itself (Oasis, Scribe), Rotate and Auto-rotate are one Rotate tile with Auto or Manual under it: a tap switches between them, and while it's Manual a tap on the rotate icon along its bottom turns the screen." },
+        },
+    },
+    {
         version = "2026.11.22",
         changes = {
             { short = "Colour Kindles: Immich photos in colour", text = "On a Kindle Colorsoft or Scribe Colorsoft, the pictures from your Immich album (the sleep screen and the Home wallpaper) are kept in colour instead of being made grey. Pictures already on the Kindle stay grey until they are swapped for others from the album (about half each time GZreader gets new pictures)." },
