@@ -71,3 +71,19 @@ Fastmail (`https://caldav.fastmail.com`), Google
   the layout it opens in, week start (Sunday / Monday), sync range, storage.
   M → Calendar settings in the tab opens this same Settings page; the
   calendar is drawn again when you close it.
+
+## On the sleep screen
+
+Your calendar can be what the Kindle shows while it sleeps. In
+**Settings → Sleep and wallpaper → Sleep → Wallpaper**, with a calendar set
+up, tap one of two tiles:
+
+- **Today's calendar**: today in big, with its events beside it, then the
+  next days that have events, as many as fit.
+- **This week's calendar**: the week, a day a row, today shaded.
+
+The page is drawn from the events kept on the Kindle, so going to sleep never
+waits for Wi‑Fi. It stays fresh by itself: when Wi‑Fi connects and the last
+sync is more than an hour old, the calendar syncs again (and whenever the
+Calendar tab opens, as before). The page says when it last synced, in small
+grey type. To go back, tap another tile.

@@ -183,6 +183,7 @@ function Grimmory:init()
         end
     end
     Grimmory.last_instance = self -- (every instance shares the store: the exit's last save)
+    pcall(function() require("gzreader_sleepcalendar").install(Grimmory) end) -- (the calendar as the sleep screen)
     self.store.downloads = self.store.downloads or {}
     self.store.pending = self.store.pending or { progress = {}, sessions = {} }
     self.store.pending.ratings = self.store.pending.ratings or {}
@@ -2035,6 +2036,8 @@ function Grimmory:onNetworkConnected()
     UIManager:scheduleIn(8, function() pcall(require("gzreader_shelves").sync, self) end)
     -- the Immich album's pictures (sleep screen, wallpaper), when used (at most every 6 h)
     UIManager:scheduleIn(12, function() pcall(require("gzreader_immich").onNetworkConnected, self) end)
+    -- the calendar, when it's the sleep screen (if its events are over an hour old)
+    UIManager:scheduleIn(14, function() pcall(require("gzreader_sleepcalendar").onNetworkConnected, self) end)
     -- BookOrbit: books in the folder that aren't tied to one of its books yet (it does nothing
     -- when every file is tied, or was asked about before and hasn't changed)
     UIManager:scheduleIn(10, function() pcall(self.matchLibraryFiles, self) end)
