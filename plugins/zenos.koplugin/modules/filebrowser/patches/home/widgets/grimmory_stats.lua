@@ -99,7 +99,8 @@ widget.build = function(ctx)
     tap.onTapServerStats = function(tap_self, _arg, ges)
         if not (tap_self.dimen and ges and ges.pos and tap_self.dimen:contains(ges.pos)) then return false end
         if ctx.openTopMenu and ctx.openTopMenu(ges) then return true end
-        if ctx.editMode then return false end
+        -- (not ctx.editMode: that's ZenOS's standing "hold a widget to change it",
+        -- on by default, so a tap stopped here and the page never opened)
         local open = rawget(_G, "__GZ_SERVER_STATS_PAGE")
         if not open then return false end
         pcall(open)
