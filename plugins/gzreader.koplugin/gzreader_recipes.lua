@@ -22,6 +22,10 @@ the next time and can be read with Wi-Fi off; it's fetched again quietly when
 Wi-Fi is on. The Kindles without Wi-Fi (2, DX) can't reach Mealie: the tab
 says so, and Settings doesn't offer it.
 
+In the Bookshelf view the same rows are drawn as a recipe box: the
+categories as its dividers' tabs, the recipes as the cards filed in it
+(gzreader_recipebox.lua); the other views keep this list.
+
 gzreader_mealie.lua talks to Mealie.
 ]]
 
@@ -110,7 +114,8 @@ function Recipes:updatedText()
     if self.err and not self.list then return _("couldn't update") end
     local list = self.list
     if not list then return "" end
-    local count = T(_("%1 recipes"), list.total or #list.items)
+    local n = list.total or #list.items
+    local count = n == 1 and _("1 recipe") or T(_("%1 recipes"), n)
     local when = ago(list.at)
     return when and (count .. " · " .. when) or count
 end
@@ -130,11 +135,11 @@ function Recipes:rootItems()
     local f = self.filter
     local items = {
         { text = _("Refresh"), gz_icon = Rows.FILE.sync, mandatory = self:updatedText(), gz_no_arrow = true,
-          keep_menu_open = true, callback = function() self:refresh(true) end },
-        { text = _("Search"), gz_icon = "search", mandatory = f.search, keep_menu_open = true, callback = function() self:askSearch() end },
-        { text = _("Category"), gz_icon = "label", mandatory = f.category and f.category.name or _("All"), keep_menu_open = true,
+          gz_recipes = "refresh", keep_menu_open = true, callback = function() self:refresh(true) end },
+        { text = _("Search"), gz_icon = "search", mandatory = f.search, gz_recipes = "search", keep_menu_open = true, callback = function() self:askSearch() end },
+        { text = _("Category"), gz_icon = "label", mandatory = f.category and f.category.name or _("All"), gz_recipes = "category", keep_menu_open = true,
           callback = function() self:askCategory() end },
-        { text = _("Order"), gz_icon = "sort", mandatory = f.newest and _("Newest first") or _("A to Z"), keep_menu_open = true,
+        { text = _("Order"), gz_icon = "sort", mandatory = f.newest and _("Newest first") or _("A to Z"), gz_recipes = "order", keep_menu_open = true,
           callback = function() self:setFilter({ newest = not f.newest }) end },
     }
     local list = self.list
@@ -173,6 +178,7 @@ function Recipes:reload()
     if self.closed or not self.menu then return end
     self.filter, self.err = {}, nil
     self.list = Recipes.client(self.plugin):isConnected() and M().loadList() or nil
+    self.cats = self.list and self.list.cats or nil
     self:redraw()
     if Recipes.client(self.plugin):isConnected() and not Recipes.noWifi() then self:refresh(true) end
 end
@@ -203,7 +209,12 @@ function Recipes:refresh(asked)
         if self.fetching or self.closed then return end
         self.fetching = true
         if asked then self:redraw(true) end
-        Async().run(nil, function() return client:recipes(1, opts) end, function(list, err)
+        Async().run(nil, function()
+            local list, err = client:recipes(1, opts)
+            -- (the categories with it: the recipe box's dividers; the list does without them)
+            if list then list.cats = client:categories() end
+            return list, err
+        end, function(list, err)
             self.fetching = false
             if self.closed then return end
             -- (the search or category changed meanwhile: that one's answer is on its way)
@@ -213,6 +224,8 @@ function Recipes:refresh(asked)
             end
             if list then
                 list.at = os.time()
+                self.cats = list.cats or self.cats
+                list.cats = self.cats
                 self.list, self.err = list, nil
                 if plain then M().saveList(list) end
                 Log.info("recipes: list fetched,", #list.items, "of", tostring(list.total), self:filtered() and "(narrowed)" or "")
@@ -365,6 +378,7 @@ function Recipes.show(plugin)
     local self = Recipes.new(plugin)
     local connected = Recipes.client(plugin):isConnected()
     self.list = connected and M().loadList() or nil
+    self.cats = self.list and self.list.cats or nil
     self.menu = Menu:new{
         title = _("Recipes"), item_table = self:rootItems(), covers_fullscreen = true, is_borderless = true,
         is_popout = false, title_bar_fm_style = true, _gz_navbar_tab_id = Recipes.TAB_ID,
@@ -374,6 +388,8 @@ function Recipes.show(plugin)
     self.menu.key_events.LeftButtonTap = nil
     pcall(require("gzreader_tabs").decorate, self.menu, _("Recipes"))
     require("gzreader_rows").apply(self.menu)
+    -- the Bookshelf view: a recipe box, the recipes as its cards (gzreader_recipebox.lua)
+    pcall(function() require("gzreader_recipebox").apply(self) end)
     -- Alt + Q, W, E… switch the bottom tabs (as in the other tabs)
     local digits = { "1", "2", "3", "4", "5", "6", "7", "8", "9" }
     local row = { "Q", "W", "E", "R", "T", "Y", "U", "I", "O" }

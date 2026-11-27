@@ -2783,6 +2783,155 @@ print("Recipes tab (Mealie): connecting, the list, a recipe, Settings, the phone
     AsyncMod.sync, NetM.usb, plugin.save = T0.sync, T0.usb, T0.save
 end)()
 
+print("Recipes tab in the Bookshelf view: the recipe box (dividers, where things go, pages, letters)")
+;(function()
+    local saved_w = {}
+    local widget_mods = { "ui/widget/container/inputcontainer", "ui/widget/container/widgetcontainer", "ui/gesturerange", "ui/font", "ffi/blitbuffer" }
+    for _i, wm in ipairs(widget_mods) do
+        saved_w[wm] = package.loaded[wm]
+        if type(saved_w[wm]) ~= "table" then package.loaded[wm] = setmetatable({ extend = function(_s, o) return o or {} end }, { __index = function() return function() end end }) end
+    end
+    local View = require("gzreader_recipebox")
+    local Shop = require("gzreader_bookshop")
+    for _i, wm in ipairs(widget_mods) do package.loaded[wm] = saved_w[wm] end
+    local one = function(x) return x end
+    local function cb() end
+    local function rowsFor(n, more, note)
+        local t = { { text = "Refresh", mandatory = "60 recipes · just now", gz_recipes = "refresh", callback = cb },
+            { text = "Search", gz_recipes = "search", callback = cb }, { text = "Category", mandatory = "All", gz_recipes = "category", callback = cb },
+            { text = "Order", mandatory = "A to Z", gz_recipes = "order", callback = cb } }
+        for i = 1, n do t[#t + 1] = { text = "Recipe " .. i, mandatory = "30 minutes", gz_recipe = "recipe-" .. i, callback = cb } end
+        if more then t[#t + 1] = { text = "More recipes", mandatory = n .. " of 60", gz_more = true, callback = cb } end
+        if note then t[#t + 1] = { text = note, select_enabled = false, dim = true } end
+        return t
+    end
+    local box_rows = rowsFor(20, true, "Mealie couldn't answer just now")
+    local kinds = View.kinds(box_rows)
+    check(table.concat(kinds, ","):match("^refresh,search,category,order,card,card,") and kinds[24] == "card" and kinds[25] == "more" and kinds[26] == "note",
+        "the recipe box: what each row of the list is (Refresh, Search, Category, Order, a card, More recipes, a note)")
+
+    -- the dividers' tabs
+    local function names(d)
+        local t = {}
+        for i, x in ipairs(d) do t[#t + 1] = (x.all and "All" or x.more and "More" or x.name) .. (d.chosen == i and "*" or "") end
+        return table.concat(t, "|")
+    end
+    local cats = {}
+    for i, n in ipairs({ "Baking", "Breakfast", "Dinner", "Drinks", "Soups", "Sweets" }) do cats[i] = { id = "c" .. i, name = n } end
+    check(names(View.dividers(nil, nil, 5)) == "All*" and names(View.dividers({}, { id = "c9", name = "Lunch" }, 5)) == "All|Lunch*",
+        "the recipe box: no categories known yet: All alone (and the one chosen, if any)")
+    check(names(View.dividers({ cats[1], cats[2], cats[3] }, nil, 5)) == "All*|Baking|Breakfast|Dinner"
+        and names(View.dividers({ cats[1], cats[2], cats[3] }, cats[2], 4)) == "All|Baking|Breakfast*|Dinner",
+        "the recipe box: the categories that fit, All first, the chosen one marked")
+    check(names(View.dividers(cats, nil, 5)) == "All*|Baking|Breakfast|Dinner|More" and names(View.dividers(cats, cats[2], 5)) == "All|Baking|Breakfast*|Dinner|More",
+        "the recipe box: more categories than tabs: the last tab is More")
+    check(names(View.dividers(cats, cats[6], 5)) == "All|Baking|Breakfast|Sweets*|More" and names(View.dividers(cats, cats[6], 2)) == "All|More*"
+        and names(View.dividers(cats, { id = "gone", name = "Old" }, 4)) == "All|Baking|Old*|More",
+        "the recipe box: the chosen category always has a tab (in the last place before More); with two places only, More is marked")
+
+    -- where things go: every card once, in order, inside the box, nothing on top of another
+    local sizes = { { 600, 574 }, { 1072, 1078 }, { 758, 760 }, { 1860, 2200 }, { 600, 330 } }
+    local all_ok = true
+    for _i, size in ipairs(sizes) do
+        local L = View.layout(kinds, size[1], size[2], one)
+        local fine = L.fits and #L.pages >= 1 and #L.flow == 21 and L.tabs >= 2 and L.tabs <= View.MAX_TABS
+        local next_k = 1
+        for n, p in ipairs(L.pages) do
+            local count = p.last - p.first + 1
+            fine = fine and p.first == next_k and count >= 1 and count <= L.per_page
+            local prev
+            for k = 1, count do
+                local sl = L.slot(k, count)
+                fine = fine and sl.x >= L.well.x and sl.x + sl.w <= L.well.x + L.well.w and sl.y >= L.well.y and sl.y + sl.h <= L.front.y
+                    and (not prev or sl.y == prev.y + prev.h) and View.pageOf(L, L.flow[p.first + k - 1]) == n
+                prev = sl
+            end
+            -- the page's last card stands on the box's floor
+            fine = fine and prev.y + prev.h == L.front.y
+            next_k = p.last + 1
+        end
+        fine = fine and next_k == 22
+        -- the tabs side by side inside the box's width, the front's parts inside the front
+        fine = fine and L.tab.x >= L.box.x and L.tab.x + L.tabs * L.tab.w + (L.tabs - 1) * L.tab.gap <= L.box.x + L.box.w and L.tab.y + L.tab.h == L.box.y
+            and L.search.x >= L.front.x and L.search.x + L.search.w <= L.front.x + L.front.w and L.search.y + L.search.h <= L.tags.y
+            and L.tags.y + L.tags.h <= L.front.y + L.front.h and L.front.y + L.front.h <= size[2] and L.sign.y + L.sign.h <= L.tab.y
+        if not fine then all_ok = false; print("  (the box doesn't work out at " .. size[1] .. "x" .. size[2] .. ")") end
+    end
+    check(all_ok, "the recipe box: at every screen size the cards are placed once, in order, in the well, down to its floor; tabs and the front's parts inside the box")
+    check(View.layout(kinds, 600, 250, one).fits == false and View.layout(kinds, 240, 600, one).fits == false,
+        "the recipe box: a page too small for two cards (or too narrow): the list instead")
+    local Lk = View.layout(kinds, 600, 574, one)
+    check(Lk.per_page == 7 and #Lk.pages == 3 and Lk.pages[3].first == 15 and Lk.pages[3].last == 21 and Lk.tabs == 5,
+        "the recipe box: on a Kindle 3's page 7 cards a page, the note on the last one, 5 tabs (" .. Lk.per_page .. ", " .. #Lk.pages .. ", " .. Lk.tabs .. ")")
+    check(#View.layout(View.kinds(rowsFor(0)), 600, 574, one).pages == 1, "the recipe box: no cards: still one page (the box, empty)")
+
+    -- what's on a page: the list's own rows, the dividers' own entries, letters in order
+    local picked = {}
+    local tab = { cats = cats, filter = { category = cats[2] },
+        setFilter = function(_s, ch) picked[#picked + 1] = ch.category == false and "all" or ch.category.id .. "=" .. ch.category.name end,
+        askCategory = function() picked[#picked + 1] = "window" end }
+    local letters = { "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "A", "S", "D", "F", "G", "H" }
+    local Scr = require("device").screen
+    local was_scale = Scr.scaleBySize
+    Scr.scaleBySize = function(_s, px) return px end
+    local places = View.fill(Lk, 1, box_rows, kinds, tab, letters, function(label) return 40 + 8 * #label end)
+    local desc = {}
+    for _i, pl in ipairs(places) do desc[#desc + 1] = pl.kind .. ":" .. tostring(pl.letter) .. (pl.kind == "tab" and ("=" .. pl.label .. (pl.chosen and "*" or "")) or "") end
+    check(table.concat(desc, " ") == "refresh:Q tab:W=All tab:E=Baking tab:R=Breakfast* tab:T=Dinner tab:Y=More… card:U card:I card:O card:P card:A card:S card:D search:F order:G more:H",
+        "the recipe box: a page's places and their letters, in order (" .. table.concat(desc, " ") .. ")")
+    check(places[1].entry == box_rows[1] and places[7].entry == box_rows[5] and places[13].entry == box_rows[11] and places[14].entry == box_rows[2]
+        and places[15].entry == box_rows[4] and places[15].label == "A to Z" and places[16].entry == box_rows[25] and places[16].label == "More cards · 20 of 60",
+        "the recipe box: Refresh, the cards, Search, the order and More cards are the list's own rows (a tap does what the row did)")
+    places[2].entry.callback(); places[3].entry.callback(); places[6].entry.callback()
+    check(table.concat(picked, ",") == "all,c1=Baking,window", "the recipe box: a divider's tab sets the category (All clears it; More… opens the Category window)")
+    local order, more = places[15], places[16]
+    check(order.y == more.y and order.x + order.w <= more.x and order.x >= Lk.front.x and more.x + more.w <= Lk.front.x + Lk.front.w,
+        "the recipe box: the order and More cards side by side on the front")
+    local last = View.fill(Lk, 3, box_rows, kinds, tab, nil)
+    local kinds_last = {}
+    for _i, pl in ipairs(last) do if pl.kind == "card" or pl.kind == "note" then kinds_last[#kinds_last + 1] = pl.kind .. (pl.acts and "+" or "") end end
+    check(table.concat(kinds_last, ",") == "card+,card+,card+,card+,card+,card+,note" and last[#last].kind == "more" and last[1].letter == nil,
+        "the recipe box: the last page: its cards, then the note as a card that does nothing; no letters without a keyboard")
+    local no_more = View.fill(Lk, 1, rowsFor(3), View.kinds(rowsFor(3)), { filter = {} }, nil)
+    check(no_more[#no_more].kind == "order" and no_more[2].kind == "tab" and no_more[2].chosen and no_more[3].kind == "card",
+        "the recipe box: nothing more to fetch: the order alone on the front; no categories: All alone")
+
+    Scr.scaleBySize = was_scale
+    -- when: the Bookshelf view, connected
+    local was_shelf = Shop.bookshelf
+    Shop.bookshelf = function() return true end
+    check(View.applies({ item_table = box_rows }, tab) and not View.applies({ item_table = { { text = "Connect with QR code", callback = cb } } }, tab)
+        and not View.applies({ item_table = box_rows }, nil), "the recipe box: in the Bookshelf view, for the connected tab's rows")
+    Shop.bookshelf = function() return false end
+    check(not View.applies({ item_table = box_rows }, tab), "the recipe box: not in the other views (the list)")
+    Shop.bookshelf = was_shelf
+    local src = io.open(PLUGIN .. "/gzreader_recipes.lua", "rb"):read("*a")
+    check(src:find('require("gzreader_recipebox").apply(self)', 1, true) and src:find('gz_recipes = "search"', 1, true)
+        and src:find("list.cats = client:categories()", 1, true), "the Recipes tab hands its list to the box, marks its rows, and fetches the categories with the list")
+    -- colour: wood, cream and three tab colours on a colour screen; greys elsewhere
+    local painted = {}
+    local fake = { paintRect = function(_s, _x, _y, _w, _h, c) painted[#painted + 1] = { "grey", c } end,
+        paintRoundedRect = function(_s, _x, _y, _w, _h, c) painted[#painted + 1] = { "grey-round", c } end,
+        paintRectRGB32 = function(_s, _x, _y, _w, _h, c) painted[#painted + 1] = { "rgb", c } end,
+        paintRoundedRectRGB32 = function(_s, _x, _y, _w, _h, c) painted[#painted + 1] = { "rgb-round", c } end }
+    local BB = require("ffi/blitbuffer")
+    local was_rgb, was_gray = rawget(BB, "ColorRGB32"), rawget(BB, "gray")
+    BB.ColorRGB32 = function(rr, gg, bl) return rr .. "," .. gg .. "," .. bl end
+    BB.gray = function(v) return "grey " .. v end
+    View.fillWith(fake, true, View.PAL.wood, 0, 0, 10, 10)
+    View.fillWith(fake, true, View.PAL.card, 0, 0, 10, 10, 4)
+    View.fillWith(fake, false, View.PAL.wood, 0, 0, 10, 10)
+    View.fillWith(fake, false, View.PAL.tabs[2], 0, 0, 10, 10, 4)
+    View.fillWith(fake, true, View.PAL.wood, 0, 0, 0, 10)
+    BB.ColorRGB32, BB.gray = was_rgb, was_gray
+    check(#painted == 4 and painted[1][1] == "rgb" and painted[1][2] == "189,143,98" and painted[2][1] == "rgb-round" and painted[2][2] == "252,247,232"
+        and painted[3][1] == "grey" and painted[3][2] == "grey 0.4" and painted[4][1] == "grey-round",
+        "the recipe box: on a colour screen the wood and the cards are painted in colour (RGB), in greys everywhere else")
+    local distinct = View.PAL.tabs[1][2][1] ~= View.PAL.tabs[2][2][1] and View.PAL.tabs[2][2][1] ~= View.PAL.tabs[3][2][1]
+        and View.PAL.tabs[1][1] ~= View.PAL.tabs[2][1] and View.PAL.tabs[2][1] ~= View.PAL.tabs[3][1]
+    check(distinct, "the recipe box: the dividers' three tab colours differ, and so do their greys")
+end)()
+
 print("Catalog: the Music page (CD cases on the shelves)")
 ;(function()
     local Tab = require("gzreader_musictab")
