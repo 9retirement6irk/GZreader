@@ -1834,6 +1834,39 @@ local cmeta = captured.custom_meta[path]
 check(cmeta and cmeta.custom_props.title == "Book 03: Old School" and cmeta.doc_props.title == "Book 03",
     "downloaded file gets the full title as KOReader custom metadata (Home/Downloaded show it); original kept")
 
+-- a book whose list had no size (BookOrbit's): the download says it, and the dialog shows "of …" from then on
+do
+    local orig_dl = plugin.api.downloadToFile
+    plugin.api.downloadToFile = function(api, id, part, resume)
+        Download.noteSize(part, 4200)
+        os.execute("sleep 2") -- (in the download's process: time for the progress to read it)
+        return orig_dl(api, id, part, resume)
+    end
+    reader_opened = nil
+    plugin:downloadAndOpen({ id = 18, title = "Book 18", primaryFileName = "book18.epub", primaryFileType = "EPUB" }, nil)
+    local first_max = captured.pdialog and captured.pdialog.progress_max
+    runLoop(function() return (Download.active and Download.active.expected) or reader_opened end, 15)
+    local job = Download.active
+    check(first_max == nil and job and job.expected == 4200 and captured.pdialog_open and captured.pdialog.progress_max == 4200,
+        "no size in the list: the download's own size, then the dialog's bar and total")
+    runLoop(function() return reader_opened ~= nil end, 15)
+    local p18 = plugin:localPathFor(18)
+    check(p18 and io.open(p18 .. ".part.size") == nil, "(its size note gone with the part)")
+    -- (and forgotten again: the tests after this one count the downloads)
+    if p18 then os.remove(p18) end
+    plugin.store.downloads["18"] = nil
+    plugin.api.downloadToFile = nil -- (the real one again)
+end
+print("Download.noteSize: a size beside the part")
+do
+    local part = WORK .. "/size-test.part"
+    Download.noteSize(part, 0)
+    check(Download.readSize(part) == nil, "nothing noted for no size")
+    Download.noteSize(part, "1234")
+    check(Download.readSize(part) == 1234, "a size noted and read back")
+    os.remove(Download.sizePath(part))
+end
+
 ctl("/set?dl_big=true&dl_slow=true")
 captured.progress = {}
 reader_opened = nil
@@ -16341,6 +16374,8 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
     local d_ok, d_err = plugin.api:downloadToFile(101, file, true)
     local fh = io.open(file, "rb"); local data = fh and fh:read("*a") or ""; if fh then fh:close() end
     check(d_ok == true and md5(data) == full.primaryFile.fileHash and #data == 1280, "a book's file, whole (an old part is started again, not added to)", d_err)
+    check(require("gzreader_download").readSize(file) == 1280, "…and its size noted for the progress (BookOrbit's lists have none)")
+    os.remove(require("gzreader_download").sizePath(file))
     d_ok, d_err = plugin.api:downloadToFile(999, file .. "x")
     check(d_ok == false and d_err == "http_404" and lfs.attributes(file .. "x") == nil, "a missing book's file: an error, nothing left behind")
     local seen = bctl("/_mock/state").seen
