@@ -177,7 +177,10 @@ end
 
 function Music.delete(plugin, c)
     if Music.current and Music.current.collection_dir == c.dir then Music.current:stop() end
-    if not tostring(c.dir):find("/" .. Music.STORE .. "/", 1, true) then return end -- (only ever inside .music)
+    -- (only ever inside the music folder: GZreader/music, or the old .music)
+    local root = Music.root(plugin) .. "/"
+    local d = tostring(c.dir)
+    if d:sub(1, #root) ~= root and not d:find("/" .. Music.STORE .. "/", 1, true) then return end
     rmrf(c.dir)
     Log.info("music: deleted", c.kind, c.key)
     pcall(function() require("gzreader_musicfolder").sync(plugin) end)

@@ -75,9 +75,12 @@ local function refreshViews(path)
     end)
 end
 
+HomeMenu.refreshViews = refreshViews
+
 --- Delete a downloaded book from the Kindle (file, its .sdr, history and
 --- collections entries; Grimmory's copy and reading progress stay).
-function HomeMenu.deleteBook(plugin, path)
+--- `after` (optional): called once it's deleted.
+function HomeMenu.deleteBook(plugin, path, after)
     local ConfirmBox = require("ui/widget/confirmbox")
     local InfoMessage = require("ui/widget/infomessage")
     -- an audiobook's tile: delete the audiobook itself
@@ -91,6 +94,7 @@ function HomeMenu.deleteBook(plugin, path)
             ok_callback = function()
                 require("gzreader_audiobook").delete(plugin, ab_id)
                 refreshViews(path)
+                if after then after() end
                 UIManager:show(InfoMessage:new{ text = T(_("Deleted “%1”."), e.title or bookTitle(path)), timeout = 2 })
             end,
         })
@@ -121,6 +125,7 @@ function HomeMenu.deleteBook(plugin, path)
             if changed then plugin:save(); pcall(plugin.writeManifest, plugin) end
             require("gzreader_log").info("deleted from the Kindle:", path)
             refreshViews(path)
+            if after then after() end
             UIManager:show(InfoMessage:new{ text = T(_("Deleted “%1”."), title), timeout = 2 })
         end,
     })

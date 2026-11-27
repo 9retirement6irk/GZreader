@@ -78,6 +78,7 @@ return {
             { short = "A calendar card over your wallpaper", text = "Settings → Sleep and wallpaper → Sleep → Calendar on the wallpaper lays a small card (the day and date, your next five events this week, when it last synced) at the top or bottom of whatever wallpaper you chose, together with the sleep screen message if you have one. Drawn from the events kept on the Kindle; Wi-Fi connecting syncs it when it's over an hour old." },
             { short = "A pen pal in your drawings", text = "With the AI set up, a drawing's top bar has ✦: write questions, notes or sums with the pen, tap ✦, and the AI writes back in a sentence or two under each one (or in the nearest free place on the page as you see it, never below the screen), in a handwriting font about the size of your writing. Questions can follow on from earlier ones on the page. Only the new writing is sent, as a picture. The eraser takes an answer off. With no Wi-Fi the answer waits; tap ✦ again, or open the page later with Wi-Fi on." },
             { short = "Text boxes in drawings show the paper", text = "A drawing's text boxes are drawn as ink on the page: the paper's lines show through them instead of a white box." },
+            { short = "Delete from Storage", text = "Settings → General → Storage: tap a book, an audiobook or an album in its list to delete it from the Kindle (asked first, with its size). Deleting downloaded music also works again with music in the GZreader folder." },
         },
     },
     {

@@ -112,3 +112,20 @@ GZreader. They aren't part of GZreader and GZreader doesn't check them.
 | About → Report a bug, Send debug reports automatically, Advanced | Privacy and diagnostics (Report a bug is **Report a problem**) |
 
 Nothing you had set changes: only where each row is.
+
+## Storage
+
+Settings → General → **Storage** shows the free space, then what each part
+takes (books, audiobooks, music, notes, the calendar, covers and saved
+lists). Books, audiobooks and music open on their largest ones. **Tap one to
+delete it from the Kindle**: you're asked first, with its size.
+
+- A **book** goes as it does from Home's Delete: its file, its reading
+  position and bookmarks on this Kindle, and its place in the downloads.
+  Grimmory keeps the book and your progress.
+- An **audiobook** goes with its audio and its stand-in on the shelves;
+  Grimmory keeps it and your listening position.
+- An **album or playlist** goes with its tracks; it stays on your Plex
+  server, to download again.
+
+The page shows it gone at once, then measures again.
