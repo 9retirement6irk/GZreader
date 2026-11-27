@@ -536,6 +536,10 @@ function Sync:applyRemote(book, interactive, err)
         self.entry.last_pushed_pct = remote.pct -- now in agreement
         self.plugin:save()
         UIManager:show(InfoMessage:new{ text = T(_("Jumped to %1% from %2."), round1(remote_local), server), timeout = 2 })
+    elseif diff < 0 and not interactive and Sync.notReachedYet(self.plugin, self.book_id, remote, self.entry) then
+        -- (the server is behind only because this Kindle's own newer position hasn't
+        -- reached it, or you said Stay here to this very position: not asked again)
+        Log.info("sync pull book", self.book_id, "the server's earlier position not asked about (this Kindle's own is still to be sent, or Stay here was chosen)")
     elseif diff < 0 and (not is_our_echo or interactive) then
         UIManager:show(ConfirmBox:new{
             text = T(_("%3 has an earlier position (%1%) than this Kindle (%2%), probably from another device. Go back to it?"),
@@ -547,9 +551,30 @@ function Sync:applyRemote(book, interactive, err)
                 self.entry.last_pushed_pct = remote.pct
                 self.plugin:save()
             end,
-            cancel_callback = function() self:push(true) end,
+            cancel_callback = function()
+                -- (that position isn't asked about again, even if it stays on the server)
+                self.entry.stayed_from = Sync.positionKey(remote)
+                self.plugin:save()
+                self:push(true)
+            end,
         })
     end
+end
+
+--- A server position as a key: its exact place when it has one, else its percentage.
+function Sync.positionKey(remote)
+    if type(remote) ~= "table" then return nil end
+    return remote.cfi or remote.href and (remote.href .. "@" .. tostring(remote.pct)) or tostring(remote.pct)
+end
+
+--- Is the server's (earlier) position not worth asking about: this Kindle has
+--- a position of its own still to send for the book (the server can't have it
+--- yet: the sync was off, or Wi-Fi was), or Stay here was chosen for this very one?
+function Sync.notReachedYet(plugin, book_id, remote, entry)
+    local pending = plugin and plugin.store and plugin.store.pending
+    if pending and type(pending.progress) == "table" and pending.progress[tostring(book_id)] ~= nil then return true end
+    local key = Sync.positionKey(remote)
+    return key ~= nil and type(entry) == "table" and entry.stayed_from == key
 end
 
 function Sync:progressBody(p)

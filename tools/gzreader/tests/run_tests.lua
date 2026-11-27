@@ -20205,7 +20205,50 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
     runLoop(function() return not plugin.flushing and plugin.store.pending.progress["101"] == nil end, 20)
     check(plugin.store.pending.progress["101"] == nil and math.abs(bctl("/_mock/state").progress[hash101].percentage - 0.55) < 1e-9,
         "…and sent by the usual queue")
+    -- BookOrbit with sync switched off for the KOReader user: the position waits (it isn't the book), said once
+    bctl("/_mock/set", '{"sync_enabled": false}')
+    local UIM = require("ui/uimanager")
+    local saved_show = UIM.show
+    local told = {}
+    UIM.show = function(_s, w) if type(w) == "table" and w.text then told[#told + 1] = w.text end; return saved_show(_s, w) end
+    Grimmory.told_refused = nil
+    plugin:queue("progress", 101, { fileProgress = { progressPercent = 60 }, gz_xp = "/body/DocFragment[4]/body/p[2]/text().0" })
+    plugin:flushPending()
+    runLoop(function() return not plugin.flushing end, 20)
+    plugin:flushPending()
+    runLoop(function() return not plugin.flushing end, 20)
+    local n_told = 0
+    for _i, t in ipairs(told) do if t:find("Progress sync", 1, true) and t:find("wait on this Kindle", 1, true) then n_told = n_told + 1 end end
+    check(plugin.store.pending.progress["101"] ~= nil and not Grimmory.gone_books["101"]
+        and math.abs(bctl("/_mock/state").progress[hash101].percentage - 0.55) < 1e-9,
+        "BookOrbit's sync switched off: the position isn't dropped as a missing book; it waits on the Kindle")
+    check(n_told == 1, "…and you're told once what to switch on in BookOrbit (not at every try)")
+    -- the book opened meanwhile: BookOrbit's older position isn't offered (it's only behind because of that)
     local Sync = require("gzreader_sync")
+    check(Sync.notReachedYet(plugin, 101, { pct = 55 }, {}) == true and Sync.notReachedYet(plugin, 102, { pct = 55 }, {}) == false
+        and Sync.notReachedYet(plugin, 102, { pct = 23.2, cfi = "epubcfi(/6/4)" }, { stayed_from = "epubcfi(/6/4)" }) == true
+        and Sync.notReachedYet(plugin, 102, { pct = 20, cfi = "epubcfi(/6/2)" }, { stayed_from = "epubcfi(/6/4)" }) == false,
+        "…an earlier position on the server isn't asked about while this Kindle's own waits to be sent, nor once Stay here was chosen for it")
+    bctl("/_mock/set", '{"sync_enabled": true}')
+    -- a firewall in front of BookOrbit refusing the request (an HTML 403, not BookOrbit's): said so, the position waits
+    bctl("/_mock/set", '{"waf_block": true}')
+    Grimmory.told_refused = nil
+    told = {}
+    local w_ok, w_err, w_code = plugin.api:putProgress(101, { fileProgress = { progressPercent = 61 }, gz_xp = "/body/DocFragment[4]/body/p[3]/text().0" })
+    plugin:flushPending()
+    runLoop(function() return not plugin.flushing end, 20)
+    local said_waf = false
+    for _i, t in ipairs(told) do if t:find("firewall", 1, true) and not t:find("Progress sync", 1, true) then said_waf = true end end
+    check(w_ok == false and w_err == "bookorbit_blocked" and w_code == 403 and said_waf and plugin.store.pending.progress["101"] ~= nil,
+        "a 403 that isn't BookOrbit's (a web application firewall's page): said so, not \"sync switched off\"; the position waits")
+    check(BookOrbit.isOwnRefusal({ statusCode = 403, message = "Sync is disabled" }) and not BookOrbit.isOwnRefusal("<html>403</html>")
+        and not BookOrbit.isOwnRefusal(nil), "…BookOrbit's own refusal is its JSON error")
+    bctl("/_mock/set", '{"waf_block": false}')
+    plugin:flushPending()
+    runLoop(function() return not plugin.flushing and plugin.store.pending.progress["101"] == nil end, 20)
+    check(plugin.store.pending.progress["101"] == nil and math.abs(bctl("/_mock/state").progress[hash101].percentage - 0.60) < 1e-9,
+        "…switched back on: the waiting position is sent")
+    UIM.show = saved_show
     local sy = setmetatable({ api = plugin.api, localPosition = function() return { pct = 15, local_pct = 11.2 } end, atEnd = function() return false end }, { __index = Sync })
     check(sy:sentPosition().pct == 11.2, "the percentage sent to BookOrbit is KOReader's own (the footer's), not the web reader's")
     sy.api = { }

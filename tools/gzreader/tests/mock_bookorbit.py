@@ -95,6 +95,7 @@ def fresh():
     return {
         "capabilities": list(CAPABILITIES),
         "sync_enabled": True,     # the KOReader credentials' "sync enabled" switch
+        "waf_block": False,       # True: a firewall in front refuses the KOReader plugin's POSTs (403, an HTML page)
         "ko_permission": True,    # the account's KOReader sync permission
         "api_keys_enabled": True,
         "api_key_write": True,    # False: a read key (PUT answers 403 API_KEY_READ_ONLY)
@@ -598,6 +599,8 @@ class Handler(BaseHTTPRequestHandler):
         path, q = url.path, {k: v[-1] for k, v in parse_qs(url.query).items()}
         if path == "/_mock/state":
             return self.send(200, {k: v for k, v in STATE.items()})
+        if STATE.get("waf_block") and method == "POST" and path.startswith("/api/v1/koreader/plugin/"):
+            return self.send(403, b"<html><body><h1>403 Forbidden</h1>Request blocked.</body></html>", "text/html")
         if path == "/_mock/reset":
             STATE = fresh()
             return self.send(200, {"ok": True})
