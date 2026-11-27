@@ -31,7 +31,8 @@ icons are inverted.
 Every page in Accounts and services has the same order: the account (who's
 signed in, connect again, disconnect) first, then what the service does here,
 its tab on or off, then **Storage on this Kindle** (or *Storage used*, *Downloaded
-music*), and signing out last. The storage row opens Settings → General →
+music*), and signing out last. Books has no storage row: its books are in
+Settings → General → Storage. The storage row opens Settings → General →
 Storage at that service's part, which has the Free up space rows (remove kept
 notes or attachments, kept events, downloaded music) that used to be on the
 service's own page.
