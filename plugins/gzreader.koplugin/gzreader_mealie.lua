@@ -18,6 +18,11 @@ It talks to Mealie's REST API directly:
 - Recipes: GET /api/recipes (a page at a time; search, one category),
   GET /api/organizers/categories, GET /api/recipes/<slug> (ingredients,
   steps, notes).
+- A new recipe: POST /api/recipes { name } makes an empty one and answers
+  with its slug; PATCH /api/recipes/<slug> then writes its description,
+  ingredients (as free text: Mealie's "note"), steps and category. Or
+  POST /api/recipes/create/url { url }: Mealie reads the recipe from a web
+  page itself.
 
 Nothing here touches the screen: gzreader_recipes.lua draws, and runs these
 in the background (gzreader_async.lua).
@@ -233,10 +238,104 @@ function Mealie:categories()
     if type(data) ~= "table" or type(data.items) ~= "table" then return nil, "bad_answer" end
     local out = {}
     for _i, c in ipairs(data.items) do
-        if type(c) == "table" and str(c.id) and str(c.name) then out[#out + 1] = { id = c.id, name = c.name } end
+        if type(c) == "table" and str(c.id) and str(c.name) then out[#out + 1] = { id = c.id, name = c.name, slug = str(c.slug) } end
     end
     table.sort(out, function(a, b) return a.name:lower() < b.name:lower() end)
     return out
+end
+
+---------------------------------------------------------------- a new recipe
+
+--- What was typed, one thing a line, as a list: { { title = … } |
+--- { text = … } }. Empty lines are dropped; a list mark in front ("-", "*",
+--- "•", "1.", "2)") too; a line ending in a colon is a section's heading
+--- ("Crust:"), as Mealie has them.
+function Mealie.draftLines(text)
+    local out = {}
+    for line in (tostring(text or ""):gsub("\r\n?", "\n") .. "\n"):gmatch("(.-)\n") do
+        line = line:gsub("^%s+", ""):gsub("%s+$", "")
+        line = line:gsub("^[%-%*]%s+", ""):gsub("^•%s*", ""):gsub("^%d+[%.%)]%s+", "")
+        if line ~= "" then
+            local title = line:match("^(.-)%s*:$")
+            if title and title ~= "" then out[#out + 1] = { title = title }
+            else out[#out + 1] = { text = line } end
+        end
+    end
+    return out
+end
+
+--- What Mealie is sent for a recipe just made: { description,
+--- recipeIngredient, recipeInstructions, recipeCategory } (only what the
+--- draft has). `draft`: { name, desc, ingredients, steps (as typed),
+--- category = { id, name, slug } }. A section's heading goes on the line
+--- after it, as Mealie keeps it ("title").
+function Mealie.draftBody(draft)
+    local body = {}
+    local desc = str(draft.desc and tostring(draft.desc):gsub("^%s+", ""):gsub("%s+$", "") or nil)
+    if desc then body.description = desc end
+    local function items(text, make)
+        local list, title = {}, nil
+        for _i, it in ipairs(Mealie.draftLines(text)) do
+            if it.title then title = it.title
+            else
+                list[#list + 1] = make(it.text, title)
+                title = nil
+            end
+        end
+        return list
+    end
+    local ings = items(draft.ingredients, function(text, title)
+        return { title = title, note = text, originalText = text, quantity = 0, display = text }
+    end)
+    if #ings > 0 then body.recipeIngredient = JSON.list(ings) end
+    local steps = items(draft.steps, function(text, title)
+        return { title = title or "", text = text, ingredientReferences = JSON.list({}) }
+    end)
+    if #steps > 0 then body.recipeInstructions = JSON.list(steps) end
+    local c = draft.category
+    if type(c) == "table" and str(c.id) and str(c.name) and str(c.slug) then
+        body.recipeCategory = JSON.list({ { id = c.id, name = c.name, slug = c.slug } })
+    end
+    return body
+end
+
+local function slugOf(data)
+    if type(data) == "string" and data ~= "" then return data end
+    if type(data) == "table" and str(data.slug) then return data.slug end
+end
+
+--- Make a recipe in Mealie from what was typed. Returns its slug; or nil,
+--- err; or the slug and "half" when the recipe was made but Mealie didn't
+--- take its ingredients and steps (it's there, with its name only).
+function Mealie:createRecipe(draft)
+    local name = str(draft and draft.name and tostring(draft.name):gsub("^%s+", ""):gsub("%s+$", "") or nil)
+    if not name then return nil, "no_name" end
+    local made, err = self:ask("POST", "/api/recipes", { name = name }, { timeouts = { 8, 30 } })
+    if err == "unauthorized" then return nil, "cant_add" end
+    if err then return nil, err end
+    local slug = slugOf(made)
+    if not slug then return nil, "bad_answer" end
+    local body = Mealie.draftBody(draft)
+    if next(body) == nil then return slug end
+    local perr = select(2, self:ask("PATCH", "/api/recipes/" .. escape(slug), body, { timeouts = { 8, 30 } }))
+    if perr then return slug, "half" end
+    return slug
+end
+
+--- Have Mealie read a recipe from a web page (its own importer). Returns
+--- the new recipe's slug, or nil, err ("no_recipe": Mealie found none
+--- there). The address isn't logged (only that one was sent).
+function Mealie:importUrl(url)
+    url = tostring(url or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    if not url:match("^https?://[^%s/]+%.[^%s]+$") then return nil, "bad_url" end
+    local data, err = self:ask("POST", "/api/recipes/create/url", { url = url, includeTags = false, includeCategories = true },
+        { timeouts = { 10, 90 } })
+    if err == "http_400" or err == "http_422" then return nil, "no_recipe" end
+    if err == "unauthorized" then return nil, "cant_add" end
+    if err then return nil, err end
+    local slug = slugOf(data)
+    if not slug then return nil, "bad_answer" end
+    return slug
 end
 
 --- Text as a line of the page: Mealie's Markdown marks and HTML tags
@@ -472,6 +571,10 @@ local WHY = {
     not_mealie = _("That doesn't look like Mealie."),
     not_connected = _("Connect to Mealie first."),
     bad_answer = _("Mealie's answer wasn't what GZreader expected."),
+    no_name = _("Give the recipe a name first."),
+    bad_url = _("That doesn't look like a web address. It should start with https://"),
+    no_recipe = _("Mealie couldn't find a recipe on that page."),
+    cant_add = _("Mealie didn't let this account add a recipe."),
 }
 function Mealie.why(err)
     local busy = tostring(err):match("^http_(5%d%d)$")

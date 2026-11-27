@@ -3305,6 +3305,235 @@ print("A recipe in the Bookshelf view: the index card (its lines, cards, where t
         "the recipe card: cream card, blue lines and a red rule on a colour screen (the box's colour painter), greys elsewhere")
 end)()
 
+print("Recipes tab: a new recipe (written on the Kindle, or from a web address)")
+;(function()
+    local Mealie = require("gzreader_mealie")
+    local Recipes = require("gzreader_recipes")
+    local NetM = require("gzreader_net")
+    local T0 = { sync = AsyncMod.sync, usb = NetM.usb, save = plugin.save, viewer = package.loaded["ui/widget/textviewer"],
+        input = package.loaded["ui/widget/inputdialog"] }
+    AsyncMod.sync = true
+    NetM.usb = nil
+    plugin.save = function() end
+    local viewer
+    package.loaded["ui/widget/textviewer"] = { new = function(_s, o) viewer = o; return o end }
+    local dialog
+    package.loaded["ui/widget/inputdialog"] = { new = function(_s, o)
+        o.onShowKeyboard = function() end
+        o.getInputText = function() return o.typed or o.input end
+        dialog = o
+        return o
+    end }
+    local function press(label)
+        for _i, btn in ipairs(dialog.buttons[1]) do if btn.text == label then return btn.callback() end end
+        error("no button " .. label)
+    end
+
+    -- what's typed
+    local lines = Mealie.draftLines(" - 2 cups flour \n\n* 1 cup butter\r\n• salt\nFilling:\n1. 6 apples\n2) sugar\n10 g yeast\n:\n")
+    local t = {}
+    for _i, l in ipairs(lines) do t[#t + 1] = l.title and ("[" .. l.title .. "]") or l.text end
+    check(table.concat(t, "|") == "2 cups flour|1 cup butter|salt|[Filling]|6 apples|sugar|10 g yeast|:",
+        "a new recipe: one thing a line; empty lines and list marks dropped, a line ending in a colon is a section (" .. table.concat(t, "|") .. ")")
+    local sent = Mealie.draftBody({ name = "X", desc = "  Good.  ", ingredients = "Crust:\n2 cups flour\nbutter", steps = "Mix.\nFilling:\nBake.",
+        category = { id = "c1", name = "Baking", slug = "baking" } })
+    check(sent.description == "Good." and #sent.recipeIngredient == 2 and sent.recipeIngredient[1].note == "2 cups flour"
+        and sent.recipeIngredient[1].title == "Crust" and sent.recipeIngredient[2].title == nil and sent.recipeIngredient[1].quantity == 0
+        and #sent.recipeInstructions == 2 and sent.recipeInstructions[1].text == "Mix." and sent.recipeInstructions[2].title == "Filling"
+        and sent.recipeCategory[1].slug == "baking",
+        "a new recipe: what Mealie is sent: ingredients as free text, a section's heading on the line after it, the steps, the category")
+    local bare = Mealie.draftBody({ name = "X", ingredients = "\n", steps = "", category = { id = "c1", name = "Baking" } })
+    check(next(bare) == nil, "a new recipe: nothing typed but a name: nothing more is sent (and no category without Mealie's slug for it)")
+
+    local MP = PORT + 35
+    local mock = PLUGIN .. "/../../tools/gzreader/emulator/demo/mock_mealie.py"
+    os.execute("python3 -I " .. mock .. " " .. MP .. " > " .. WORK .. "/mealie-new.log 2>&1 & echo $! > " .. WORK .. "/mealie-new.pid")
+    local function mctl(method, path)
+        local p = io.popen("curl -s -X " .. method .. " 'http://127.0.0.1:" .. MP .. path .. "'"); local o = p:read("*a"); p:close(); return o
+    end
+    runLoop(function() return mctl("GET", "/__state"):match("recipes") ~= nil end, 10)
+    plugin.store.mealie = nil
+    Mealie.clearCache()
+    check(Mealie.connect(plugin, "127.0.0.1:" .. MP, "mealie-test-token"), "a new recipe: connected to the mock Mealie")
+    local tab = Recipes.show(plugin)
+    local function rows() return tab.menu.item_table end
+    local function row(text) for _i, r in ipairs(rows()) do if r.text == text then return r end end end
+    local function names() local n = {} for _i, r in ipairs(rows()) do if r.gz_recipe then n[#n + 1] = r.text end end return n end
+    check(rows()[5].text == "New recipe" and rows()[5].gz_recipes == "new" and rows()[4].text == "Order" and rows()[6].gz_recipe,
+        "Recipes tab: New recipe, after Order, before the recipes")
+    check(tab.cats and tab.cats[1].slug == "baking", "Recipes tab: the categories are kept with Mealie's own short names (a new recipe's category needs it)")
+
+    -- New recipe: the two ways
+    captured.buttons = nil
+    row("New recipe").callback()
+    local ways = {}
+    for _i, r in ipairs(captured.buttons.buttons) do ways[#ways + 1] = r[1].text end
+    check(table.concat(ways, "|") == "Write it here|From a web address|Cancel", "New recipe: write it here, or from a web address")
+
+    -- written here, filed under the category that's open
+    tab:setFilter({ category = { id = "c0000000-0000-4000-8000-000000000002", name = "Baking" } })
+    pressButton("Write it here")
+    check(dialog.title:match("1 of 3") and dialog.buttons[1][2].text == "Next" and #dialog.buttons[1] == 2 and not dialog.allow_newline,
+        "New recipe: first its name (one line; Cancel and Next)")
+    captured.info = nil
+    dialog.typed = "   "
+    local first = dialog
+    press("Next")
+    check(dialog == first and tostring(captured.info):match("Give the recipe a name first"), "New recipe: no name: it asks for one, and stays")
+    dialog.typed = "Plum cake"
+    press("Next")
+    check(dialog.title:match("2 of 3") and dialog.allow_newline and dialog.fullscreen and dialog.buttons[1][2].text == "Back" and dialog.buttons[1][3].text == "Next",
+        "New recipe: then the ingredients, a full-screen box of lines (Back and Next)")
+    dialog.typed = "Batter:\n200 g flour\n- 3 eggs\nTop:\n10 plums, halved"
+    press("Back")
+    check(dialog.title:match("1 of 3") and dialog.input == "Plum cake", "New recipe: Back: the name as typed")
+    press("Next")
+    check(dialog.title:match("2 of 3") and dialog.input == "Batter:\n200 g flour\n- 3 eggs\nTop:\n10 plums, halved", "New recipe: and forward again: the ingredients as typed")
+    press("Next")
+    check(dialog.title:match("3 of 3") and dialog.buttons[1][3].text == "Save", "New recipe: last the steps (Back and Save)")
+    dialog.typed = "1. Whisk the batter.\n2. Lay the plums on top and bake 40 minutes."
+    viewer, captured.info = nil, nil
+    press("Save")
+    local made = json.decode(mctl("GET", "/__recipe?slug=plum-cake")) or {}
+    local ing, steps = made.recipeIngredient or {}, made.recipeInstructions or {}
+    check(made.name == "Plum cake" and #ing == 3 and ing[1].note == "200 g flour" and ing[1].title == "Batter" and ing[2].note == "3 eggs"
+        and ing[3].title == "Top" and ing[3].note == "10 plums, halved" and #steps == 2 and steps[1].text == "Whisk the batter."
+        and steps[2].text == "Lay the plums on top and bake 40 minutes.",
+        "New recipe: saved in Mealie with its ingredients (under their sections) and steps")
+    check(made.recipeCategory and #made.recipeCategory == 1 and made.recipeCategory[1].slug == "baking",
+        "New recipe: filed under the category that was open in the tab")
+    check(viewer and viewer.title == "Plum cake" and viewer.text:find("Batter:\n•  200 g flour\n•  3 eggs\n\nTop:\n•  10 plums, halved", 1, true)
+        and viewer.text:find("1.  Whisk the batter.", 1, true), "New recipe: once saved it opens, as Mealie has it")
+    check(table.concat(names(), "|") == "Apple pie|Banana bread|Plum cake" and Mealie.loadRecipe("plum-cake") ~= nil,
+        "New recipe: the list is fetched again with it in it; it's kept on the Kindle like any opened recipe")
+
+    -- no category open: none set; the same name again: Mealie's own second slug
+    tab:setFilter({ category = false })
+    tab:writeRecipe({ name = "Plum cake", ingredients = "plums", steps = "" }, 3)
+    viewer = nil
+    press("Save")
+    local second = json.decode(mctl("GET", "/__recipe?slug=plum-cake-1")) or {}
+    check(viewer and second.name == "Plum cake" and #second.recipeCategory == 0 and #second.recipeIngredient == 1 and #second.recipeInstructions == 0,
+        "New recipe: with All open no category is set; steps left empty are fine")
+
+    -- Mealie takes the name but not the rest
+    mctl("POST", "/__set?no_patch=1")
+    tab:writeRecipe({ name = "Half pie", ingredients = "flour", steps = "bake" }, 3)
+    viewer, captured.info = nil, nil
+    press("Save")
+    mctl("POST", "/__set?no_patch=0")
+    check(json.decode(mctl("GET", "/__recipe?slug=half-pie")).name == "Half pie" and tostring(captured.info):match("didn't take its ingredients and steps")
+        and viewer and viewer.title == "Half pie", "New recipe: made but its contents refused: it says so (the recipe is in Mealie, to finish there)")
+
+    -- it can't be saved: what was typed is kept
+    mctl("POST", "/__set?readonly=1")
+    tab:writeRecipe({ name = "Fig tart", ingredients = "6 figs", steps = "Bake the figs." }, 3)
+    captured.confirm, viewer = nil, nil
+    press("Save")
+    check(captured.confirm and captured.confirm.text:match("didn't let this account add a recipe") and captured.confirm.text:match("What you typed is kept")
+        and captured.confirm.ok_text == "Try again" and captured.confirm.cancel_text == "Edit" and viewer == nil,
+        "New recipe: an account that may not add recipes: it says so, and offers to try again or edit")
+    captured.confirm.cancel_callback()
+    check(dialog.title:match("3 of 3") and dialog.input == "Bake the figs.", "New recipe: Edit: back in the steps, as typed")
+    press("Back")
+    check(dialog.input == "6 figs", "New recipe: …and the ingredients are still there")
+    press("Next")
+    mctl("POST", "/__offline?on=1")
+    mctl("POST", "/__set?readonly=0")
+    captured.confirm = nil
+    press("Save")
+    check(captured.confirm and captured.confirm.text:match("couldn't answer just now"), "New recipe: Mealie out of reach: it says so")
+    mctl("POST", "/__offline?on=0")
+    viewer = nil
+    captured.confirm.ok_callback()
+    check(viewer and viewer.title == "Fig tart" and json.decode(mctl("GET", "/__recipe?slug=fig-tart")).recipeIngredient[1].note == "6 figs",
+        "New recipe: Try again, once Mealie answers: saved with everything typed")
+
+    -- Cancel
+    tab:writeRecipe()
+    captured.confirm = nil
+    press("Cancel")
+    check(captured.confirm == nil, "New recipe: Cancel with nothing typed just closes")
+    tab:writeRecipe({ name = "Pear" }, 2)
+    dialog.typed = "2 pears"
+    press("Cancel")
+    check(captured.confirm and captured.confirm.text == "Throw away this new recipe?" and captured.confirm.ok_text == "Throw away",
+        "New recipe: Cancel with something typed asks first")
+    captured.confirm.cancel_callback()
+    check(dialog.title:match("2 of 3") and dialog.input == "2 pears", "New recipe: …and not throwing it away goes back to it")
+    local before = #json.decode(mctl("GET", "/__state")).log
+    press("Cancel")
+    captured.confirm.ok_callback()
+    check(#json.decode(mctl("GET", "/__state")).log == before, "New recipe: thrown away: nothing sent to Mealie")
+
+    -- from a web address
+    row("New recipe").callback()
+    pressButton("From a web address")
+    check(dialog.title == "A recipe's web address" and dialog.input_hint == "https://", "From a web address: a box for the address")
+    dialog.typed = "recipes.example.com/soup"
+    captured.confirm = nil
+    press("Add to Mealie")
+    check(captured.confirm and captured.confirm.text:match("doesn't look like a web address") and #json.decode(mctl("GET", "/__state")).imports == 0,
+        "From a web address: not an address: it says so, Mealie isn't asked")
+    captured.confirm.ok_callback()
+    check(dialog.input == "recipes.example.com/soup", "From a web address: Try again: the box with what was typed")
+    dialog.typed = "https://recipes.example.com/nothing-here"
+    captured.confirm = nil
+    press("Add to Mealie")
+    check(captured.confirm and captured.confirm.text:match("couldn't find a recipe on that page"), "From a web address: a page without a recipe: it says so")
+    captured.confirm.ok_callback()
+    dialog.typed = " https://recipes.example.com/leek-soup "
+    viewer = nil
+    press("Add to Mealie")
+    local st = json.decode(mctl("GET", "/__state"))
+    local soup = json.decode(mctl("GET", "/__recipe?slug=imported-soup")) or {}
+    check(viewer and viewer.title == "Imported soup" and soup.orgURL == "https://recipes.example.com/leek-soup" and #st.imports == 2
+        and st.imports[2].includeCategories == true and st.imports[2].includeTags == false,
+        "From a web address: Mealie reads the page and makes the recipe; it opens")
+    mctl("POST", "/__set?readonly=1")
+    tab:importRecipe("https://recipes.example.com/pie")
+    captured.confirm = nil
+    press("Add to Mealie")
+    mctl("POST", "/__set?readonly=0")
+    check(captured.confirm and captured.confirm.text:match("didn't let this account add a recipe"), "From a web address: an account that may not add recipes: it says so")
+
+    -- the log: that a recipe was made, not what or from where
+    local lg = io.open(WORK .. "/gzreader.log", "rb"); local ltxt = lg and lg:read("*a") or ""; if lg then lg:close() end
+    check(ltxt:find("recipes: a new recipe saved", 1, true) and ltxt:find("recipes: a recipe added from a web address", 1, true)
+        and not ltxt:find("recipes.example.com", 1, true) and not ltxt:find("leek-soup", 1, true) and not ltxt:find("plums", 1, true)
+        and not ltxt:find("Bake the figs", 1, true), "a new recipe: the log says one was made, never what was typed or the web address")
+
+    -- the recipe box: a tag for it on the box's front
+    local saved_w = {}
+    local widget_mods = { "ui/widget/container/inputcontainer", "ui/widget/container/widgetcontainer", "ui/gesturerange", "ui/font", "ffi/blitbuffer" }
+    for _i, wm in ipairs(widget_mods) do
+        saved_w[wm] = package.loaded[wm]
+        if type(saved_w[wm]) ~= "table" then package.loaded[wm] = setmetatable({ extend = function(_s, o) return o or {} end }, { __index = function() return function() end end }) end
+    end
+    local View = require("gzreader_recipebox")
+    for _i, wm in ipairs(widget_mods) do package.loaded[wm] = saved_w[wm] end
+    local Scr = require("device").screen
+    local was_scale = Scr.scaleBySize
+    Scr.scaleBySize = function(_s, px) return px end
+    local kinds = View.kinds(rows())
+    local L = View.layout(kinds, 600, 574, function(x) return x end)
+    local places = View.fill(L, 1, rows(), kinds, tab, nil, function(label) return 40 + 8 * #label end)
+    Scr.scaleBySize = was_scale
+    local tags = {}
+    for _i, pl in ipairs(places) do if pl.kind == "order" or pl.kind == "new" or pl.kind == "more" then tags[#tags + 1] = pl end end
+    check(kinds[5] == "new" and #tags == 3 and tags[1].kind == "order" and tags[2].kind == "new" and tags[2].label == "+ New card" and tags[3].kind == "more"
+        and tags[2].entry == rows()[5] and tags[1].x + tags[1].w <= tags[2].x and tags[2].x + tags[2].w <= tags[3].x
+        and tags[1].x >= L.front.x and tags[3].x + tags[3].w <= L.front.x + L.front.w and tags[1].y == tags[3].y,
+        "the recipe box: New card is a tag on the box's front, between the order and More cards, all three inside the front")
+
+    tab.menu:onCloseWidget()
+    os.execute("kill $(cat " .. WORK .. "/mealie-new.pid) 2>/dev/null")
+    plugin.store.mealie = nil
+    Mealie.clearCache()
+    package.loaded["ui/widget/textviewer"], package.loaded["ui/widget/inputdialog"] = T0.viewer, T0.input
+    AsyncMod.sync, NetM.usb, plugin.save = T0.sync, T0.usb, T0.save
+end)()
+
 print("Catalog: the Music page (CD cases on the shelves)")
 ;(function()
     local Tab = require("gzreader_musictab")

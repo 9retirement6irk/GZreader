@@ -7,6 +7,7 @@ Recipes tab, or Settings → Home and tabs → Tab bar → Tabs).
   Search                                                 ›
   Category                              All              ›
   Order                                 A to Z           ›
+  New recipe                                             ›
   Apple pie                             1 hour 20 minutes ›
   Banana bread                          1 hour           ›
   …
@@ -53,8 +54,9 @@ local function info(text, timeout)
     UIManager:show(InfoMessage:new{ text = text, timeout = timeout })
 end
 
-local function confirm(text, ok_text, fn)
-    UIManager:show(require("ui/widget/confirmbox"):new{ text = text, ok_text = ok_text, ok_callback = fn })
+local function confirm(text, ok_text, fn, cancel_fn, cancel_text)
+    UIManager:show(require("ui/widget/confirmbox"):new{ text = text, ok_text = ok_text, ok_callback = fn,
+        cancel_callback = cancel_fn, cancel_text = cancel_text })
 end
 
 local function store(plugin)
@@ -142,6 +144,7 @@ function Recipes:rootItems()
           callback = function() self:askCategory() end },
         { text = _("Order"), gz_icon = "sort", mandatory = f.newest and _("Newest first") or _("A to Z"), gz_recipes = "order", keep_menu_open = true,
           callback = function() self:setFilter({ newest = not f.newest }) end },
+        { text = _("New recipe"), gz_icon = "add", gz_recipes = "new", keep_menu_open = true, callback = function() self:newRecipe() end },
     }
     local list = self.list
     if not list then
@@ -322,6 +325,153 @@ function Recipes:askCategory()
             UIManager:show(d)
         end, "recipes categories")
     end, { reason = "Mealie" })
+end
+
+---------------------------------------------------------------- a new recipe
+
+--- New recipe: write it here, or have Mealie read it from a web page.
+function Recipes:newRecipe()
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local d
+    d = ButtonDialog:new{ title = _("New recipe"), title_align = "center", buttons = {
+        { { text = _("Write it here"), callback = function() UIManager:close(d); self:writeRecipe() end } },
+        { { text = _("From a web address"), callback = function() UIManager:close(d); self:importRecipe() end } },
+        { { text = _("Cancel"), callback = function() UIManager:close(d) end } },
+    } }
+    UIManager:show(d)
+    return d
+end
+
+--- The three things to type, in order: { key, title, hint, lines }.
+Recipes.DRAFT_STEPS = {
+    { key = "name", title = _("New recipe · 1 of 3: its name"), hint = _("Apple pie") },
+    { key = "ingredients", title = _("New recipe · 2 of 3: the ingredients, one a line"), lines = true,
+      hint = _("2 cups flour\n1 cup butter, cold\n\nA line ending in a colon starts a section:\nFilling:\n6 apples") },
+    { key = "steps", title = _("New recipe · 3 of 3: the steps, one a line"), lines = true,
+      hint = _("Rub the butter into the flour.\nRoll out and line the dish.") },
+}
+
+--- Write it here: its name, then its ingredients, then its steps, each in
+--- a box of its own (Back keeps what was typed), then Save sends it to
+--- Mealie. A category chosen in the tab becomes the new recipe's.
+--- `draft`, `at`: where to go on (tests; Back and Next).
+function Recipes:writeRecipe(draft, at)
+    draft = draft or {}
+    at = at or 1
+    local step = Recipes.DRAFT_STEPS[at]
+    local InputDialog = require("ui/widget/inputdialog")
+    local d
+    local function keep() draft[step.key] = d:getInputText() end
+    local row = { { text = _("Cancel"), id = "close", callback = function()
+        keep()
+        UIManager:close(d)
+        local typed = (draft.name or "") .. (draft.ingredients or "") .. (draft.steps or "")
+        if typed:match("%S") then
+            confirm(_("Throw away this new recipe?"), _("Throw away"), function() end, function() self:writeRecipe(draft, at) end)
+        end
+    end } }
+    if at > 1 then
+        row[#row + 1] = { text = _("Back"), callback = function() keep(); UIManager:close(d); self:writeRecipe(draft, at - 1) end }
+    end
+    if at < #Recipes.DRAFT_STEPS then
+        row[#row + 1] = { text = _("Next"), is_enter_default = not step.lines, callback = function()
+            keep()
+            if step.key == "name" and not tostring(draft.name or ""):match("%S") then return info(M().why("no_name"), 3) end
+            UIManager:close(d)
+            self:writeRecipe(draft, at + 1)
+        end }
+    else
+        row[#row + 1] = { text = _("Save"), callback = function()
+            keep()
+            UIManager:close(d)
+            self:saveRecipe(draft)
+        end }
+    end
+    d = InputDialog:new{
+        title = step.title, input = draft[step.key] or "", input_hint = step.hint,
+        allow_newline = step.lines or nil, fullscreen = step.lines or nil, cursor_at_end = true,
+        buttons = { row },
+    }
+    UIManager:show(d)
+    d:onShowKeyboard()
+    self.draft_dialog = d
+    return d
+end
+
+--- Send what was typed to Mealie, then show the new recipe. If it can't
+--- be sent, what was typed isn't lost: Try again opens it where it was.
+function Recipes:saveRecipe(draft)
+    local client = Recipes.client(self.plugin)
+    draft.category = self.filter.category and self:categoryFor(self.filter.category.id) or nil
+    Net().run(function()
+        local msg = InfoMessage:new{ text = _("Saving to Mealie…"), timeout = 0 }
+        UIManager:show(msg)
+        Async().run(nil, function() return client:createRecipe(draft) end, function(slug, err)
+            UIManager:close(msg)
+            if not slug then
+                Log.warn("recipes: a new recipe couldn't be saved:", tostring(err))
+                return confirm(M().why(err) .. "\n\n" .. _("What you typed is kept."), _("Try again"),
+                    function() self:saveRecipe(draft) end, function() self:writeRecipe(draft, #Recipes.DRAFT_STEPS) end, _("Edit"))
+            end
+            Log.info("recipes: a new recipe saved" .. (err == "half" and ", without its ingredients and steps" or ""))
+            self:created(slug, err == "half" and _("Mealie made the recipe but didn't take its ingredients and steps. Add them in Mealie.") or nil)
+        end, "recipe new")
+    end, { reason = "Mealie" })
+end
+
+--- The category with this id as Mealie has it ({ id, name, slug }), from
+--- the ones fetched with the list.
+function Recipes:categoryFor(id)
+    for _i, c in ipairs(self.cats or {}) do
+        if c.id == id and c.slug then return c end
+    end
+end
+
+--- From a web address: Mealie reads the recipe from the page itself.
+function Recipes:importRecipe(typed)
+    local InputDialog = require("ui/widget/inputdialog")
+    local client = Recipes.client(self.plugin)
+    local d
+    d = InputDialog:new{
+        title = _("A recipe's web address"), input = typed or "", input_hint = "https://",
+        description = _("Mealie opens the page and reads the recipe from it."),
+        buttons = { {
+            { text = _("Cancel"), id = "close", callback = function() UIManager:close(d) end },
+            { text = _("Add to Mealie"), is_enter_default = true, callback = function()
+                local url = d:getInputText()
+                UIManager:close(d)
+                Net().run(function()
+                    local msg = InfoMessage:new{ text = _("Mealie is reading the page…"), timeout = 0 }
+                    UIManager:show(msg)
+                    Async().run(nil, function() return client:importUrl(url) end, function(slug, err)
+                        UIManager:close(msg)
+                        if not slug then
+                            Log.warn("recipes: a recipe couldn't be added from a web address:", tostring(err))
+                            return confirm(M().why(err), _("Try again"), function() self:importRecipe(url) end)
+                        end
+                        Log.info("recipes: a recipe added from a web address")
+                        self:created(slug)
+                    end, "recipe from the web", { timeout = 120 })
+                end, { reason = "Mealie" })
+            end },
+        } },
+    }
+    UIManager:show(d)
+    d:onShowKeyboard()
+    return d
+end
+
+--- A recipe was just made: the list again (it's in it now), and the recipe
+--- itself, opened. `note`: something to say first.
+function Recipes:created(slug, note)
+    if note then info(note, 6) end
+    if not self.closed then self:refresh(true) end
+    local client = Recipes.client(self.plugin)
+    Async().run(nil, function() return client:fetchRecipe(slug) end, function(r)
+        if not r then return info(_("Saved to Mealie.")) end
+        M().saveRecipe(r)
+        Recipes.showRecipe(r)
+    end, "recipe made")
 end
 
 ---------------------------------------------------------------- a recipe
