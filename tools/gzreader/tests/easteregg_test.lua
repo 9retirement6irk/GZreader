@@ -1,5 +1,5 @@
 -- gzreader_easteregg.lua's pure part: the version's taps (seven open it, a
--- pause starts again, "N more" near the end) and the 15 puzzle's board.
+-- pause starts again, "N more" near the end) and the animation's frames.
 --   luajit easteregg_test.lua <plugin dir>
 package.path = (arg[1] or "../../../plugins/gzreader.koplugin") .. "/?.lua;" .. package.path
 local Egg = require("gzreader_easteregg")
@@ -22,35 +22,26 @@ st = {}
 for i = 1, 7 do Egg.tap(st, 300 + i) end
 check(Egg.tap(st, 308).count == 1, "…and again from one after it opened")
 
--- the board
-local b = Egg.new()
-check(b.side == 4 and b[1] == 1 and b[15] == 15 and b[16] == 0 and b.gap == 16 and Egg.solved(b), "a new board: 1–15 in order, the gap last")
-check(Egg.slide(b, 1) == nil and Egg.slide(b, 16) == nil, "a tile not in the gap's row or column, or the gap itself: nothing")
-local changed = Egg.slide(b, 13)
-check(changed and #changed == 4 and b[13] == 0 and b[14] == 13 and b[15] == 14 and b[16] == 15 and b.gap == 13 and b.moves == 1,
-    "a tile three along the gap's row: it and the two between slide over (one move)")
-check(not Egg.solved(b), "…no longer solved")
-check(Egg.slide(b, 1) and b[1] == 0 and b[5] == 1 and b[9] == 5 and b[13] == 9 and b.gap == 1, "…and up a column")
-local b2 = Egg.new()
-check(Egg.slideDir(b2, "up") == nil and Egg.slideDir(b2, "left") == nil, "the gap in the corner: nothing below or right of it to move")
-check(Egg.slideDir(b2, "down") and b2[16] == 12 and b2.gap == 12 and Egg.slideDir(b2, "up") and Egg.solved(b2),
-    "▼: the tile above the gap comes down; ▲: back up (solved again)")
--- shuffled: solvable (made from solved by legal slides), not solved, moves at 0
-local seq, n = { 1, 2, 3, 4 }, 0
-local function rand(k) n = n + 1; return seq[(n % #seq) + 1] % k + 1 end
-local s = Egg.shuffle(Egg.new(), 50, rand)
-check(not Egg.solved(s) and s.moves == 0, "shuffled: not solved, no moves counted")
+-- the frames: a book whose pages turn, each turn writing the next letter of "GZreader"
+check(table.concat(Egg.WORD) == "GZreader" and Egg.FRAMES == 8 * 4 + 1, "the name's eight letters: three frames of a turning page and the letter, each; then the last page")
+local f = Egg.frame(1)
+check(f.leaf == 1 and f.letter == nil and f.written == "" and not f.finale, "it starts with a page lifting off the right, nothing written yet")
+check(Egg.frame(2).leaf == 2 and Egg.frame(3).leaf == 3, "…upright at the spine, then over the left page")
+f = Egg.frame(4)
+check(f.leaf == 0 and f.letter == "G" and f.written == "", "…and the first letter is on the right page: G")
+f = Egg.frame(5)
+check(f.leaf == 1 and f.letter == nil and f.written == "G", "the next page turns: G is now on the left page")
+check(Egg.frame(8).letter == "Z" and Egg.frame(12).letter == "r" and Egg.frame(12).written == "GZ", "Z, then r, the left page keeping what's written")
+f = Egg.frame(32)
+check(f.letter == "r" and f.written == "GZreade", "the last letter")
+f = Egg.frame(33)
+check(f.finale and f.leaf == 0 and f.written == "GZreader" and f.letter == nil, "the last page: the whole name")
+check(Egg.frame(0).leaf == 1 and Egg.frame(99).finale, "a frame outside: the nearest one")
 local seen = {}
-for i = 1, 16 do seen[s[i]] = (seen[s[i]] or 0) + 1 end
-local ok = true
-for v = 0, 15 do if seen[v] ~= 1 then ok = false end end
-check(ok, "…every tile and the gap once")
--- the parity: a reachable board has (inversions + the gap's row from the bottom) odd (4 x 4)
-local inv, flat = 0, {}
-for i = 1, 16 do if s[i] ~= 0 then flat[#flat + 1] = s[i] end end
-for i = 1, #flat do for j = i + 1, #flat do if flat[i] > flat[j] then inv = inv + 1 end end end
-local gap_row_from_bottom = 4 - math.floor((s.gap - 1) / 4)
-check((inv + gap_row_from_bottom) % 2 == 1, "…and solvable (its parity is a reachable board's)")
+for n = 1, Egg.FRAMES do local fr = Egg.frame(n); if fr.letter then seen[#seen + 1] = fr.letter end end
+check(table.concat(seen) == "GZreader", "every letter once, in order")
+check(Egg.wait(1) < Egg.wait(4) and Egg.wait(4) < Egg.wait(33), "a turning page moves on quickly, a letter stays to be read, the last page longest")
+check(Egg.new == nil and Egg.slide == nil and Egg.BEST == nil, "the game it replaced is gone (nothing kept in the settings)")
 
 print(string.format("easter egg: %d passed, %d failed", pass, fail))
 os.exit(fail == 0 and 0 or 1)

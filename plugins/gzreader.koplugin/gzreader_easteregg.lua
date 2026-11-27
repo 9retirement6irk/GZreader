@@ -1,16 +1,15 @@
 --[[--
 Settings' easter egg, as Android's: tap GZreader's version in Settings →
-About seven times and a little game opens: the 15 puzzle (fifteen numbered
-tiles and a gap on a 4 x 4 board; slide them back into order).
+About seven times and a little animation plays: an open book whose pages
+turn by themselves, each turn writing the next letter of "GZreader", until
+the whole name is on the page.
 
-- A tap on a tile in the gap's row or column slides it (and any between)
-  into the gap. Keyboard Kindles and the Kindle 4: the 5-way moves the
-  tile beside the gap into it (▲ moves the one below the gap up, and so on).
-- Moves are counted; solved, it says in how many, and the best is kept.
-- Back (or the ✕) closes it. It never touches anything else.
+- It plays through three times, then rests on its last page.
+- A tap anywhere, Back, or the 5-way's Press closes it. It never touches
+  anything else, and keeps nothing.
 
-Pure part (easteregg_test.lua): Egg.taps (the version's taps), Egg.new,
-Egg.shuffle, Egg.slide, Egg.slideDir, Egg.solved.
+Pure part (easteregg_test.lua): Egg.tap (the version's taps), Egg.frame
+(what a frame shows), Egg.wait (how long it stays), Egg.FRAMES.
 ]]
 
 local Egg = {}
@@ -18,9 +17,10 @@ local Egg = {}
 Egg.TAPS = 7 -- taps on the version that open it
 Egg.WINDOW = 4 -- seconds: a pause longer than this starts the count again
 Egg.HINT_FROM = 4 -- from this tap on, "N more" is said (as Android does)
-Egg.SIDE = 4
-Egg.SHUFFLE_MOVES = 200
-Egg.BEST = "gzreader_egg_best"
+Egg.WORD = { "G", "Z", "r", "e", "a", "d", "e", "r" }
+Egg.LEAF = 3 -- a turning page's frames: over the right page, upright at the spine, over the left page
+Egg.FRAMES = #Egg.WORD * (Egg.LEAF + 1) + 1 -- each letter: the page turns, then the letter; and the last page
+Egg.LOOPS = 3 -- times it plays before resting on the last page
 
 -- ------------------------------------------------------------- the taps
 
@@ -38,78 +38,38 @@ function Egg.tap(state, now)
     return { count = state.count, left = state.count >= Egg.HINT_FROM and left or nil }
 end
 
--- ------------------------------------------------------------ the board
+-- ------------------------------------------------------------ the frames
 
---- A solved board: tiles 1..15 in order, 0 the gap (last).
-function Egg.new(side)
-    side = side or Egg.SIDE
-    local b = { side = side, moves = 0 }
-    for i = 1, side * side - 1 do b[i] = i end
-    b[side * side] = 0
-    b.gap = side * side
-    return b
-end
-
-local function rc(b, i) return math.floor((i - 1) / b.side), (i - 1) % b.side end
-local function at(b, r, c) return r * b.side + c + 1 end
-
-function Egg.solved(b)
-    for i = 1, b.side * b.side - 1 do if b[i] ~= i then return false end end
-    return true
-end
-
---- Slides the tile at `i` (and any between it and the gap) into the gap, when
---- it's in the gap's row or column. Returns the cells that changed, or nil.
-function Egg.slide(b, i)
-    if i == b.gap or b[i] == nil then return nil end
-    local r, c = rc(b, i)
-    local gr, gc = rc(b, b.gap)
-    if r ~= gr and c ~= gc then return nil end
-    local changed = { b.gap }
-    local dr = r == gr and 0 or (r > gr and 1 or -1)
-    local dc = c == gc and 0 or (c > gc and 1 or -1)
-    -- (step by step from the gap towards the tile: each one in turn moves into the gap)
-    while b.gap ~= i do
-        local cr, cc = rc(b, b.gap)
-        local nxt = at(b, cr + dr, cc + dc)
-        b[b.gap], b[nxt] = b[nxt], 0
-        b.gap = nxt
-        changed[#changed + 1] = nxt
+--- What frame `n` (1 to Egg.FRAMES) shows:
+--- { leaf (0: no page in the air; 1, 2, 3: where the turning page is),
+---   letter (the letter on the right page, nil while a page turns or at the end),
+---   written (the letters already on the left page),
+---   finale (true: the whole name across the book) }. Pure.
+function Egg.frame(n)
+    n = math.max(1, math.min(Egg.FRAMES, n))
+    if n == Egg.FRAMES then
+        return { leaf = 0, finale = true, written = table.concat(Egg.WORD) }
     end
-    b.moves = b.moves + 1
-    return changed
+    local per = Egg.LEAF + 1
+    local i = math.floor((n - 1) / per) + 1 -- which letter
+    local step = (n - 1) % per + 1          -- 1..LEAF: the page turns; LEAF + 1: the letter
+    local written = table.concat(Egg.WORD, "", 1, i - 1)
+    if step <= Egg.LEAF then return { leaf = step, written = written, index = i } end
+    return { leaf = 0, letter = Egg.WORD[i], written = written, index = i }
 end
 
---- The 5-way: the tile on that side of the gap's other side moves into it
---- ("up": the tile below the gap moves up). Returns the cells changed, or nil.
-function Egg.slideDir(b, dir)
-    local gr, gc = rc(b, b.gap)
-    local r, c = gr, gc
-    if dir == "up" then r = gr + 1 elseif dir == "down" then r = gr - 1
-    elseif dir == "left" then c = gc + 1 elseif dir == "right" then c = gc - 1 end
-    if r < 0 or c < 0 or r >= b.side or c >= b.side then return nil end
-    return Egg.slide(b, at(b, r, c))
-end
-
---- Shuffled by `n` random slides from solved (so always solvable), not solved at the end.
---- `rand(k)`: 1..k (math.random by default).
-function Egg.shuffle(b, n, rand)
-    rand = rand or math.random
-    local dirs = { "up", "down", "left", "right" }
-    local back = { up = "down", down = "up", left = "right", right = "left" }
-    local last
-    local k = 0
-    while k < (n or Egg.SHUFFLE_MOVES) or Egg.solved(b) do
-        local d = dirs[rand(4)]
-        if d ~= (last and back[last]) and Egg.slideDir(b, d) then last = d; k = k + 1 end
-    end
-    b.moves = 0
-    return b
+--- How long frame `n` stays, in seconds: a turning page moves on quickly,
+--- a letter is left to be read, the last page longest.
+function Egg.wait(n)
+    local f = Egg.frame(n)
+    if f.finale then return 5 end
+    if f.leaf > 0 then return 0.3 end
+    return 0.9
 end
 
 -- --------------------------------------------------------------- screen
 
---- Shows the game (full screen). Returns the widget.
+--- Shows the animation (full screen). Returns the widget.
 function Egg.show()
     local Blitbuffer = require("ffi/blitbuffer")
     local Device = require("device")
@@ -120,124 +80,110 @@ function Egg.show()
     local RenderText = require("ui/rendertext")
     local UIManager = require("ui/uimanager")
     local _ = require("gettext")
-    local T = require("ffi/util").template
     local Screen = Device.screen
     local function S(n) return Screen:scaleBySize(n) end
 
-    local Game = InputContainer:extend{ name = "gz_egg", covers_fullscreen = true }
-    function Game:init()
+    local Show = InputContainer:extend{ name = "gz_egg", covers_fullscreen = true }
+    function Show:init()
         local sw, sh = Screen:getWidth(), Screen:getHeight()
         self.dimen = Geom:new{ x = 0, y = 0, w = sw, h = sh }
-        self.board = Egg.shuffle(Egg.new())
-        local side = self.board.side
-        local size = math.floor(math.min(sw - 2 * S(24), sh - S(200)) / side) * side
-        self.cell = size / side
-        self.grid = Geom:new{ x = math.floor((sw - size) / 2), y = math.floor((sh - size) / 2) + S(20), w = size, h = size }
-        self.best = G_reader_settings and G_reader_settings:readSetting(Egg.BEST)
-        self.close_rect = Geom:new{ x = 0, y = 0, w = S(64), h = S(64) }
-        self.ges_events = { TapGame = { GestureRange:new{ ges = "tap", range = function() return self.dimen end } } }
+        -- the open book, in the middle: two pages and the spine between
+        local bw = math.min(sw - 2 * S(36), math.floor((sh - S(220)) / 0.62))
+        bw = bw - bw % 2
+        local bh = math.floor(bw * 0.62)
+        self.book = Geom:new{ x = math.floor((sw - bw) / 2), y = math.floor((sh - bh) / 2), w = bw, h = bh }
+        -- (what a frame can change: the book and the page lifted a little above it)
+        self.area = Geom:new{ x = self.book.x - S(14), y = self.book.y - S(22), w = bw + 2 * S(14), h = bh + S(44) }
+        self.n, self.loop = 1, 1
+        self.ges_events = { TapShow = { GestureRange:new{ ges = "tap", range = function() return self.dimen end } } }
         local back = Device.input and Device.input.group and Device.input.group.Back or "Back"
-        self.key_events = {
-            Close = { { back } },
-            Up = { { "Up" } }, Down = { { "Down" } }, Left = { { "Left" } }, Right = { { "Right" } },
-            Again = { { "Press" } },
-        }
-        require("gzreader_log").info("easter egg: the 15 puzzle opened")
+        self.key_events = { Close = { { back } }, ClosePress = { { "Press" } } }
+        self.tick = function() self:advance() end
+        UIManager:scheduleIn(Egg.wait(1), self.tick)
+        require("gzreader_log").info("easter egg: the animation opened")
     end
-    function Game:cellRect(i)
-        local r, c = math.floor((i - 1) / self.board.side), (i - 1) % self.board.side
-        return Geom:new{ x = self.grid.x + c * self.cell, y = self.grid.y + r * self.cell, w = self.cell, h = self.cell }
-    end
-    function Game:paintTo(bb, x, y)
-        local sw, sh = self.dimen.w, self.dimen.h
-        bb:paintRect(x, y, sw, sh, Blitbuffer.COLOR_WHITE)
-        local title = Font:getFace("smalltfont", 26)
-        local small = Font:getFace("cfont", 18)
-        local function centre(face, text, ty, bold)
-            local w = RenderText:sizeUtf8Text(0, sw, face, text, true, bold).x
-            RenderText:renderUtf8Text(bb, x + math.floor((sw - w) / 2), y + ty, face, text, true, bold, Blitbuffer.COLOR_BLACK)
-        end
-        centre(title, "GZreader 15", S(50), true)
-        -- ✕ at the top left (touch Kindles have no Back key)
-        local cr = self.close_rect
-        local xf = Font:getFace("cfont", 26)
-        RenderText:renderUtf8Text(bb, x + cr.x + S(10), y + cr.y + S(36), xf, "\u{2715}", true, false, Blitbuffer.COLOR_BLACK)
-        local status
-        if self.won then
-            status = T(_("Solved in %1 moves!"), self.board.moves) .. "   " .. _("Tap for another")
+    function Show:advance()
+        if self.closed then return end
+        if self.n >= Egg.FRAMES then
+            if self.loop >= Egg.LOOPS then return end -- (rests on the last page)
+            self.loop, self.n = self.loop + 1, 1
         else
-            status = T(_("Moves: %1"), self.board.moves) .. (self.best and ("   " .. T(_("Best: %1"), self.best)) or "")
+            self.n = self.n + 1
         end
-        centre(small, status, S(90))
-        local face = Font:getFace("smalltfont", math.max(18, math.floor(self.cell / Screen:scaleBySize(1) * 0.32)))
-        for i = 1, self.board.side * self.board.side do
-            local r = self:cellRect(i)
-            local v = self.board[i]
-            local pad = S(4)
-            if v ~= 0 then
-                bb:paintRect(x + r.x + pad, y + r.y + pad, r.w - 2 * pad, r.h - 2 * pad, Blitbuffer.COLOR_BLACK)
-                bb:paintRect(x + r.x + pad + S(3), y + r.y + pad + S(3), r.w - 2 * pad - S(6), r.h - 2 * pad - S(6),
-                    (v == i) and Blitbuffer.COLOR_LIGHT_GRAY or Blitbuffer.COLOR_WHITE)
-                local text = tostring(v)
-                local m = RenderText:sizeUtf8Text(0, r.w, face, text, true, true)
-                local fh, asc = face.ftsize:getHeightAndAscender()
-                RenderText:renderUtf8Text(bb, x + r.x + math.floor((r.w - m.x) / 2), y + r.y + math.floor((r.h - fh) / 2 + asc), face,
-                    text, true, true, Blitbuffer.COLOR_BLACK)
-            end
-        end
-        local hint = Device:isTouchDevice() and _("Tap a tile in the gap's row or column · ✕ closes")
-            or _("◀ ▶ ▲ ▼ slide a tile into the gap · Back closes")
-        centre(small, hint, sh - S(40))
+        local f = Egg.frame(self.n)
+        -- a page in the air: the quickest refresh; a letter landed, or the last page: a clean one
+        local mode = f.leaf > 0 and "fast" or "ui"
+        UIManager:setDirty(self, function() return mode, self.area end)
+        UIManager:scheduleIn(Egg.wait(self.n), self.tick)
     end
-    function Game:changedCells(cells)
-        if not cells then return end
-        if Egg.solved(self.board) then
-            self.won = true
-            if not self.best or self.board.moves < self.best then
-                self.best = self.board.moves
-                if G_reader_settings then G_reader_settings:saveSetting(Egg.BEST, self.best) end
-            end
-            require("gzreader_log").info("easter egg: solved in", self.board.moves, "moves")
-            UIManager:setDirty(self, "flashui")
+    local function centred(bb, face, text, cx, cy, bold, color)
+        local m = RenderText:sizeUtf8Text(0, Screen:getWidth(), face, text, true, bold)
+        local fh, asc = face.ftsize:getHeightAndAscender()
+        RenderText:renderUtf8Text(bb, cx - math.floor(m.x / 2), cy - math.floor(fh / 2) + math.floor(asc), face, text, true, bold,
+            color or Blitbuffer.COLOR_BLACK)
+    end
+    function Show:paintTo(bb, x, y)
+        local sw, sh = self.dimen.w, self.dimen.h
+        local B = self.book
+        local f = Egg.frame(self.n)
+        bb:paintRect(x, y, sw, sh, Blitbuffer.COLOR_WHITE)
+        local small = Font:getFace("cfont", 18)
+        centred(bb, small, Device:isTouchDevice() and _("Tap to close") or _("Back closes"), x + math.floor(sw / 2), y + sh - S(40), false,
+            Blitbuffer.COLOR_DARK_GRAY)
+        local bx, by, half = x + B.x, y + B.y, B.w / 2
+        local line = math.max(2, S(2))
+        -- the cover behind, the block of pages (their edges below), the two open pages, the spine
+        bb:paintRect(bx - S(8), by - S(4), B.w + 2 * S(8), B.h + S(16), Blitbuffer.COLOR_BLACK)
+        for k = 2, 0, -1 do
+            bb:paintRect(bx - S(2) * k, by + B.h + S(3) * k - S(1), B.w + 2 * S(2) * k, S(3), Blitbuffer.COLOR_WHITE)
+            bb:paintRect(bx - S(2) * k, by + B.h + S(3) * k + S(2), B.w + 2 * S(2) * k, 1, Blitbuffer.COLOR_DARK_GRAY)
+        end
+        bb:paintRect(bx, by, B.w, B.h, Blitbuffer.COLOR_WHITE)
+        bb:paintRect(bx + half - math.floor(line / 2), by, line, B.h, Blitbuffer.COLOR_BLACK)
+        bb:paintRect(bx + half - S(6), by, S(5), B.h, Blitbuffer.COLOR_LIGHT_GRAY)
+        bb:paintRect(bx + half + line, by, S(4), B.h, Blitbuffer.COLOR_LIGHT_GRAY)
+        local lcx, rcx, cy = bx + math.floor(half / 2), bx + math.floor(half * 1.5), by + math.floor(B.h / 2)
+        local px = function(v) return math.max(12, math.floor(v / Screen:scaleBySize(1))) end
+        if f.finale then
+            -- the whole name across the book, and a line under it
+            local big = Font:getFace("smalltfont", px(B.h * 0.2))
+            centred(bb, big, "GZ", lcx, cy - S(6), true)
+            centred(bb, big, "reader", rcx, cy - S(6), true)
+            centred(bb, small, _("Thanks for reading."), rcx, by + B.h - S(34), false, Blitbuffer.COLOR_DARK_GRAY)
             return
         end
-        -- (only the tiles that moved, and the moves line, refreshed: quick on e-ink)
-        local box
-        for _i, c in ipairs(cells) do
-            local r = self:cellRect(c)
-            box = box and box:combine(r) or r
+        -- the left page: what's written so far; the right page: this turn's letter
+        if f.written ~= "" then
+            centred(bb, Font:getFace("smalltfont", px(B.h * 0.13)), f.written, lcx, cy, true, Blitbuffer.COLOR_DARK_GRAY)
         end
-        UIManager:setDirty(self, function() return "ui", box end)
-        UIManager:setDirty(self, function() return "ui", Geom:new{ x = 0, y = S(70), w = self.dimen.w, h = S(30) } end)
+        if f.letter then
+            centred(bb, Font:getFace("smalltfont", px(B.h * 0.42)), f.letter, rcx, cy, true)
+        end
+        -- the page in the air: over the right page, upright at the spine, over the left page
+        if f.leaf > 0 then
+            local lift = S(12)
+            local lx, lw
+            if f.leaf == 1 then lx, lw = bx + half, math.floor(half * 0.72)
+            elseif f.leaf == 2 then lx, lw = bx + half - S(5), S(10)
+            else lw = math.floor(half * 0.72); lx = bx + half - lw end
+            local ly, lh = by - (f.leaf == 2 and lift + S(6) or lift), B.h + (f.leaf == 2 and S(6) or 0)
+            bb:paintRect(lx, ly, lw, lh, f.leaf == 2 and Blitbuffer.COLOR_DARK_GRAY or Blitbuffer.COLOR_LIGHT_GRAY)
+            bb:paintBorder(lx, ly, lw, lh, line, Blitbuffer.COLOR_BLACK)
+        end
     end
-    function Game:onTapGame(_arg, ges)
-        local p = ges.pos
-        if self.close_rect:contains(p) then return self:onClose() end
-        if self.won then return self:onAgain() end
-        if not self.grid:contains(p) then return true end
-        local c = math.floor((p.x - self.grid.x) / self.cell)
-        local r = math.floor((p.y - self.grid.y) / self.cell)
-        self:changedCells(Egg.slide(self.board, r * self.board.side + c + 1))
-        return true
+    function Show:onTapShow() return self:onClose() end
+    function Show:onClosePress() return self:onClose() end
+    function Show:onCloseWidget()
+        self.closed = true
+        UIManager:unschedule(self.tick)
     end
-    function Game:onUp() if not self.won then self:changedCells(Egg.slideDir(self.board, "up")) end; return true end
-    function Game:onDown() if not self.won then self:changedCells(Egg.slideDir(self.board, "down")) end; return true end
-    function Game:onLeft() if not self.won then self:changedCells(Egg.slideDir(self.board, "left")) end; return true end
-    function Game:onRight() if not self.won then self:changedCells(Egg.slideDir(self.board, "right")) end; return true end
-    function Game:onAgain()
-        if not self.won then return true end
-        self.won = nil
-        self.board = Egg.shuffle(Egg.new())
-        UIManager:setDirty(self, "ui")
-        return true
-    end
-    function Game:onClose() UIManager:close(self, "full"); return true end
-    local g = Game:new{}
+    function Show:onClose() UIManager:close(self, "full"); return true end
+    local g = Show:new{}
     UIManager:show(g, "full")
     return g
 end
 
---- The version row's tap (Settings → About): counts, says "N more" near the end, opens the game.
+--- The version row's tap (Settings → About): counts, says "N more" near the end, opens the animation.
 Egg.state = {}
 function Egg.versionTapped(now)
     local r = Egg.tap(Egg.state, now or os.time())
