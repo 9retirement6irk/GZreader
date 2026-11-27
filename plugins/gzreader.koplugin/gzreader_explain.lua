@@ -16,7 +16,11 @@ each asks about the same selection again, with the conversation so far sent
 along, and the window then shows the new answer first. With a key set up the
 selection menu's Translate opens a list of languages and the translation
 comes from the AI service (Google Translate, as before, is the list's last
-row). The conversation is gone when its window closes, unless an answer
+row). With Dictionary with AI on (Settings → Accounts and services → AI;
+on unless turned off), the menu's Dictionary asks the service too: the word
+or phrase and the sentence it's in (from the words either side), and the
+answer's window has Built-in dictionary for the dictionaries on the Kindle.
+The conversation is gone when its window closes, unless an answer
 was kept: Save as a note on this text makes the selection a highlight with
 the answer as its note (on an existing highlight it's added to its note),
 which GZreader's highlight sync then sends to the book server.
@@ -36,6 +40,9 @@ local Explain = {
     MAX_LONG_TOKENS = 1500, -- (a translation or a simpler version of a long selection)
     KEEP = 4,         -- exchanges sent back with a follow-up, beside the first
     TRANSLATE_KEY = "13_gz_translate",
+    DICTIONARY_KEY = "14_gz_dictionary",
+    CONTEXT_MAX = 600, -- bytes of the sentence round a word that's defined
+    CONTEXT_WORDS = 40, -- words looked at either side for it
     -- languages offered for a translation (their names in English: sent as they are)
     LANGUAGES = { "English", "Spanish", "French", "German", "Italian", "Portuguese", "Dutch", "Polish", "Turkish", "Russian",
         "Arabic", "Hindi", "Chinese", "Japanese", "Korean" },
@@ -67,6 +74,9 @@ Explain.INSTRUCTIONS = {
     simplify = "Say the selected text again in simpler words, keeping everything it says, in the language of the selected text. Give only the simpler version.",
     summarize = "Summarize the selected text in a few sentences, in the language of the selected text.",
     translate = "Translate the selected text into %s. Give only the translation.",
+    define = "Define the selected word or phrase as it is used here. Start with the word, how it is said and what part of speech it is, "
+        .. "then its meaning here in one or two sentences. Then, briefly, other common meanings if it has them, a few synonyms, and where the word comes from. "
+        .. "Keep it under 120 words. Answer in the language of the selected text.",
 }
 
 --- What an action is called on its button and over its answer.
@@ -75,6 +85,7 @@ function Explain.label(action, arg)
     if action == "simplify" then return _("Simpler") end
     if action == "summarize" then return _("Summarize") end
     if action == "translate" then return T(_("Into %1"), tostring(arg or "")) end
+    if action == "define" then return _("Definition") end
     return (tostring(arg or ""):gsub("^%s+", ""):gsub("%s+$", "")) -- (a question typed: itself)
 end
 
@@ -97,14 +108,19 @@ end
 
 --- The first question of a conversation: { system, text, max_tokens, what }.
 --- `title`, `authors`: the book's, when known. Pure.
-function Explain.question(selected, title, authors, action, arg)
+function Explain.question(selected, title, authors, action, arg, context)
     action = action or "explain"
     selected = Explain.cut((tostring(selected or ""):gsub("^%s+", ""):gsub("%s+$", "")))
     local from = ""
     if type(title) == "string" and title:match("%S") then
         from = (type(authors) == "string" and authors:match("%S")) and T("\"%1\" by %2", title, (authors:gsub("\n", ", "))) or T("\"%1\"", title)
     end
-    local text = (from ~= "" and ("The book: " .. from .. "\n\n") or "") .. "The selected text:\n" .. selected
+    -- (the sentence round the selection, for a definition as it's meant there)
+    local around = ""
+    if type(context) == "string" and context:match("%S") and context ~= selected then
+        around = "The sentence it is in:\n" .. Explain.cut((context:gsub("^%s+", ""):gsub("%s+$", "")), Explain.CONTEXT_MAX) .. "\n\n"
+    end
+    local text = (from ~= "" and ("The book: " .. from .. "\n\n") or "") .. around .. "The selected text:\n" .. selected
         .. "\n\n" .. Explain.instruction(action, arg)
     return { system = Explain.SYSTEM, text = text, max_tokens = Explain.maxTokens(action, selected), what = action == "explain" and "explain" or ("explain " .. action) }
 end
@@ -112,18 +128,18 @@ end
 --[[ A conversation about one selection, kept only while its window is open:
 { selected, first = the first question's text, turns = { { action, arg,
 label, sent = the words sent (nil for the first), answer } } }. ]]
-function Explain.newChat(selected, title, authors)
-    return { selected = selected, title = title, authors = authors, turns = {} }
+function Explain.newChat(selected, title, authors, context)
+    return { selected = selected, title = title, authors = authors, context = context, turns = {} }
 end
 
 --- The question to send for the conversation's next turn (`action`, `arg`):
 --- the turns so far go along as `history` ({ role, text } each), so "put
 --- that more simply" means the answer just given. Pure.
 function Explain.next(chat, action, arg)
-    local q = Explain.question(chat.selected, chat.title, chat.authors, action, arg)
+    local q = Explain.question(chat.selected, chat.title, chat.authors, action, arg, chat.context)
     if #chat.turns == 0 then return q end
     local first = chat.turns[1]
-    local history = { { role = "user", text = Explain.question(chat.selected, chat.title, chat.authors, first.action, first.arg).text },
+    local history = { { role = "user", text = Explain.question(chat.selected, chat.title, chat.authors, first.action, first.arg, chat.context).text },
         { role = "assistant", text = first.answer } }
     for k = 2, #chat.turns do
         history[#history + 1] = { role = "user", text = chat.turns[k].sent }
@@ -209,10 +225,18 @@ function Explain.show(plugin, chat)
         end },
     } }
     for _i, row in ipairs(Explain.extraRows(plugin, chat, function() return viewer end)) do rows[#rows + 1] = row end
+    if chat.lookup then
+        -- (a definition: the reader's own dictionaries one tap away)
+        rows[#rows + 1] = { { text = _("Built-in dictionary"), callback = function()
+            UIManager:close(viewer)
+            chat.lookup()
+        end } }
+    end
     rows[#rows + 1] = { { text = _("Close"), callback = function() UIManager:close(viewer) end } }
     local first = chat.turns[1]
     viewer = require("ui/widget/textviewer"):new{
         title = (first and first.action == "explain" and #chat.turns == 1) and T(_("Explained by %1"), AI.name(AI.provider(plugin)))
+            or (first and first.action == "define" and #chat.turns == 1) and T(_("Defined by %1"), AI.name(AI.provider(plugin)))
             or T(_("Answered by %1"), AI.name(AI.provider(plugin))),
         text = Explain.render(chat),
         buttons_table = rows,
@@ -382,8 +406,16 @@ function Explain.run(plugin, highlight, index, action, arg)
     local selected = Explain.selection(highlight, index)
     if not selected or not selected:match("%S") then return false end
     local props = type(highlight.ui) == "table" and type(highlight.ui.doc_props) == "table" and highlight.ui.doc_props or {}
-    local chat = Explain.newChat(selected, props.display_title or props.title, props.authors)
+    -- (a definition goes with the sentence round the word: what it means there)
+    local context = action == "define" and Explain.sentence(highlight, index) or nil
+    local chat = Explain.newChat(selected, props.display_title or props.title, props.authors, context)
     Explain.began(chat, highlight, index)
+    if action == "define" then
+        local ui = highlight.ui
+        chat.lookup = function()
+            pcall(function() ui:handleEvent(require("ui/event"):new("LookupWord", selected, true)) end)
+        end
+    end
     pcall(function() highlight:onClose() end) -- (the menu and the selection's marks go; the answer comes over the page)
     return Explain.ask(plugin, chat, action or "explain", arg)
 end
@@ -411,6 +443,53 @@ function Explain.translate(plugin, highlight, index)
     return true
 end
 
+--- The sentence `selected` is in, from the words before and after it
+--- (`prev`, `next`): what's before is cut after the last full stop, question
+--- or exclamation mark (or line break), what's after at the first one. Pure.
+function Explain.sentenceFrom(prev, selected, next)
+    prev, next = tostring(prev or ""), tostring(next or "")
+    local from = 1
+    for k = #prev, 1, -1 do
+        local c = prev:sub(k, k)
+        if c == "\n" or ((c == "." or c == "!" or c == "?") and (k == #prev or prev:sub(k + 1, k + 1):match("[%s\"'\226]"))) then from = k + 1 break end
+    end
+    -- (a closing quote after the stop belongs to the sentence before)
+    local before = prev:sub(from):gsub("^[\"'\226\128\157\153]*%s+", ""):gsub("^%s+", "")
+    local stop = next:find("[%.!%?][%s\"'\226]") or next:find("[%.!%?]$") or next:find("\n", 1, true)
+    local after = stop and next:sub(1, stop) or next
+    after = after:gsub("\n.*$", ""):gsub("%s+$", "")
+    local out = (before .. tostring(selected or "") .. after):gsub("%s+", " ")
+    return out
+end
+
+--- The sentence round the selection (a book that flows: the words either
+--- side, from KOReader), or nil. Nothing of the selection is changed.
+function Explain.sentence(highlight, index)
+    local ok, text = pcall(function()
+        local ui = highlight.ui
+        local pos0, pos1, sel
+        if index then
+            local a = ui.annotation.annotations[index]
+            pos0, pos1, sel = a.pos0, a.pos1, a.text
+        else
+            pos0, pos1, sel = highlight.selected_text.pos0, highlight.selected_text.pos1, highlight.selected_text.text
+        end
+        if not (ui.rolling and type(pos0) == "string" and type(pos1) == "string") then return nil end
+        -- (restore_selection: crengine forgets the marked selection when asked for other text)
+        local prev, next = ui.document:getSelectedWordContext(sel, Explain.CONTEXT_WORDS, pos0, pos1, true)
+        if not prev and not next then return nil end
+        return Explain.sentenceFrom(prev, sel, next)
+    end)
+    return ok and type(text) == "string" and text:match("%S") and text or nil
+end
+
+--- Does the selection menu's Dictionary ask the AI service? (A key set up,
+--- and Settings → Accounts and services → AI → Dictionary with AI on: it is
+--- unless turned off.)
+function Explain.dictionaryOn(plugin)
+    return Explain.available(plugin) and G_reader_settings:readSetting("gzreader_ai_dictionary") ~= false
+end
+
 --- Add the button to this book's selection menu (once per reader).
 function Explain.register(plugin, ui)
     local highlight = type(ui) == "table" and ui.highlight
@@ -427,6 +506,13 @@ function Explain.register(plugin, ui)
             text = _("Translate (AI)"),
             show_in_highlight_dialog_func = function() return Explain.available(plugin) end,
             callback = function() Explain.translate(plugin, this, index) end,
+        }
+    end)
+    highlight:addToHighlightDialog(Explain.DICTIONARY_KEY, function(this, index)
+        return {
+            text = _("Dictionary (AI)"),
+            show_in_highlight_dialog_func = function() return Explain.dictionaryOn(plugin) end,
+            callback = function() Explain.run(plugin, this, index, "define") end,
         }
     end)
     return true

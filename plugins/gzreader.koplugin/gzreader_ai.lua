@@ -265,6 +265,7 @@ function AI.uses(plugin)
     local _ = require("gettext")
     local out = {}
     if AI.ready(plugin) then out[#out + 1] = _("Explain and Translate (the question mark and Translate when you select text in a book)") end
+    if AI.ready(plugin) and G_reader_settings:readSetting("gzreader_ai_dictionary") ~= false then out[#out + 1] = _("Dictionary (when you select a word in a book)") end
     local okh, Hw = pcall(require, "gzreader_handwriting")
     if okh and Hw.engine(plugin) ~= "kindle" then out[#out + 1] = _("Handwriting to text") end
     local okd, D = pcall(require, "gzreader_daily")
@@ -386,6 +387,16 @@ function AI.settingsItems(plugin)
           callback = function()
               note(_("Switch each on where it lives:\n\n• Handwriting to text: Notes → Handwriting to text\n• The daily paper's AI edition: Daily paper → AI edition\n\nOnly what's needed is sent: the writing being read, as a picture, or a news story's headline and text for its summary."))
           end },
+        { text = _("Dictionary with AI"), checkbox = true,
+          help_text = _("When you select a word in a book, the menu's Dictionary asks your AI service what it means in that sentence. Sent: the word or phrase, the sentence it's in, and the book's title and author. The dictionaries on the Kindle are one tap away under the answer. Off: Dictionary is the Kindle's own, as before."),
+          enabled_func = function() return AI.ready(plugin) end,
+          checked_func = function() return AI.ready(plugin) and G_reader_settings:readSetting("gzreader_ai_dictionary") ~= false end,
+          keep_menu_open = true,
+          callback = function()
+              local on = G_reader_settings:readSetting("gzreader_ai_dictionary") ~= false
+              G_reader_settings:saveSetting("gzreader_ai_dictionary", not on)
+              Log.info("ai: dictionary with AI", on and "off" or "on")
+          end, separator = true },
         { text = _("Remove the keys"),
           enabled_func = function() return (s.claude.key or "") ~= "" or (s.openai.key or "") ~= "" end, keep_menu_open = true,
           callback = function(tm)

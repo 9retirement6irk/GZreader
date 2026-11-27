@@ -246,6 +246,18 @@ The window then shows the new answer first, with what you asked over it, and
 the earlier ones under **Earlier**. Each new question goes with the
 conversation so far, so "it" is understood.
 
+**Dictionary with AI.** With a key set up, the selection menu's
+**Dictionary** asks your AI service what the word or phrase means in the
+sentence it's in: how it's said, its part of speech, its meaning there, other
+common meanings, a few synonyms and where it comes from. The answer comes in
+the same window with the same buttons, and **Built-in dictionary** under them
+opens the Kindle's own dictionaries for the word. Sent: the word or phrase,
+the sentence round it (in a PDF, the word alone), and the book's title and
+author. Turn it off in **Settings → Accounts and services → AI → Dictionary
+with AI**: Dictionary is then the Kindle's own, as before. A long press on a
+single word that opens the dictionary straight away (KOReader's "Dictionary
+on single word selection") still opens the Kindle's own.
+
 **Keeping an answer.** Under those is **Save as a note on this text**: the
 text you selected becomes a highlight and the newest answer its note, signed
 as an AI's (a question you typed is kept over its answer). From an existing

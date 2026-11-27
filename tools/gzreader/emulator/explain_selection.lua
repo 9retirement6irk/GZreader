@@ -113,4 +113,27 @@ add({ fn = function(E)
     end
 end, after = 3 })
 add({ shot = "explain-8-highlight-on-page" })
+-- the selection menu's Dictionary with AI: the sentence goes with the word
+add({ fn = function(E)
+    local h = reader().highlight
+    local Screen = require("device").screen
+    local w, y = Screen:getWidth(), math.floor(Screen:getHeight() * 0.44)
+    local sel = reader().document:getTextFromPositions({ x = math.floor(w * 0.3), y = y }, { x = math.floor(w * 0.38), y = y })
+    h.selected_text = sel
+    require("gzreader_ai").ask = function(_p, q, cb)
+        E.say("defined:", (q.text:gsub("\n", " / ")))
+        cb("breeding (verb): producing young, here of lilacs coming up from the ground.")
+    end
+    pcall(h.onShowHighlightMenu, h)
+    for _i, row in ipairs(h.highlight_dialog.buttons) do
+        for _k, b in ipairs(row) do if b.icon == "lookup.dictionary" then b.callback() end end
+    end
+end, after = 5 })
+add({ shot = "explain-9-dictionary" })
+add({ fn = function(E)
+    local t = top()
+    local rows = {}
+    for _i, row in ipairs(t.buttons_table or {}) do for _k, b in ipairs(row) do rows[#rows + 1] = b.text end end
+    E.say("dictionary window:", tostring(t.title), "|", table.concat(rows, " | "))
+end, after = 1 })
 return s
