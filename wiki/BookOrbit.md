@@ -124,9 +124,22 @@ In BookOrbit's **Settings → Devices → KOReader**, for the sync sign-in the K
 |---|---|---|
 | **Progress sync** | **on** | off, the Kindle can't sign in at all |
 | **Hide audiobook-only books** | either | GZreader leaves audiobook-only books out of its book lists anyway and lists audiobooks through the API key. On (BookOrbit's default) makes the book lists a little quicker to fetch |
-| **Read-aloud EPUB delivery** | **Automatic** (BookOrbit's default) or **Text-only EPUB** | a Kindle can't play an EPUB's narration, and the original files with narration are much bigger. Automatic sends the text-only copy when it can and the original otherwise; Text-only refuses a book it can't make a safe copy of. With **Original EPUB with narration** every such book arrives at full size |
+| **Read-aloud EPUB delivery** | **Original EPUB with narration** on a Kindle with sound (Scribe, Paperwhite 5 and newer over Bluetooth; Kindle 2, 3, DX, Touch with a headphone socket) to hear the narration; otherwise **Automatic** (BookOrbit's default) or **Text-only EPUB** | a Kindle with sound plays a read-along book's own narration, the sentence highlighted (Quick panel → **Narration**, see below). The original files are much bigger. Automatic sends the text-only copy when it can and the original otherwise; Text-only refuses a book it can't make a safe copy of |
 
 When the Kindle makes the sync sign-in itself (signing in with just an API key, on an account with none), it sends only a user name and a password, so these stay on BookOrbit's defaults: Progress sync on, audiobook-only books hidden, delivery Automatic. It never changes a sign-in that exists: those settings are shared with your other e-readers. If the key can see the sign-in and delivery is set to Original, the setup page says so and where to change it.
+
+## Read-along books: the narration
+
+A narrated EPUB (BookOrbit's read-along books sent as the original, or any
+EPUB 3 with "media overlays") plays its own narration on a Kindle with
+sound: in the book, **Quick panel → Narration → Play from this page**. The
+sentence being read is highlighted and the pages turn with it; **Pause**,
+**Resume** and **Stop** are in the same place, and closing the book stops
+it. The narration's audio is copied out of the book the first time it
+plays, into GZreader's cache; a book's audio not played for 60 days is
+removed, and the oldest go first when the cache is over 2 GB. MP3
+narration plays; the audio test (Settings → Audio → Test audiobook
+playback) has to have found a player for MP3 on Kindles without Bluetooth.
 
 ## Signing in with just an API key
 

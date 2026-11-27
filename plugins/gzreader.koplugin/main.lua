@@ -982,7 +982,7 @@ local ERRORS = {
     bookorbit_key_cannot_create = T(_("Your BookOrbit account has no %1 sync sign-in yet, and this API key is read-only, so one can't be made with it. Make the sign-in in BookOrbit (Settings → Devices → %1) or use a key with read and write access."), "KOReader"),
     bookorbit_key_old_signin = T(_("BookOrbit can't hand over this account's %1 sync sign-in until its password has been saved once more: in BookOrbit, Settings → Devices → %1, set the sync password again (the same one is fine), then try again. Or sign in here with the %1 sync user name and password."), "KOReader"),
     bookorbit_key_no_signin = T(_("BookOrbit accepted the API key but didn't hand over the %1 sync sign-in. Sign in with the %1 sync user name and password instead (BookOrbit: Settings → Devices → %1)."), "KOReader"),
-    bookorbit_delivery_original = T(_("BookOrbit is set to send this sign-in's read-aloud EPUBs with their narration. A Kindle can't play it and the files are much bigger. In BookOrbit: Settings → Devices → %1 → Read-aloud EPUB delivery → Automatic."), "KOReader"),
+    bookorbit_delivery_original = T(_("BookOrbit is set to send this sign-in's read-aloud EPUBs with their narration. This Kindle has no sound to play it, and the files are much bigger. In BookOrbit: Settings → Devices → %1 → Read-aloud EPUB delivery → Automatic."), "KOReader"),
     bookorbit_requests_refused = _("BookOrbit didn't allow that. The API key needs “Request books” ticked when you make it, and your BookOrbit account has to be allowed to request books."),
     unsupported = _("That isn't available with BookOrbit yet."),
     no_https = require("gzreader_lan").noHttpsText(),
@@ -2340,6 +2340,9 @@ function Grimmory:onCloseDocument()
     end
     -- (BookOrbit: the pages just read, from KOReader's statistics, a moment after they're saved)
     if self.api.koreader_positions then pcall(function() require("gzreader_bo_stats").later(self) end) end
+    -- (a book's narration stops with it: gzreader_narration.lua)
+    local Narration = package.loaded["gzreader_narration"]
+    if Narration then pcall(Narration.stop, "the book closed") end
     if self.sync then
         self.sync:onLeave(true)
         pcall(self.sync.releaseCfi, self.sync)

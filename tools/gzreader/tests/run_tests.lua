@@ -17687,6 +17687,116 @@ print("Copying connections: the PIN exchange and mDNS")
     check(Mdns.parse("short") == nil and Mdns.parse(string.rep("\255", 40)) ~= false, "mDNS: junk doesn't break it")
 end)()
 
+print("Narrated EPUBs (gzreader_narration.lua): EPUB 3 media overlays, the sentence highlighted")
+;(function()
+    local N = require("gzreader_narration")
+    -- clock values
+    check(N.clock("0:00:03.500") == 3500 and N.clock("01:02.5") == 62500 and N.clock("12.3s") == 12300 and N.clock("500ms") == 500
+        and N.clock("2min") == 120000 and N.clock("1h") == 3600000 and N.clock("4") == 4000 and N.clock("x") == nil and N.clock(nil) == nil,
+        "Narration: SMIL times read (h:mm:ss.f, mm:ss, s, ms, min, h, plain seconds)")
+    check(N.resolve("OEBPS/smil/ch1.smil", "../text/ch1.xhtml#c1s2") == "OEBPS/text/ch1.xhtml"
+        and N.resolve("OEBPS/content.opf", "audio/My%20Book.mp3") == "OEBPS/audio/My Book.mp3"
+        and N.resolve("content.opf", "./a/../b.xhtml") == "b.xhtml",
+        "Narration: paths in the book worked out from where they're written")
+    -- the fixture: two chapters, four sentences each, one MP3
+    local epub = WORK .. "/narrated.epub"
+    os.execute("python3 -I " .. PLUGIN .. "/../../tools/gzreader/tests/make_narrated_epub.py " .. PLUGIN
+        .. "/../../tools/gzreader/tests/media/narration.mp3 " .. epub)
+    local Zip = require("gzreader_zipread")
+    local saved_arch = package.loaded["ffi/archiver"]
+    local opened = 0
+    package.loaded["ffi/archiver"] = { Reader = { new = function()
+        local r = {}
+        function r:open(path) local f = io.open(path, "rb"); if not f then return false end; self.data = f:read("*a"); f:close(); opened = opened + 1; return true end
+        function r:extractToMemory(name) return (Zip.read(self.data, name)) end
+        function r:extractToPath(name, dest) local d = Zip.read(self.data, name); if not d then return false end
+            local f = io.open(dest, "wb"); f:write(d); f:close(); return true end
+        function r:iterate() return function() return nil end end
+        function r:close() end
+        return r
+    end } }
+    N.books[epub] = nil
+    local book = N.load(epub)
+    check(book and #book.pars == 8 and book.pars[1].file == "OEBPS/text/ch1.xhtml" and book.pars[1].id == "c1s1"
+        and book.pars[2].b == 3000 and book.pars[2].e == 6000 and book.pars[5].index == 1 and book.pars[5].id == "c2s1"
+        and book.pars[1].audio == "OEBPS/audio/narration.mp3" and book.duration["OEBPS/audio/narration.mp3"] == 12000,
+        "Narration: the book's sentences, in reading order, with their audio and times (" .. tostring(book and #book.pars) .. ")")
+    N.load(epub)
+    check(opened == 1, "Narration: the book read once a run")
+    check(N.linkFor(0, "c1s2") == "#_doc_fragment_0_ c1s2", "Narration: a sentence found as crengine names it")
+    N.books[WORK .. "/plain.epub"] = nil
+    os.execute("python3 -I " .. PLUGIN .. "/../../tools/gzreader/tests/make_epub.py " .. WORK .. "/plain.epub")
+    check(N.load(WORK .. "/plain.epub") == nil and N.load(WORK .. "/book.pdf") == nil, "Narration: a book without narration: none (no tile)")
+    -- which sentence is playing
+    local pars = book.pars
+    local i1 = N.at(pars, 1, pars[1].audio, 4200)
+    local i2 = N.at(pars, 1, pars[1].audio, 11999)
+    local i3, n3 = N.at(pars, 1, pars[1].audio, 12500)
+    check(i1 == 2 and i2 == 4 and i3 == nil and n3 == 5, "Narration: the sentence at a time in the audio; past chapter 1's last, chapter 2's first next")
+    -- the audio copied out of the book, once, into the cache; and the cache trimmed
+    N.CACHE_DIR = WORK .. "/narration-cache"
+    os.execute("rm -rf '" .. N.CACHE_DIR .. "'")
+    local lfs = require("libs/libkoreader-lfs")
+    local file = N.audioFile(book, pars[1].audio)
+    local size = file and lfs.attributes(file, "size")
+    check(file and size == lfs.attributes(PLUGIN .. "/../../tools/gzreader/tests/media/narration.mp3", "size"),
+        "Narration: the MP3 copied out of the book into the cache, whole")
+    local dir = file:match("^(.*)/[^/]*$")
+    local old = N.CACHE_DIR .. "/oldbook"
+    lfs.mkdir(old)
+    local f = io.open(old .. "/a.mp3", "w"); f:write(string.rep("x", 1000)); f:close()
+    f = io.open(old .. "/.used", "w"); f:write(tostring(os.time() - 61 * 86400)); f:close()
+    local gone = N.prune()
+    check(gone == 1 and lfs.attributes(old, "mode") == nil and lfs.attributes(file, "mode") == "file",
+        "Narration: audio not played for 60 days removed; the book just played kept")
+    local saved_max = N.MAX_BYTES
+    N.MAX_BYTES = 10
+    check(N.prune() == 1 and lfs.attributes(dir, "mode") == nil, "Narration: over the cache's limit: the oldest removed")
+    N.MAX_BYTES = saved_max
+    -- the quick panel's tile only in a book with narration
+    local function uiFor(path) return { document = { file = path, info = {} } } end
+    check(N.tile(nil, uiFor(epub)) ~= nil and N.tile(nil, uiFor(WORK .. "/plain.epub")) == nil, "Narration: a tile in a narrated book only")
+    -- playing: the sentences followed as the audio goes on (a player stood in for, its time set by hand)
+    local Engine = require("gzreader_audioengine")
+    local saved = { chosen = Engine.chosen, play = Engine.play, running = Engine.running, stop = Engine.stop }
+    local played = {}
+    Engine.chosen = function(fmt) return fmt == "mp3" and { id = "test" } or nil end
+    Engine.play = function(_p, src) played[#played + 1] = src.offset_ms; return true, src.offset_ms end
+    Engine.running = function() return true end
+    Engine.stop = function() end
+    local shown = {}
+    local doc = { file = epub, info = {},
+        isXPointerInDocument = function(_d, xp) return xp:find("^#_doc_fragment_") ~= nil or xp:find("^/body") ~= nil end,
+        getNormalizedXPointer = function(_d, link) local i, id = link:match("^#_doc_fragment_(%d+)_ (.+)$"); return "/body/DocFragment[" .. (i + 1) .. "]/" .. id end,
+        getXPointer = function() return "/body/DocFragment[1]/body/p[1]" end,
+        isXPointerInCurrentPage = function(_d, xp) return xp:find("c1s1", 1, true) ~= nil end,
+        compareXPointers = function() return 1 end,
+        getTextFromXPointer = function() return "A sentence." end,
+        getTextFromXPointers = function(_d, a, _b, draw) if draw then shown[#shown + 1] = a end end,
+        clearSelection = function() end }
+    local ui = { document = doc, dialog = {}, handleEvent = function() end }
+    local ok = N.play(ui)
+    local cur = N.current
+    check(ok and cur and cur.i == 1 and played[1] == 0 and shown[1] == "/body/DocFragment[1]/c1s1/text().0",
+        "Narration: Play from this page: the page's first sentence, its audio from its start, highlighted")
+    cur.t0 = cur.t0 - 6.5 -- (six and a half seconds later)
+    cur:tick()
+    check(cur.i == 3 and shown[#shown]:find("c1s3", 1, true) ~= nil, "Narration: the highlight follows the audio (third sentence at 6.5 s)")
+    cur.t0 = cur.t0 - 6
+    cur:tick()
+    check(cur.i == 5 and played[#played] == 0 and shown[#shown]:find("DocFragment[2]/c2s1", 1, true) ~= nil,
+        "Narration: past chapter 1's narration: chapter 2's started, from its own place in the audio")
+    cur:pause()
+    local at = cur:pos()
+    check(cur.paused_at ~= nil and at >= 0 and math.abs(cur:pos() - at) < 1, "Narration: paused: the place kept")
+    cur:resume()
+    check(cur.paused_at == nil and cur.i == 5 and played[#played] == 0, "Narration: resumed from the sentence it was on")
+    N.stop("test")
+    check(N.current == nil and not cur.playing, "Narration: stopped")
+    Engine.chosen, Engine.play, Engine.running, Engine.stop = saved.chosen, saved.play, saved.running, saved.stop
+    package.loaded["ffi/archiver"] = saved_arch
+    N.CACHE_DIR = nil
+end)()
 print("1.23.7 fixes and speed-ups")
 ;(function()
     -- Wi-Fi: an older attempt's 90 s give-up leaves a later attempt alone
@@ -20314,8 +20424,22 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
         plugin.store.bookorbit, plugin.store.username = nil, nil
         bctl("/_mock/reset")
         bctl("/_mock/set", '{"ko_delivery": "original"}')
-        check(plugin:connectWithApiKey(BO, KEY) == true and plugin.store.bookorbit.delivery == "original" and plugin.api:settingsAdvice() == "delivery_original"
-            and bctl("/_mock/state").ko_delivery == "original", "an existing sign-in set to send narration: noticed, and left as it is")
+        local adv0 = (function()
+            local BOm = require("gzreader_bookorbit")
+            local can = BOm.canPlayNarration
+            BOm.canPlayNarration = function() return false end
+            local ok = plugin:connectWithApiKey(BO, KEY)
+            local a = plugin.api:settingsAdvice()
+            BOm.canPlayNarration = can
+            return ok == true and a
+        end)()
+        check(adv0 == "delivery_original" and plugin.store.bookorbit.delivery == "original"
+            and bctl("/_mock/state").ko_delivery == "original", "an existing sign-in set to send narration, on a Kindle without sound: noticed, and left as it is")
+        local BOm = require("gzreader_bookorbit")
+        local can = BOm.canPlayNarration
+        BOm.canPlayNarration = function() return true end
+        check(plugin.api:settingsAdvice() == nil, "…on a Kindle with sound: nothing to change (it plays the narration: Quick panel → Narration)")
+        BOm.canPlayNarration = function() return false end -- (the setup page below: a Kindle without sound)
         PS.new = function(self, o) screen = o; return o end
         plugin:startQrPairing()
         local purl = screen.url:gsub("#.*$", "")
@@ -20323,6 +20447,7 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
         check(pbody:find("read-aloud EPUBs with their narration", 1, true) and pbody:find("Read-aloud EPUB delivery → Automatic", 1, true)
             and pbody:find("Settings → You → API keys → Create API key. Access: Read and write.", 1, true),
             "the setup page says what to change in BookOrbit, and what the key needs")
+        BOm.canPlayNarration = can
         -- the same sign-in by name and password, the key saved after: read then too
         bctl("/_mock/set", '{"ko_delivery": "audioless_epub"}')
         check(plugin:setBookOrbitApiKey(KEY) == true and plugin.store.bookorbit.delivery == "audioless_epub" and plugin.api:settingsAdvice() == nil,
