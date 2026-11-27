@@ -606,22 +606,21 @@ function Grimmory:rebuildLibrary()
 end
 
 function Grimmory:menuItems()
-    local paired = self.api:isPaired()
+    -- (who is signed in, and the ways to connect: the account row's own page, accountItems)
     -- (the help texts name the server signed in to: Grimmory or BookOrbit)
     local fix = require("gzreader_servername").fix
-    -- BookOrbit: signed in to it, or (not signed in) chosen in the setup guide
-    local orbit = (paired and self:backend() == "bookorbit")
-        or (not paired and type(self.store.book_source) == "string" and self.store.book_source == "bookorbit")
     local items = {
+        -- (the account: who's signed in, and on its own page the ways to connect
+        -- again, the key, signing out; as Notes' Memos row)
         {
             text_func = function()
                 if self.api:isPaired() then
                     if self:backend() == "bookorbit" then return T(_("Connected to BookOrbit as %1"), self.store.username or "?") end
-                    return T(_("Connected as %1"), self.store.username or "?")
+                    return T(_("Connected to Grimmory as %1"), self.store.username or "?")
                 end
                 return _("Not connected")
             end,
-            enabled = false,
+            sub_item_table_func = function() return self:accountItems() end,
             separator = true,
         },
     }
@@ -666,16 +665,7 @@ function Grimmory:menuItems()
                 if self.annotations and not self.store.annotation_sync_disabled then self.annotations:run() end
             end,
         },
-        -- (were on the Catalog's server card: Genres has its place there now)
-        {
-            text = _("Reading stats"),
-            help_text = _("Your reading on every device, as your book server counts it: time, streaks, the year."),
-            enabled_func = function() return self.api:isPaired() end,
-            callback = function(touchmenu)
-                closeTouchMenu(touchmenu)
-                require("gzreader_statspage").show(self)
-            end,
-        },
+        -- (was on the Catalog's server card; Reading stats opens from Home's widget)
         (self:backend() == "bookorbit" and not Net.usb) and {
             text = _("Request a book"),
             help_text = _("Ask BookOrbit for a book it doesn't have yet (needs the BookOrbit API key, and BookOrbit's Request books permission)."),
@@ -708,6 +698,20 @@ function Grimmory:menuItems()
             callback = function() self:rebuildLibrary() end,
             separator = true,
         },
+    }
+    for i = 1, table.maxn(more) do if more[i] then table.insert(items, more[i]) end end
+    return items
+end
+
+--- Settings → Accounts and services → Books → the account row: connecting
+--- again (QR code, typing, single sign-on), BookOrbit's API key, Disconnect
+--- and About.
+function Grimmory:accountItems()
+    local paired = self.api:isPaired()
+    local fix = require("gzreader_servername").fix
+    local orbit = (paired and self:backend() == "bookorbit")
+        or (not paired and type(self.store.book_source) == "string" and self.store.book_source == "bookorbit")
+    local more = {
         {
             text = paired and _("Reconnect from your browser (QR code)") or _("Connect from your browser (QR code)"),
             help_text = fix(_("Shows a QR code and this Kindle's address: the page they open in a browser (phone or computer) connects Grimmory, Notes and calendars, and sends books to this Kindle.")),
@@ -764,7 +768,8 @@ function Grimmory:menuItems()
             end,
         },
     }
-    for i = 1, table.maxn(more) do if more[i] then table.insert(items, more[i]) end end
+    local items = {}
+    for i = 1, table.maxn(more) do if more[i] then items[#items + 1] = more[i] end end
     return items
 end
 
@@ -963,7 +968,7 @@ local ERRORS = {
     bookorbit_refused = T(_("BookOrbit didn't accept this Kindle's sign-in. If you changed the %1 sync password in BookOrbit, connect again."), "KOReader"),
     bookorbit_not_found = _("That address answered, but not as BookOrbit (or its BookOrbit is too old for e-readers). Check the address."),
     bookorbit_no_file = _("BookOrbit has no file for this book that this Kindle can open."),
-    bookorbit_no_api_key = _("BookOrbit's audiobooks need an API key: make one in BookOrbit (Settings → You → API keys, with Read and write access), then enter it in Settings → Accounts and services → Books → BookOrbit API key."),
+    bookorbit_no_api_key = _("BookOrbit's audiobooks need an API key: make one in BookOrbit (Settings → You → API keys, with Read and write access), then enter it in Settings → Accounts and services → Books → Connected to BookOrbit as … → BookOrbit API key."),
     bookorbit_api_key_refused = _("BookOrbit didn't accept the API key. It may have expired or been deleted: make a new one in BookOrbit (Settings → You → API keys) and enter it again."),
     bookorbit_api_key_read_only = _("This BookOrbit API key is read-only, so nothing can be saved to BookOrbit with it (where you stopped listening, collections, book requests). Make one with read and write access."),
     bookorbit_key_no_kosync = T(_("BookOrbit didn't let this API key see the %1 sync sign-in. Make a key with “%1 sync” ticked under Extra permissions (BookOrbit: Settings → You → API keys), or sign in with the %1 sync user name and password instead."), "KOReader"),

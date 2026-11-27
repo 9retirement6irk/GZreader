@@ -82,6 +82,15 @@ local widget = base.make{
 local build = widget.build
 widget.build = function(ctx)
     local body = build(ctx)
+    -- (the 5-way: the widget picked and Press opens the page too; Settings has no Reading stats row)
+    if type(ctx.setWidgetActions) == "function" then
+        ctx.setWidgetActions{ activate = function()
+            local open = rawget(_G, "__GZ_SERVER_STATS_PAGE")
+            if not open then return false end
+            pcall(open)
+            return true
+        end }
+    end
     local Device = require("device")
     if not Device:isTouchDevice() then return body end
     local Geom = require("ui/geometry")

@@ -171,8 +171,8 @@ With BookOrbit:
 A slot set to a number the other server doesn't have shows Read this week
 after you switch servers.
 
-**Tap the widget** for the reading stats page (on a Kindle with keys: Settings →
-Accounts and services → Books → Reading stats). With BookOrbit it shows the
+**Tap the widget** for the reading stats page (on a Kindle with keys: move to the
+widget with the 5-way and press). With BookOrbit it shows the
 last seven days as bars, the past year as a grid of days (darker for more
 reading), your reading goal and next badge as progress bars, the book you were
 reading a year ago, this year's finished books and the highlight of the day.

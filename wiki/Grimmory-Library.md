@@ -47,9 +47,12 @@ fills in. (A Kindle without Wi‑Fi signs in through the sync page.)
 (and of the Audiobooks page's) once you're signed in. Its cover is the genre
 with the most books. Signed out, that compartment is the **Grimmory** card
 with the ways to sign in. Your account is in Settings → Accounts and services
-→ Books: who you're signed in as, Reading stats, Rebuild library, reconnecting
-and About Grimmory (and Request a book with BookOrbit). What's on the Kindle
-is in the Downloads tab.
+→ Books, whose first row says who you're signed in as. Tap that row for the
+account's own page (as Notes' Memos row): reconnect with a QR code, connect by
+typing (Grimmory or BookOrbit), single sign-on (Grimmory), BookOrbit's API key,
+Disconnect and About. The rest of Books is the sync switches, Magazines and
+Rebuild library (and Request a book with BookOrbit). Reading stats opens from
+Home's widget. What's on the Kindle is in the Downloads tab.
 
 **Staying signed in.** GZreader renews its sign-in now and then, and
 Grimmory hands over a new key each time and throws the old one away. It

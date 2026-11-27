@@ -1,6 +1,5 @@
 --[[--
-The reading stats page: what a tap on Home's reading stats widget opens (also
-Catalog → the book server's card → Reading stats). It shows the numbers the
+The reading stats page: what a tap on Home's reading stats widget opens. It shows the numbers the
 book server keeps for every device (gzreader_grimstats.lua) with charts:
 
   BookOrbit   the last seven days as bars, the past year as a grid of days
