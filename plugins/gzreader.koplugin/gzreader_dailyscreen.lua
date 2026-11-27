@@ -628,14 +628,13 @@ end
 
 ---------------------------------------------------------------- the paper
 
---- The edition's stories in reading order: { item, topic, kicker = true on
---- the first of its section }.
+--- The edition's stories in reading order (its mix: Daily.ordered): { item, topic,
+--- kicker = true where the topic changes from the story before }.
 function Paper.stories(edition)
-    local out = {}
-    for _i, s in ipairs(type(edition) == "table" and edition.sections or {}) do
-        for j, item in ipairs(s.items) do
-            out[#out + 1] = { item = item, topic = s.topic, kicker = j == 1 }
-        end
+    local out, last = {}, nil
+    for _i, st in ipairs(Daily().ordered(edition)) do
+        out[#out + 1] = { item = st.item, topic = st.topic, kicker = st.topic ~= last }
+        last = st.topic
     end
     return out
 end
