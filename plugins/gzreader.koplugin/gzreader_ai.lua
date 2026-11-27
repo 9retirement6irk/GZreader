@@ -382,7 +382,7 @@ function AI.settingsItems(plugin)
               local uses = AI.uses(plugin)
               return #uses == 0 and _("Used for: nothing yet") or T(_("Used for: %1"), table.concat(uses, ", "))
           end,
-          help_text = _("Handwriting to text: Settings → Accounts and services → Notes → Handwriting to text. The daily paper's AI edition: Settings → Accounts and services → Daily paper → AI edition."),
+          help_text = _("Handwriting to text: Settings → Accounts and services → Notes → Handwriting to text. The daily paper's AI edition: Settings → Home and tabs → Daily paper → AI edition."),
           keep_menu_open = true,
           callback = function()
               note(_("Switch each on where it lives:\n\n• Handwriting to text: Notes → Handwriting to text\n• The daily paper's AI edition: Daily paper → AI edition\n\nOnly what's needed is sent: the writing being read, as a picture, or a news story's headline and text for its summary."))

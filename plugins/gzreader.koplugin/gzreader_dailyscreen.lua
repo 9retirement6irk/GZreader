@@ -2183,7 +2183,7 @@ function Paper.orderText(plugin)
     return T(_("Story order: %1"), label)
 end
 
---- Settings → Accounts and services → Daily paper.
+--- Settings → Home and tabs → Daily paper.
 function Paper.settingsItems(plugin)
     local D = Daily()
     local usb = D.noWifi()

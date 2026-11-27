@@ -42,7 +42,7 @@ while there are others, and a section's own stories in their order. **Good
 news** leads the paper and comes more often in its first half. The mix is
 the same all day (a new one each morning).
 
-**Settings → Accounts and services → Daily paper → Story order** chooses
+**Settings → Home and tabs → Daily paper → Story order** chooses
 how the stories follow one another:
 
 - **Mixed, good news first** (the usual): as above.
@@ -99,7 +99,7 @@ used as they are (up to about 2,500 words a story).
 - Only the story is kept: the page's section and byline lines over it, its
   headline said again, picture captions and boxes of code to embed it
   elsewhere are left out.
-- **Settings → Accounts and services → Daily paper → Whole stories** turns it off (a faster
+- **Settings → Home and tabs → Daily paper → Whole stories** turns it off (a faster
   fetch, summaries only).
 
 **Weather**: a box under the date shows now, today and the next two days,
@@ -142,7 +142,7 @@ puts it back in black.
 
 ## The AI edition
 
-**Settings → Accounts and services → Daily paper → AI edition** (or the tick
+**Settings → Home and tabs → Daily paper → AI edition** (or the tick
 on the setup page's Daily paper tab). It needs the
 [AI connection](Setup-Page-and-Connections#ai) to have a key; until then the
 row is grey.
@@ -265,7 +265,7 @@ The four are tabs across the top; tap one, or press a page-turn key.
   until a wall, a turning or a crossing. Dots show where you've been. Its
   size follows the screen, so it differs between Kindles.
 
-**Settings → Accounts and services → Daily paper → Puzzles** takes them off
+**Settings → Home and tabs → Daily paper → Puzzles** takes them off
 the paper.
 
 ## When it's fetched
