@@ -4,8 +4,9 @@ The daily paper's puzzles page (the puzzles themselves: gzreader_puzzles.lua).
 One screen, three puzzles, a tab each: Sudoku, Word search, Maze.
 
 - Touch (a finger or the pen): tap a tab; in the sudoku tap a square, then a
-  number under the grid; in the word search tap a word's first letter, then
-  its last; in the maze tap or swipe the way to go.
+  number under the grid; in the word search draw along a word from its first
+  letter to its last (as you'd circle it), or tap those two letters; in the
+  maze tap or swipe the way to go.
 - Keys: the page keys change puzzle; the 5-way moves; Press writes the next
   number / marks a letter; on a keyboard, Q W E R T Y U I O (the keys under
   1–9) or the number keys write a number, Del rubs out, C checks, N starts
@@ -61,11 +62,56 @@ function Screen_.helpText(kind, touch, keyboard)
         return _("5-way: move · Press: the next number")
     end
     if kind == "words" then
-        if touch then return _("Tap a word's first letter, then its last.") end
+        if touch then return _("Draw along a word to circle it, or tap its first letter, then its last.") end
         return _("5-way: move · Press on a word's first letter, then on its last")
     end
     if touch then return _("Tap or swipe the way to go.") end
     return keyboard and _("5-way: go that way · N: start again") or _("5-way: go that way")
+end
+
+--- Where a stroke over the letters ends, straightened: from cell (x1, y1) to
+--- (x2, y2), the end moved onto the line (across, down or a diagonal) the
+--- stroke was nearest to, the same number of letters long, kept inside a
+--- grid of `size`. A finger doesn't end exactly on a square.
+function Screen_.snap(x1, y1, x2, y2, size)
+    local dx, dy = x2 - x1, y2 - y1
+    local ax, ay = math.abs(dx), math.abs(dy)
+    local sx, sy = dx < 0 and -1 or 1, dy < 0 and -1 or 1
+    local ex, ey
+    if ax >= ay * 2 then ex, ey = x2, y1
+    elseif ay >= ax * 2 then ex, ey = x1, y2
+    else
+        local n = math.floor((ax + ay) / 2 + 0.5)
+        ex, ey = x1 + sx * n, y1 + sy * n
+        -- (a diagonal that would leave the grid: as far as it goes)
+        local over = math.max(0, 1 - ex, ex - size, 1 - ey, ey - size)
+        ex, ey = ex - sx * over, ey - sy * over
+    end
+    return math.max(1, math.min(size, ex)), math.max(1, math.min(size, ey))
+end
+
+--- The points of a ring drawn round a row of squares, from the middle of the
+--- first (ax, ay) to the middle of the last (bx, by), `r` from the line:
+--- { { x, y }, … }, about a pixel apart. (Two sides and two round ends.)
+function Screen_.ringPoints(ax, ay, bx, by, r)
+    local dx, dy = bx - ax, by - ay
+    local len = math.sqrt(dx * dx + dy * dy)
+    local ux, uy = 1, 0
+    if len > 0 then ux, uy = dx / len, dy / len end
+    local nx, ny = -uy, ux
+    local out = {}
+    for d = 0, math.floor(len) do
+        out[#out + 1] = { ax + ux * d + nx * r, ay + uy * d + ny * r }
+        out[#out + 1] = { ax + ux * d - nx * r, ay + uy * d - ny * r }
+    end
+    local steps = math.max(8, math.floor(math.pi * r))
+    for i = 0, steps do
+        local a = math.pi * i / steps
+        local c, sn = math.cos(a) * r, math.sin(a) * r
+        out[#out + 1] = { bx + nx * c + ux * sn, by + ny * c + uy * sn }
+        out[#out + 1] = { ax + nx * c - ux * sn, ay + ny * c - uy * sn }
+    end
+    return out
 end
 
 -- (a found word's tint on a colour screen, one after another)
@@ -123,6 +169,11 @@ local function pageClass()
             self.ges_events = {
                 PzTap = { GestureRange:new{ ges = "tap", range = range } },
                 PzSwipe = { GestureRange:new{ ges = "swipe", range = range } },
+                -- (a word drawn along slowly, or after a pause, isn't a swipe)
+                PzPan = { GestureRange:new{ ges = "pan", range = range } },
+                PzHoldPan = { GestureRange:new{ ges = "hold_pan", range = range } },
+                PzPanRelease = { GestureRange:new{ ges = "pan_release", range = range } },
+                PzHoldRelease = { GestureRange:new{ ges = "hold_release", range = range } },
             }
         end
         self:build()
@@ -246,7 +297,7 @@ local function pageClass()
             help.max_width = W - margin * 3 - again:getSize().w
         end
         self.info = info
-        local status = text(Screen_.statusText(self.kind, info), info.done and Font:getFace("smallinfofontbold", 11) or small, room_w)
+        local status = text((not info.done and self.note) or Screen_.statusText(self.kind, info), info.done and Font:getFace("smallinfofontbold", 11) or small, room_w)
         self.status = { widget = status, x = margin, y = self.foot.y - status_h + S(2) }
     end
 
@@ -300,9 +351,10 @@ local function pageClass()
     function Page:paintWords(bb, x, y)
         local b, ws = self.board, self.ws
         local size = math.max(8, math.floor(b.cell * 0.48 * 160 / Screen:getDPI() + 0.5))
-        -- found words: their squares tinted (grey on a grey screen)
+        -- found words on a colour screen: their squares tinted, each word its own colour
+        local colour = require("gzreader_dailyscreen").ink("#000000") ~= nil
         for n, w in ipairs(ws.words) do
-            if self.found[n] then
+            if self.found[n] and colour then
                 for i = 0, #w.word - 1 do
                     tint(bb, x + b.x + (w.x + w.dx * i - 1) * b.cell + 1, y + b.y + (w.y + w.dy * i - 1) * b.cell + 1, b.cell - 2, b.cell - 2,
                         Screen_.TINTS[(n - 1) % #Screen_.TINTS + 1])
@@ -314,6 +366,18 @@ local function pageClass()
             centred(bb, self:glyph(ws.grid:sub(i, i), size, true), x + b.x + c * b.cell, y + b.y + r * b.cell, b.cell)
         end
         bb:paintBorder(x + b.x - 1, y + b.y - 1, b.w + 2, b.h + 2, 1, Blitbuffer.COLOR_BLACK)
+        -- found words: circled
+        local th = math.max(2, S(2))
+        local half = math.floor(b.cell / 2)
+        for n, w in ipairs(ws.words) do
+            if self.found[n] then
+                local last = #w.word - 1
+                for _i, pt in ipairs(Screen_.ringPoints(b.x + (w.x - 1) * b.cell + half, b.y + (w.y - 1) * b.cell + half,
+                    b.x + (w.x + w.dx * last - 1) * b.cell + half, b.y + (w.y + w.dy * last - 1) * b.cell + half, math.floor(b.cell * 0.42))) do
+                    bb:paintRect(x + math.floor(pt[1] + 0.5) - math.floor(th / 2), y + math.floor(pt[2] + 0.5) - math.floor(th / 2), th, th, Blitbuffer.COLOR_BLACK)
+                end
+            end
+        end
         if self.wsel then
             -- (the first letter chosen: white on black)
             bb:invertRect(x + b.x + (self.wsel[1] - 1) * b.cell + 2, y + b.y + (self.wsel[2] - 1) * b.cell + 2, b.cell - 4, b.cell - 4)
@@ -425,7 +489,7 @@ local function pageClass()
     function Page:show(kind)
         if kind == self.kind then return true end
         self.kind = kind
-        self.wsel, self.wrong, self.checked = nil, nil, nil
+        self.wsel, self.wrong, self.checked, self.note, self.drag = nil, nil, nil, nil, nil
         self:build()
         self:redraw(true)
         return true
@@ -474,6 +538,7 @@ local function pageClass()
     --- A letter of the word search chosen: the first of a word, then the last.
     function Page:letter(cx, cy)
         if self.info.done then return true end
+        self.note = nil
         local Pz = P()
         if not self.wsel then
             self.wsel = { cx, cy }
@@ -590,9 +655,65 @@ local function pageClass()
         return self:go(dy > 0 and "s" or "n")
     end
 
+    --- The word search's square at a point of the page: col, row (from 1), or nil off the letters.
+    function Page:letterAt(px, py)
+        local b = self.board
+        if self.kind ~= "words" or not b then return nil end
+        if px < b.x or px >= b.x + b.w or py < b.y or py >= b.y + b.h then return nil end
+        return math.floor((px - b.x) / b.cell) + 1, math.floor((py - b.y) / b.cell) + 1
+    end
+
+    --- A stroke drawn over the letters, from one point of the page to another:
+    --- when it runs along one of the words (either way), the word is found.
+    --- Returns true when the stroke began on the letters (it's then nothing else).
+    function Page:circle(x1, y1, x2, y2)
+        local c1, r1 = self:letterAt(x1, y1)
+        if not c1 then return false end
+        if self.info.done then return true end
+        local b = self.board
+        -- (the end may run a little past the last letter, or off the edge)
+        local c2 = math.floor((math.max(b.x, math.min(b.x + b.w - 1, x2)) - b.x) / b.cell) + 1
+        local r2 = math.floor((math.max(b.y, math.min(b.y + b.h - 1, y2)) - b.y) / b.cell) + 1
+        if c1 == c2 and r1 == r2 then return self:letter(c1, r1) end
+        local Pz = P()
+        local n = Pz.wordAt(self.ws, c1, r1, c2, r2)
+        if not n then
+            local sc, sr = Screen_.snap(c1, r1, c2, r2, self.ws.size)
+            n = Pz.wordAt(self.ws, c1, r1, sc, sr)
+        end
+        self.wsel = nil
+        if n and Pz.wordFound(self.plugin, n) then
+            self.note = nil
+        else
+            self.note = n and _("You've found that one already.") or _("That isn't one of the words. Draw from a word's first letter to its last.")
+        end
+        self:changed()
+        return true
+    end
+
+    function Page:onPzPan(_arg, ges)
+        if self.kind ~= "words" or not ges.start_pos then return false end
+        self.drag = { x1 = ges.start_pos.x - self.dimen.x, y1 = ges.start_pos.y - self.dimen.y, x2 = ges.pos.x - self.dimen.x, y2 = ges.pos.y - self.dimen.y }
+        return self:letterAt(self.drag.x1, self.drag.y1) ~= nil
+    end
+    function Page:onPzHoldPan(arg, ges) return self:onPzPan(arg, ges) end
+
+    function Page:onPzPanRelease(_arg, ges)
+        local d = self.drag
+        self.drag = nil
+        if self.kind ~= "words" or not d then return false end
+        return self:circle(d.x1, d.y1, ges.pos and (ges.pos.x - self.dimen.x) or d.x2, ges.pos and (ges.pos.y - self.dimen.y) or d.y2)
+    end
+    function Page:onPzHoldRelease(arg, ges) return self:onPzPanRelease(arg, ges) end
+
     function Page:onPzSwipe(_arg, ges)
         local Paper = require("gzreader_dailyscreen")
         if Paper.pulledDown(ges) then return Paper.openPanel(self.plugin) end
+        self.drag = nil
+        if self.kind == "words" and ges.end_pos
+            and self:circle(ges.pos.x - self.dimen.x, ges.pos.y - self.dimen.y, ges.end_pos.x - self.dimen.x, ges.end_pos.y - self.dimen.y) then
+            return true
+        end
         local side = ({ north = "n", south = "s", east = "e", west = "w" })[ges.direction]
         if self.kind == "maze" and side then return self:go(side) end
         if ges.direction == "west" then return self:step(1) end

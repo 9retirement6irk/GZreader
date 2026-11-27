@@ -196,15 +196,19 @@ The three are tabs across the top; tap one, or press a page-turn key.
 | | Touch (finger or pen) | Keys |
 |---|---|---|
 | **Sudoku** | Tap a square, then a number under the grid. ⌫ rubs out, **✓?** checks, **Start again** clears what you wrote. | The 5-way moves. **Press** writes the next number (1 to 9, then empty). On a keyboard: **Q W E R T Y U I O** (the keys under 1–9) or the number keys write 1–9, **Del** rubs out, **C** checks, **N** starts again. |
-| **Word search** | Tap a word's first letter, then its last. | The 5-way moves; **Press** on the first letter, then on the last. |
+| **Word search** | Draw along a word with a finger or the pen, from its first letter to its last (either way round), as you'd circle it on paper. Or tap its first letter, then its last. | The 5-way moves; **Press** on the first letter, then on the last. |
 | **Maze** | Tap or swipe the way to go. **Start again** goes back to the start. | The 5-way goes that way; **N** starts again on a keyboard. |
 
 - **Sudoku**: the printed numbers are on grey and can't be changed. Checking
   marks the squares that aren't right with a cut corner; nothing is marked
   until you ask. There is exactly one answer.
 - **Word search**: eight words, across, down, diagonal, and some backwards.
-  Found words are crossed off the list and their letters shaded (on a colour
-  Kindle, each in its own colour).
+  Found words are crossed off the list and circled in the letters (on a
+  colour Kindle their squares are also tinted, each word its own colour).
+  The stroke doesn't have to be exact: it may wobble or run a little past
+  the last letter. Nothing is drawn while your finger moves; the ring
+  appears when you lift it. A stroke that isn't one of the words changes
+  nothing and the page says so.
 - **Maze**: in at the top left, out at the bottom right. One move goes on
   until a wall, a turning or a crossing. Dots show where you've been. Its
   size follows the screen, so it differs between Kindles.
