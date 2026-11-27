@@ -450,6 +450,12 @@ function NoteSettings.handwritingItem(plugin, icon)
     end
     local function keyLabel(k) return (k or "") ~= "" and _("set") or _("not set") end
     local sub = {
+        { text = _("Set up from your browser (QR code)"),
+          help_text = _("The setup page's Notes tab has Handwriting to text: choose how writing is read, and paste the keys from your phone or computer instead of typing them here."),
+          callback = function(tm)
+              if tm and tm.closeMenu then tm:closeMenu() end
+              require("gzreader_phone").open(plugin, { section = "handwriting" })
+          end, separator = true },
         { text = _("On the Kindle"), radio = true,
           help_text = _("Nothing leaves the Kindle and no Wi-Fi is needed. Best with printed writing: letters apart, English words and digits. (The reader, its model and word list are Ink Away's, MIT License.)"),
           checked_func = function() return Hw.engine(plugin) == "kindle" end, callback = function() choose("kindle") end },

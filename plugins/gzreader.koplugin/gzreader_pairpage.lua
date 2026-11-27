@@ -245,6 +245,47 @@ local function grimmorySection(st, base)
     return table.concat(parts)
 end
 
+-- Handwriting to text (gzreader_handwriting.lua), in the Notes tab: where it's
+-- read, and the keys for reading it online. A key saved on the Kindle is never
+-- sent back to the page: it says "set", and a field left empty keeps it.
+local function handwritingPart(st, base)
+    local h = st.handwriting
+    if not h then return "" end
+    local function choice(value, label)
+        return '<label class="check"><input type="radio" name="engine" value="' .. value .. '"' .. (h.chosen == value and " checked" or "")
+            .. "> " .. esc(label) .. "</label>"
+    end
+    local function key(id, name, label, set, hint)
+        return '<label for="' .. id .. '">' .. esc(label) .. (set and " (set: leave empty to keep it)" or "") .. '</label><input id="' .. id
+            .. '" name="' .. name .. '" type="password" placeholder="' .. esc(set and "••••••••" or hint) .. '" ' .. NAME_ATTRS .. ">"
+    end
+    local reads = h.engine == "claude" and "by Claude" or h.engine == "openai" and "by an online service" or "on the Kindle"
+    local parts = { '<h2 id="handwriting" style="margin-top:22px">Handwriting to text</h2>',
+        '<p class="what">While drawing, the text tool\'s Write and the lasso\'s To text turn your writing into typed text. It can be read on the Kindle (nothing leaves it), or online with a key of your own: then only the writing being read is sent, as a black-and-white picture, never the page or your other notes.</p>',
+        status(h.engine ~= "kindle", "Your writing is read " .. (h.engine == "kindle" and "<b>on the Kindle</b>" or (esc(reads:match("^by ") and "by " or "") .. "<b>" .. esc((reads:gsub("^by ", ""))) .. "</b>"))) }
+    if h.error then parts[#parts + 1] = '<p class="err">' .. esc(h.error) .. "</p>" end
+    parts[#parts + 1] = form(base .. "/handwriting",
+        choice("kindle", "On the Kindle") .. choice("claude", "Claude (Anthropic)") .. choice("openai", "An online service (OpenAI-style)")
+        .. '<details' .. ((h.chosen == "claude" or not h.claude_set) and " open" or "") .. '><summary>Claude</summary><div style="margin-top:10px">'
+        .. key("hw_ckey", "claude_key", "Claude API key", h.claude_set, "sk-ant-…")
+        .. input("hw_cmodel", "claude_model", "Model (empty: " .. h.claude_default .. ")", h.claude_model, 'placeholder="' .. esc(h.claude_default) .. '" ' .. NAME_ATTRS)
+        .. '<p class="note">An API key from console.anthropic.com → API keys. Paid by use: reading a few words costs a tiny fraction of a cent.</p>'
+        .. "</div></details>"
+        .. '<details' .. (h.chosen == "openai" and " open" or "") .. '><summary>An online service (OpenAI-style)</summary><div style="margin-top:10px">'
+        .. input("hw_url", "openai_url", "Service address (empty: " .. h.openai_default .. ")", h.openai_url, 'placeholder="' .. esc(h.openai_default) .. '" ' .. URL_ATTRS)
+        .. key("hw_okey", "openai_key", "Service key", h.openai_set, "sk-…")
+        .. input("hw_omodel", "openai_model", "Model", h.openai_model, 'placeholder="a model that reads pictures" ' .. NAME_ATTRS)
+        .. '<p class="note">Any service that reads pictures through OpenAI\'s Chat Completions API: OpenAI itself, or a model you run yourself (http:// only for a computer on your own network).</p>'
+        .. "</div></details>"
+        .. '<button type="submit">Save</button>', "Saving…")
+    if h.claude_set or h.openai_set then
+        parts[#parts + 1] = form(base .. "/handwriting",
+            '<input type="hidden" name="clear" value="1"><button class="danger" type="submit"'
+            .. confirmJs("Remove the handwriting keys from the Kindle? Writing is then read on the Kindle.") .. ">Remove the keys</button>", "Removing…")
+    end
+    return table.concat(parts)
+end
+
 local function memosSection(st, base)
     local m = st.memos or {}
     local parts = { '<section id="notes" class="tab"><h2>Notes (Memos)</h2>',
@@ -266,6 +307,7 @@ local function memosSection(st, base)
         .. '<details><summary>Where do I get an access token?</summary><p class="note">In Memos: Settings → My account → Access Tokens → create one (no expiry, or a long one). The Kindle keeps the token, never your password.</p></details>',
         "Connecting…")
     if m.connected then parts[#parts + 1] = "</div></details>" end
+    parts[#parts + 1] = handwritingPart(st, base)
     parts[#parts + 1] = "</section>"
     return table.concat(parts)
 end
@@ -694,7 +736,7 @@ function PairPage.hub(st)
     for _i, t in ipairs(tabs) do
         nav[#nav + 1] = '<a href="#' .. t[1] .. '" data-tab="' .. t[1] .. '">' .. t[2] .. (t[3] and '<span class="d"></span>' or "") .. "</a>"
     end
-    local alias = '{"caldav":"calendar","links":"calendar"}'
+    local alias = '{"caldav":"calendar","links":"calendar","handwriting":"notes"}'
     return shell("Kindle setup", table.concat({
         "<style>", HUB_STYLE, "</style>",
         "<script>document.documentElement.className='js'</script>",
@@ -708,7 +750,7 @@ function PairPage.hub(st)
         houseSection(st, base), -- (after the note: one tab at a time with JavaScript; below the rest without)
         paperSection(st, base),
         "</div></div>",
-        '<script>(function(){var A=', alias, ';function show(id){id=A[id]||id;var s=document.getElementById(id);if(!s||!/\\btab\\b/.test(s.className))id="', st.start or "grimmory", '";',
+        '<script>(function(){var A=', alias, ';function show(id){id=A[id]||id;var s=document.getElementById(id);if(!s||!/\\btab\\b/.test(s.className))id="', ({ handwriting = "notes", caldav = "calendar", links = "calendar" })[st.start or ""] or st.start or "grimmory", '";',
         '[].forEach.call(document.querySelectorAll("section.tab"),function(e){e.className=e.id==id?"tab on":"tab"});',
         '[].forEach.call(document.querySelectorAll("nav a"),function(a){a.className=a.getAttribute("data-tab")==id?"on":""});',
         'var on=document.querySelector("nav a.on");if(on&&on.scrollIntoView)try{on.scrollIntoView({inline:"center",block:"nearest"})}catch(e){}}',
