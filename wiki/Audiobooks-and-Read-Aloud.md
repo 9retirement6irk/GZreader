@@ -4,8 +4,8 @@ Listening on Kindles with a speaker or headphone jack (Kindle 2, 3, DX, Touch), 
 
 Catalog tab → **Audiobooks** page (swipe left from Books, or the page-turn
 button). It's laid out like the Books page: **Search audiobooks…** at the top
-(titles, authors and series, audiobooks only), two shelves of cassettes facing
-out (each with its cover and title on the label), **Continue listening** (what you've listened to on this Kindle, latest
+(titles, authors and series, audiobooks only), two shelves with covers face
+out, **Continue listening** (what you've listened to on this Kindle, latest
 first, then what Grimmory has in progress, with a ribbon and how far you
 are) and **Recently added**, each ending in a bundle that opens the whole
 list, then a bookcase with **All audiobooks**, **Authors**, **Shelves**,
@@ -27,6 +27,9 @@ to sign in. Your account is in Settings → Accounts and services → Books.
   genres), with how many; each opens to that genre's audiobooks. They come
   from the same list of every audiobook as Authors and Series.
 - An author's, a series', a genre's or a shelf's list has **Search in …** at the top.
+- **Cassettes**: in the Bookshelf view, the page's two shelves hold each
+  audiobook as a cassette facing out, its cover and title on the label (as
+  in the Downloads tab's Audiobooks).
 
 Pick one to download it to `Grimmory/Audiobooks/<id>/` (single M4B file,
 converted for the Kindle, or one file per track for folder audiobooks), then the player opens:
