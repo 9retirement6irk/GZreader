@@ -666,6 +666,25 @@ function Grimmory:menuItems()
                 if self.annotations and not self.store.annotation_sync_disabled then self.annotations:run() end
             end,
         },
+        -- (were on the Catalog's server card: Genres has its place there now)
+        {
+            text = _("Reading stats"),
+            help_text = _("Your reading on every device, as your book server counts it: time, streaks, the year."),
+            enabled_func = function() return self.api:isPaired() end,
+            callback = function(touchmenu)
+                closeTouchMenu(touchmenu)
+                require("gzreader_statspage").show(self)
+            end,
+        },
+        (self:backend() == "bookorbit" and not Net.usb) and {
+            text = _("Request a book"),
+            help_text = _("Ask BookOrbit for a book it doesn't have yet (needs the BookOrbit API key, and BookOrbit's Request books permission)."),
+            enabled_func = function() return self.api:isPaired() end,
+            callback = function(touchmenu)
+                closeTouchMenu(touchmenu)
+                require("gzreader_bo_requests").ask(self)
+            end,
+        } or nil,
         {
             text = _("Rebuild library"),
             help_text = require("gzreader_servername").fix(_("Loads the list of your books from Grimmory again (what Authors, Series and searching use) and forgets the saved lists, so books removed from Grimmory disappear here and new ones show. The same as Refresh list from Grimmory in Authors or Series; it's also done by itself once a day.")),
@@ -719,6 +738,15 @@ function Grimmory:menuItems()
             text = _("Disconnect"),
             enabled_func = function() return self.api:isPaired() end,
             callback = function() self:confirmDisconnect() end,
+        },
+        -- (was on the Catalog's server card too)
+        {
+            text_func = function() return (require("gzreader_browser").aboutServer(self)) end,
+            keep_menu_open = true,
+            callback = function()
+                local body = select(2, require("gzreader_browser").aboutServer(self))
+                UIManager:show(InfoMessage:new{ text = body })
+            end,
         },
     }
     for i = 1, table.maxn(more) do if more[i] then table.insert(items, more[i]) end end

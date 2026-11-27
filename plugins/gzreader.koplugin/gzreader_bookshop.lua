@@ -135,23 +135,24 @@ end
 
 --- The compartments, in order: { id, kind } (the kind says what stands in
 --- it). Audiobooks have their own page of the Catalog tab (gzreader_catalog.lua)
---- since 1.27.x; the last one is the Grimmory card (the account, as Plex's on
---- the Music page). What's on the Kindle is in the Downloads tab.
-function Shop.compartments()
+--- since 1.27.x. The last one is Genres; not signed in, the server's card in its
+--- place (the ways to sign in). The account and Reading stats are in Settings →
+--- Accounts and services → Books. What's on the Kindle is in the Downloads tab.
+function Shop.compartments(signed_out)
     return {
         { id = "all", kind = "spines" },
         { id = "libraries", kind = "bookends" },
         { id = "shelves", kind = "faceout" },
         { id = "authors", kind = "dividers" },
         { id = "series", kind = "piles" },
-        { id = "grimmory", kind = "account" },
+        signed_out and { id = "grimmory", kind = "account" } or { id = "genres", kind = "genres" },
     }
 end
 
 --- Each Catalog page drawn as a shop: its two ledges ({ id: the root
 --- item that opens the whole list, label, empty, kind: "continue" (a ribbon
 --- and how far) or "recent" (a NEW tag) }) and its compartments.
-function Shop.pageSpec(section)
+function Shop.pageSpec(section, signed_out)
     if section == "audiobooks" then
         return {
             search = _("Search audiobooks…"),
@@ -164,7 +165,10 @@ function Shop.pageSpec(section)
                 { id = "ab_authors", kind = "dividers" },
                 { id = "ab_shelves", kind = "faceout" },
                 { id = "ab_series", kind = "piles" },
-                { id = "ab_account", kind = "account" }, -- (Grimmory's card, or Plex's when audiobooks come from Plex)
+                -- (Genres; not signed in, the server's card: the ways to sign in. Audiobooks
+                -- from Plex: Plex's card, gzreader_plexaudio.lua)
+                { id = "ab_genres", kind = "genres" },
+                { id = "ab_account", kind = "account" },
             },
             cover_kind = "audiobook",
         }
@@ -191,7 +195,7 @@ function Shop.pageSpec(section)
             { id = "continue", key = "continue", kind = "continue", label = _("Continue reading"), empty = _("Nothing in progress yet") },
             { id = "recent", key = "recent", kind = "recent", label = _("Recently added"), empty = _("Nothing new yet") },
         },
-        compartments = Shop.compartments(),
+        compartments = Shop.compartments(signed_out),
     }
 end
 
@@ -272,6 +276,9 @@ function Shop.cardText(id, known)
             if type(sr) ~= "table" or (tonumber(sr.count) or 0) >= 2 then n = n + 1 end
         end
         return n > 0 and (n == 1 and _("1 series") or T(_("%1 series"), thousands(n))) or _("in order")
+    elseif id == "genres" then
+        local n = idx and countOf(idx.genres) or 0
+        return n > 0 and (n == 1 and _("1 genre") or T(_("%1 genres"), thousands(n))) or _("by genre")
     elseif id == "audiobooks" then
         local n = tonumber(known.audiobooks)
         return n and n > 0 and (n == 1 and _("1 audiobook") or T(_("%1 audiobooks"), thousands(n))) or _("M4B and MP3")
@@ -941,6 +948,12 @@ local function paintContents(bb, kind, room, info)
         x = miniCover(bb, x, bottom, cw, math.floor(h * 0.86), info.shelf_name or require("gzreader_servername").shelves())
         local _, sp = spines(bb, x, bottom, right, h * 0.95, sd .. "shelf")
         spans = sp
+    elseif kind == "genres" then
+        -- (the commonest genre's label face out, its books beside it)
+        local cw = math.min(S(42), math.floor(h * 0.62))
+        x = miniCover(bb, x, bottom, cw, math.floor(h * 0.86), info.genre_name or _("Genres"))
+        local _, sp = spines(bb, x, bottom, right, h * 0.95, sd .. "genre")
+        spans = sp
     elseif kind == "dividers" then
         local letters = info.letters or { "A", "M" }
         for g, l in ipairs(letters) do
@@ -1290,9 +1303,9 @@ function Shop.build(m, browser, select_number, no_recalculate_dimen)
     if not L.fits then return false end
     local by = entryById(m)
     local section = m.item_table.gz_catalog or "books"
-    local pspec = Shop.pageSpec(section)
     -- (not signed in to Grimmory: the slip says so, the shelves stay empty)
     local signed_out = m.item_table.gz_signed_out and true or false
+    local pspec = Shop.pageSpec(section, signed_out)
     -- (each page's own search line: 1.28.0's Audiobooks and Music slips
     -- looked only for the Books page's and did nothing when tapped)
     local search = by.search or by.ab_search or by.mu_search
@@ -1367,6 +1380,11 @@ function Shop.build(m, browser, select_number, no_recalculate_dimen)
         for _i, sh in ipairs(type(known.shelves) == "table" and known.shelves or {}) do
             if type(sh) == "table" and type(sh.name) == "string" and not sh.magic then info.shelf_name = sh.name; break end
         end
+        local top
+        for name, c in pairs(idx and idx.genres or {}) do
+            if not top or c > top[2] or (c == top[2] and name < top[1]) then top = { name, c } end
+        end
+        info.genre_name = top and top[1] or nil
         local names = {}
         for name in pairs(idx and idx.authors or {}) do names[#names + 1] = name end
         if #names > 1 then
@@ -1380,7 +1398,7 @@ function Shop.build(m, browser, select_number, no_recalculate_dimen)
     page.cells = {}
     local names = {
         all = _("All books"), libraries = _("Libraries"), shelves = require("gzreader_servername").shelves(), authors = _("Authors"),
-        series = _("Series"), audiobooks = _("Audiobooks"),
+        series = _("Series"), audiobooks = _("Audiobooks"), genres = _("Genres"),
     }
     local comps = Shop.arrange(pspec.compartments, function(id) return by[id] ~= nil end, section == "books" or signed_out, #L.cells)
     local row

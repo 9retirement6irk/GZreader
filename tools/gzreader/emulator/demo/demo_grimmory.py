@@ -32,6 +32,9 @@ for b in lib:
         "primaryFileName": "%s.epub" % b["title"].replace("'", ""), "fileSizeKb": max(1, b["size"] // 1024),
         "readProgress": {2: 34.0, 3: 8.5}.get(b["id"]), "primaryFileId": 1000 + b["id"],
         "libraryId": lib_ids[b["library"]], "seriesName": b["series"], "seriesNumber": b["number"],
+        # (a genre or two, for the Catalog's Genres)
+        "categories": {"Classics": ["Classics", "Romance"] if "Austen" in b["author"] else ["Classics"], "Mystery": ["Mystery"],
+                       "Children": ["Children's"], "Plays": ["Drama"], "Poetry": ["Poetry"]}.get(b["library"], []),
     })
 m.LIBRARIES[:] = [{"id": lib_ids[n], "name": n, "bookCount": sum(1 for b in lib if b["library"] == n)} for n in names]
 authors = sorted({b["author"] for b in lib})
@@ -54,7 +57,7 @@ if os.path.exists(audio_json):
             "id": a["id"], "title": a["title"], "authors": [a["author"]], "primaryFileType": "AUDIOBOOK",
             "primaryFileName": a["title"], "fileSizeKb": 28000 * a["chapters"],   # (as a real one would be)
             "readProgress": a["progress"], "primaryFileId": 1000 + a["id"], "libraryId": 9,
-            "seriesName": None, "seriesNumber": None,
+            "seriesName": None, "seriesNumber": None, "categories": a.get("genres") or ["Classics"],
         })
         m.DESCRIPTIONS[a["id"]] = "<p><i>%s</i> by %s, read by %s.</p>" % (a["title"], a["author"], a["narrator"])
     m.LIBRARIES[-1]["bookCount"] = len(AUDIO)

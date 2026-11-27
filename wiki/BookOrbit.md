@@ -19,6 +19,7 @@ What works with BookOrbit today:
 | Setting a book's read status from the Kindle | not yet (BookOrbit works it out from your progress) |
 | Putting books on your collections and taking them off, from a book's menu (needs an API key, below) | yes |
 | Audiobooks: list, covers, download with resume, chapters, listening position both ways (needs an API key, below) | yes |
+| Genres on the Catalog's Books and Audiobooks pages (BookOrbit's genres; needs an API key, below: its e-reader catalog has none) | yes |
 | Requesting a book or audiobook BookOrbit doesn't have, and seeing what became of it (needs an API key, below) | yes |
 | Home's reading stats widget and the reading stats page, from BookOrbit's numbers ([Home and bookshelves](Home-and-Bookshelves#reading-stats-on-home)) | yes |
 | Home's recently read from every device, also what isn't on this Kindle ([Home and bookshelves](Home-and-Bookshelves#recently-read-on-every-device)) | yes (audiobooks: with an API key) |
@@ -106,6 +107,7 @@ Which feature needs what:
 | On the Kindle | Access | Extra permission |
 |---|---|---|
 | Audiobooks: listing and downloading | Read only | none |
+| Genres | Read only | none |
 | Audiobooks: where you stopped listening | Read and write | none |
 | Adding books to collections and taking them off | Read and write | none |
 | Requesting books, My book requests | Read and write | Request books |
@@ -158,10 +160,10 @@ The same key lets the Kindle change your **collections**: a book's menu gets *Ad
 
 If your BookOrbit has requests set up, the Kindle can ask for a book it doesn't have. This uses the API key, which needs **Request books** ticked when you make it (and your account allowed to request books).
 
-1. Catalog → the **BookOrbit** card → **Request a book**.
+1. Settings → Accounts and services → Books → **Request a book**.
 2. Type the title and, if you like, the author, then choose **Book** or **Audiobook**.
 
-**My book requests** in the same card lists what you asked for with its state (waiting for approval, approved, searching, downloading, in the library, declined…). Tap one for its details and any note from whoever decided; one that isn't finished can be cancelled there. If someone already asked for the same book, you're added to their request. When a request arrives it's in the Catalog like any other book (use **Rebuild library** if it isn't showing yet). The list is BookOrbit's each time: nothing about requests is kept on the Kindle.
+**My book requests** lists what you asked for with its state (waiting for approval, approved, searching, downloading, in the library, declined…). Tap one for its details and any note from whoever decided; one that isn't finished can be cancelled there. If someone already asked for the same book, you're added to their request. When a request arrives it's in the Catalog like any other book (use **Rebuild library** if it isn't showing yet). The list is BookOrbit's each time: nothing about requests is kept on the Kindle.
 
 - When you save a key on the setup page, the page says BookOrbit accepted it and what the key can do: whether it may request books and whether it could sign in by itself. A box left unticked in BookOrbit shows there at once.
 - The key is checked when you enter it, kept on the Kindle's own disk, never shown again and never written to the log.

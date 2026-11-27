@@ -9,9 +9,10 @@ out, **Continue listening** (what you've listened to on this Kindle, latest
 first, then what Grimmory has in progress, with a ribbon and how far you
 are) and **Recently added**, each ending in a bundle that opens the whole
 list, then a bookcase with **All audiobooks**, **Authors**, **Shelves**,
-**Series** (the cards count what's known) and the **Grimmory** card (your
-account). Audiobooks on the Kindle are in the Downloads tab. Not signed in
-to Grimmory, the page's shelves are empty and it says to sign in.
+**Series** and **Genres** (the cards count what's known). Audiobooks on the
+Kindle are in the Downloads tab. Not signed in to Grimmory, the page's shelves
+are empty, the last compartment is the **Grimmory** card, and the page says
+to sign in. Your account is in Settings → Accounts and services → Books.
 
 ![The Catalog's Audiobooks page](https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/catalog-audiobooks.png) ![The audiobook player](https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/audiobook-player.png)
 
@@ -22,7 +23,10 @@ to Grimmory, the page's shelves are empty and it says to sign in.
 - **Shelves**: your shelves and smart shelves; each opens to the audiobooks
   on it. Once your shelves and the audiobooks are known, shelves with no
   audiobook on them are left out (smart shelves are always listed).
-- An author's, a series' or a shelf's list has **Search in …** at the top.
+- **Genres**: the genres your audiobooks have (Grimmory's categories, BookOrbit's
+  genres), with how many; each opens to that genre's audiobooks. They come
+  from the same list of every audiobook as Authors and Series.
+- An author's, a series', a genre's or a shelf's list has **Search in …** at the top.
 
 Pick one to download it to `Grimmory/Audiobooks/<id>/` (single M4B file,
 converted for the Kindle, or one file per track for folder audiobooks), then the player opens:

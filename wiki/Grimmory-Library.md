@@ -42,12 +42,13 @@ and say **Sign in to Grimmory to browse the catalog**. Tap that line (or the
 typing, or copying from another GZreader. Once you're signed in, the page
 fills in. (A Kindle without Wi‑Fi signs in through the sync page.)
 
-**The Grimmory card** fills the bottom-right compartment of the Books
-page's bookcase (and the Audiobooks page's, for Grimmory's audiobooks). It
-shows who you're signed in as and where, like the Plex card on the Music
-page. It opens a list drawn like Settings (an icon on each row): who you're
-signed in as, Rebuild library, reconnecting, and About Grimmory. What's on
-the Kindle is in the Downloads tab.
+**Genres** fills the bottom-right compartment of the Books page's bookcase
+(and of the Audiobooks page's) once you're signed in. Its cover is the genre
+with the most books. Signed out, that compartment is the **Grimmory** card
+with the ways to sign in. Your account is in Settings → Accounts and services
+→ Books: who you're signed in as, Reading stats, Rebuild library, reconnecting
+and About Grimmory (and Request a book with BookOrbit). What's on the Kindle
+is in the Downloads tab.
 
 **Staying signed in.** GZreader renews its sign-in now and then, and
 Grimmory hands over a new key each time and throws the old one away. It
@@ -66,7 +67,8 @@ Music tab (Settings → Home and tabs → Tab bar → Tabs → Music) stays as i
 
 **Search Grimmory…** (first on the Books page), Continue reading, Recently added,
 All books (A–Z), **Libraries**, **Authors** (with search), **Series** (in
-series order, with search). Audiobooks are left out everywhere: Authors, Series and Libraries come from a local index of the
+series order, with search), **Genres** (Grimmory's categories, with how many
+books; each opens that genre's books A–Z, with search). Audiobooks are left out everywhere: Authors, Series and Libraries come from a local index of the
 readable books (built in the background, refreshed daily), so authors or
 series with only audiobooks don't appear, and the lists open instantly.
 To build it again now (books removed from Grimmory still listed, new ones

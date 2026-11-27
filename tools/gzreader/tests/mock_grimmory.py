@@ -68,7 +68,9 @@ BOOKS = [
     {"id": i, "title": f"Book {i:02d}", "authors": ["Author"], "primaryFileType": t,
      # (an audiobook in one file is named as on disk, an M4B; book 32 is folder-based)
      "primaryFileName": f"book{i}.m4b" if t == "AUDIOBOOK" and i != 32 else f"book{i}.{t.lower()}", "fileSizeKb": 300, "readProgress": 12.5 if i == 1 else None,
-     "primaryFileId": 1000 + i}
+     "primaryFileId": 1000 + i,
+     # (Grimmory's categories: Genres in the Catalog)
+     "categories": ["Mystery"] if i in (2, 5, 31) else ["Fantasy", "Adventure"] if i in (3, 32) else []}
     for i, t in enumerate(["EPUB"] * 30 + ["AUDIOBOOK"] * 3 + ["PDF"] * 2, start=1)
 ]
 SHELVES = {4: [10, 11, 12], 6: [], 7: [3], 8: []}
@@ -618,6 +620,8 @@ class H(BaseHTTPRequestHandler):
                 books = [b for b in books if any(a.lower() in want for a in b["authors"])]
             if q.get("series"):
                 books = [b for b in books if b.get("seriesName", "").lower() == q["series"][0].lower()]
+            if q.get("category"):
+                books = [b for b in books if set(q["category"]) & set(b.get("categories") or [])]
             if q.get("shelfId"):
                 books = [b for b in books if b["id"] in SHELVES.get(int(q["shelfId"][0]), [])]
             if q.get("magicShelfId"):
