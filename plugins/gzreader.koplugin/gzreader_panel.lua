@@ -6,9 +6,8 @@ the top of the screen. Square tiles, in two groups:
              Settings, Diagnostics (with diagnostic logging on), Exit
   Home       Manage “book” (the one highlighted), Continue, Connect,
              Search, History, View, Sort, Quick note, Music, Audiobook
-  This book  Sync with Grimmory, Contents, Bookmark, Bookmarks, Go to page,
-             Search book, Font, Layout, Fit pictures, Read aloud, Quick note,
-             Music, Audiobook
+  This book  Sync with Grimmory, Reader tools, Bookmark, Read aloud, Story
+             guide, Flashcards, Mark up, Notes, Music, Audiobook, Quick note
 
 Quick note is there while Memos is connected (the Notes tab): a new note in
 the full-page editor over whatever is on screen; Save sends it in the
@@ -205,9 +204,8 @@ function Panel.catalog()
         } },
         { id = "book", title = _("This book"), tiles = {
             { id = "sync", label = _("Sync with Grimmory"), note = _("Grimmory's books") },
-            { id = "controls", label = _("Options"), note = _("what a swipe up from the bottom of the page opens") },
+            { id = "controls", label = _("Reader tools"), note = _("what a swipe up from the bottom of the page opens: font, layout, search, bookmarks, highlights") },
             { id = "bookmark", label = _("Bookmark") },
-            { id = "searchbook", label = _("Search book") },
             { id = "readaloud", label = _("Read aloud"), available = Touch.tts },
             { id = "note", label = _("Quick note"), note = _("while Memos is connected") },
             { id = "markup", label = _("Mark up"), note = _("draw on the page, kept in Memos with the book and chapter; touch Kindles, while Memos is connected") },
@@ -253,7 +251,7 @@ function Panel.showAll() G_reader_settings:delSetting(HIDDEN_KEY) end
 --- The order of a book's tiles, by id (the owner, 2026-11-26): the book's
 --- own tools, then what's made from it (Story guide, Flashcards), notes, what
 --- plays, and Quick note last. A tile not listed goes just before Quick note.
-Panel.BOOK_ORDER = { "sync", "controls", "contents", "bookmark", "bookmarks", "gotopage", "searchbook", "font", "layout",
+Panel.BOOK_ORDER = { "sync", "controls", "contents", "bookmark", "bookmarks", "gotopage", "font", "layout",
     "fitpictures", "readaloud", "storyguide", "storysofar", "flashcards", "markup", "split", "music", "audiobook", "note" }
 
 --- `list` in Panel.BOOK_ORDER (a copy; tiles with the same place keep theirs). Pure.
@@ -542,10 +540,9 @@ function Panel.bookTiles(plugin, ui)
     end
     -- reader controls, as a swipe up from the bottom opens them: contents, bookmarks, go to page, the
     -- font, the layout (Fit pictures in it) — they were six tiles here (the owner, 2026-11-26)
-    list[#list + 1] = { id = "controls", icon = "layout", label = _("Options"), run = function() Panel.readerControls(ui) end }
+    list[#list + 1] = { id = "controls", icon = "layout", label = _("Reader tools"), run = function() Panel.readerControls(ui) end }
     list[#list + 1] = { id = "bookmark", icon = "bookmark", label = _("Bookmark"), on = ui.view and ui.view.dogear_visible == true,
         run = send("ToggleBookmark") }
-    list[#list + 1] = { id = "searchbook", icon = "searchbook", label = _("Search book"), run = send("ShowFulltextSearchInput") }
     local tts = plugin.tts
     if tts and tts:supported() then
         list[#list + 1] = { id = "readaloud", icon = "readaloud", label = _("Read aloud"), on = tts.active == true, run = function() tts:toggle() end }
@@ -564,7 +561,7 @@ end
 --- The layout panel (KOReader's bottom config menu: size, margins, spacing…).
 --- Opened with force: ZenOS's Zen mode blocks a plain ShowConfigMenu on touch
 --- Kindles (meant for the bottom swipe), as its own reader controls do.
---- The Options tile: on a touch Kindle, whatever the swipe up from the bottom
+--- The Reader tools tile: on a touch Kindle, whatever the swipe up from the bottom
 --- of a book opens (Settings → Reader → Bottom swipe gesture: the page
 --- browser, reader controls, …; ZenOS's page_browser.lua); otherwise, or when
 --- that swipe is off, ZenOS's reader controls (KOReader's bottom menu where

@@ -2733,20 +2733,20 @@ do
     check(Panel.isShown("book", "music") and not Panel.isShown("home", "sort"), "Music in a book is its own tick (Home's Music is separate)")
     local fakeui = { handleEvent = function() end, view = {}, document = { info = { has_pages = true } } }
     local bt = labels(Panel.bookTiles(hplug, fakeui))
-    check(bt:match("|Options|") and not bt:match("|Contents|") and not bt:match("|Bookmarks|") and not bt:match("Go to page")
-        and not bt:match("|Font|") and not bt:match("|Layout|") and not bt:match("Fit pictures") and bt:match("|Bookmark|") and bt:match("|Search book|"),
-        "a book's tiles: Options in place of Contents, Bookmarks, Go to page, Font, Layout and Fit pictures " .. bt)
-    Panel.setShown("book", "searchbook", false)
-    check(not labels(Panel.bookTiles(hplug, fakeui)):match("Search book") and labels(Panel.bookTiles(hplug, fakeui)):match("|Options|"),
+    check(bt:match("|Reader tools|") and not bt:match("|Contents|") and not bt:match("|Bookmarks|") and not bt:match("Go to page")
+        and not bt:match("|Font|") and not bt:match("|Layout|") and not bt:match("Fit pictures") and bt:match("|Bookmark|") and not bt:match("Search book"),
+        "a book's tiles: Reader tools in place of Contents, Bookmarks, Go to page, Search book, Font, Layout and Fit pictures " .. bt)
+    Panel.setShown("book", "bookmark", false)
+    check(not labels(Panel.bookTiles(hplug, fakeui)):match("|Bookmark|") and labels(Panel.bookTiles(hplug, fakeui)):match("|Reader tools|"),
         "a book's tiles hidden too")
-    Panel.setShown("book", "searchbook", true)
+    Panel.setShown("book", "bookmark", true)
     -- Reader controls: ZenOS's, as the swipe up from the bottom opens them; without them, KOReader's
     -- bottom menu with force (ZenOS's Zen mode blocks a plain ShowConfigMenu on touch Kindles)
     local shown_rc = 0
     local rcui = { handleEvent = function() end, view = {}, document = { info = { has_pages = true } },
         menu = { onShowReaderControls = function() shown_rc = shown_rc + 1; return true end } }
     for _i, t in ipairs(Panel.bookTiles(hplug, rcui)) do if t.id == "controls" then t.run() end end
-    check(shown_rc == 1, "Options tile: ZenOS's reader controls (a keyboard Kindle, or no swipe up set)")
+    check(shown_rc == 1, "Reader tools tile: ZenOS's reader controls (a keyboard Kindle, or no swipe up set)")
     -- a touch Kindle: what the swipe up from the bottom opens (ZenOS's page_browser.lua's handler)
     local swiped, saved_bs = {}, package.loaded["common/reader_bottom_swipe"]
     local Dev = require("device")
@@ -2755,7 +2755,7 @@ do
     package.loaded["common/reader_bottom_swipe"] = { gz_open = function(u) swiped[#swiped + 1] = u; return true end }
     shown_rc = 0
     for _i, t in ipairs(Panel.bookTiles(hplug, rcui)) do if t.id == "controls" then t.run() end end
-    check(#swiped == 1 and swiped[1] == rcui and shown_rc == 0, "Options tile on a touch Kindle: what the swipe up from the bottom opens (the page browser here)")
+    check(#swiped == 1 and swiped[1] == rcui and shown_rc == 0, "Reader tools tile on a touch Kindle: what the swipe up from the bottom opens (the page browser here)")
     package.loaded["common/reader_bottom_swipe"] = { gz_open = function() return nil end }
     for _i, t in ipairs(Panel.bookTiles(hplug, rcui)) do if t.id == "controls" then t.run() end end
     check(shown_rc == 1, "…the swipe up turned off: reader controls")
@@ -2814,8 +2814,8 @@ do
         check(not hq0:match("Quick note") and not bq0:match("Quick note"), "Memos not connected: no Quick note tile")
         hplug.store.memos = { server = "https://memos.example.com", token = "t" }
         local hq1, bq1 = labels(Panel.homeTiles(hplug, nil)), labels(Panel.bookTiles(hplug, fakeui))
-        check(hq1:match("|View|Quick note|") and bq1:match("|Search book|Quick note|"),
-            "Memos connected: Quick note at Home (after View/Sort) and in a book (before Music) " .. hq1 .. " " .. bq1)
+        check(hq1:match("|View|Quick note|") and bq1:match("|Quick note|$"),
+            "Memos connected: Quick note at Home (after View/Sort) and in a book (last) " .. hq1 .. " " .. bq1)
         local quick = {}
         package.loaded["gzreader_notes"] = { quickNote = function(p) quick[#quick + 1] = p end }
         for _i, t in ipairs(Panel.bookTiles(hplug, fakeui)) do if t.id == "note" then t.run() end end

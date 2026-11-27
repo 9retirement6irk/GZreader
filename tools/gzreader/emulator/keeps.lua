@@ -190,11 +190,11 @@ add({ fn = function(E)
     openPanel(E)
 end, after = 5 })
 add({ fn = function(E)
-    check(topName() == "gzreader quick panel" and hasTile("Options") and hasTile("Bookmark") and hasTile("Search book"),
+    check(topName() == "gzreader quick panel" and hasTile("Reader tools") and hasTile("Bookmark") and not hasTile("Search book"),
         "in a book, the quick panel: the book's tiles (top: " .. topName() .. ")")
     check(not hasTile("Connect") and not hasTile("Continue"), "…and not Home's (Continue, Connect)")
     check(not hasTile("Font") and not hasTile("Layout") and not hasTile("Contents") and not hasTile("More"),
-        "…Options in place of Contents, Bookmarks, Go to page, Font, Layout and Fit pictures; no More")
+        "…Reader tools in place of Contents, Bookmarks, Go to page, Search book, Font, Layout and Fit pictures; no More")
     if E.model == "kt" then check(hasTile("Read aloud"), "Kindle Touch: Read aloud in the quick panel") end
     E.shot("keeps-panel-book")
     if topName() ~= "ReaderUI" then closeTop() end
