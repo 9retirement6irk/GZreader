@@ -220,6 +220,34 @@ add({ fn = function(E)
     check(E, pz.kind == "sudoku" and pz.tabs[3].label.text:find("\u{2713}", 1, true) ~= nil, "opened again: the maze's tab is ticked")
 end, after = 4 })
 add({ shot = "puzzles-7-again" })
+-- with a paper: the word search hides the stories' words (an example edition; nothing is fetched)
+add({ fn = function(E)
+    local Pz = require("gzreader_puzzles")
+    local Scr = require("gzreader_puzzlescreen")
+    local p = plugin()
+    if Scr.instance then require("ui/uimanager"):close(Scr.instance) end
+    Pz.edition = function()
+        return { day = Pz.state(p).day, sections = { { topic = "World", items = {
+            { title = "Council votes to keep the old bridge open through the winter", text = "Engineers said the bridge was sound. Traffic lights will let one lane cross at a time." },
+            { title = "Harvest festival moved indoors", text = "Rain is forecast for the valley all weekend." },
+            { title = "Lighthouse keeper counts seven ships in the northern harbour", text = "The keeper kept a tally in a ledger." },
+            { title = "A pocket radio that tunes itself", text = "The radio listens for the strongest signal." } } } } }
+    end
+    Pz.state(p).words = nil
+    E.pz = Scr.show(p, "words")
+end, after = 6 })
+add({ shot = "puzzles-8-news-words" })
+add({ fn = function(E)
+    local Pz = require("gzreader_puzzles")
+    local pz = E.pz
+    local known, n = {}, 0
+    for _i, e in ipairs(Pz.newsWords(Pz.edition())) do known[e.word] = true end
+    local list = {}
+    for _i, w in ipairs(pz.ws.words) do list[#list + 1] = w.word; if known[w.word] then n = n + 1 end end
+    check(E, pz.ws.src ~= "list" and n == #pz.ws.words, "with a paper, every word the word search hides is from its stories: " .. table.concat(list, " "))
+    check(E, pz.status.widget.text:find("from the paper's stories", 1, true) ~= nil, "…and says so")
+    Pz.edition = nil
+end, after = 2 })
 add({ fn = function(E)
     local f = io.open((E.out or ".") .. "/puzzles-checks.txt", "w")
     if f then f:write(table.concat(checks, "\n"), "\n"); f:close() end
