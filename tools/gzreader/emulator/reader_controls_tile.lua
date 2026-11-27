@@ -1,4 +1,4 @@
--- The quick panel's Options tile in a book (GZ_EMU_BOOK = an EPUB):
+-- The quick panel's Reader tools tile in a book (GZ_EMU_BOOK = an EPUB):
 -- ZenOS's reader controls open, Layout has Fit pictures; on a keyboard model
 -- (k3) a line under them names their keys, and a number / a letter picks a
 -- tab / a section.
@@ -37,7 +37,7 @@ add({ fn = function(E)
     local ui = reader()
     local tile
     for _i, t in ipairs(require("gzreader_panel").bookTiles(ui.gzreader, ui)) do if t.id == "controls" then tile = t end end
-    check(tile ~= nil and tile.label == "Options", "the quick panel in a book: Options")
+    check(tile ~= nil and tile.label == "Reader tools", "the quick panel in a book: Reader tools")
     if tile then tile.run() end
 end, after = 4 })
 add({ shot = "rc-0-options" })
@@ -47,10 +47,10 @@ add({ fn = function(E)
     local PBW = require("ui/widget/pagebrowserwidget")
     local what = controls() and "reader controls" or (top and getmetatable(top.widget) == PBW and "the page browser")
         or (top and top.widget and tostring(top.widget.name))
-    E.say("Options opened:", tostring(what))
+    E.say("Reader tools opened:", tostring(what))
     local mode = require("common/reader_bottom_swipe").getMode(reader().zenos and reader().zenos.config or rawget(_G, "__ZEN_UI_PLUGIN").config)
     check(what and what ~= "gzreader quick panel" and (mode ~= "page_browser" or what == "the page browser"),
-        "…Options opens what the swipe up opens (" .. tostring(mode) .. "): " .. tostring(what))
+        "…Reader tools opens what the swipe up opens (" .. tostring(mode) .. "): " .. tostring(what))
     if top and top.widget and not controls() then UIM():close(top.widget) end
     reader().menu:onShowReaderControls()
 end, after = 4 })
