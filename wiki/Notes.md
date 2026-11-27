@@ -443,8 +443,13 @@ API to `/api` are found too.
       a stroke it has to pass) and **Erase page**. It keeps up with the pen
       on a full page too.
     - **Lasso:** draw a loop around some strokes to choose them. A dashed
-      frame goes around them, with **Copy**, **Cut**, **Delete** and **To
-      text** beside it. **To text** reads the chosen writing and shows the
+      frame goes around them, with **Copy**, **Cut**, **Delete**, **To
+      text** and **Tidy** beside it. **Tidy** neatens the chosen writing
+      without reading it or changing its letters: a line that runs uphill
+      or downhill is made level, each word is set on the line, a word much
+      bigger or smaller than the rest is brought nearer their size, and the
+      gaps between words are made even. Shapes and highlighter are left as
+      they are; one Undo puts it back. **To text** reads the chosen writing and shows the
       words to check and change: **Convert** puts them in a text box where
       the writing was (one Undo brings the writing back), **Cancel** leaves
       it as it is. Drag from inside the frame to move them; drag a corner to make

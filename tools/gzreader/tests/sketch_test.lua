@@ -1623,5 +1623,97 @@ print("== the eraser on a full page: only strokes near it tested point by point"
         "a stroke's box (what a rubbed-out stroke's place repaints) comes from the eraser's index while it's right, the same as through every point; moved: from its points again")
 end)()
 
+print("== Tidy handwriting (gzreader_tidy.lua): level lines, even size and spacing, one Undo")
+;(function()
+    local Tidy = require("gzreader_tidy")
+    -- a "word": `n` letters, each a zigzag stroke `h` tall, from x along a line
+    -- through (x0, y0) at `slope`; letters 1.0·h apart
+    local function word(x, y0, x0, slope, n, h, extra)
+        local strokes = {}
+        for k = 0, n - 1 do
+            local lx = x + k * h * 0.9
+            local base = y0 + (lx - x0) * slope
+            strokes[#strokes + 1] = { points = { { lx, base }, { lx + h * 0.3, base - h }, { lx + h * 0.6, base }, { lx + h * 0.75, base - h * 0.5 } }, width = 2 }
+        end
+        if extra then -- a dot above the second letter (an i's)
+            local lx = x + h * 0.9
+            local base = y0 + (lx - x0) * slope
+            strokes[#strokes + 1] = { points = { { lx + 4, base - h * 1.5 }, { lx + 5, base - h * 1.5 - 1 } }, width = 2 }
+        end
+        return strokes
+    end
+    local function all(...)
+        local out = {}
+        for _i, t in ipairs({ ... }) do for _k, st in ipairs(t) do out[#out + 1] = st end end
+        return out
+    end
+    -- line 1: uphill (8°), the third word bigger, uneven gaps; line 2 further down
+    local slope = math.tan(math.rad(-8))
+    local w1, w2 = word(100, 300, 100, slope, 4, 40, true), word(330, 300, 100, slope, 3, 40)
+    local w3, w4 = word(520, 300, 100, slope, 3, 56), word(800, 300, 100, slope, 2, 40)
+    local l2 = word(100, 600, 100, 0, 5, 40)
+    local shape = { points = { { 50, 50 }, { 900, 50 } }, shape = "line", width = 2 }
+    local strokes = all(w1, w2, w3, w4, l2, { shape })
+    local items = {}
+    for _i, st in ipairs(Tidy.writing(strokes)) do items[#items + 1] = { b = Tidy.box(st.points) } end
+    local H = Tidy.letterHeight(items)
+    local lines = Tidy.lines(items, H)
+    check(#Tidy.writing(strokes) == #strokes - 1 and #lines == 2, "Tidy: shapes left out; the writing in two lines (" .. #lines .. ")")
+    check(#Tidy.words(lines[2], H) == 1 and #Tidy.words(lines[1], H) == 4, "Tidy: a line's words told apart by the gaps")
+    -- a sketch to undo in
+    local sk = Sketch.new{ canvas = CANVAS, pen_only = true, pen_slot = PEN_SLOT }
+    for _i, st in ipairs(strokes) do sk.strokes[#sk.strokes + 1] = st end
+    local before = {}
+    for _i, st in ipairs(strokes) do before[st] = { st.points[1][1], st.points[1][2] } end
+    local changed, area, sum = Tidy.apply(sk, strokes)
+    check(changed and area ~= nil and sum.lines == 2 and sum.turned == 1 and #sk.history == 1 and sk.history[1].kind == "move",
+        "Tidy: done as one step (the uphill line turned level)")
+    -- level: every word's baseline on line 1 within a pixel or two of the others
+    local function base(ws)
+        local ys = {}
+        for _i, st in ipairs(ws) do
+            local b = Tidy.box(st.points)
+            if b.h > 20 then ys[#ys + 1] = b.y1 end
+        end
+        table.sort(ys)
+        return ys[1], ys[#ys]
+    end
+    local lo, hi = base(all(w1, w2, w3, w4))
+    check(hi - lo <= 3, ("Tidy: the line's words on one level baseline (%.1f to %.1f)"):format(lo, hi))
+    -- even size: the big word brought towards the others (at most a fifth smaller)
+    local big = Tidy.box(w3[1].points).h
+    check(big < 54 and big >= 56 * 0.8 - 1, ("Tidy: the bigger word made nearer the others' size (%.1f, was 56)"):format(big))
+    -- even spacing
+    local function box(ws)
+        local x0, x1 = math.huge, -math.huge
+        for _i, st in ipairs(ws) do local b = Tidy.box(st.points); x0, x1 = math.min(x0, b.x0), math.max(x1, b.x1) end
+        return x0, x1
+    end
+    local a0, a1 = box(w1); local b0, b1 = box(w2); local c0, c1 = box(w3); local d0 = box(w4)
+    local g1, g2, g3 = b0 - a1, c0 - b1, d0 - c1
+    check(math.abs(g1 - g2) <= 1.5 and math.abs(g2 - g3) <= 1.5, ("Tidy: the gaps between words the same (%.0f, %.0f, %.0f)"):format(g1, g2, g3))
+    -- the dot went with its word; the shape and the straight line below didn't move
+    local dot = w1[#w1]
+    local dotb, letter = Tidy.box(dot.points), Tidy.box(w1[2].points)
+    check(dotb.y1 < letter.y0 and math.abs(dotb.cx - letter.cx) < 25, "Tidy: an i's dot stays over its letter")
+    check(shape.points[1][2] == 50 and l2[1].points[1][1] == before[l2[1]][1] and l2[1].points[1][2] == before[l2[1]][2],
+        "Tidy: a shape, and a line already tidy, left as they were")
+    -- one Undo puts it all back; Redo again
+    sk:undo()
+    local back = true
+    for _i, st in ipairs(strokes) do
+        if st.points[1][1] ~= before[st][1] or st.points[1][2] ~= before[st][2] then back = false end
+    end
+    check(back, "Tidy: one Undo puts the writing back as it was")
+    sk:redo()
+    check(math.abs(Tidy.box(w3[1].points).h - big) < 0.01, "Tidy: Redo tidies it again")
+    -- already tidy: nothing to do, no step
+    local sk2 = Sketch.new{ canvas = CANVAS, pen_only = true, pen_slot = PEN_SLOT }
+    local tidy = all(word(100, 300, 100, 0, 3, 40), word(260, 300, 100, 0, 3, 40))
+    local c2 = Tidy.apply(sk2, tidy)
+    check(c2 == false and #sk2.history == 0, "Tidy: writing already tidy: nothing changed, no Undo step")
+    check(Tidy.apply(sk2, {}) == false and Tidy.apply(sk2, { shape }) == false, "Tidy: nothing chosen, or only shapes: nothing done")
+end)()
+
 print(string.format("sketch: %d passed, %d failed", pass, fail))
 os.exit(fail == 0 and 0 or 1)

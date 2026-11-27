@@ -17485,6 +17485,20 @@ print("No Local reading stats widget on Home (Settings → Home and tabs → Hom
     package.path = saved_path
 end)()
 
+print("Tidy handwriting in the drawing screen; the device probe looks for the Kindle's handwriting reader")
+;(function()
+    local Log = require("gzreader_log")
+    local found, live = false, false
+    for _i, c in ipairs(Log.PROBE_COMMANDS) do
+        if c:find("handwrit", 1, true) and c:find("lipc-probe", 1, true) then found = true end
+        if c:find("^ps ") and c:find("myscript", 1, true) and Log.PROBE_LIVE[c] then live = true end
+    end
+    check(found and live, "device probe: the Kindle's handwriting services and what's running (the running part at every export)")
+    local f = io.open(PLUGIN .. "/gzreader_drawscreen.lua"); local src = f:read("*a"); f:close()
+    check(src:find('{ id = "sel-tidy", icon = "tidy", label = _("Tidy") }', 1, true) ~= nil
+        and src:find('require("gzreader_tidy")', 1, true) ~= nil and io.open(PLUGIN .. "/icons/draw/tidy.svg") ~= nil,
+        "drawing screen: Tidy beside what the lasso chose (its icon there)")
+end)()
 print("Headphones: the Kindle 3's audioHS message")
 ;(function()
     local Jack = require("gzreader_jack")
