@@ -193,9 +193,15 @@ if okb then
             and texts(imitems) == "|Connect with QR code|Connect by typing|",
         "Accounts and services: Books, Notes, Calendar, Photos (Immich, GZreader's rows in it), Daily paper " .. cl)
     check(find(accounts.sub_item_table, "Daily paper").mandatory == "Feeds", "…the daily paper: its feeds")
-    check(find(accounts.sub_item_table, "Books").mandatory == "Grimmory" and find(accounts.sub_item_table, "Notes").mandatory == "Memos"
+    local books = find(accounts.sub_item_table, "Books")
+    gz.serverName = function() return "Grimmory" end
+    check(books.mandatory_func() == "Grimmory" and find(accounts.sub_item_table, "Notes").mandatory == "Memos"
             and find(accounts.sub_item_table, "Calendar").mandatory == "CalDAV",
         "each row says the service it uses on the right")
+    gz.serverName = function() return "BookOrbit" end
+    check(books.mandatory_func() == "BookOrbit", "Books: BookOrbit when this Kindle is signed in to BookOrbit")
+    gz.serverName = nil
+    check(books.mandatory_func() == "Grimmory", "…Grimmory when GZreader can't say")
     -- KOReader settings: KOReader's whole menu, nothing left out
     local ko = advanced.sub_item_table[1]
     local asked

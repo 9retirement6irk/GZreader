@@ -16,7 +16,7 @@ account uses). When an update is known, it shows at the top of the page.
 | **Audio** | Kindles with a speaker, headphone jack or Bluetooth: [Bluetooth](Bluetooth) first (on or off, the devices), then [read aloud](Audiobooks-and-Read-Aloud), Test audiobook playback, the headphone jack. |
 | **Home and tabs** | Home (widgets, edit mode, presets), Status bar, Tab bar (which tabs, their look, the default tab), Quick panel (which tiles), Downloads tab (layout, covers, folders, books, context menu). |
 | **Reader** | Appearance (status bars), Highlight / Lookup, Gestures and controls, Table of contents, Notes and footnotes, Closing a book (end of book, where the library opens). |
-| **Accounts and services** | One row per service, the server it uses on the right: Books (Grimmory: your account first, who's signed in), Audiobooks (Grimmory or Plex), Music (Plex), Notes (Memos), Calendar (CalDAV), Photos (Immich), House (Home Assistant). |
+| **Accounts and services** | One row per service, the server it uses on the right: Books (Grimmory or BookOrbit, whichever you're signed in to: your account first, who's signed in), Audiobooks (your book server or Plex), Music (Plex), Notes (Memos), Calendar (CalDAV), Photos (Immich), House (Home Assistant). |
 | **Privacy and diagnostics** | Diagnostic logging, Send debug reports automatically, Report a problem, sending or saving the log ([Privacy and diagnostics](Privacy-and-Diagnostics)); Advanced → KOReader settings. |
 
 ## Dark mode in one place

@@ -106,11 +106,17 @@ function M.accountsItems(opts)
     local function row(text, service, method, glyph)
         return icon({ text = text, mandatory = service, sub_item_table_func = page(method) }, glyph)
     end
+    -- GZreader: the book server signed in to (Grimmory or BookOrbit), asked each time
+    local function bookServer()
+        local g = opts.gzreader and opts.gzreader()
+        local ok, name = pcall(function() return g and g:serverName() end)
+        return ok and type(name) == "string" and name or "Grimmory"
+    end
     local audiobooks
     if opts.audio then
         audiobooks = iconFile({
             text = _("Audiobooks"),
-            help_text = _("Where the Catalog's audiobooks come from: Grimmory, or a library of your Plex server (Plex keeps audiobooks in a music library: an album per book, the author as its artist). Listening positions go to the same place. Choosing Plex needs a Plex sign-in: Accounts and services → Music."),
+            help_text = _("Where the Catalog's audiobooks come from: your book server (Grimmory or BookOrbit), or a library of your Plex server (Plex keeps audiobooks in a music library: an album per book, the author as its artist). Listening positions go to the same place. Choosing Plex needs a Plex sign-in: Accounts and services → Music."),
             -- (only with a Plex sign-in: otherwise they come from Grimmory)
             enabled_func = function()
                 local g = opts.gzreader and opts.gzreader()
@@ -123,7 +129,7 @@ function M.accountsItems(opts)
                     local okv, v = pcall(Tab.audiobooksValue, g)
                     if okv and type(v) == "string" then return v end
                 end
-                return "Grimmory"
+                return bookServer()
             end,
             keep_menu_open = true,
             callback = function(touchmenu)
@@ -137,7 +143,11 @@ function M.accountsItems(opts)
         }, "tab_audiobooks", opts.plugin_root)
     end
     return compact({
-        row(_("Books"), "Grimmory", "menuItems", "sync"),
+        (function()
+            local books = row(_("Books"), nil, "menuItems", "sync")
+            books.mandatory_func = bookServer
+            return books
+        end)(),
         audiobooks,
         opts.audio and iconFile({ text = _("Music"), mandatory = "Plex", sub_item_table_func = page("plexSettingsItems") },
             "tab_music", opts.plugin_root) or nil,

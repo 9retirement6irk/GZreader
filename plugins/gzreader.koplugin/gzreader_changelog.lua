@@ -10,6 +10,7 @@ return {
         version = "next",
         changes = {
             { short = "Home: a tap on Reading stats opens the stats page", text = "A tap on Home's Reading stats (every device) widget now opens the reading stats page, as it was meant to. It did nothing because ZenOS's \"hold a widget to change it\" setting, on by default, stopped the tap. A hold still opens the widget's settings." },
+            { short = "BookOrbit: Settings and Audiobooks from say BookOrbit", text = "Signed in to BookOrbit, Settings → Accounts and services now shows BookOrbit beside Books and Audiobooks, and the Catalog's Audiobooks from window offers BookOrbit (with your Plex libraries) instead of Grimmory." },
         },
     },
     {
