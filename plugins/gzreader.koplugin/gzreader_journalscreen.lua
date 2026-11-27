@@ -273,17 +273,36 @@ end
 
 -- ------------------------------------------------------------ dialogs
 
+--- A choice's text in a pick-many window: a ✓ before the chosen. Pure.
+function JournalScreen.pickLabel(label, on)
+    return (on and "\u{2713} " or "") .. label
+end
+
+--- A choice was tapped: only its own button is drawn again (its ✓ on or
+--- off), not the window. False when the button can't be found or changed.
+function JournalScreen.pickRedraw(dialog, id, text)
+    local btn = dialog and type(dialog.getButtonById) == "function" and dialog:getButtonById(id) or nil
+    if not btn or type(btn.setText) ~= "function" then return false end
+    btn:setText(text, btn.width)
+    UIManager:setDirty(dialog, function() return "ui", btn.dimen end)
+    return true
+end
+
 --- Pick any of `items` ({ id, label }): a ✓ on the chosen; Done closes.
 function JournalScreen:pickMany(title, items, has, toggle, focus_id)
     local dialog
     local per = Touch.on() and 3 or 2
     local function show()
         local rows, row = {}, {}
-        for _i, it in ipairs(items) do
-            row[#row + 1] = { text = (has(it.id) and "\u{2713} " or "") .. it.label, callback = function()
+        for i, it in ipairs(items) do
+            local bid = "gz_pick_" .. i
+            row[#row + 1] = { id = bid, text = JournalScreen.pickLabel(it.label, has(it.id)), callback = function()
                 toggle(it.id)
-                UIManager:close(dialog)
-                show()
+                -- (the whole window closed and shown again flashed all of it at every tap)
+                if not JournalScreen.pickRedraw(dialog, bid, JournalScreen.pickLabel(it.label, has(it.id))) then
+                    UIManager:close(dialog)
+                    show()
+                end
             end }
             if #row == per then rows[#rows + 1] = row; row = {} end
         end

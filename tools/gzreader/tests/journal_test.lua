@@ -169,6 +169,33 @@ do
         and not src:find("Color8(MoodFace.greys", 1, true), "the mood slider's track and thumb use them (the RGB painters on colour)")
 end
 
+print("== the pick-many windows (feelings, causes, activities): a tap redraws its own button only")
+do
+    local src = io.open(PLUGIN .. "/gzreader_journalscreen.lua"):read("*a")
+    -- (the screen's module needs KOReader's widgets: the two functions are cut out and run)
+    local a1 = src:find("function JournalScreen.pickLabel(label, on)", 1, true)
+    local a2 = src:find("--- Pick any of `items`", 1, true)
+    local dirty = {}
+    local JS = {}
+    local env = setmetatable({ JournalScreen = JS, UIManager = { setDirty = function(_s, w, fn) dirty[#dirty + 1] = { w, fn } end } }, { __index = _G })
+    local fn = a1 and a2 and load(src:sub(a1, a2 - 1), "pick", "t", env)
+    if fn then fn() end
+    check(JS.pickLabel and JS.pickLabel("Content", true) == "\u{2713} Content" and JS.pickLabel("Content", false) == "Content", "a chosen word has its ✓, another doesn't")
+    local set = {}
+    local btn = { width = 200, dimen = { x = 10, y = 20, w = 200, h = 40 }, setText = function(b, text, width) set[#set + 1] = { text, width }; b.text = text end }
+    local dialog = { getButtonById = function(_s, id) return id == "gz_pick_2" and btn or nil end }
+    check(JS.pickRedraw and JS.pickRedraw(dialog, "gz_pick_2", "\u{2713} Content") == true and set[1][1] == "\u{2713} Content" and set[1][2] == 200,
+        "a tap: the tapped button's text is changed in place (its width kept)")
+    local mode, area
+    if dirty[1] then mode, area = dirty[1][2]() end
+    check(#dirty == 1 and dirty[1][1] == dialog and mode == "ui" and area == btn.dimen, "…and only that button's part of the screen is refreshed")
+    check(JS.pickRedraw(dialog, "gz_pick_9", "x") == false and JS.pickRedraw(nil, "gz_pick_2", "x") == false and #dirty == 1,
+        "a button that can't be found: said so (the window is shown again, as before)")
+    check(src:find('if not JournalScreen.pickRedraw(dialog, bid, JournalScreen.pickLabel(it.label, has(it.id))) then', 1, true)
+        and src:find('row[#row + 1] = { id = bid, text = JournalScreen.pickLabel(it.label, has(it.id)), callback = function()', 1, true),
+        "the windows' choices do that, each button with its own id")
+end
+
 print("== a prompt answered with a drawing; place and weather (the owner, 2026-11-19)")
 do
     local base = with{ prompt = "What are you grateful for right now?", body = "", goals = {},

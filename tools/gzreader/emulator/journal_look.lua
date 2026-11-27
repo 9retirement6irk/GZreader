@@ -28,6 +28,28 @@ add({ fn = function(E)
     Notes.journal(p)
 end, after = 5 })
 add({ shot = "1-not-chosen", after = 0.5 })
+-- the feelings window (More…): a tap puts a ✓ on its own button, the window stays as it is
+add({ fn = function() journal():pickFeelings() end, after = 3 })
+add({ fn = function(E)
+    local d = journal().picker
+    journal().gz_first_picker = d
+    local b = d and d:getButtonById("gz_pick_2")
+    if b then tap(E, mid(b.dimen)) end
+end, after = 3 })
+add({ shot = "1b-feelings-window", after = 0.5 })
+add({ fn = function(E)
+    local d = journal().picker
+    local b = d and d:getButtonById("gz_pick_2")
+    check(d ~= nil and d == journal().gz_first_picker and b and b.text:find("\u{2713}", 1, true) ~= nil,
+        "the feelings window: a tap puts the ✓ on that word's button; the window isn't closed and shown again")
+    if b then tap(E, mid(b.dimen)) end
+end, after = 3 })
+add({ fn = function(E)
+    local d = journal().picker
+    local b = d and d:getButtonById("gz_pick_2")
+    check(b and not b.text:find("\u{2713}", 1, true), "…tapped again: the ✓ is off")
+    E.tap("Done")
+end, after = 3 })
 add({ fn = function(E)
     local j = journal()
     check(j ~= nil and j.inline, "the journal, touch: the web's look")
