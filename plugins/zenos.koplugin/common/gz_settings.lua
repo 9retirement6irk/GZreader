@@ -219,6 +219,34 @@ function M.withFlashRows(list, gz_items)
     return list
 end
 
+--- A line in GZreader's log, written to the storage at once (still there
+--- after a freeze and a restart).
+function M.trace(...)
+    local ok, Log = pcall(require, "gzreader_log")
+    if ok and type(Log) == "table" and type(Log.infoNow) == "function" then pcall(Log.infoNow, true, "settings:", ...) end
+end
+
+--- KOReader's sections, each saying in the log that it's being opened
+--- before its rows are gathered (each plugin's own menu code runs then), and
+--- how long that took when it was slow. The items themselves are changed
+--- in place and returned.
+function M.traced(items)
+    for _i, item in ipairs(items) do
+        local gather = type(item) == "table" and item.sub_item_table_func
+        if type(gather) == "function" and not item._gz_traced then
+            item._gz_traced = true
+            item.sub_item_table_func = function(...)
+                M.trace("KOReader settings: opening", tostring(item.text))
+                local t0 = os.time()
+                local rows = gather(...)
+                if os.time() - t0 >= 2 then M.trace("KOReader settings:", tostring(item.text), "took", os.time() - t0, "s") end
+                return rows
+            end
+        end
+    end
+    return items
+end
+
 --- About → Advanced → KOReader settings: KOReader's whole menu, nothing left
 --- out (native_menu.settingsItems unfiltered: also what KOREADER_HIDDEN and
 --- KOREADER_DUPLICATES leave out elsewhere), from the menu of whatever is open
@@ -235,8 +263,14 @@ function M.koreaderMenuItem(plugin_root, native)
         _zen_settings_root = "koreader",
         sub_item_table_func = function()
             native = native or require("modules/menu/app_launcher/native_menu")
+            -- (a line in the log before each part is gathered, written to the storage at once: the
+            -- owner's Scribe froze here and restarted with nothing in the log to say where)
+            M.trace("KOReader settings: gathering KOReader's menu")
             local ok, items = pcall(native.settingsItems, "active", nil, { unfiltered = true })
-            return ok and type(items) == "table" and items or {}
+            if not ok then M.trace("KOReader settings: could not be gathered", tostring(items)) end
+            items = ok and type(items) == "table" and items or {}
+            M.trace("KOReader settings:", #items, "sections")
+            return M.traced(items)
         end,
     }
 end
