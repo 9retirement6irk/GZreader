@@ -1040,7 +1040,8 @@ LS.on(snapper)
 snapper:onScrollablePan(nil, { relative = { x = 0, y = -100 } })
 snapper:onScrollableSwipe(nil, { direction = "north", distance = 120, pos = pos })
 check(snapper._scroll_offset_y == 1800, "where it isn't asked for (the notes), a swipe still moves a screenful … " .. snapper._scroll_offset_y)
-check(dsrc:find('require("gzreader_livescroll").on(self.scroller, { free = true })', 1, true), "the story asks for it")
+check(dsrc:find('require("gzreader_livescroll").on(self.scroller, { free = true, coarse = true })', 1, true),
+    "the story asks for it (and for coarse steps: run_tests.lua checks those)")
 
 print("== today's calendar events on the front page")
 local function tm(day, h, m) return os.time{ year = 2026, month = 11, day = day, hour = h, min = m or 0 } end

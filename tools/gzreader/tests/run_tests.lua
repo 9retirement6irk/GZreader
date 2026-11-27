@@ -13023,6 +13023,49 @@ print("Notes (Memos v0.31)")
             UIMq.setDirty = real_dirty
             check(table.concat(sc_dirty, ",") == "fast,partial", "an opened note: a step \"fast\", then once more with the page-turn refresh at the lift ("
                 .. table.concat(sc_dirty, ",") .. ")")
+            -- the daily paper's story (coarse): steps only every third of a screen and 0.6 s apart; a flick a screenful; a flash at the end
+            local coarse_dirty = {}
+            UIMq.setDirty = function(_s, _w, refresh)
+                if type(refresh) == "function" then refresh = (refresh()) end
+                coarse_dirty[#coarse_dirty + 1] = tostring(refresh)
+            end
+            local story = { _scroll_offset_x = 0, _scroll_offset_y = 0, _max_scroll_offset_x = 0, _is_scrollable = true, show_parent = {},
+                dimen = { x = 0, y = 0, w = 1000, h = 1000, },
+                onScrollablePan = function(self) self._scrolling = true; return true end,
+                onScrollablePanRelease = function(self) self._scrolling = false; return true end,
+                onScrollableSwipe = function() return true end,
+                _scrollBy = function(self, _dx, dy) self._scroll_offset_y = self._scroll_offset_y + dy; UIMq:setDirty(self.show_parent, "ui") end }
+            story.dimen.intersectWith = function() return true end
+            LiveScroll.on(story, { free = true, coarse = true })
+            clock = 400
+            story:onScrollablePan(nil, { relative = { x = 0, y = -100 } })   -- (under a third of the screen: not yet)
+            local c1 = story._scroll_offset_y
+            story:onScrollablePan(nil, { relative = { x = 0, y = -320 } })   -- (a third: a step)
+            local c2 = story._scroll_offset_y
+            clock = 400.3
+            story:onScrollablePan(nil, { relative = { x = 0, y = -700 } })   -- (too soon)
+            local c3 = story._scroll_offset_y
+            clock = 401
+            story:onScrollablePan(nil, { relative = { x = 0, y = -700 } })
+            local c4 = story._scroll_offset_y
+            story:onScrollablePanRelease(nil, {})
+            local steps = #coarse_dirty
+            local last = coarse_dirty[#coarse_dirty]
+            story._scroll_offset_y = 0
+            coarse_dirty = {}
+            story:onScrollableSwipe(nil, { direction = "north", distance = 200, pos = story.dimen })
+            local flick = story._scroll_offset_y
+            story:onScrollableSwipe(nil, { direction = "south", distance = 900, pos = story.dimen })
+            UIMq.setDirty = real_dirty
+            check(c1 == 0 and c2 == 320 and c3 == 320 and c4 == 700 and steps == 3 and last == "flashpartial",
+                "the daily paper's story: a drag moves it only every third of the screen, 0.6 s apart, and it's shown once more with a flash at the lift ("
+                    .. table.concat({ c1, c2, c3, c4 }, ",") .. ")")
+            check(flick == 850 and story._scroll_offset_y == 0 and coarse_dirty[#coarse_dirty] == "flashpartial"
+                and LiveScroll.flickBy({ direction = "east" }, 850) == 0,
+                "…a flick turns a screenful, whatever its length, down or back up")
+            local dsrc = io.open(PLUGIN .. "/gzreader_dailyscreen.lua"):read("*a")
+            check(dsrc:find('require("gzreader_livescroll").on(self.scroller, { free = true, coarse = true })', 1, true) ~= nil,
+                "…the daily paper's stories scroll that way")
             LiveScroll.now = real_now
             local y4 = b._gz_y
             b:onSwipe(nil, { direction = "west", distance = 300 })

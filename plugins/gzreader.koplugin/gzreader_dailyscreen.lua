@@ -1674,7 +1674,7 @@ function Paper.articleButtons(item)
     return out
 end
 
---- A story, as text that scrolls with the finger (not page by page): its
+--- A story, as text that scrolls with the finger in big steps (a flick: a screenful): its
 --- headline, where it's from, the story; ✕ and QR code (its link, for a
 --- phone) at the top. Page keys and the 5-way ▲ ▼ scroll by most of a
 --- screen; Back closes; a swipe down from the top: the quick panel.
@@ -1776,9 +1776,10 @@ function Paper.article(plugin, item)
                 dimen = Geom:new{ w = sw, h = sh - bar_h - Size.line.medium }, show_parent = self,
                 HorizontalGroup:new{ align = "top", HorizontalSpan:new{ width = margin }, col },
             }
-            -- (the story moves with the finger and rests exactly where it lifts, also
-            -- when the finger is still moving as it lifts: gzreader_livescroll.lua)
-            require("gzreader_livescroll").on(self.scroller, { free = true })
+            -- (a drag moves the story a third of a screen at a time and it rests where the
+            -- finger lifts; a flick turns a screenful; one clean refresh at the end:
+            -- gzreader_livescroll.lua's coarse scrolling)
+            require("gzreader_livescroll").on(self.scroller, { free = true, coarse = true })
             self[1] = FrameContainer:new{ width = sw, height = sh, padding = 0, bordersize = 0, background = Blitbuffer.COLOR_WHITE,
                 VerticalGroup:new{ bar, self.scroller } }
         end
@@ -1809,8 +1810,11 @@ function Paper.article(plugin, item)
             if Paper.story == self then Paper.story = nil end
         end
         function ArticleView:scroll(dir)
-            if self.scroller and self.scroller._scrollBy then self.scroller:_scrollBy(0, dir * math.floor(self.scroller.dimen.h * 0.85)) end
-            UIManager:setDirty(self, function() return "ui", self.scroller.dimen end)
+            local LiveScroll = require("gzreader_livescroll")
+            if self.scroller and self.scroller._scrollBy then
+                LiveScroll.quiet(function() self.scroller:_scrollBy(0, dir * math.floor(self.scroller.dimen.h * LiveScroll.FLICK_PAGE)) end)
+            end
+            LiveScroll.settle(self, self.scroller.dimen, LiveScroll.COARSE_SETTLE)
             return true
         end
         function ArticleView:onPageDown() return self:scroll(1) end

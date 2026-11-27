@@ -39,9 +39,12 @@ and how it begins.
 - **More pages**: swipe left, press a page-turn key, or tap the arrow at the
   foot of the page.
 - **A story**: tap it (with keys: move the frame with the 5-way and press).
-  It opens as text that scrolls with your finger and stays exactly where
-  your finger leaves it, also when you lift while still moving; the page
-  keys, or ▲ ▼ on a keyboard Kindle, move it most of a screen. At the top,
+  It opens as text you scroll with your finger. To keep the e-ink screen
+  clean, a slow drag moves the text a third of a screen at a time and it
+  rests where your finger lifts; a flick up or down moves most of a screen,
+  like turning a page; either way the screen is refreshed once, with a
+  flash, when you lift. The page keys, or ▲ ▼ on a keyboard Kindle, move
+  it most of a screen too. At the top,
   **Aa** sets the story's text (below), **QR code** shows the story's link as
   a code for your phone, for the rest of it or its pictures, and **✕** closes
   it.
