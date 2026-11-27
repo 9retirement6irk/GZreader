@@ -832,7 +832,7 @@ function Screen_.settingsItems(plugin)
     return {
         {
             text = _("Game board on Home's bookshelf"),
-            help_text = _("A box of puzzles stands on Home's bookshelf beside the daily paper (Home's Bookshelf view). Tap it to see its lid, again to open it: today's paper puzzles (the same ones as in the paper), and a crossword, a word search, a word scramble and a maze on a theme you choose: words from the book you're reading or several of your books, the season, a category, or a theme the AI finds in your books. With achievements and a history of the puzzles you've finished. Everything is made on this Kindle; only asking the AI for a theme sends anything (your books' titles and authors, to the AI service you set up)."),
+            help_text = _("A box of puzzles stands on Home's bookshelf beside the daily paper (Home's Bookshelf view). Tap it to see its lid, again to open it: the daily paper's puzzles of the day, and a crossword, a word search, a word scramble and a maze on a theme you choose: words from the book you're reading or several of your books, the season, a category, or a theme the AI finds in your books. With achievements and a history of the puzzles you've finished. Everything is made on this Kindle; only asking the AI for a theme sends anything (your books' titles and authors, to the AI service you set up)."),
             checked_func = function() return B.enabled(plugin) end,
             callback = function()
                 B.setEnabled(plugin, not B.enabled(plugin))

@@ -1213,8 +1213,8 @@ function M.build_install_pages(ctx)
         return {
             title       = _("On Home's shelf"),
             description = _("Two things can stand on Home's bookshelf among your books:") .. "\n"
-                .. _("The daily paper: news from feeds you choose, once a day, with puzzles.") .. "\n"
-                .. _("The game board: the paper's puzzles and themed ones from your books, the season or a category, with achievements.") .. "\n"
+                .. _("The daily paper: news from feeds you choose, once a day.") .. "\n"
+                .. _("The game board: the paper's puzzles, and themed ones from your books, the season or a category, with achievements.") .. "\n"
                 .. _("Either can be changed later in Settings."),
             choice_type = "checkbox",
             gz_home_shelf = true,
