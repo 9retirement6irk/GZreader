@@ -56,6 +56,22 @@ for the book highlighted, and so on). The letters follow the tiles shown, so
 hiding one moves the letters of the tiles after it. A group with every tile
 hidden isn't shown.
 
+**Arrange tiles** puts each group's tiles in your order: pick a group and move
+its tiles in KOReader's arrange window. On Kindles with keys the letters
+follow the new order. **Back to the usual order** undoes it.
+
+**Your tiles** adds tiles of your own, shown as a third group on the panel at
+Home and in a book (up to ten):
+
+- **Add a plugin's screen**: any plugin that has a screen or menu to open.
+  This is how you open a plugin you've copied into `GZreader/app/plugins/`,
+  since the quick panel stands where KOReader's menu was.
+- **Add one of KOReader's menus**: any of KOReader's own submenus (Screen,
+  Taps and gestures, Document…). A book's menus are listed when you open
+  Settings from a book.
+- A tile only shows where it can open: a book's menu isn't on the panel at
+  Home. Tap **Take off: …** to remove one.
+
 ![The quick panel at Home](https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/home-menu.png)
 
 ### Turning the screen
