@@ -954,6 +954,11 @@ function Grimmory:dailySettingsItems()
     return require("gzreader_dailyscreen").settingsItems(self)
 end
 
+--- Settings → Accounts and services → AI (gzreader_ai.lua).
+function Grimmory:aiSettingsItems()
+    return require("gzreader_ai").settingsItems(self)
+end
+
 ---------------------------------------------------------------- errors
 
 local ERRORS = {

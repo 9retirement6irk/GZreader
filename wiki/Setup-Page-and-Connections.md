@@ -188,6 +188,41 @@ Under **Single sign-on (SSO)** you can also choose:
   `http://<kindle-ip>:8642` to `ALLOWED_ORIGINS` if it's set). Kindles that
   already signed in this way keep using it.
 
+## AI
+
+**Settings → Accounts and services → AI**, and the setup page's **AI** tab
+(*Set up from your browser (QR code)* at the top of that settings page opens
+it there). One key of your own for everything in GZreader that asks an AI
+service something:
+
+- [handwriting to text](Notes#handwriting-to-text) on Kindles that draw;
+- whatever uses AI next.
+
+Two kinds of service:
+
+- **Claude** (Anthropic): an API key from console.anthropic.com → API keys
+  (**Claude key**; paid by use: reading a few handwritten words costs a
+  fraction of a cent). **Claude model** is `claude-haiku-5-5` unless you
+  change it.
+- **Online service (OpenAI-style)**: any service that speaks OpenAI's Chat
+  Completions API: OpenAI, or a model you run yourself. Give its **address**
+  (`https://…/v1`; plain `http://` only to a computer on your network), a
+  **key** and a **model**. For handwriting the model must read pictures.
+
+With both set up, the one ticked is used. **Try it** asks the service for
+one word, to check the key, the model and the address. **Used for** lists
+what uses the key now. **Remove the keys** takes both off the Kindle.
+
+A key by itself sends nothing. Each use is switched on where it lives
+(handwriting: Settings → Notes → Handwriting to text → With AI), and then
+only what it needs is sent: the writing being read, as a black-and-white
+picture. Wi‑Fi turns on for it.
+
+The setup page never shows a saved key back: it says the key is set, and a
+key field left empty keeps it. Keys are kept with GZreader's other sign-ins,
+off the Kindle's USB drive, and never written to the log. Kindles without
+Wi‑Fi (Kindle 2, DX) have no AI row.
+
 ## Copy connections from another GZreader
 
 Set one GZreader up and copy its connections to the others over the Wi‑Fi,

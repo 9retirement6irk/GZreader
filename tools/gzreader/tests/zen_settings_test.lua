@@ -174,5 +174,23 @@ do
     view.no_wifi = false
 end
 
+-- Accounts and services: AI (the AI connection), after Notes; not without Wi-Fi
+do
+    local function accounts()
+        local okc, r = pcall(require("modules/settings/zen_settings").build, plugin)
+        for _i, it in ipairs(okc and r.sub_item_table or {}) do
+            if rawget(it, "_zen_settings_root") == "accounts" then return texts(it.sub_item_table) end
+        end
+        return ""
+    end
+    view.no_wifi = false
+    local con = accounts()
+    check(con:find("|Notes|AI|Calendar|", 1, true) ~= nil, "Accounts and services: AI, after Notes " .. con)
+    view.no_wifi = true
+    con = accounts()
+    check(con ~= "" and not con:find("|AI|", 1, true), "Accounts and services: no AI on a Kindle without Wi-Fi " .. con)
+    view.no_wifi = false
+end
+
 print(ok_count .. " passed, " .. fail .. " failed")
 os.exit(fail == 0 and 0 or 1)

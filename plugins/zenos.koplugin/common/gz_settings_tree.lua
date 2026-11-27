@@ -399,4 +399,26 @@ function M.build(p)
     return root
 end
 
+-- GZreader: the AI connection's row in Accounts and services, after Notes (one
+-- key for handwriting to text, the daily paper's AI edition and what comes
+-- next: the owner, 2026-11-24). Not on the Kindles without Wi-Fi. Added here,
+-- not in the list above, so that list's own lines stay as they are.
+local accountsBeforeAI = M.accountsItems
+function M.accountsItems(opts)
+    local items = accountsBeforeAI(opts)
+    if not opts.wifi then return items end
+    local _ = gettext()
+    local row = icon({ text = _("AI"), mandatory_func = function()
+        local ok, AI = pcall(require, "gzreader_ai")
+        local g = opts.gzreader and opts.gzreader()
+        return ok and g and AI.name(AI.provider(g)) or ""
+    end, sub_item_table_func = M.gzPage(opts.gzreader, "aiSettingsItems") }, "connect")
+    local at = #items + 1
+    for i, it in ipairs(items) do
+        if it.text == _("Notes") then at = i + 1 end
+    end
+    table.insert(items, at, row)
+    return items
+end
+
 return M

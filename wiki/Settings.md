@@ -26,6 +26,14 @@ mode: the night mode schedule, Reader themes (how books look in dark and light
 mode), the night accent colour, and whether the Home background and custom
 icons are inverted.
 
+## AI
+
+Accounts and services has an **AI** row, after Notes: one key of your own for everything
+that asks an AI service something (handwriting to text, and what comes
+next). It's described under
+[the AI connection](Setup-Page-and-Connections#ai). Kindles without Wi‑Fi
+don't have the row.
+
 ## Each service's page
 
 Every page in Accounts and services has the same order: the account (who's
