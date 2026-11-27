@@ -139,10 +139,6 @@ sec "the daily paper (feeds read, an edition a day, Home's widget and Settings)"
 (cd "$T" && luajit daily_test.lua "$REPO" "$T/lib" "$WORK/daily" "$KOBASE") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
-sec "copy from another GZreader: settings, game data, downloads"
-(cd "$T" && luajit copymore_test.lua "$REPO/plugins/gzreader.koplugin" "$T/lib") 2>&1 | grep -E "FAIL|passed"
-[ "${PIPESTATUS[0]}" -eq 0 ] || fail
-
 sec "screen rotation (Auto-rotate tile, Home keeps the rotation, notes turn with the screen)"
 (cd "$T" && luajit rotation_test.lua "$REPO/plugins/gzreader.koplugin") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || fail
@@ -185,6 +181,10 @@ sec "Settings as GZreader trims it (Advanced, About, KOReader, tabs)"
 
 sec "Settings kept simple (each thing in one place, few taps)"
 (cd "$T" && luajit gz_settings_tidy_test.lua "$REPO/plugins/zenos.koplugin") 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
+
+sec "copy from another GZreader: settings, game data, downloads"
+(cd "$T" && luajit copymore_test.lua "$REPO/plugins/gzreader.koplugin" "$T/lib") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
 sec "Reset GZreader (settings, downloads, accounts; the setup guide)"
