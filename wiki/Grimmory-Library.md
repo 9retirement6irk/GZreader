@@ -243,8 +243,25 @@ Catalog tab → Books → **Shelves** lists your shelves and smart (magic) shelv
 Settings → Accounts and services → Books → **Auto-download shelf** picks one: books on it that
 aren't on the Kindle download in the background through the download queue
 when Wi-Fi connects (at most every 30 minutes) and with "Download new books
-from the shelf now". Books taken off the shelf stay on the Kindle. (Idea from
-krisboho/connecto-library's Shelf Sync.)
+from the shelf now". Books taken off the shelf stay on the Kindle, unless
+Mirror the shelf is on. (Idea from krisboho/connecto-library's Shelf Sync;
+mirroring and keeping books up to date as in komadorirobin's Library Sync.)
+
+In the same menu, both off until you tick them:
+
+- **Mirror the shelf**: a book the shelf brought (or that was on the Kindle
+  while it was on the shelf) and that you then take off the shelf moves into
+  a **Taken off the shelf** folder in the books folder, with its reading
+  position and history; put it back on the shelf and it moves back (no
+  download). Nothing is deleted: empty that folder yourself when you like.
+  Books you downloaded yourself and never put on the shelf are never moved,
+  nor the book that's open, and nothing moves when the shelf couldn't be
+  read whole.
+- **Keep books up to date**: when a shelf book's title or authors change on
+  the server, the Kindle shows the new ones (as Book information's edit
+  would; a title you changed yourself is left alone). When its file changes
+  there (another file, or a different size: for example its metadata written
+  into it), it's downloaded again over the old one, keeping your place.
 
 ## Putting a book on a shelf
 

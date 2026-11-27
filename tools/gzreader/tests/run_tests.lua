@@ -5445,6 +5445,92 @@ do
     captured.info = nil
     SS.run(plugin) -- automatic, too soon
     check(captured.info == nil, "automatic runs at most every 30 minutes")
+    -- mirror the shelf: a book taken off it moved aside, then back
+    local lfs = require("libs/libkoreader-lfs")
+    local real_list = plugin.api.listBooks
+    local function listWith(change)
+        plugin.api.listBooks = function(api, p)
+            local d, e = real_list(api, p)
+            if d and type(d.content) == "table" then
+                local keep = {}
+                for _i, b in ipairs(d.content) do
+                    local nb = change(b)
+                    if nb then keep[#keep + 1] = nb end
+                end
+                d.content = keep
+            end
+            return d, e
+        end
+    end
+    local function runNow()
+        captured.info = nil
+        SS.run(plugin, true)
+        runLoop(function() return SS.running == nil end, 30)
+    end
+    local twelve = plugin:localPathFor(12)
+    plugin.store.auto_shelf_mirror = true
+    listWith(function(b) if tostring(b.id) ~= "12" then return b end end)
+    runNow()
+    local moved = plugin:localPathFor(12)
+    check(moved and moved == SS.trashDir(plugin) .. "/" .. twelve:match("[^/]+$") and lfs.attributes(twelve, "mode") == nil
+        and plugin:localPathFor(10) and not plugin:localPathFor(10):find(SS.TRASH, 1, true)
+        and captured.info and captured.info:find("moved to the “Taken off the shelf” folder", 1, true),
+        "Mirror the shelf: a book taken off it moved to “Taken off the shelf”, the others left (" .. tostring(captured.info) .. ")")
+    plugin.api.listBooks = real_list
+    runNow()
+    check(plugin:localPathFor(12) == twelve and captured.info and captured.info:find("moved back", 1, true),
+        "Mirror the shelf: put back on it, moved back (not downloaded again)")
+    -- a book downloaded by hand, never on the shelf: never moved
+    plugin.store.downloads["99"] = { path = plugin:downloadDir() .. "/byhand.epub", title = "By hand" }
+    local f = io.open(plugin.store.downloads["99"].path, "w"); f:write("x"); f:close()
+    runNow()
+    check(plugin:localPathFor(99) == plugin:downloadDir() .. "/byhand.epub", "Mirror the shelf: a book that was never on it is left where it is")
+    os.remove(plugin.store.downloads["99"].path); plugin.store.downloads["99"] = nil
+    -- the whole shelf not read (cut short): nothing moved
+    local saved_max = SS.MAX_PAGES
+    SS.MAX_PAGES, SS.PAGE = 1, 1
+    listWith(function(b) if tostring(b.id) ~= "12" then return b end end)
+    runNow()
+    check(plugin:localPathFor(12) == twelve, "Mirror the shelf: a shelf read only in part moves nothing")
+    SS.MAX_PAGES, SS.PAGE = saved_max, 50
+    plugin.api.listBooks = real_list
+    plugin.store.auto_shelf_mirror = nil
+    -- keep books up to date: a title changed on the server, a file changed there
+    local Dl = require("gzreader_download")
+    local real_start = Dl.start
+    local redownloaded = {}
+    Dl.start = function(_p, book, dest, cb) redownloaded[#redownloaded + 1] = { id = tostring(book.id), dest = dest }; cb(true) end
+    plugin.store.auto_shelf_refresh = true
+    runNow() -- (first: what each file is now)
+    local first = #redownloaded
+    listWith(function(b)
+        local c = {}
+        for k, v in pairs(b) do c[k] = v end
+        if tostring(b.id) == "10" then c.title = "A New Title" end
+        if tostring(b.id) == "11" then c.fileSizeKb = (tonumber(b.fileSizeKb) or 0) + 7 end
+        return c
+    end)
+    runNow()
+    local DocSettings = require("docsettings")
+    local p10 = plugin:localPathFor(10)
+    local cm = DocSettings.openSettingsFile(DocSettings:findCustomMetadataFile(p10))
+    local props = cm and cm:readSetting("custom_props") or {}
+    check(first == 0 and props.title == "A New Title" and plugin.store.downloads["10"].title == "A New Title",
+        "Keep books up to date: a title changed on the server, the book's title here too")
+    check(#redownloaded == 1 and redownloaded[1].id == "11" and redownloaded[1].dest == plugin:localPathFor(11),
+        "Keep books up to date: a file changed on the server downloaded again over the old one")
+    runNow()
+    check(#redownloaded == 1, "…and not again once it's the same")
+    -- a title you changed yourself: left alone
+    cm:saveSetting("custom_props", { title = "My own name" }); cm:flushCustomMetadata(p10)
+    listWith(function(b) local c = {}; for k, v in pairs(b) do c[k] = v end
+        if tostring(b.id) == "10" then c.title = "Yet Another" end; return c end)
+    runNow()
+    cm = DocSettings.openSettingsFile(DocSettings:findCustomMetadataFile(p10))
+    check((cm:readSetting("custom_props") or {}).title == "My own name", "Keep books up to date: a title you set yourself is left alone")
+    plugin.api.listBooks = real_list
+    Dl.start = real_start
+    plugin.store.auto_shelf_refresh = nil
     SS.set(plugin, nil)
 end
 
