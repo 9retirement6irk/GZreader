@@ -17412,7 +17412,7 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
         plugin.store.shelves_cache, plugin.store.pending.shelves = nil, nil
         NM.isConnected = was_conn
     end
-    -- book requests: asked for from the Catalog's BookOrbit card, with the API key
+    -- book requests: the Catalog's Requests page, with the API key
     do
         local Rq = require("gzreader_bo_requests")
         local Browser = require("gzreader_browser")
@@ -17433,7 +17433,13 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
             return table.concat(t, "|")
         end
         local card = texts(Browser.grimmoryItems(fake))
-        check(card:find("|Request a book|My book requests|About BookOrbit", 1, true) ~= nil, "requests: the BookOrbit card has Request a book and My book requests " .. card)
+        check(not card:find("Request a book", 1, true) and not card:find("Reading stats", 1, true),
+            "requests: not on the server's card any more (their own page) " .. card)
+        local Catalog = require("gzreader_catalog")
+        check(Browser.hasRequests(fake) and table.concat(Catalog.sections(false, false, true), ",") == "books,requests"
+            and table.concat(Catalog.sections(true, true, true), ",") == "books,magazines,audiobooks,music,requests"
+            and Catalog.title("requests") == "Requests",
+            "requests: signed in to BookOrbit, the Catalog has a Requests page, last")
         check(Rq.can(plugin) == true and plugin.api:canRequestBooks() == true, "requests: possible with the API key")
         captured.info = nil
         local sent
@@ -17452,6 +17458,22 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
         local list = plugin.api:listRequests()
         check(type(list) == "table" and #list == 2 and list[1].title == "Low Tide" and list[1].kind == "audiobook" and list[1].status == "searching"
             and list[2].title == "The Salt Road" and list[2].authors[1] == "Ines Ward", "requests: yours listed, newest first")
+        do -- the Requests page: Request a book, then the list once it's here
+            local reopened = 0
+            local page = { plugin = plugin, api = plugin.api, section = "requests", menu = { item_table_stack = {} },
+                openSection = function(_s, id) if id == "requests" then reopened = reopened + 1 end end }
+            local first = texts(Browser.requestItems(page))
+            -- (the list on its way, unless the fetch came back at once)
+            check(first == "Request a book…|Fetching your requests…" or reopened == 1, "the Requests page: Request a book, the list on its way " .. first)
+            runLoop(function() return reopened > 0 end, 20)
+            local now = texts(Browser.requestItems(page))
+            check(reopened == 1 and now == "Request a book…|Low Tide = Searching|The Salt Road = Waiting for approval",
+                "…drawn again with your requests, each with its status " .. now)
+            check(Browser.requestItems(page) and reopened == 1, "…not fetched again within a minute")
+            local rows = {}
+            for _i, it in ipairs(plugin:menuItems()) do rows[it.text or (it.text_func and it.text_func()) or "?"] = it end
+            check(rows["Request a book"] == nil, "Settings → Books: no Request a book (the Requests page has it)")
+        end
         Rq.open(fake)
         check(pushed and pushed[1] == "Book requests"
             and texts(pushed[2]) == "Request a book…|Low Tide = Searching|The Salt Road = Waiting for approval", "requests: the list, each with its status " .. texts(pushed and pushed[2] or {}))
@@ -17682,11 +17704,11 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
             check(Wg.BY_SERVER.grimmory[_i] == id and Wg.BY_SERVER.bookorbit[_i] == id, "the widget's default " .. id .. " is one both servers have")
         end
         rawset(_G, "__GZ_BOOK_SERVER", was_server); rawset(_G, "__GZ_GRIMMORY_STATS", was_stats); rawset(_G, "__GZ_SERVER_STATS_PAGE", was_page)
-        -- the Catalog's card has the page too
+        -- (the page opens from Home's widget: the server's card, now only shown signed out, hasn't it)
         local Browser = require("gzreader_browser")
         local rows = {}
         for _i, it in ipairs(Browser.grimmoryItems({ plugin = plugin, api = plugin.api, push = function() end })) do rows[#rows + 1] = it.text end
-        check(table.concat(rows, "|"):find("|Reading stats|Request a book|", 1, true) ~= nil, "the BookOrbit card has Reading stats " .. table.concat(rows, "|"))
+        check(not table.concat(rows, "|"):find("Reading stats", 1, true), "the server's card has no Reading stats row " .. table.concat(rows, "|"))
         plugin.store.grimmory_stats = nil
     end
     -- with BookOrbit, nothing of Grimmory's runs or is loaded
@@ -17915,8 +17937,8 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
         local rows = {}
         for _i, it in ipairs(plugin:menuItems()) do rows[it.text or (it.text_func and it.text_func()) or "?"] = it end
         for _i, it in ipairs(plugin:accountItems()) do rows[it.text or (it.text_func and it.text_func()) or "?"] = it end
-        check(rows["Request a book"] and rows["About BookOrbit"] and not rows["Reading stats"],
-            "Settings → Books (BookOrbit): Request a book, and About BookOrbit on the account's page; no Reading stats (Home's widget opens it)")
+        check(rows["About BookOrbit"] and not rows["Reading stats"] and not rows["Request a book"],
+            "Settings → Books (BookOrbit): About BookOrbit on the account's page; no Reading stats (Home's widget), no Request a book (the Catalog's Requests page)")
         local label, body = require("gzreader_browser").aboutServer(plugin)
         check(label == "About BookOrbit" and body:find("AGPL", 1, true) and body:find("isn't part of it or endorsed by it", 1, true),
             "About BookOrbit: still says what BookOrbit is and that GZreader isn't part of it")

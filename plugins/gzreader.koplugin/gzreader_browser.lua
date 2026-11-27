@@ -216,6 +216,7 @@ function Browser:rootItems()
     if section == "audiobooks" then items = Browser.audiobookItems(self)
     elseif section == "music" then items = Browser.musicItems(self)
     elseif section == "magazines" then items = Browser.magazineItems(self)
+    elseif section == "requests" then items = Browser.requestItems(self)
     else items = Browser.bookItems(self) end
     items.gz_catalog = section
     return items
@@ -224,7 +225,8 @@ end
 --- The pages this Catalog turns through (one when opened on a page alone).
 function Browser:sections()
     if self.only then return { self.only } end
-    return require("gzreader_catalog").sections(nil, require("gzreader_magazines").get(self.plugin) ~= nil)
+    return require("gzreader_catalog").sections(nil, require("gzreader_magazines").get(self.plugin) ~= nil,
+        Browser.hasRequests(self))
 end
 
 --- Turn to the page `dir` (+1, -1) from this one: false at an end.
@@ -339,16 +341,6 @@ function Browser.grimmoryItems(self)
         elseif type(plugin.backend) == "function" then
             add(_("Connect to BookOrbit by typing"), "keyboard", function() plugin:keyboardLogin(nil, "bookorbit") end)
         end
-    end
-    if Browser.signedIn(self) then
-        -- (every device's reading, as the server counts it: gzreader_statspage.lua)
-        add(_("Reading stats"), "details", function() require("gzreader_statspage").show(plugin) end)
-    end
-    if orbit and Browser.signedIn(self) and not usb and type(self.push) == "function" then
-        -- (asking BookOrbit for a book it doesn't have: gzreader_bo_requests.lua)
-        local Requests = require("gzreader_bo_requests")
-        add(_("Request a book"), "add", function() Requests.ask(plugin) end)
-        add(_("My book requests"), "details", function() Requests.open(self) end)
     end
     items[#items + 1] = Rows.about(Browser.aboutServer(plugin))
     return Rows.mark(items)
@@ -480,6 +472,52 @@ end
 --- The Music page: Plex (gzreader_musictab.lua's lists, here in the tab).
 function Browser:musicItems()
     return Browser.musicTab(self):catalogItems(function() self:openSection("music") end)
+end
+
+--- The Catalog has a Requests page: signed in to BookOrbit, over Wi-Fi.
+function Browser.hasRequests(self)
+    local p = type(self) == "table" and self.plugin
+    return type(p) == "table" and type(p.backend) == "function" and p:backend() == "bookorbit"
+        and Browser.signedIn(self) and not require("gzreader_net").usb
+end
+
+--- The Requests page (BookOrbit): Request a book, then what you asked for,
+--- newest first (gzreader_bo_requests.lua). The list is BookOrbit's: fetched
+--- when the page opens (again after a minute), the page drawn again when it's here.
+function Browser:requestItems()
+    local Requests = require("gzreader_bo_requests")
+    local Rows = require("gzreader_rows")
+    local plugin = self.plugin
+    if not Requests.can(plugin) then
+        return Rows.mark({ { text = _("Requesting books needs BookOrbit's API key, with “Request books” ticked (Settings → Accounts and services → Books → Connected to BookOrbit as … → BookOrbit API key)."),
+            select_enabled = false } })
+    end
+    local st = self._requests or {}
+    self._requests = st
+    local function reopen()
+        st.at = nil
+        if self.section == "requests" and self.menu and #(self.menu.item_table_stack or {}) == 0 then self:openSection("requests") end
+    end
+    local now = os.time()
+    if not st.loading and (not st.at or now - st.at > 60) then
+        st.loading = true
+        local api = plugin.api
+        require("gzreader_net").run(function()
+            require("gzreader_async").run(api, function() return api:listRequests() end, function(list, err)
+                st.loading, st.at = false, os.time()
+                if type(list) == "table" then st.list, st.err = list, nil else st.err = err end
+                -- (still on the page: drawn again with them)
+                if not self.closed and self.section == "requests" and self.menu and #(self.menu.item_table_stack or {}) == 0 then
+                    self:openSection("requests")
+                end
+            end, "book requests")
+        end, { quiet = true, reason = "book requests" })
+    end
+    local items = Requests.rows(plugin, st.list, reopen)
+    if not st.list then
+        items[#items + 1] = { text = st.err and plugin:describeError(st.err) or _("Fetching your requests…"), select_enabled = false }
+    end
+    return Rows.mark(items)
 end
 
 --- Grimmory's audiobooks (M4B / MP3), to download and listen to.

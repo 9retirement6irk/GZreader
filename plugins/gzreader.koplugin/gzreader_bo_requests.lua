@@ -4,7 +4,7 @@ have, and see what became of what you asked for.
 
 BookOrbit keeps requests on its main API (POST / GET /api/v1/book-requests,
 POST :id/cancel), so they need its API key, with the "Request books"
-permission. The rows are in the Catalog's BookOrbit card (gzreader_browser.lua).
+permission. The rows are the Catalog's Requests page (gzreader_browser.lua's requestItems).
 Nothing is kept on the Kindle: the list is BookOrbit's each time.
 ]]
 
@@ -126,12 +126,14 @@ function Requests.ask(plugin, on_done, title)
 end
 
 --- The rows of "My requests": a way to ask, then what you asked for, newest first.
+--- (`list` nil: not fetched yet.)
 function Requests.rows(plugin, list, reopen)
     local UIManager = require("ui/uimanager")
-    local items = { { text = _("Request a book…"), gz_action = "request", callback = function() Requests.ask(plugin, reopen) end } }
-    for _i, r in ipairs(list) do
+    local items = { { text = _("Request a book…"), gz_action = "request", gz_icon = "add", callback = function() Requests.ask(plugin, reopen) end } }
+    for _i, r in ipairs(list or {}) do
         items[#items + 1] = {
             text = r.title or "?", mandatory = Requests.statusText(r.status), gz_request = r.id, keep_menu_open = true,
+            gz_icon = "details",
             callback = function()
                 if not Requests.cancellable(r.status) then return show(Requests.detail(r)) end
                 UIManager:show(require("ui/widget/confirmbox"):new{
@@ -149,7 +151,7 @@ function Requests.rows(plugin, list, reopen)
             end,
         }
     end
-    if #list == 0 then
+    if type(list) == "table" and #list == 0 then
         items[#items + 1] = { text = _("You haven't asked for anything yet."), select_enabled = false }
     end
     return items

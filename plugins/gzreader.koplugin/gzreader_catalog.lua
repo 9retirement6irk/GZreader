@@ -5,6 +5,8 @@ pages:
   Books       Grimmory's books (the bookshop: gzreader_bookshop.lua)
   Magazines   the magazine library's books, when one is chosen
               (gzreader_magazines.lua; the stand: gzreader_magstand.lua)
+  Requests    BookOrbit: asking for a book, and what became of what you
+              asked for (gzreader_bo_requests.lua)
   Audiobooks  Grimmory's audiobooks
   Music       Plex (gzreader_musictab.lua's lists)
 
@@ -24,25 +26,28 @@ as before.
 local _ = require("gettext")
 
 local Catalog = {
-    ORDER = { "books", "magazines", "audiobooks", "music" },
+    ORDER = { "books", "magazines", "audiobooks", "music", "requests" },
 }
 
 --- The pages this Kindle has, in order (`audio`: a speaker, headphone
 --- jack or Bluetooth; asked of gzreader_touch when nil; `magazines`: a
---- magazine library is chosen).
-function Catalog.sections(audio, magazines)
+--- magazine library is chosen; `requests`: signed in to BookOrbit).
+function Catalog.sections(audio, magazines, requests)
     if audio == nil then
         local ok, on = pcall(function() return require("gzreader_touch").player() end)
         audio = ok and on == true
     end
     local out = {}
     for _i, id in ipairs(Catalog.ORDER) do
-        if id == "books" or (id == "magazines" and magazines) or (audio and id ~= "magazines") then out[#out + 1] = id end
+        if id == "books" or (id == "magazines" and magazines) or (id == "requests" and requests)
+                or (audio and (id == "audiobooks" or id == "music")) then
+            out[#out + 1] = id
+        end
     end
     return out
 end
 
-local TITLES = { books = _("Books"), magazines = _("Magazines"), audiobooks = _("Audiobooks"), music = _("Music") }
+local TITLES = { books = _("Books"), magazines = _("Magazines"), audiobooks = _("Audiobooks"), music = _("Music"), requests = _("Requests") }
 
 --- A page's title (the title bar's label).
 function Catalog.title(id) return TITLES[id] or TITLES.books end
