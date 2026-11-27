@@ -726,7 +726,7 @@ check(row("Daily paper").checked_func() == false and row("Feeds").enabled_func()
 check(row("Daily paper").help_text:find("internet address", 1, true), "the switch says what a feed's site learns")
 shown = {}
 Paper.show(plugin)
-check(shown[#shown] and shown[#shown].kind == "info" and shown[#shown].text:find("Settings → Accounts and services → Daily paper", 1, true), "opening the paper while it's off says where to turn it on")
+check(shown[#shown] and shown[#shown].kind == "info" and shown[#shown].text:find("Settings → Home and tabs → Daily paper", 1, true), "opening the paper while it's off says where to turn it on")
 saves = 0
 check(Paper.onShelf(plugin) == false and Paper.shelfItem(plugin, {}, 300, 150) == nil, "off: no newspaper on the shelf")
 row("Daily paper").callback()

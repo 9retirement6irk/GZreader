@@ -118,5 +118,66 @@ print("== fewer taps")
     check(texts(one[1].sub_item_table) == "Font", "…without the size row (small screens): Font as it was")
 end)()
 
+print("== rows where they belong")
+;(function()
+    local built = 0
+    local function page()
+        return {
+            { text = "General", _zen_settings_root = "general", sub_item_table = {
+                { text = "About" }, { text = "Language", separator = true },
+                { text = "Transfer", sub_item_table = { { text = "Copy to or from another GZreader" }, { text = "Sync through a computer" } } },
+                { text = "Setup Guide" }, { text = "Performance", sub_item_table = { { text = "Pre-size covers" } } } } },
+            { text = "Display and light", _zen_settings_root = "display", sub_item_table = {
+                { text = "Screen", sub_item_table_func = function()
+                    built = built + 1
+                    return { { text = "Screen DPI" }, { text = "E-ink settings" }, { text = "Notifications", sub_item_table = { { text = "From gestures and profiles" } } } }
+                end } } },
+            { text = "Home and tabs", _zen_settings_root = "home", sub_item_table = { { text = "Home" }, { text = "Status bar" }, { text = "Downloads tab" } } },
+            { text = "Reader", _zen_settings_root = "reader", sub_item_table = {
+                { text = "Appearance" }, { text = "Highlight / Lookup", sub_item_table = { { text = "Zen quick lookup" }, { text = "Show Wikipedia" } } } } },
+            { text = "Accounts and services", _zen_settings_root = "accounts", sub_item_table = {
+                { text = "Books" },
+                { text = "Notes", sub_item_table_func = function()
+                    return { { text = "Layout" }, { text_func = function() return "Pen's shortcut button: Eraser" end, sub_item_table = {} },
+                        { text = "Pen's eraser removes highlights" },
+                        { text_func = function() return "Handwriting to text: On the Kindle" end, sub_item_table = { { text = "Handwriting on the keyboard (✍ key)" } } },
+                        { text = "Storage used: 0 bytes" } }
+                end },
+                { text = "Photos" },
+                { text = "Daily paper", mandatory = "Feeds", separator = true } } },
+            { text = "Privacy and diagnostics", _zen_settings_root = "privacy", sub_item_table = {
+                { text = "Diagnostic logging" },
+                { text = "Advanced", sub_item_table = { { text = "KOReader settings", separator = true }, { text = "Reset GZreader" } } } } },
+        }
+    end
+    local p = Tidy.apply(page(), { pen = true })
+    local general = sec(p, "general")
+    check(texts(general) == "About | Language | Pen | Transfer or reset | Setup Guide", "General: Pen before Transfer or reset; no Performance " .. texts(general))
+    local pen = Tidy.find(general, "Pen")
+    check(texts(pen.sub_item_table_func()) == "Pen's shortcut button: Eraser | Handwriting to text: On the Kindle",
+        "General → Pen (a Kindle with a pen): the shortcut button and Handwriting to text, out of Notes")
+    local notes = Tidy.find(sec(p, "accounts"), "Notes")
+    check(texts(notes.sub_item_table_func()) == "Layout | Storage used: 0 bytes", "…Notes keeps its own rows")
+    local hl = Tidy.find(sec(p, "reader"), "Highlight / Lookup")
+    check(texts(hl.sub_item_table) == "Zen quick lookup | Show Wikipedia | Pen's eraser removes highlights",
+        "Reader → Highlight / Lookup: Pen's eraser removes highlights (it acts in books)")
+    local transfer = Tidy.find(general, "Transfer or reset")
+    check(texts(transfer.sub_item_table) == "Copy to or from another GZreader | Sync through a computer | Reset GZreader"
+        and transfer.sub_item_table[2].separator, "General → Transfer or reset: Reset GZreader last, after a line")
+    local adv = Tidy.find(sec(p, "privacy"), "Advanced")
+    check(texts(adv.sub_item_table) == "Performance | Notifications | KOReader settings" and adv.sub_item_table[2].separator
+        and not adv.sub_item_table[3].separator, "Privacy and diagnostics → Advanced: Performance, Notifications, KOReader settings")
+    local screen = Tidy.find(sec(p, "display"), "Screen")
+    check(texts(screen.sub_item_table_func()) == "Screen DPI | E-ink settings", "Display and light → Screen: no Notifications")
+    check(texts(Tidy.rowsOf(adv.sub_item_table[2])) == "From gestures and profiles", "…its switches are Advanced → Notifications")
+    check(texts(sec(p, "home")) == "Home | Daily paper | Status bar | Downloads tab" and texts(sec(p, "accounts")) == "Books | Notes | Photos"
+        and not sec(p, "accounts")[3].separator, "Daily paper: Home and tabs, after Home (no account; read on Home)")
+    -- a Kindle without a pen: Handwriting to text stays in Notes, no Pen row
+    local q = Tidy.apply(page(), { pen = false })
+    check(not Tidy.find(sec(q, "general"), "Pen") and texts(Tidy.find(sec(q, "accounts"), "Notes").sub_item_table_func())
+        == "Layout | Pen's shortcut button: Eraser | Handwriting to text: On the Kindle | Storage used: 0 bytes",
+        "a Kindle without a pen: no Pen row; Handwriting to text stays in Notes")
+end)()
+
 print(string.format("%d passed, %d failed", pass, fail))
 os.exit(fail == 0 and 0 or 1)

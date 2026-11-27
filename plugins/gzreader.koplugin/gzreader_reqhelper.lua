@@ -1,5 +1,5 @@
 --[[--
-A long-lived request helper (experimental, off by default: Settings → General → Performance → Keep connections open, or a file named
+A long-lived request helper (experimental, off by default: Settings → Privacy and diagnostics → Advanced → Performance → Keep connections open, or a file named
 gz-request-helper in the koreader folder).
 
 Background requests run in forked processes (gzreader_async.lua); each keeps
@@ -140,7 +140,7 @@ function H.dir()
     return d
 end
 
---- Settings → General → Performance → Keep connections open (off by default).
+--- Settings → Privacy and diagnostics → Advanced → Performance → Keep connections open (off by default).
 function H.setting()
     local ok, on = pcall(function() return G_reader_settings:isTrue("gzreader_request_helper") end)
     return ok and on == true

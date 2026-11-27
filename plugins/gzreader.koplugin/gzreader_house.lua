@@ -147,7 +147,7 @@ function House:rootItems()
     local Rows = require("gzreader_rows")
     if House.noWifi() then
         return Rows.mark({ Rows.about(_("No Wi-Fi here"),
-            _("Home Assistant is reached over Wi-Fi, and this Kindle syncs through a computer (it has no Wi-Fi, or Sync through a computer is chosen in Settings → General → Transfer).")) })
+            _("Home Assistant is reached over Wi-Fi, and this Kindle syncs through a computer (it has no Wi-Fi, or Sync through a computer is chosen in Settings → General → Transfer or reset).")) })
     end
     if not House.client(plugin):isConnected() then
         return House.connectItems(plugin, function() self:reload() end)

@@ -1,12 +1,12 @@
 --[[--
 Copy connections from one GZreader device to another, over the Wi-Fi.
 
-On the device that has them: Send connections (Settings → General → Transfer, its
+On the device that has them: Send connections (Settings → General → Transfer or reset, its
 setup guide). It shows its name and a 6-digit PIN, answers mDNS for
 _gzreader._tcp (gzreader_mdns.lua) and runs a small copy server.
 
 On the device being set up: Copy from another GZreader (its setup guide,
-Settings → General → Transfer, the Notes or Calendar tab while not connected). It
+Settings → General → Transfer or reset, the Notes or Calendar tab while not connected). It
 lists the GZreader devices sending on the Wi-Fi (or takes an address typed
 in), asks for the PIN, shows what the other one has, and copies what's ticked:
 
@@ -252,7 +252,7 @@ local function sendScreen(opts)
             TextBoxWidget:new{ text = _("Send connections to another GZreader"), face = Font:getFace("tfont", 24),
                 width = tw, alignment = "center" },
             gap,
-            TextBoxWidget:new{ text = _("On the other GZreader, choose Copy from another GZreader (in its setup guide, Settings → General → Transfer, or the Notes or Calendar tab), pick this one and enter the PIN:"),
+            TextBoxWidget:new{ text = _("On the other GZreader, choose Copy from another GZreader (in its setup guide, Settings → General → Transfer or reset, or the Notes or Calendar tab), pick this one and enter the PIN:"),
                 face = Font:getFace("cfont", 18), width = tw, alignment = "center" },
             gap,
             TextWidget:new{ text = opts.name, face = Font:getFace("cfont", 20), bold = true, max_width = tw },
@@ -733,7 +733,7 @@ function Copy.pick(plugin, opts)
         if searching then
             list[#list + 1] = { text = _("Looking on this Wi-Fi…"), gz_icon = "wifi_on", select_enabled = false }
         elseif #list == 0 then
-            list[#list + 1] = Rows.about(_("None found"), _("None found. On the other GZreader choose Send connections (Settings → General → Transfer, or its setup guide), then look again."))
+            list[#list + 1] = Rows.about(_("None found"), _("None found. On the other GZreader choose Send connections (Settings → General → Transfer or reset, or its setup guide), then look again."))
         end
         list[#list + 1] = { text = _("Look again"), gz_icon = "refresh", callback = function()
             stop()

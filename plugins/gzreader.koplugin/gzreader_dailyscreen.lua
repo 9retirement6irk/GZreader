@@ -14,7 +14,7 @@ The daily paper on the screen (the edition itself: gzreader_daily.lua).
   behind (swipe, the page keys, or the arrows at the foot). A tap on a story
   (the 5-way: move the frame, press) opens it as text to page through, with
   a QR code of its link for the rest of it on a phone.
-- Settings → Accounts and services → Daily paper: on/off, on the bookshelf, as a row, the feeds.
+- Settings → Home and tabs → Daily paper: on/off, on the bookshelf, as a row, the feeds.
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
@@ -249,7 +249,7 @@ function Paper.homeWidget(plugin, ctx)
     local mast = TextWidget:new{ text = _("The Daily Paper"), face = serifBold(14) }
     local small = serifItalic(8)
     local date = TextWidget:new{ text = Paper.dateText(now), face = small, fgcolor = Blitbuffer.COLOR_DARK_GRAY }
-    local status = TextWidget:new{ text = on and Paper.statusText(plugin, now) or _("off: Settings → Accounts and services → Daily paper"),
+    local status = TextWidget:new{ text = on and Paper.statusText(plugin, now) or _("off: Settings → Home and tabs → Daily paper"),
         face = small, fgcolor = Blitbuffer.COLOR_DARK_GRAY }
     local lead_face, line_face = serifBold(11), serif(9)
     local probe_lead = TextWidget:new{ text = "Ag", face = lead_face }
@@ -1375,7 +1375,7 @@ end
 function Paper.show(plugin)
     local D = Daily()
     if not D.enabled(plugin) then
-        return info(_("The daily paper is off. Turn it on in Settings → Accounts and services → Daily paper."))
+        return info(_("The daily paper is off. Turn it on in Settings → Home and tabs → Daily paper."))
     end
     if Paper.instance and not Paper.instance.closed then return Paper.instance end
     local self = pageClass():new{ plugin = plugin }
@@ -1991,7 +1991,7 @@ function Paper.typeAddFeed(plugin, after)
     d:onShowKeyboard()
 end
 
---- Settings → Accounts and services → Daily paper → Feeds.
+--- Settings → Home and tabs → Daily paper → Feeds.
 function Paper.feedItems(plugin)
     local D = Daily()
     local st = D.store(plugin)
@@ -2069,7 +2069,7 @@ function Paper.setTown(plugin, town, after)
     end, { reason = "the weather's town" })
 end
 
---- Settings → Accounts and services → Daily paper → Weather.
+--- Settings → Home and tabs → Daily paper → Weather.
 function Paper.weatherItems(plugin)
     local W = require("gzreader_weather")
     local function w() return W.store(plugin) end

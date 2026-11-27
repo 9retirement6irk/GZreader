@@ -1,7 +1,7 @@
 --[[--
 Handwriting to text: pen strokes read as words, on the Kindle or online.
 
-Two ways to read (Settings → Notes → Handwriting to text):
+Two ways to read (Settings → Accounts and services → Notes → Handwriting to text (on a Kindle with a pen: Settings → General → Pen)):
 
 - **On the Kindle** (the default; no Wi-Fi, nothing leaves the Kindle): Ink
   Away's reader (gzreader_hwr.lua, its small character model and English

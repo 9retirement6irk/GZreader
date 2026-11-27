@@ -4,7 +4,7 @@ The Kindle 2 and the Kindle DX have no Wi‑Fi. GZreader notices (from the
 model) and syncs through a web page on a computer instead, with the Kindle
 plugged in over USB: <https://9retirement6irk.github.io/GZreader/sync/>
 (Chrome or Edge, on Windows, Mac, Linux or a Chromebook; other browsers can't
-write to a USB drive). Any other Kindle can sync this way too: Settings → General → Transfer → Sync through a computer.
+write to a USB drive). Any other Kindle can sync this way too: Settings → General → Transfer or reset → Sync through a computer.
 
 1. On the Kindle: Menu (the quick panel) → **Sync** → **Connect to computer (USB drive)**. KOReader turns the
    Kindle's USB drive off while it runs, so GZreader steps aside and waits;
@@ -141,7 +141,7 @@ book's cover changes.
 The Catalog tab works from the copy: browse, search, Libraries, Shelves,
 Authors and Series, a book's page with its description. Download puts the
 book in the sync queue (a book's page says "Add to sync queue"; selecting a
-queued book offers to take it off; Settings → General → Transfer → Sync through a
+queued book offers to take it off; Settings → General → Transfer or reset → Sync through a
 computer → Sync queue lists them). The quick panel's **Sync** tile shows the
 steps, what's waiting to be sent and the queue, with **Exit GZreader now**.
 

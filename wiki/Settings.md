@@ -29,6 +29,13 @@ Each thing has one place, and as few taps as it takes. Where rows moved:
 | Notes → Handwriting to text → AI key and service (the whole AI page again) | One row, **AI service**, that opens Accounts and services → AI |
 | Sleep and wallpaper → Sleep → Wallpaper, Wallpaper options, Sleep screen message, Automatic suspend | Sleep and wallpaper → the same rows, one tap less |
 | Display and light → Font, Size of menus and text | Display and light → **Menu text** (the size of everything first, then the font) |
+| Notes → Pen's shortcut button, Handwriting to text (a Kindle with a pen) | General → **Pen** (Kindles without a pen keep Handwriting to text in Notes) |
+| Notes → Pen's eraser removes highlights | Reader → Highlight / Lookup (it acts in books) |
+| General → Transfer | General → **Transfer or reset** |
+| Privacy and diagnostics → Advanced → Reset GZreader | General → Transfer or reset → Reset GZreader (last) |
+| General → Performance | Privacy and diagnostics → Advanced → Performance |
+| Display and light → Screen → Notifications | Privacy and diagnostics → Advanced → Notifications |
+| Accounts and services → Daily paper | Home and tabs → Daily paper (it has no account and is read on Home) |
 
 ## Dark mode in one place
 

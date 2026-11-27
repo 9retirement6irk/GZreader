@@ -2546,9 +2546,9 @@ end
 function DrawScreen.hwHow(plugin)
     local e = require("gzreader_handwriting").engine(plugin)
     if e == "kindle" then
-        return _("Your writing is read on the Kindle: nothing leaves it, and no Wi-Fi is needed. It reads printed writing best: letters apart, English words and digits.\n\nFor joined-up writing, Claude or another online service reads much better: Settings → Notes → Handwriting to text.")
+        return _("Your writing is read on the Kindle: nothing leaves it, and no Wi-Fi is needed. It reads printed writing best: letters apart, English words and digits.\n\nFor joined-up writing, Claude or another online service reads much better: Settings → Accounts and services → Notes → Handwriting to text (on a Kindle with a pen: Settings → General → Pen).")
     end
-    return T(_("Your writing is read %1: only the writing being read is sent, as a black-and-white picture, never the page or your other notes. Wi-Fi turns on for it.\n\nSettings → Notes → Handwriting to text changes this."),
+    return T(_("Your writing is read %1: only the writing being read is sent, as a black-and-white picture, never the page or your other notes. Wi-Fi turns on for it.\n\nSettings → Accounts and services → Notes → Handwriting to text (on a Kindle with a pen: Settings → General → Pen) changes this."),
         DrawScreen.hwEngineName(plugin))
 end
 
