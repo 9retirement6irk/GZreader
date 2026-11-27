@@ -224,6 +224,7 @@ function Panel.catalog()
             { id = "layout", label = _("Layout") },
             { id = "fitpictures", label = _("Fit pictures"), note = _("EPUBs") },
             { id = "readaloud", label = _("Read aloud"), available = Touch.tts },
+            { id = "storyguide", label = _("Story guide"), note = _("people, places, terms and what's happened, made from the book's text by your AI service; with an AI key") },
             { id = "note", label = _("Quick note"), note = _("while Memos is connected") },
             { id = "markup", label = _("Mark up"), note = _("draw on the page, kept in Memos with the book and chapter; touch Kindles, while Memos is connected") },
             { id = "split", label = _("Notes"), note = _("beside the book, on big screens, while Memos is connected"),
@@ -572,6 +573,9 @@ function Panel.bookTiles(plugin, ui)
     if tts and tts:supported() then
         list[#list + 1] = { id = "readaloud", icon = "readaloud", label = _("Read aloud"), on = tts.active == true, run = function() tts:toggle() end }
     end
+    -- (people, places, terms and what's happened so far, from the book's text: gzreader_storyguide.lua)
+    local oks, Story = pcall(require, "gzreader_storyguide")
+    if oks then list[#list + 1] = Story.tile(plugin, ui) end
     list[#list + 1] = quickNoteTile(plugin)
     -- (the page as a drawing's background, the markup kept in Memos: gzreader_bookmarkup.lua)
     local okm, BookMarkup = pcall(require, "gzreader_bookmarkup")
