@@ -9,6 +9,10 @@ a thermostat or a speaker is tapped, drawn as the thing itself.
 - a thermostat: its dial, large, the target in the middle, round − and +
   keys either side, and its modes on a slide switch (the one it's in
   pressed in);
+- choosing music (a Music Assistant player's Music… key): a key for each
+  of its shelves, with what stands on it (a cassette for playlists, a
+  record in its sleeve for albums, a record for artists, a radio), Search…
+  and Back;
 - a speaker or TV: a display window (what plays, who by, the volume), the
   transport keys, the volume as ten lights between − and +, Mute, Shuffle
   and Repeat as keys with a lamp each, Music… and the power key: the ones
@@ -174,6 +178,21 @@ function Panel.spec(kind, e, o)
         P.h = 430
         -- (a player with few buttons: no gaps where the others would be)
         Panel.close(P, { 158, 236, 298, 362 })
+
+    elseif kind == "music" then
+        -- what to play on it: Music Assistant's shelves, a search, or back to its buttons
+        local Music = require("gzreader_housemusic")
+        local art = { playlist = "cassette", album = "sleeve", artist = "disc", radio = "radio" }
+        P.title = T(_("Play on %1"), P.title)
+        P.state = ""
+        for i, k in ipairs(Ha.MUSIC_KINDS) do
+            add({ id = k[1], kind = "key", x = 28 + ((i - 1) % 2) * 186, y = 60 + math.floor((i - 1) / 2) * 136, w = 178, h = 124, label = k[2],
+                fit = Music.art(art[k[1]] or "disc"), open = "list", media_type = k[1] })
+        end
+        local y = 60 + math.ceil(#Ha.MUSIC_KINDS / 2) * 136
+        add({ id = "search", kind = "key", x = 28, y = y, w = 240, h = 52, label = _("Search…"), open = "search" })
+        add({ id = "back", kind = "key", x = 276, y = y, w = 116, h = 52, label = _("Back"), open = "back" })
+        P.h = y + 68
     end
     return P
 end
@@ -402,7 +421,14 @@ function Widget:paintControl(bb, c, r)
             end
             cy = cy + s(7)
         end
-        if c.label then
+        if c.fit then
+            -- a drawing above its word
+            local ah = r.h - s(40)
+            local aw = math.floor(ah * 200 / 160)
+            local img = View().artImage(c.fit, aw, ah)
+            if img then bb:alphablitFrom(img, math.floor(cx - img:getWidth() / 2), y + s(8), 0, 0, img:getWidth(), img:getHeight()) end
+            words(bb, c.label, s(17), true, cx, y + r.h - s(18), r.w - s(10), ink)
+        elseif c.label then
             words(bb, c.label, s(c.big and 30 or 17), c.big or c.on, cx, cy, r.w - s(10), ink)
         elseif c.sym then
             symbol(bb, c.sym, math.floor(cx), math.floor(cy), s(c.sym == "close" and 8 or math.min(c.w, c.h) * 0.2), ink)
@@ -537,6 +563,21 @@ function Widget:press(c)
         tab:musicDialog(self.e)
         return true
     end
+    if c.open == "list" then
+        UIManager:close(self)
+        tab:musicList(self.e, c.media_type, c.label, 0)
+        return true
+    end
+    if c.open == "search" then
+        UIManager:close(self)
+        tab:musicSearch(self.e)
+        return true
+    end
+    if c.open == "back" then
+        UIManager:close(self)
+        tab:mediaDialog(HA().find(tab.house, self.e.id) or self.e)
+        return true
+    end
     -- a level (a volume, a brightness, a target): shown at once, sent when the presses stop
     if HA().LEVELS[c.act[1]] then tab:level(self.e, c.act[1], c.act[2])
     else tab:run(self.e, c.act[1], c.act[2]) end
@@ -579,7 +620,7 @@ function Widget:onMoveRight() return self:step("right") end
 Panel.Widget = Widget
 
 --- Open the panel for device `e` of House tab `tab`: kind "light",
---- "climate" or "media".
+--- "climate", "media" or "music" (what to play on a Music Assistant player).
 function Panel.show(tab, e, kind)
     local w = Widget:new{ tab = tab, e = e, kind = kind }
     tab.panel = w

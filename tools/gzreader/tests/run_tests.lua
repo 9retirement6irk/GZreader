@@ -1223,6 +1223,144 @@ print("House tab in the Bookshelf view: a device's controls as a panel (the dimm
     Shop.bookshelf, Panel.show = was_shelf, was_show
 end)()
 
+print("House tab in the Bookshelf view: choosing music (the shelves' keys) and Music Assistant's lists as shelves")
+;(function()
+    local HA = require("gzreader_homeassistant")
+    local saved_w = {}
+    local widget_mods = { "ui/widget/container/inputcontainer", "ui/widget/container/widgetcontainer", "ui/gesturerange", "ui/font", "ffi/blitbuffer" }
+    for _i, wm in ipairs(widget_mods) do
+        saved_w[wm] = package.loaded[wm]
+        if type(saved_w[wm]) ~= "table" then package.loaded[wm] = setmetatable({ extend = function(_s, o) return o or {} end }, { __index = function() return function() end end }) end
+    end
+    local Music = require("gzreader_housemusic")
+    local Panel = require("gzreader_housepanel")
+    local Shop = require("gzreader_bookshop")
+    for _i, wm in ipairs(widget_mods) do package.loaded[wm] = saved_w[wm] end
+    local one = function(x) return x end
+    local Hs = require("gzreader_house")
+
+    -- the rows say what each thing is
+    local played
+    local list = { { name = "Evening", uri = "library://playlist/1", media_type = "playlist", by = "Home" },
+        { name = "Kind of Example", uri = "library://album/7", media_type = "album", by = "Example Quartet" },
+        { name = "Example Quartet", uri = "library://artist/3", media_type = "artist" },
+        { name = "Blue in Green", uri = "library://track/9", media_type = "track" },
+        { name = "Example FM", uri = "library://radio/1", media_type = "radio" } }
+    local rows = Hs.musicRows({}, {}, list, { play = function(it) played = it end }, function() end)
+    local kinds = {}
+    for i, r in ipairs(rows) do kinds[i] = Music.kindOf(r) end
+    check(table.concat(kinds, ",") == "cassette,sleeve,disc,single,radio,more" and Music.kindOf({ text = "Nothing here.", select_enabled = false }) == "note"
+        and Music.kindOf(nil) == "note" and rows[5].gz_music_kind == "radio" and rows[6].gz_music_more == true,
+        "Music Assistant's lists as shelves: a playlist is a cassette, an album a record in its sleeve, an artist a record, a song a single, a station a radio; More… a card (" .. table.concat(kinds, ",") .. ")")
+    rows[2].callback()
+    check(played == list[2], "…and each still plays when picked")
+    local ok_art = true
+    for _i, k in ipairs({ "radio", "cassette", "sleeve", "disc", "single", "more" }) do
+        local a = Music.art(k)
+        local svg = a and a.svg() or ""
+        if not (a and a.key == "music-v1-" .. k and svg:match("^<%?xml") and svg:find('viewBox="0 0 200 160"', 1, true) and not svg:find("<text", 1, true)) then ok_art = false end
+    end
+    check(ok_art and Music.art("note") == nil and Music.art("disc").svg() ~= Music.art("single").svg(),
+        "the shelves' drawings: one for each kind (none for a message), no words in them")
+
+    -- the shelves: as many things a page as stand on them
+    local sizes, all_ok = { { 600, 574 }, { 1072, 1078 }, { 758, 760 }, { 1860, 2200 }, { 600, 330 } }, true
+    for _i, size in ipairs(sizes) do
+        local G = Music.grid(size[1], size[2], one)
+        local fine = G.per == #G.cells and G.per == G.cols * G.rows and G.per >= 1 and #G.shelves == G.rows
+        for a, c in ipairs(G.cells) do
+            fine = fine and c.x >= 0 and c.x + c.w <= size[1] and c.y >= 0 and c.y + c.h <= size[2]
+            for prev = 1, a - 1 do
+                local o = G.cells[prev]
+                if c.x < o.x + o.w and o.x < c.x + c.w and c.y < o.y + o.h and o.y < c.y + c.h then fine = false end
+            end
+        end
+        if not fine then all_ok = false; print("  (the shelves don't work out at " .. size[1] .. "x" .. size[2] .. ")") end
+    end
+    local K3 = Music.grid(600, 574, one)
+    check(all_ok and K3.cols == 4 and K3.rows == 3 and K3.per == 12 and Music.grid(600, 60, one).per == 0,
+        "the shelves: every place on the page, none over another; twelve things a page on a Kindle 3 (" .. K3.cols .. " x " .. K3.rows .. "); no room: none")
+
+    -- choosing music: a key for each shelf, Search…, Back
+    local sp = HA.entity({ i = "media_player.s", s = "paused", n = "Speaker", sf = 8322623, ap = "music_assistant", ce = "entry" })
+    local P = Panel.spec("music", sp, { label = "Speaker", touch = true })
+    local function ids() local t = {} for _i, c in ipairs(P.controls) do t[#t + 1] = c.id end return table.concat(t, ",") end
+    local function get(id) for _i, c in ipairs(P.controls) do if c.id == id then return c end end end
+    check(ids() == "close,playlist,album,artist,radio,search,back" and P.title == "Play on Speaker" and get("playlist").fit.key == "music-v1-cassette"
+        and get("album").fit.key == "music-v1-sleeve" and get("artist").fit.key == "music-v1-disc" and get("radio").fit.key == "music-v1-radio"
+        and get("radio").label == "Radio" and get("album").x > get("playlist").x and get("artist").y > get("playlist").y and get("search").y > get("radio").y,
+        "choosing music: a key for each of Music Assistant's shelves with what stands on it, Search… and Back (" .. ids() .. ")")
+    local by = Panel.letters(P)
+    check(by.Q == get("playlist") and by.W == get("album") and by.E == get("artist") and by.R == get("radio") and by.T == get("search") and by.Y == get("back"),
+        "choosing music: its keys' letters")
+    local did, closed = {}, 0
+    local tab = { house = { rooms = {} }, musicList = function(_t, e, kind, title, offset) did[#did + 1] = { "list", e, kind, title, offset } end,
+        musicSearch = function(_t, e) did[#did + 1] = { "search", e } end, mediaDialog = function(_t, e) did[#did + 1] = { "buttons", e } end }
+    local UIM = require("ui/uimanager")
+    local was_close = UIM.close
+    UIM.close = function() closed = closed + 1 end
+    local w = { tab = tab, e = sp, P = P }
+    Panel.Widget.press(w, get("radio"))
+    Panel.Widget.press(w, get("search"))
+    Panel.Widget.press(w, get("back"))
+    UIM.close = was_close
+    check(closed == 3 and did[1][1] == "list" and did[1][2] == sp and did[1][3] == "radio" and did[1][4] == "Radio" and did[1][5] == 0
+        and did[2][1] == "search" and did[3][1] == "buttons" and did[3][2] == sp,
+        "choosing music: a shelf's key opens its list from the start, Search… asks what for, Back returns to the player's buttons")
+
+    -- taking a list over: the Menu's own pages and letters, as many a page as the shelves hold
+    local was_shelf = Shop.bookshelf
+    local shelf = true
+    Shop.bookshelf = function() return shelf end
+    local many = {}
+    for i = 1, 30 do many[i] = { text = "Station " .. i, gz_music_uri = "library://radio/" .. i, gz_music_kind = "radio", callback = function() end } end
+    many[31] = { text = "More…", gz_music_more = true, callback = function() end }
+    local drawn = {}
+    local m = { item_table = many, page = 1, is_enable_shortcut = true, item_shortcuts = { "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "A", "S", "D" },
+        item_dimen = { w = 600 }, available_height = 574, layout = {}, item_group = { clear = function() end },
+        page_info = { resetLayout = function() end }, return_button = { resetLayout = function() end }, content_group = { resetLayout = function() end },
+        _recalculateDimen = function(self)
+            self.perpage = self.items_per_page or 10
+            self.page_num = math.ceil(#self.item_table / self.perpage)
+            if self.page > self.page_num then self.page = self.page_num end
+        end,
+        updatePageInfo = function() end, mergeTitleBarIntoLayout = function() end,
+        updateItems = function(self) drawn[#drawn + 1] = "list " .. tostring(self.items_per_page) end }
+    local saved = { Hot = Shop.Hot, new = Music.Page.new }
+    Shop.Hot = { new = function(_s, o) return o end }
+    Music.Page.new = function(_s, o) return o end
+    local Screen = require("device").screen
+    local was_scale = Screen.scaleBySize
+    Screen.scaleBySize = function(_s, px) return px end
+    Music.apply(m)
+    check(m._gz_music and #drawn == 0 and m.items_per_page == 12 and m.perpage == 12 and m.page_num == 3 and #m._gz_music.places == 12
+        and m._gz_music.places[1].kind == "radio" and m._gz_music.places[1].letter == "Q" and m._gz_music.places[12].letter == "S"
+        and #m.layout == 3 and #m.layout[1] == 4 and m.layout[1][1].entry == many[1],
+        "a list as shelves: a page holds what the shelves do (12 on a Kindle 3), so the Menu's pages (3) and letters follow; the 5-way's rows are the shelves")
+    m.page = 3
+    m:updateItems()
+    local last = m._gz_music.places
+    check(#last == 7 and last[1].entry == many[25] and last[7].kind == "more" and last[7].letter == "U", "…the last page: the rest, and More… as a card")
+    shelf = false
+    m:updateItems()
+    check(m._gz_music == nil and drawn[1] == "list nil", "another view: the plain list, with its own rows a page")
+    shelf = true
+    local was_grid = Music.grid
+    Music.grid = function() error("boom") end
+    m:updateItems()
+    Music.grid = was_grid
+    m:updateItems()
+    check(drawn[2] == "list nil" and drawn[3] == "list nil" and m._gz_music_failed == true, "the shelves can't be drawn: the plain list, from then on")
+    -- in the Bookshelf view Choose music opens the keys; elsewhere the window of buttons
+    local was_show, shown = Panel.show, nil
+    Panel.show = function(_t, _e, kind) shown = kind; return "panel" end
+    check(Hs.musicDialog({}, sp) == "panel" and shown == "music", "Choose music in the Bookshelf view: the shelves' keys")
+    Panel.show = was_show
+    Screen.scaleBySize = was_scale
+    Shop.Hot, Music.Page.new = saved.Hot, saved.new
+    Shop.bookshelf = was_shelf
+end)()
+
 print("House tab (Home Assistant): connecting, rooms, switching, Settings, the phone page")
 ;(function()
     local HA = require("gzreader_homeassistant")

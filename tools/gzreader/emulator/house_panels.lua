@@ -2,8 +2,9 @@
 -- with demo/mock_homeassistant.py on 127.0.0.1:18095: the dimmer (a level by
 -- a real tap on a touch model, by the 5-way and a letter on the k3), the
 -- thermostat (+, a mode), a speaker (play, a volume light, shuffle), a TV
--- that only switches, a bulb with colours, and closing (a tap outside, Back).
---   python3 -I demo/mock_homeassistant.py 18095 &      (a fresh one each run: it keeps its state)
+-- that only switches, a bulb with colours, closing (a tap outside, Back), and
+-- choosing music: the shelves' keys and Music Assistant's lists as shelves.
+--   GZ_HA_DEMO_MUSIC=1 python3 -I demo/mock_homeassistant.py 18095 &   (a fresh one each run: it keeps its state)
 --   GZ_EMU_TREE=<tree>/koreader ./run.sh house_panels.lua <out>
 local s = { start = 12 }
 local function add(t) s[#s + 1] = t end
@@ -79,7 +80,31 @@ add({ shot = "panel-6-speaker-playing" })
 add({ fn = function(E)
     E.say("speaker:", tostring(attr("media_player.living_room_speaker", "state")), "volume", tostring(attr("media_player.living_room_speaker", "volume_level")),
         "shuffle", tostring(attr("media_player.living_room_speaker", "shuffle")), "panel", control("display") and control("display").foot or "")
-    require("ui/uimanager"):close(panel())
+    press("music")(E)
+end, after = 6 })
+-- choosing music: the shelves' keys, then a shelf (the mock started with GZ_HA_DEMO_MUSIC=1 has more on them)
+add({ shot = "panel-6b-choose-music" })
+add({ fn = function(E) E.say("choose music:", tostring(panel() and panel().P.kind), tostring(panel() and panel().P.title)); press("radio")(E) end, after = 10 })
+add({ shot = "panel-6c-radio-shelves" })
+add({ fn = function(E)
+    local m = House().instance.music_menu
+    local pg = m and m._gz_music
+    E.say("radio:", m and tostring(#m.item_table) or "NO LIST", "shelves:", pg and "yes" or "NO", "a page holds", tostring(m and m.perpage), "pages", tostring(m and m.page_num))
+    require("ui/uimanager"):close(m)
+    House().instance:musicList(require("gzreader_homeassistant").find(House().instance.house, "media_player.living_room_speaker"), "album", "Albums", 0)
+end, after = 10 })
+add({ shot = "panel-6d-album-shelves" })
+add({ fn = function(E)
+    local m = House().instance.music_menu
+    local pl = m._gz_music and m._gz_music.places[1]
+    E.say("albums:", tostring(#m.item_table), "first is a", tostring(pl and pl.kind), tostring(pl and pl.entry.text))
+    -- a real tap on the first thing on a touch model; its letter's row otherwise
+    if touch and pl and pl.hot and pl.hot.dimen then local d = pl.hot.dimen; E.tap({ d.x + math.floor(d.w / 2), d.y + math.floor(d.h / 2) })
+    else m:onMenuSelect(m.item_table[1]) end
+end, after = 8 })
+add({ fn = function(E)
+    E.say("picked from the shelf: now playing", tostring(attr("media_player.living_room_speaker", "media_title")))
+    if panel() then require("ui/uimanager"):close(panel()) end
     House().instance:tap("media_player.living_room_tv")
 end, after = 6 })
 add({ shot = "panel-7-tv" })
