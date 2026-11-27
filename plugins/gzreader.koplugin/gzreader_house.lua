@@ -61,6 +61,8 @@ local function confirm(text, ok_text, fn)
     UIManager:show(require("ui/widget/confirmbox"):new{ text = text, ok_text = ok_text, ok_callback = fn })
 end
 
+local function Panel() return require("gzreader_housepanel") end
+
 local function store(plugin)
     plugin.store.homeassistant = plugin.store.homeassistant or {}
     return plugin.store.homeassistant
@@ -226,8 +228,13 @@ function House:redraw(if_changed)
     if if_changed then Log.info("house: refreshed, something changed after", self.unchanged or 0, "unchanged refreshes: drawn again") end
     self.drawn_sig, self.unchanged = sig, 0
     self.menu:switchItemTable(nil, items, -1)
+    -- (a device's panel that is open: as the device is now)
+    if self.panel and not self.panel.closed then self.panel:sync() end
     return true
 end
+
+--- The thermostat's unit, as Settings has it.
+function House:unit() return store(self.plugin).unit end
 
 --- After connecting or disconnecting: the list from the start.
 function House:reload()
@@ -389,6 +396,7 @@ end
 --- colour, for a bulb that takes one.
 function House:lightDialog(e)
     local Ha = HA()
+    if Panel().wanted() then return Panel().show(self, e, "light") end
     local ButtonDialog = require("ui/widget/buttondialog")
     local d
     local function act(what, arg, again)
@@ -424,6 +432,7 @@ end
 --- A thermostat: its target a step down or up, and its modes (heat, cool…).
 function House:climateDialog(e)
     local Ha = HA()
+    if Panel().wanted() then return Panel().show(self, e, "climate") end
     local ButtonDialog = require("ui/widget/buttondialog")
     local unit = store(self.plugin).unit
     local d
@@ -464,6 +473,7 @@ end
 --- Music Assistant's players also choose what to play.
 function House:mediaDialog(e)
     local Ha = HA()
+    if Panel().wanted() then return Panel().show(self, e, "media") end
     local ButtonDialog = require("ui/widget/buttondialog")
     local d
     local function again(now) self:mediaDialog(now) end
@@ -669,6 +679,7 @@ function House.show(plugin)
     local orig_close = self.menu.onCloseWidget
     self.menu.onCloseWidget = function(m, ...)
         self.closed = true
+        if self.panel and not self.panel.closed then UIManager:close(self.panel) end
         if self.tick then UIManager:unschedule(self.tick) end
         pcall(function() Net().release("house") end)
         if House.instance == self then House.instance = nil end
