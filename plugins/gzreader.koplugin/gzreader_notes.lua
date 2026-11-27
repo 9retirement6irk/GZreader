@@ -2243,13 +2243,14 @@ Notes.ICON_DIR = (debug.getinfo(1, "S").source:match("^@(.*)/[^/]*$") or ".") ..
 --- Touch Kindles: the buttons under the Notes tab's title, one row: Note (a
 --- new note), Draw (a new note that opens on a page to draw on) and Journal
 --- (a journal entry), each with its picture; then icons for Sort, Filter,
---- Layout, Search and Full screen (an X while in it). Under them
+--- Layout and Search; in full screen also an X to leave it (full screen is
+--- turned on in Layout; no icon for it, the owner 2026-11-26). Under them
 --- (Notes.homeRows): what's shown: All, your tags, Drawings. Connection is
 --- in Filter.
 function Notes.actions(plugin)
     local full = Notes.fullscreen(plugin)
     local function icon(name) return Notes.ICON_DIR .. name .. ".svg" end
-    return {
+    local acts = {
         { _("Note"), function() Notes.edit(plugin) end, icon_file = icon("quicknote") },
         { _("Draw"), function() Notes.draw(plugin) end, icon_file = Notes.ICON_DIR .. "../draw/pen.svg" },
         { _("Journal"), function() Notes.journal(plugin) end, icon_file = icon("journal") },
@@ -2257,10 +2258,12 @@ function Notes.actions(plugin)
         { icon_file = icon("filter"), label = _("Filter"), callback = function() Notes.showFilter(plugin) end },
         { icon_file = icon("layout"), label = _("Layout"), callback = function() Notes.showView(plugin) end },
         { icon_file = icon("search"), label = _("Search"), callback = function() Notes.showSearch(plugin) end },
-        { icon_file = icon(full and "close" or "fullscreen"),
-          label = full and _("Leave full screen") or _("Full screen"),
-          callback = function() Notes.setFullscreen(plugin, not Notes.fullscreen(plugin)) end },
     }
+    if full then
+        acts[#acts + 1] = { icon_file = icon("close"), label = _("Leave full screen"),
+            callback = function() Notes.setFullscreen(plugin, false) end }
+    end
+    return acts
 end
 
 Notes.HOME_TAGS = 3 -- tags with a chip of their own (the most used; the rest: Filter → Tag)

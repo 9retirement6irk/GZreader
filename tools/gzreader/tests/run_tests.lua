@@ -12872,14 +12872,13 @@ print("Notes (Memos v0.31)")
                 :find('if type(m.onGzOptions) == "function" then return m:onGzOptions() end', 1, true)
             and not show_src:find("showOptions", 1, true),
             "the board: in full screen a name and its tab's id only once made (ZenOS adds no tab bar then); its buttons; Menu on a Kindle 4: the board's menu (also when the tab bar takes the key first: onGzOptions)")
-        -- the buttons (touch), one row: Note, Draw, Journal with their pictures, then icons for Sort, Filter, Layout, Search, Full screen
+        -- the buttons (touch), one row: Note, Draw, Journal with their pictures, then icons for Sort, Filter, Layout, Search (no Full screen icon)
         local acts = Notes.actions(plugin)
         local bnames = {}
         for i = 1, 3 do bnames[i] = acts[i][1] .. ":" .. tostring(acts[i].icon_file and io.open(acts[i].icon_file) ~= nil) end
-        for i = 4, 8 do bnames[i] = tostring(acts[i].label) .. ":" .. tostring(acts[i][1] == nil and io.open(acts[i].icon_file) ~= nil) end
-        check(table.concat(bnames, "|") == "Note:true|Draw:true|Journal:true|Sort:true|Filter:true|Layout:true|Search:true|Full screen:true"
-            and acts[8].icon_file:match("/icons/panel/fullscreen%.svg$") and #acts == 8,
-            "touch: Note, Draw and Journal (a picture and the word), then icons for Sort, Filter, Layout, Search and Full screen: " .. table.concat(bnames, "|"))
+        for i = 4, 7 do bnames[i] = tostring(acts[i].label) .. ":" .. tostring(acts[i][1] == nil and io.open(acts[i].icon_file) ~= nil) end
+        check(table.concat(bnames, "|") == "Note:true|Draw:true|Journal:true|Sort:true|Filter:true|Layout:true|Search:true" and #acts == 7,
+            "touch: Note, Draw and Journal (a picture and the word), then icons for Sort, Filter, Layout, Search; no Full screen icon (it's in Layout): " .. table.concat(bnames, "|"))
         local opened = {}
         local real = { edit = Notes.edit, draw = Notes.draw, showFilter = Notes.showFilter, showView = Notes.showView, showSort = Notes.showSort,
             showConnection = Notes.showConnection, setFullscreen = Notes.setFullscreen, showSearch = Notes.showSearch, journal = Notes.journal,
@@ -12891,9 +12890,9 @@ print("Notes (Memos v0.31)")
             end
         end
         for i = 1, 3 do acts[i][2]() end
-        for i = 4, 8 do acts[i].callback() end
-        check(table.concat(opened, ",") == "edit,draw,journal,showSort,showFilter,showView,showSearch,setFullscreen=true",
-            "…each does its job; the last icon turns full screen on: " .. table.concat(opened, ","))
+        for i = 4, 7 do acts[i].callback() end
+        check(table.concat(opened, ",") == "edit,draw,journal,showSort,showFilter,showView,showSearch",
+            "…each does its job: " .. table.concat(opened, ","))
         -- under them, one more row: All, your most used tags, Drawings
         local kept_notes, kept_filter, kept_journal = Notes.notes, Notes.filter, plugin.store.memos.journal
         Notes.notes = {
@@ -13041,8 +13040,8 @@ print("Notes (Memos v0.31)")
         end
         prefs.fullscreen = true
         acts = Notes.actions(plugin)
-        check(acts[8].icon_file:match("/icons/panel/close%.svg$") and acts[8].label == "Leave full screen" and io.open(acts[8].icon_file) ~= nil,
-            "…in full screen the icon is an X, to leave it")
+        check(#acts == 8 and acts[8].icon_file:match("/icons/panel/close%.svg$") and acts[8].label == "Leave full screen" and io.open(acts[8].icon_file) ~= nil,
+            "…in full screen (from Layout) an X, to leave it")
         opened = {}
         Notes.setFullscreen = function(_p, on) opened[#opened + 1] = tostring(on) end
         acts[8].callback()
