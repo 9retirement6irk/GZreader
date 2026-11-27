@@ -1,11 +1,25 @@
-local function find_upvalue(fn, target)
+local function find_upvalue(fn, target, depth, seen)
+    -- GZreader: also inside the functions it closes over, a few levels down: GZreader wraps
+    -- VirtualKeyboard.addKeys (the ✍ key, gzreader_hwkeyboard.lua), and KOReader's own addKeys,
+    -- the one holding VirtualKey, is then an upvalue of the wrapper ("VirtualKey class not found")
+    depth, seen = depth or 4, seen or {}
+    if type(fn) ~= "function" or seen[fn] then return nil end
+    seen[fn] = true
     local index = 1
+    local inner = {}
     while true do
         local name, value = debug.getupvalue(fn, index)
-        if not name then return nil end
+        if not name then break end
         if name == target then return value end
+        if type(value) == "function" then inner[#inner + 1] = value end
         index = index + 1
     end
+    if depth <= 0 then return nil end
+    for _i, f in ipairs(inner) do
+        local found = find_upvalue(f, target, depth - 1, seen)
+        if found ~= nil then return found end
+    end
+    return nil
 end
 
 local function apply_responsive_keyboard()

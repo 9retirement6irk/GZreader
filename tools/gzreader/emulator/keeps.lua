@@ -77,6 +77,10 @@ add({ fn = function()
         if not t:find(name, 1, true) then tabs[#tabs + 1] = name end
     end
     check(#tabs == 0, "Home's tabs: Home, Downloads, Catalog, Notes, Calendar" .. (#tabs > 0 and (" (missing: " .. table.concat(tabs, ", ") .. ")") or ""))
+    -- ZenOS's keyboard patch, past the ✍ key's wrapper round addKeys (it had failed: "VirtualKey class not found")
+    if require("device"):isTouchDevice() then
+        check(require("ui/widget/virtualkeyboard")._gz_multiline ~= nil, "touch: ZenOS's keyboard patch applied (GZreader's keys wrap addKeys)")
+    end
 end, after = 1 })
 -- a new book laid out in the background (gzreader_layout.lua: while charging; here at once)
 local layout = {}

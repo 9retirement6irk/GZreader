@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Fixed: the on-screen keyboard's ☺ key, note bar and short rows were missing", text = "Since the ✍ handwriting key came in, ZenOS's keyboard changes stopped applying on touch Kindles (\"VirtualKey class not found\" in the log): no ☺ emoji key, no # and arrows bar over a note's keyboard, and no short bottom row in one-line boxes. They're back." },
+        },
+    },
+    {
         version = "2026.11.26",
         changes = {
             { short = "Quick panel: Home first, one Rotate tile, Reader tools, and your own order", text = "The quick panel's Controls start with Home, and on a Kindle that turns the screen by itself Rotate is one tile with Auto or Manual under it (while Manual, its bottom part turns the screen). In a book, one Reader tools tile opens what a swipe up from the bottom opens (font, layout with Fit pictures, search, bookmarks, highlights), with Story guide, Flashcards, Mark up and Notes after it and Quick note last. Settings → Quick panel can arrange the tiles and add tiles of your own." },
