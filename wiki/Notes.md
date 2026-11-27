@@ -24,8 +24,8 @@ API to `/api` are found too.
   - **Touch Kindles** have one row of buttons under the title: **Note** (a new
     note), **Draw** (a new note that opens on a page to draw on) and
     **Journal** (a journal entry), then icons for **Sort**, **Filter**,
-    **Layout**, **Search** and **Full screen** (an **X** while in full screen,
-    to leave it). Under it a row chooses what's shown: **All**, your three
+    **Layout** and **Search** (and an **X** while in full screen, to leave
+    it). Under it a row chooses what's shown: **All**, your three
     most used tags (and the tag being shown), and **Drawings** (only the
     notes with a drawing; tap it again for all). The one in use is in bold.
   - A **Kindle 4** has neither letter keys nor buttons: its **Menu** key on the board
@@ -74,9 +74,8 @@ API to `/api` are found too.
     down that starts at the top of the screen still opens the quick panel.
     The tab bar and the buttons above the notes take taps as usual (before
     1.32, a note cut off at the bottom took the tab bar's taps).
-  - **Full screen: no tab bar** (also the full-screen icon on a touch Kindle,
-    and Menu on a Kindle 4) hides the tab bar at the bottom of the Notes tab, for more
-    notes on a page. The X where the icon was (or Layout) brings
+  - **Full screen: no tab bar** (in Layout, and Menu on a Kindle 4) hides the tab bar at the bottom of the Notes tab, for more
+    notes on a page. An X by the Search icon (or Layout) brings
     it back; Back or the quick panel's Home leave the tab.
 - **A note:** on touch Kindles, the drawing screen's top bar, as in the
   note editor: **←** (back to the board), the note's name with when it was
