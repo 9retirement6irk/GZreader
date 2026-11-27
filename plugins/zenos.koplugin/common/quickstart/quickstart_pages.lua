@@ -770,6 +770,37 @@ local function buildGrimmoryPage(ctx)
         end
     end
 
+    -- GZreader: Home's "Recently read on every device" (common/gz_server_recent): asked
+    -- with a book server; on its own, a note that it comes with one
+    local Recent = require("common/gz_server_recent")
+    local recent = Recent.available() and { choice_type = "radio", gz_server_recent = true } or nil
+    local function fillRecent()
+        if not recent then return end
+        local server = mode == "bookorbit" and "BookOrbit" or "Grimmory"
+        recent.title = _("Recently read on every device")
+        if mode == "local" then
+            recent.description = _("Home can also show the books and audiobooks you're in the middle of on your other devices, when this Kindle is connected to a book server (Grimmory or BookOrbit). Turn it on later in Settings → Home and tabs → Home → Widgets → Featured book.")
+            recent.choices = {
+                { id = "recent_off", text = _("Not now"), checked = true },
+                { id = "recent_on", text = _("Show them once a server is connected"), checked = false },
+            }
+        else
+            recent.description = T(_("Home's current book and its shelf can also show the books and audiobooks you're in the middle of on your phone, the web reader or another Kindle, from %1, newest first. Ones that aren't on this Kindle get a small arrow; a tap offers the download. Audiobooks show as cassettes. Fetched only when Wi‑Fi is already on."), server)
+                .. "\n" .. _("Change it later in Settings → Home and tabs → Home → Widgets → Featured book.")
+            recent.choices = {
+                { id = "recent_on", text = _("Yes, show what I read everywhere"), checked = true },
+                { id = "recent_off", text = _("Only what I read on this Kindle"), checked = false },
+            }
+        end
+        recent.reset_selection = true
+    end
+    fillRecent()
+    if recent then
+        recent.on_apply = function(sel)
+            if sel["recent_on"] then Recent.set(true) elseif sel["recent_off"] then Recent.set(false) end
+        end
+    end
+
     -- (the guide's later page about sync says what's true for the answer: build_install_pages gives it)
     local how
     local function fillSync()
@@ -808,10 +839,11 @@ local function buildGrimmoryPage(ctx)
                 mode = picked
                 fillConnect()
                 fillSync()
+                fillRecent()
             end
         end,
     }
-    return how, connect
+    return how, connect, recent
 end
 
 function M.build_install_pages(ctx)
@@ -1152,8 +1184,14 @@ function M.build_install_pages(ctx)
         if g and type(g.useLibraryAsHome) == "function" then g:useLibraryAsHome() end
     end)
 
-    local ok_gp, grimmory_page, connect_page = pcall(buildGrimmoryPage, ctx)
-    if not ok_gp then grimmory_page, connect_page = nil, nil end
+    local ok_gp, grimmory_page, connect_page, recent_page = pcall(buildGrimmoryPage, ctx)
+    if not ok_gp then grimmory_page, connect_page, recent_page = nil, nil, nil end
+    -- (Home's recently read on every device: after the Library View page, both about Home)
+    if recent_page then
+        local at = #pages
+        for i, page in ipairs(pages) do if page.title == _("Library View") then at = i + 1 end end
+        table.insert(pages, at, recent_page)
+    end
     if connect_page then table.insert(pages, 1, connect_page) end
     if grimmory_page then
         if type(grimmory_page.fill_sync) == "function" then
