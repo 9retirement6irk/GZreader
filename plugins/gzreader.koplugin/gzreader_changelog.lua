@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "A game board on Home's shelf: themed puzzles, achievements and history", text = "An optional game box can stand on Home's bookshelf beside the daily paper (the setup guide now asks whether you want the paper, the board or both; later: Settings → Home and tabs → Home → Game board). It has the paper's four puzzles of the day (the same ones: done on the board, done in the paper), and a crossword, a word search, a new word scramble and a maze on a theme: words from the book you're reading or several of your books (only from pages you've read), the season, a category, or a theme the AI finds in your books. Achievements unlock as you go, and a history lists every puzzle you finish." },
+        },
+    },
+    {
         version = "2026.11.26",
         changes = {
             { short = "Quick panel: Home first, one Rotate tile, Reader tools, and your own order", text = "The quick panel's Controls start with Home, and on a Kindle that turns the screen by itself Rotate is one tile with Auto or Manual under it (while Manual, its bottom part turns the screen). In a book, one Reader tools tile opens what a swipe up from the bottom opens (font, layout with Fit pictures, search, bookmarks, highlights), with Story guide, Flashcards, Mark up and Notes after it and Quick note last. Settings → Quick panel can arrange the tiles and add tiles of your own." },

@@ -15,6 +15,14 @@ One screen, four puzzles, a tab each: Sudoku, Word search, Crossword, Maze.
   to down; Menu is the quick panel.
 
 What you've done is kept for the day (store.daily.puzzles).
+
+The game board (gzreader_gameboardscreen.lua) opens the same page for the
+paper's puzzles (the same ones, kept in the same place), and for a themed
+set of its own: Screen_.show(plugin, kind, { set = … }), with a word
+scramble among its puzzles (tap a letter, then another to swap them; 5-way:
+left and right choose, Press picks and swaps, up and down change word).
+A puzzle finished is noted in the board's history (gzreader_gameboard.lua
+Board.solved), whichever page it was done on.
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
@@ -33,6 +41,7 @@ function Screen_.tabLabel(kind)
     if kind == "sudoku" then return _("Sudoku") end
     if kind == "words" then return _("Word search") end
     if kind == "cross" then return _("Crossword") end
+    if kind == "scramble" then return _("Scramble") end
     return _("Maze")
 end
 
@@ -45,7 +54,13 @@ end
 
 --- The line under the board: what's left, or that it's done.
 function Screen_.statusText(kind, info)
-    if info.done then return _("Solved. A new one comes with tomorrow's paper.") end
+    if info.done then
+        if info.set then return _("Solved. For new puzzles of this theme: New puzzles on the game board.") end
+        return _("Solved. A new one comes with tomorrow's paper.")
+    end
+    if kind == "scramble" then
+        return T(_("Word %1 of %2 · %3 put right."), info.at, info.of, info.right)
+    end
     if kind == "sudoku" then
         if info.wrong and info.wrong > 0 then
             return info.wrong == 1 and _("1 square isn't right (marked).") or T(_("%1 squares aren't right (marked)."), info.wrong)
@@ -81,6 +96,11 @@ function Screen_.helpText(kind, touch, keyboard)
         if touch then return _("Tap a square (again to turn), then a letter. Tap the clue for all the clues.") end
         if keyboard then return _("5-way: move · letters: write · Del: rub out · Press: across or down") end
         return _("5-way: move · Press: the next letter")
+    end
+    if kind == "scramble" then
+        if touch then return _("Tap a letter, then another to swap them. Tap a word below to go to it.") end
+        if keyboard then return _("5-way: choose · Press: pick, then swap · Up, Down: another word · H: a hint") end
+        return _("Left, Right: choose · Press: pick, then swap · Up, Down: another word")
     end
     if kind == "words" then
         if touch then return _("Draw along a word to circle it, or tap its first letter, then its last.") end
@@ -225,6 +245,8 @@ local function pageClass()
         self.keys = Device:hasKeys() and Device:hasDPad() and not self.touch
         self.keyboard = Device:hasKeyboard() and true or false
         self.glyphs = {}
+        self.pz = self.pz or self.plugin
+        self.kinds = P().kindsOf(self.pz)
         if Device:hasKeys() then
             local g = Device.input.group
             self.key_events = {
@@ -295,19 +317,20 @@ local function pageClass()
         end
         self.close_w = self.touch and S(44) or 0
         -- the heading, as the paper's own
-        local title = text(_("PUZZLES"), face("NotoSerif-Bold.ttf", 18, "smallinfofontbold"))
-        local date = text(require("gzreader_dailyscreen").dateText(os.time()), face("NotoSerif-Italic.ttf", 9, "smallinfofont"), W - margin * 3 - title:getSize().w - self.close_w)
+        local title = text(self.set and _("GAME BOARD") or _("PUZZLES"), face("NotoSerif-Bold.ttf", 18, "smallinfofontbold"))
+        local date = text(self.set and tostring(self.set.title or "") or require("gzreader_dailyscreen").dateText(os.time()),
+            face("NotoSerif-Italic.ttf", 9, "smallinfofont"), W - margin * 3 - title:getSize().w - self.close_w)
         self.head = { title = title, date = date, y = S(8), h = title:getSize().h }
         local y = self.head.y + self.head.h + S(6)
         self.rule_y = y
         y = y + S(3) + S(8)
         -- the tabs
-        local done = Pz.finished(self.plugin)
+        local done = Pz.finished(self.pz)
         self.tabs = {}
-        local tab_w = math.floor((W - margin * 2) / #Pz.KINDS)
+        local tab_w = math.floor((W - margin * 2) / #self.kinds)
         local tab_face = Font:getFace("smallinfofontbold", 11)
         local tab_h = 0
-        for i, kind in ipairs(Pz.KINDS) do
+        for i, kind in ipairs(self.kinds) do
             local label = text(Screen_.tabLabel(kind) .. (done[kind] and " \u{2713}" or ""), tab_face, tab_w - S(8))
             tab_h = math.max(tab_h, label:getSize().h + S(12))
             self.tabs[i] = { kind = kind, label = label, x = margin + (i - 1) * tab_w, w = tab_w }
@@ -326,19 +349,20 @@ local function pageClass()
         if self.kind == "sudoku" then
             if self.touch then extra_h = math.floor((W - margin * 2) / 11) + S(8) end
         elseif self.kind == "words" then
-            ws, found = Pz.dayWords(self.plugin)
+            ws, found = Pz.dayWords(self.pz)
             extra_h = (self:glyph("A", 11, true):getSize().h + S(6)) * math.ceil(#ws.words / 4) + S(6)
-        elseif self.kind == "cross" then
-            extra_h = 0 -- (worked out below, with the crossword in hand)
+        elseif self.kind == "cross" or self.kind == "scramble" then
+            extra_h = 0 -- (worked out below, with the puzzle in hand)
         elseif self.touch then
             extra_h = self:glyph("A", 11, true):getSize().h + S(16)
         end
         local room_h = self.foot.y - y - status_h - extra_h - S(8)
         local room_w = W - margin * 2
         self.board, self.pad, self.list, self.again, self.clue, self.cpad, self.clues = nil, nil, nil, nil, nil, nil, nil
+        self.sclue, self.slist, self.hint = nil, nil, nil
         local info
         if self.kind == "sudoku" then
-            local s = Pz.daySudoku(self.plugin)
+            local s = Pz.daySudoku(self.pz)
             local cell = math.floor(math.min(room_w, room_h) / 9)
             local side = cell * 9
             self.board = { x = math.floor((W - side) / 2), y = y, w = side, h = side, cell = cell, n = 9 }
@@ -365,11 +389,11 @@ local function pageClass()
             self.wcur = self.wcur or { 1, 1 }
             local n = 0
             for _k in pairs(found) do n = n + 1 end
-            info = { done = Pz.wordsDone(ws, found), found = n, of = #ws.words, news = ws.src ~= nil and ws.src ~= "list" }
+            info = { done = Pz.wordsDone(ws, found), found = n, of = #ws.words, news = ws.src ~= nil and ws.src ~= "list" and ws.src ~= "set" }
             local line_h = self:glyph("A", 11, true):getSize().h + S(6)
             self.list = { y = y + side + S(8), col_w = math.floor(room_w / 4), line_h = line_h, x = margin }
         elseif self.kind == "cross" then
-            local cw, fill = Pz.dayCross(self.plugin)
+            local cw, fill = Pz.dayCross(self.pz)
             local cells = Pz.crossCells(cw)
             self.cw, self.cfill, self.ccells = cw, fill, cells
             if not self.ccur or not cells[self.ccur] then
@@ -436,12 +460,50 @@ local function pageClass()
             for _k in pairs(wrong) do wrong_n = wrong_n + 1 end
             -- (wrong letters are only shown once asked for, or when every square is written)
             self.cwrong = (self.checked or left == 0) and wrong or {}
-            info = { done = solved, left = left, wrong = (self.checked or left == 0) and wrong_n or 0, checked = self.checked, news = cw.src ~= nil and cw.src ~= "list" }
+            info = { done = solved, left = left, wrong = (self.checked or left == 0) and wrong_n or 0, checked = self.checked, news = cw.src ~= nil and cw.src ~= "list" and cw.src ~= "set" }
+        elseif self.kind == "scramble" then
+            local sc = Pz.dayScramble(self.pz)
+            self.sc = sc
+            local e = sc.words[sc.at]
+            -- the word you're on as tiles, as big as fit; its clue; the words, a line each
+            local n = #e.w
+            local tile = math.min(S(70), math.floor(room_w / math.max(n, 6)))
+            self.board = { x = math.floor((W - tile * n) / 2), y = y + S(6), w = tile * n, h = tile, cell = tile, n = n, rows = 1 }
+            if not self.tcur or self.tcur > n then self.tcur = 1 end
+            if self.tsel and self.tsel > n then self.tsel = nil end
+            local TextBoxWidget = require("ui/widget/textboxwidget")
+            local line_h = self:glyph("A", 11, true):getSize().h
+            local clue = TextBoxWidget:new{ text = e.c and (e.c .. " (" .. n .. ")") or T(_("No clue for this one (%1 letters)."), n),
+                face = Font:getFace("smallinfofont", 12), width = room_w, height = line_h * 3 + S(6), height_adjust = true,
+                height_overflow_show_ellipsis = true, alignment = "center" }
+            self.widgets[#self.widgets + 1] = clue
+            local below = self.board.y + tile + S(14)
+            self.sclue = { widget = clue, x = margin, y = below }
+            below = below + clue:getSize().h + S(14)
+            local row_h = line_h + S(14)
+            self.slist = { x = margin, y = below, w = room_w, row_h = row_h, rows = {} }
+            local right = 0
+            for i, w in ipairs(sc.words) do
+                local ok = w.cur == w.w
+                if ok then right = right + 1 end
+                local label = i .. ".  " .. (ok and w.w or (w.cur:gsub(".", "%0 "):gsub(" $", ""))) .. (ok and "  \u{2713}" or "")
+                self.slist.rows[i] = { widget = text(label, Font:getFace(i == sc.at and "smallinfofontbold" or "smallinfofont", 11), room_w) }
+            end
+            if self.touch and not Pz.scrambleDone(sc) then
+                local hint = text(_("Hint"), Font:getFace("smallinfofontbold", 11))
+                self.hint = { widget = hint, x = margin, y = below + #sc.words * row_h + S(8), w = hint:getSize().w + S(20), h = hint:getSize().h + S(8) }
+            end
+            if self.touch and not self.again then
+                local again = text(_("Start again"), small)
+                self.again = { widget = again, x = W - margin - again:getSize().w, y = self.foot.y + S(5), w = again:getSize().w + S(20), h = foot_h, in_foot = true }
+                help.max_width = W - margin * 3 - again:getSize().w
+            end
+            info = { done = Pz.scrambleDone(sc), at = sc.at, of = #sc.words, right = right }
         else
             local cols, rows = Screen_.mazeSize(room_w, room_h, S(self.touch and 40 or 30))
             local cell = math.floor(math.min(room_w / cols, room_h / rows))
             self.board = { x = math.floor((W - cell * cols) / 2), y = y, w = cell * cols, h = cell * rows, cell = cell, n = cols, rows = rows }
-            self.mz, self.at, self.seen = Pz.dayMaze(self.plugin, cols, rows)
+            self.mz, self.at, self.seen = Pz.dayMaze(self.pz, cols, rows)
             info = { done = self.at == cols * rows }
             if self.touch then
                 local again = text(_("Start again"), Font:getFace("smallinfofontbold", 11))
@@ -453,6 +515,7 @@ local function pageClass()
             self.again = { widget = again, x = W - margin - again:getSize().w, y = self.foot.y + S(5), w = again:getSize().w + S(20), h = foot_h, in_foot = true }
             help.max_width = W - margin * 3 - again:getSize().w
         end
+        if self.set then info.set = true end
         self.info = info
         local status = text((not info.done and self.note) or Screen_.statusText(self.kind, info), info.done and Font:getFace("smallinfofontbold", 11) or small, room_w)
         self.status = { widget = status, x = margin, y = self.foot.y - status_h + S(2) }
@@ -601,6 +664,35 @@ local function pageClass()
         end
     end
 
+    function Page:paintScramble(bb, x, y)
+        local b, e = self.board, self.sc.words[self.sc.at]
+        local size = math.max(10, math.floor(b.cell * 0.5 * 160 / Screen:getDPI() + 0.5))
+        local done = e.cur == e.w
+        for i = 1, b.n do
+            local tx, ty = x + b.x + (i - 1) * b.cell, y + b.y
+            local pad = math.max(2, math.floor(b.cell / 14))
+            if done then bb:paintRect(tx + pad, ty + pad, b.cell - pad * 2, b.cell - pad * 2, Blitbuffer.COLOR_GRAY_E) end
+            bb:paintBorder(tx + pad, ty + pad, b.cell - pad * 2, b.cell - pad * 2, math.max(1, S(1)), Blitbuffer.COLOR_BLACK, S(6))
+            centred(bb, self:glyph(e.cur:sub(i, i), size, true), tx, ty, b.cell)
+            if self.tsel == i then bb:invertRect(tx + pad + 2, ty + pad + 2, b.cell - pad * 2 - 4, b.cell - pad * 2 - 4) end
+            if self.keys and self.tcur == i and not done then
+                hline(bb, tx + pad, ty + b.cell + S(3), b.cell - pad * 2, S(3))
+            end
+        end
+        self.sclue.widget:paintTo(bb, x + self.sclue.x, y + self.sclue.y)
+        local l = self.slist
+        for i, r in ipairs(l.rows) do
+            local ry = y + l.y + (i - 1) * l.row_h
+            if i == self.sc.at then bb:paintRect(x + l.x, ry, l.w, l.row_h - S(4), Blitbuffer.COLOR_GRAY_E) end
+            r.widget:paintTo(bb, x + l.x + S(8), ry + S(5))
+        end
+        if self.hint then
+            local g = self.hint
+            bb:paintBorder(x + g.x, y + g.y, g.w, g.h, 1, Blitbuffer.COLOR_BLACK, S(4))
+            g.widget:paintTo(bb, x + g.x + S(10), y + g.y + S(4))
+        end
+    end
+
     function Page:cellXY(at)
         local b = self.board
         return b.x + ((at - 1) % b.n) * b.cell, b.y + math.floor((at - 1) / b.n) * b.cell
@@ -670,6 +762,7 @@ local function pageClass()
         if self.kind == "sudoku" then self:paintSudoku(bb, x, y)
         elseif self.kind == "words" then self:paintWords(bb, x, y)
         elseif self.kind == "cross" then self:paintCross(bb, x, y)
+        elseif self.kind == "scramble" then self:paintScramble(bb, x, y)
         else self:paintMaze(bb, x, y) end
         self.status.widget:paintTo(bb, x + self.status.x, y + self.status.y)
         bb:paintRect(x + margin, y + self.foot.y, W - margin * 2, 1, Blitbuffer.COLOR_BLACK)
@@ -684,26 +777,32 @@ local function pageClass()
     --- Lay out again after a move (and tell the paper behind, whose foot counts the finished ones).
     function Page:changed(full)
         local was = self.info and self.info.done
+        if not was then pcall(P().began, self.pz, self.kind) end
         self:build()
         self:redraw(full or (self.info.done and not was))
         if self.info.done and not was then
-            require("gzreader_log").info("daily puzzles: " .. self.kind .. " solved")
+            require("gzreader_log").info((self.set and "game board: " or "daily puzzles: ") .. self.kind .. " solved")
             local Paper = require("gzreader_dailyscreen")
             if Paper.instance and not Paper.instance.closed then pcall(function() Paper.instance:build() end) end
+            -- (into the game board's history; an achievement unlocked is shown)
+            local ok, new = pcall(function() return require("gzreader_gameboard").solved(self.pz, self.kind) end)
+            if ok and type(new) == "table" and #new > 0 then Screen_.unlocked(new) end
+            local Board = package.loaded["gzreader_gameboardscreen"]
+            if Board and Board.instance and not Board.instance.closed then pcall(function() Board.instance:rebuild() end) end
         end
     end
 
     function Page:show(kind)
         if kind == self.kind then return true end
         self.kind = kind
-        self.wsel, self.wrong, self.checked, self.note, self.drag = nil, nil, nil, nil, nil
+        self.wsel, self.wrong, self.checked, self.note, self.drag, self.tsel = nil, nil, nil, nil, nil, nil
         self:build()
         self:redraw(true)
         return true
     end
 
     function Page:step(by)
-        local kinds = P().KINDS
+        local kinds = self.kinds
         for i, k in ipairs(kinds) do
             if k == self.kind then return self:show(kinds[(i - 1 + by) % #kinds + 1]) end
         end
@@ -713,7 +812,7 @@ local function pageClass()
 
     function Page:write(v)
         if self.kind ~= "sudoku" or self.info.done or not self.cur then return true end
-        if P().sudokuSet(self.plugin, self.cur, v) then
+        if P().sudokuSet(self.pz, self.cur, v) then
             if self.wrong then self.wrong[self.cur] = nil end
             self.checked = nil
             self:changed()
@@ -741,15 +840,15 @@ local function pageClass()
         local Pz = P()
         local step = self.cdir == "a" and 1 or self.cw.cols
         if letter then
-            Pz.crossSet(self.plugin, self.ccur, letter)
+            Pz.crossSet(self.pz, self.ccur, letter)
             local nxt = self.ccur + step
             if self.ccells[nxt] and self.ccells[nxt][self.cdir] == self.ccells[self.ccur][self.cdir] then self.ccur = nxt end
-        elseif not Pz.crossSet(self.plugin, self.ccur, "") then
+        elseif not Pz.crossSet(self.pz, self.ccur, "") then
             -- (already empty: back a square, and that one rubbed out)
             local prev = self.ccur - step
             if self.ccells[prev] and self.ccells[prev][self.cdir] == self.ccells[self.ccur][self.cdir] then
                 self.ccur = prev
-                Pz.crossSet(self.plugin, prev, "")
+                Pz.crossSet(self.pz, prev, "")
             end
         end
         self.checked = nil
@@ -765,6 +864,7 @@ local function pageClass()
     end
 
     function Page:check()
+        if (self.kind == "cross" or self.kind == "sudoku") and not self.info.done then pcall(P().helped, self.pz, self.kind) end
         if self.kind == "cross" and not self.info.done then
             self.checked = true
             self:changed()
@@ -779,13 +879,16 @@ local function pageClass()
 
     function Page:startAgain()
         if self.kind == "sudoku" then
-            P().sudokuClear(self.plugin)
+            P().sudokuClear(self.pz)
             self.wrong, self.checked, self.cur = nil, nil, nil
         elseif self.kind == "maze" then
-            P().mazeClear(self.plugin)
+            P().mazeClear(self.pz)
         elseif self.kind == "cross" then
-            P().crossClear(self.plugin)
+            P().crossClear(self.pz)
             self.checked, self.ccur = nil, nil
+        elseif self.kind == "scramble" then
+            P().scrambleClear(self.pz)
+            self.tsel, self.tcur = nil, nil
         else
             return true
         end
@@ -804,7 +907,7 @@ local function pageClass()
             self.wsel = nil
         else
             local n = Pz.wordAt(self.ws, self.wsel[1], self.wsel[2], cx, cy)
-            if n and Pz.wordFound(self.plugin, n) then
+            if n and Pz.wordFound(self.pz, n) then
                 self.wsel = nil
             else
                 self.wsel = { cx, cy } -- (not a word: start from here)
@@ -816,8 +919,43 @@ local function pageClass()
 
     function Page:go(side)
         if self.info.done then return true end
-        local path = P().mazeMove(self.plugin, self.board.n, self.board.rows, side)
+        local path = P().mazeMove(self.pz, self.board.n, self.board.rows, side)
         if #path > 0 then self:changed() end
+        return true
+    end
+
+    --- The scramble: a letter chosen; a second swaps the two.
+    function Page:tile(i)
+        if self.info.done then return true end
+        local e = self.sc.words[self.sc.at]
+        if e.cur == e.w then return true end
+        if not self.tsel then
+            self.tsel = i
+            self:redraw()
+            return true
+        end
+        if self.tsel == i then self.tsel = nil; self:redraw(); return true end
+        local a = self.tsel
+        self.tsel = nil
+        local spelled = select(2, P().scrambleSwap(self.pz, a, i))
+        if spelled then self.tcur = 1 end
+        self:changed(spelled)
+        return true
+    end
+
+    function Page:toWord(n)
+        if P().scrambleGo(self.pz, n) then
+            self.tsel, self.tcur = nil, 1
+            self:changed(true)
+        end
+        return true
+    end
+
+    function Page:hintNow()
+        if self.kind ~= "scramble" or self.info.done then return true end
+        self.tsel = nil
+        P().scrambleHint(self.pz)
+        self:changed()
         return true
     end
 
@@ -834,6 +972,11 @@ local function pageClass()
     --- keys under the numbers), P rubs out, C checks, N starts again.
     function Page:onPzKey(letter)
         if self.kind == "cross" then return self:letterIn(letter) end
+        if self.kind == "scramble" then
+            if letter == "H" then return self:hintNow() end
+            if letter == "N" then return self:startAgain() end
+            return true
+        end
         local n = ("QWERTYUIO"):find(letter, 1, true)
         if n then return self:write(n) end
         if letter == "P" then return self:write(0) end
@@ -846,6 +989,15 @@ local function pageClass()
     function Page:onPzMove(side)
         local d = P().SIDES[side]
         if self.kind == "maze" then return self:go(side) end
+        if self.kind == "scramble" then
+            if side == "n" or side == "s" then
+                local n = #self.sc.words
+                return self:toWord((self.sc.at - 1 + (side == "s" and 1 or -1)) % n + 1)
+            end
+            self.tcur = (self.tcur - 1 + (side == "e" and 1 or -1)) % self.board.n + 1
+            self:redraw()
+            return true
+        end
         if self.kind == "cross" then
             if self.info.done then return true end
             local to = Screen_.crossStep(self.ccells, self.cw.cols, self.cw.rows, self.ccur, side)
@@ -871,6 +1023,7 @@ local function pageClass()
     end
 
     function Page:onPzPress()
+        if self.kind == "scramble" then return self:tile(self.tcur) end
         if self.kind == "sudoku" then
             if self.info.done or self.sudoku.given:sub(self.cur, self.cur) ~= "0" then return true end
             return self:write((tonumber(self.sudoku.fill:sub(self.cur, self.cur)) + 1) % 10)
@@ -882,7 +1035,7 @@ local function pageClass()
             if self.keyboard then return self:square(self.ccur) end
             local ch = self.cfill:sub(self.ccur, self.ccur)
             local nxt = ch == "." and "A" or ch == "Z" and "" or string.char(ch:byte() + 1)
-            P().crossSet(self.plugin, self.ccur, nxt)
+            P().crossSet(self.pz, self.ccur, nxt)
             self.checked = nil
             self:changed()
         end
@@ -913,6 +1066,12 @@ local function pageClass()
             local k = cp.keys[math.floor((py - cp.y + S(2)) / (cp.h + S(4))) * 14 + math.floor((px - cp.x) / cp.w) + 1]
             if k and px < cp.x + cp.w * 14 then return { "pad", k } end
         end
+        local sl = self.slist
+        if sl and px >= sl.x and px < sl.x + sl.w and py >= sl.y and py < sl.y + #sl.rows * sl.row_h then
+            return { "word", math.floor((py - sl.y) / sl.row_h) + 1 }
+        end
+        local hn = self.hint
+        if hn and px >= hn.x - S(6) and px < hn.x + hn.w + S(6) and py >= hn.y - S(6) and py < hn.y + hn.h + S(6) then return { "hint" } end
         local cl = self.clue
         if cl and px >= cl.x and px < cl.x + cl.w and py >= cl.y - S(4) and py < cl.y + cl.h + S(4) then return { "clue" } end
         local g = self.again
@@ -930,6 +1089,8 @@ local function pageClass()
         if what[1] == "tab" then return self:show(what[2]) end
         if what[1] == "again" then return self:startAgain() end
         if what[1] == "clue" then return self:allClues() end
+        if what[1] == "word" then return self:toWord(what[2]) end
+        if what[1] == "hint" then return self:hintNow() end
         if what[1] == "pad" then
             if what[2].check then return self:check() end
             if what[2].letter then return self:letterIn(what[2].letter) end
@@ -937,6 +1098,7 @@ local function pageClass()
             return self:write(what[2].value)
         end
         if self.kind == "cross" then return self:square((what[3] - 1) * self.cw.cols + what[2]) end
+        if self.kind == "scramble" then return self:tile(what[2]) end
         if self.kind == "sudoku" then
             self.cur = (what[3] - 1) * 9 + what[2]
             self:redraw()
@@ -984,7 +1146,7 @@ local function pageClass()
             n = Pz.wordAt(self.ws, c1, r1, sc, sr)
         end
         self.wsel = nil
-        if n and Pz.wordFound(self.plugin, n) then
+        if n and Pz.wordFound(self.pz, n) then
             self.note = nil
         else
             self.note = n and _("You've found that one already.") or _("That isn't one of the words. Draw from a word's first letter to its last.")
@@ -1034,12 +1196,27 @@ local function pageClass()
     return Page
 end
 
---- Open the day's puzzles (at one of them: "sudoku", "words", "maze").
-function Screen_.show(plugin, kind)
+--- Achievements just unlocked, said for a moment.
+function Screen_.unlocked(list)
+    local names = {}
+    for _i, a in ipairs(list) do names[#names + 1] = "\u{2605} " .. a.title .. "\n" .. a.text end
+    UIManager:show(require("ui/widget/infomessage"):new{
+        text = (#list == 1 and _("Achievement unlocked") or _("Achievements unlocked")) .. "\n\n" .. table.concat(names, "\n\n"),
+        timeout = 4 })
+end
+
+--- Open the day's puzzles (at one of them: "sudoku", "words", "maze"), or
+--- with opts.set a game board's themed set (gzreader_gameboard.lua).
+function Screen_.show(plugin, kind, opts)
     if Screen_.instance and not Screen_.instance.closed then return Screen_.instance end
+    local set = opts and opts.set
     -- (a word puzzle not started is made again if the paper has been fetched since)
-    pcall(function() P().freshen(plugin) end)
-    local self = pageClass():new{ plugin = plugin, kind = kind or "sudoku" }
+    if not set then pcall(function() P().freshen(plugin) end) end
+    local pz = set and P().forSet(plugin, set) or plugin
+    local kinds = P().kindsOf(pz)
+    local want = kind
+    if not want then want = kinds[1] end
+    local self = pageClass():new{ plugin = plugin, pz = pz, set = set, kind = want }
     Screen_.instance = self
     UIManager:show(self)
     return self

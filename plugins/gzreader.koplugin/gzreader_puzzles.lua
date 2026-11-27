@@ -15,10 +15,19 @@ Kept in store.daily.puzzles = { off, day, sudoku = { given, answer, fill },
 words = { found = "1,4", of, src, grid, placed },
 cross = { src, cols, rows, words = { { w, c, x, y, d } }, fill },
 maze = { cols, rows, at, seen } }.
+
+The game board (gzreader_gameboard.lua) keeps sets of its own, themed: the
+same functions work on one when they're given Puzzles.forSet(plugin, set)
+in place of the plugin. A set is { fixed = true, day = its seed, kinds,
+entries = { { word, clue } } (its words, wanted most first), title, … }
+and the puzzles' tables as above, never cleared by the date. The paper's
+puzzles on the board are the paper's own: the plugin itself.
 ]]
 
 local Puzzles = {
     KINDS = { "sudoku", "words", "cross", "maze" },
+    SET_KINDS = { "cross", "words", "scramble", "maze" }, -- (a game board's themed set)
+    SCRAMBLE_WORDS = 6,
     CROSS_SIZE = 11,   -- the crossword is laid out in a square this big, then trimmed to what it uses
     CROSS_WORDS = 9,   -- words wanted in it
     CLUE_LENGTH = 110, -- bytes of a clue, about
@@ -171,6 +180,8 @@ killer killing kills massacre murder murdered murders rape raped shooting shot s
 terrorist torture victim victims wounded
 ]]):gmatch("%a+") do GRIM[w:upper()] = true end
 
+Puzzles.STOP, Puzzles.GRIM = STOP, GRIM
+
 local function stem(w)
     return (w:gsub("ING$", ""):gsub("ED$", ""):gsub("ES$", ""):gsub("S$", ""))
 end
@@ -258,7 +269,7 @@ local DIRS = { { 1, 0 }, { 0, 1 }, { 1, 1 }, { 1, -1 }, { -1, 0 }, { 0, -1 } }
 --- words = { { word, x, y, dx, dy } } } (x, y from 1: where its first letter is).
 --- `first`: words to hide before the list's own (the news'), in any order;
 --- the list fills up what they leave.
-function Puzzles.wordSearch(seed, size, count, first)
+function Puzzles.wordSearch(seed, size, count, first, only)
     size, count = size or Puzzles.WORDS_SIZE, count or Puzzles.WORDS_COUNT
     local R = Puzzles.rng("words:" .. seed)
     local pool, own, has = {}, {}, {}
@@ -269,7 +280,10 @@ function Puzzles.wordSearch(seed, size, count, first)
         end
     end
     R.shuffle(pool)
-    for _i, w in ipairs(Puzzles.WORD_LIST) do if #w >= 4 and #w <= size - 2 and not has[w] then own[#own + 1] = w end end
+    -- (`only`: the words given and none of the list's, when they're enough)
+    if not (only and #pool >= count) then
+        for _i, w in ipairs(Puzzles.WORD_LIST) do if #w >= 4 and #w <= size - 2 and not has[w] then own[#own + 1] = w end end
+    end
     R.shuffle(own)
     for _i, w in ipairs(own) do pool[#pool + 1] = w end
     local cells, words = {}, {}
@@ -640,6 +654,8 @@ end
 
 --- The kept puzzles' table (made empty for a new day).
 function Puzzles.state(plugin, day)
+    local set = type(plugin) == "table" and rawget(plugin, "gz_set")
+    if type(set) == "table" then return set end
     local D = daily()
     local st = D.store(plugin)
     st.puzzles = type(st.puzzles) == "table" and st.puzzles or {}
@@ -647,9 +663,41 @@ function Puzzles.state(plugin, day)
     day = day or D.day()
     if p.day ~= day then
         p.day, p.sudoku, p.words, p.cross, p.maze = day, nil, nil, nil, nil
+        p.began, p.helped, p.recorded = nil, nil, nil
     end
     return p
 end
+
+--- The plugin as the puzzles' functions take it, for a game board's set:
+--- they keep their state in `set` (and save through the plugin).
+function Puzzles.forSet(plugin, set)
+    return setmetatable({ gz_set = set, gz_plugin = plugin }, { __index = plugin })
+end
+
+--- The plugin itself, for a set's stand-in or the plugin.
+function Puzzles.owner(plugin)
+    return type(plugin) == "table" and rawget(plugin, "gz_plugin") or plugin
+end
+
+--- The puzzles of the paper (Puzzles.KINDS) or of a set (its own kinds).
+function Puzzles.kindsOf(plugin)
+    local set = type(plugin) == "table" and rawget(plugin, "gz_set")
+    if type(set) == "table" then return type(set.kinds) == "table" and set.kinds or Puzzles.SET_KINDS end
+    return Puzzles.KINDS
+end
+
+--- A set's words, A–Z and 3 to `max` letters, with their clues: { { word, clue } }.
+local function setEntries(p, max)
+    local out = {}
+    for _i, e in ipairs(type(p.entries) == "table" and p.entries or {}) do
+        local w = type(e) == "table" and type(e.word) == "string" and e.word:upper() or nil
+        if w and w:match("^%u+$") and #w >= 3 and #w <= (max or 11) then
+            out[#out + 1] = { word = w, clue = type(e.clue) == "string" and e.clue ~= "" and e.clue or nil }
+        end
+    end
+    return out
+end
+Puzzles.setEntries = setEntries
 
 function Puzzles.on(plugin)
     local D = daily()
@@ -742,6 +790,15 @@ end
 function Puzzles.dayWords(plugin, day)
     local p = Puzzles.state(plugin, day)
     local ws = unpackWords(p.words)
+    if not ws and p.fixed then
+        -- (a game board's set: its own words, the list's only when they're too few)
+        local first = {}
+        for _i, e in ipairs(setEntries(p, Puzzles.WORDS_SIZE - 2)) do first[#first + 1] = e.word end
+        ws = Puzzles.wordSearch(tostring(p.day), nil, nil, first, true)
+        ws.src = "set"
+        p.words = { grid = ws.grid, placed = packWords(ws), src = "set", of = #ws.words }
+        keep(plugin)
+    end
     if not ws then
         local edition = Puzzles.edition()
         local src = Puzzles.source(edition)
@@ -771,6 +828,7 @@ end
 --- call when the puzzles are opened. Returns true when one will be remade.
 function Puzzles.freshen(plugin, day)
     local p = Puzzles.state(plugin, day)
+    if p.fixed then return false end -- (a game board's set keeps its words)
     local src = Puzzles.source(Puzzles.edition())
     local changed = false
     if type(p.words) == "table" and p.words.src ~= src and (p.words.found or "") == "" then
@@ -815,6 +873,27 @@ function Puzzles.dayCross(plugin, day)
             end
         end
         if #cw.words < 2 or #cw.words ~= #c.words then cw = nil else Puzzles.crossNumber(cw) end
+    end
+    if not cw and p.fixed then
+        -- (a game board's set: its words with clues, the list's when they're too few)
+        local entries, has = {}, {}
+        for _i, e in ipairs(setEntries(p, Puzzles.CROSS_SIZE)) do
+            if e.clue then entries[#entries + 1] = e; has[e.word] = true end
+        end
+        if #entries < 8 then
+            local own = {}
+            for _i, w in ipairs(Puzzles.WORD_LIST) do
+                if Puzzles.CLUES[w] and not has[w] then own[#own + 1] = { word = w, clue = Puzzles.CLUES[w] } end
+            end
+            Puzzles.rng("cross:" .. tostring(p.day)).shuffle(own)
+            for i = 1, math.min(#own, 30) do entries[#entries + 1] = own[i] end
+        end
+        cw = Puzzles.crossword(tostring(p.day), entries)
+        cw.src = "set"
+        local kept = {}
+        for i, w in ipairs(cw.words) do kept[i] = { w = w.word, c = w.clue, x = w.x, y = w.y, d = w.d } end
+        p.cross = { src = "set", cols = cw.cols, rows = cw.rows, words = kept, fill = string.rep(".", cw.cols * cw.rows) }
+        keep(plugin)
     end
     if not cw then
         local edition = Puzzles.edition()
@@ -931,7 +1010,7 @@ end
 --- { sudoku = bool, words = bool, maze = bool }, and how many.
 function Puzzles.finished(plugin, day)
     local p = Puzzles.state(plugin, day)
-    local out = { sudoku = false, words = false, cross = false, maze = false }
+    local out = { sudoku = false, words = false, cross = false, maze = false, scramble = false }
     if type(p.sudoku) == "table" and p.sudoku.fill and p.sudoku.fill == p.sudoku.answer then out.sudoku = true end
     if type(p.words) == "table" and type(p.words.found) == "string" then
         local n = 0
@@ -944,9 +1023,162 @@ function Puzzles.finished(plugin, day)
         local ok, cw, fill = pcall(Puzzles.dayCross, plugin, day)
         if ok then out.cross = select(3, Puzzles.crossCheck(cw, fill)) end
     end
+    if type(p.scramble) == "table" then out.scramble = Puzzles.scrambleDone(p.scramble) end
     local n = 0
-    for _i, k in ipairs(Puzzles.KINDS) do if out[k] then n = n + 1 end end
+    for _i, k in ipairs(Puzzles.kindsOf(plugin)) do if out[k] then n = n + 1 end end
     return out, n
+end
+
+---------------------------------------------------------------- word scramble (the game board's)
+
+--- Letters of a word in another order (never the word itself, when its
+--- letters allow another): the same seed, the same order.
+function Puzzles.jumble(word, seed)
+    local R = Puzzles.rng("jumble:" .. tostring(seed) .. ":" .. word)
+    local letters = {}
+    for i = 1, #word do letters[i] = word:sub(i, i) end
+    for _try = 1, 8 do
+        R.shuffle(letters)
+        if table.concat(letters) ~= word then break end
+    end
+    return table.concat(letters)
+end
+
+--- A scramble from words and clues: { words = { { w, c, cur } } }, `count`
+--- words of 4 to 9 letters (the ones wanted first), each its letters jumbled
+--- (`cur`). Words whose letters are all the same are left out.
+function Puzzles.scramble(seed, entries, count)
+    count = count or Puzzles.SCRAMBLE_WORDS
+    local out, has = {}, {}
+    for _i, e in ipairs(entries or {}) do
+        if #out >= count then break end
+        local w = type(e) == "table" and e.word
+        if type(w) == "string" and w:match("^%u+$") and #w >= 4 and #w <= 9 and not has[w] and w:find("[^" .. w:sub(1, 1) .. "]") then
+            has[w] = true
+            out[#out + 1] = { w = w, c = e.clue, cur = Puzzles.jumble(w, seed) }
+        end
+    end
+    return { words = out, at = 1 }
+end
+
+function Puzzles.scrambleDone(sc)
+    if type(sc) ~= "table" or type(sc.words) ~= "table" or #sc.words == 0 then return false end
+    for _i, e in ipairs(sc.words) do if e.cur ~= e.w then return false end end
+    return true
+end
+
+--- The set's scramble (made the first time it's asked for): sc, with sc.at
+--- the word you're on.
+function Puzzles.dayScramble(plugin)
+    local p = Puzzles.state(plugin)
+    local sc = p.scramble
+    local ok = type(sc) == "table" and type(sc.words) == "table" and #sc.words > 0
+    for _i, e in ipairs(ok and sc.words or {}) do
+        if not (type(e) == "table" and type(e.w) == "string" and type(e.cur) == "string" and #e.cur == #e.w) then ok = false end
+    end
+    if not ok then
+        local entries = setEntries(p, 9)
+        if #entries < Puzzles.SCRAMBLE_WORDS then
+            -- (too few of its own: the list's, with their clues)
+            local has = {}
+            for _i, e in ipairs(entries) do has[e.word] = true end
+            local own = {}
+            for _i, w in ipairs(Puzzles.WORD_LIST) do if not has[w] then own[#own + 1] = { word = w, clue = Puzzles.CLUES[w] } end end
+            Puzzles.rng("scramble:" .. tostring(p.day)).shuffle(own)
+            for _i, e in ipairs(own) do entries[#entries + 1] = e end
+        end
+        sc = Puzzles.scramble(tostring(p.day), entries)
+        p.scramble = sc
+        keep(plugin)
+    end
+    sc.at = math.max(1, math.min(#sc.words, tonumber(sc.at) or 1))
+    return sc
+end
+
+--- Swap two letters (from 1) of the word you're on. When that spells it, on
+--- to the next word not done. Returns true when it changed; and true when
+--- the word was just spelled.
+function Puzzles.scrambleSwap(plugin, a, b)
+    local sc = Puzzles.dayScramble(plugin)
+    local e = sc.words[sc.at]
+    if not e or e.cur == e.w or a == b or a < 1 or b < 1 or a > #e.cur or b > #e.cur then return false end
+    local t = {}
+    for i = 1, #e.cur do t[i] = e.cur:sub(i, i) end
+    t[a], t[b] = t[b], t[a]
+    e.cur = table.concat(t)
+    local spelled = e.cur == e.w
+    if spelled then
+        for k = 1, #sc.words do
+            local n = (sc.at + k - 1) % #sc.words + 1
+            if sc.words[n].cur ~= sc.words[n].w then sc.at = n; break end
+        end
+    end
+    keep(plugin)
+    return true, spelled
+end
+
+--- Go to a word of the scramble.
+function Puzzles.scrambleGo(plugin, n)
+    local sc = Puzzles.dayScramble(plugin)
+    if not sc.words[n] or n == sc.at then return false end
+    sc.at = n
+    keep(plugin)
+    return true
+end
+
+--- Its first letter put right, for a word you're stuck on (counts as help).
+function Puzzles.scrambleHint(plugin)
+    local sc = Puzzles.dayScramble(plugin)
+    local e = sc.words[sc.at]
+    if not e or e.cur == e.w then return false end
+    for i = 1, #e.w do
+        if e.cur:sub(i, i) ~= e.w:sub(i, i) then
+            local j = e.cur:find(e.w:sub(i, i), i + 1, true)
+            if j then
+                local spelled = select(2, Puzzles.scrambleSwap(plugin, i, j))
+                Puzzles.state(plugin).helped = Puzzles.state(plugin).helped or {}
+                Puzzles.state(plugin).helped.scramble = true
+                return true, spelled
+            end
+        end
+    end
+    return false
+end
+
+function Puzzles.scrambleClear(plugin)
+    local p = Puzzles.state(plugin)
+    if type(p.scramble) == "table" then
+        for _i, e in ipairs(p.scramble.words or {}) do e.cur = Puzzles.jumble(e.w, p.day) end
+        p.scramble.at = 1
+    end
+    keep(plugin)
+end
+
+---------------------------------------------------------------- a puzzle's start and end (for the game board's history)
+
+--- Note the first move in a puzzle (when it was begun).
+function Puzzles.began(plugin, kind)
+    local p = Puzzles.state(plugin)
+    p.began = type(p.began) == "table" and p.began or {}
+    if not p.began[kind] then p.began[kind] = os.time() end
+end
+
+--- Note help taken (Check in the crossword or the sudoku, a hint).
+function Puzzles.helped(plugin, kind)
+    local p = Puzzles.state(plugin)
+    p.helped = type(p.helped) == "table" and p.helped or {}
+    p.helped[kind] = true
+end
+
+--- A puzzle just finished: true the first time for it (then it's noted as
+--- recorded), with { began, helped }.
+function Puzzles.markDone(plugin, kind)
+    local p = Puzzles.state(plugin)
+    p.recorded = type(p.recorded) == "table" and p.recorded or {}
+    if p.recorded[kind] then return false end
+    p.recorded[kind] = true
+    keep(plugin)
+    return true, { began = type(p.began) == "table" and p.began[kind] or nil, helped = type(p.helped) == "table" and p.helped[kind] == true }
 end
 
 return Puzzles

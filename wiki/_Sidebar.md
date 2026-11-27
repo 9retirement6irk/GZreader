@@ -35,6 +35,7 @@
 - [House (Home Assistant)](House)
 - [Recipes (Mealie)](Recipes)
 - [Daily paper](Daily-Paper)
+- [Game board](Game-Board)
 - [Audiobooks and read aloud](Audiobooks-and-Read-Aloud)
 - [Sync with a computer](Sync-with-a-Computer)
 - [Wi‑Fi: on, off, auto](Wi-Fi)

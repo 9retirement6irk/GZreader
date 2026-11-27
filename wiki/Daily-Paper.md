@@ -268,6 +268,10 @@ The four are tabs across the top; tap one, or press a page-turn key.
 **Settings → Home and tabs → Daily paper → Puzzles** takes them off
 the paper.
 
+The same four are on the [game board](Game-Board), when it's on: they're the
+paper's own there, so what you do on one is done on the other, and each one
+you finish goes into the board's history and achievements.
+
 ## When it's fetched
 
 Once a day, the first time Home (or the paper) is on the screen after
