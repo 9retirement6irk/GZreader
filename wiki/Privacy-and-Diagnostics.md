@@ -195,6 +195,14 @@ what you typed and starts with it ("What happened: …"; a password or token
 typed there is redacted like the log's). `<id>` is the start of the
 Kindle's random ID (not the serial number).
 
+**When the screen stops redrawing.** Each screen update is timed. One the
+display doesn't finish within 4 seconds is logged ("display: an update took
+5.0 s (UI, 1236x880 at 0,544; 0.0 s CPU)…": which kind of update, and
+where). Two in a row, and GZreader tries to get the display going again: on
+the Scribe it turns the display's pen mode off, then refreshes the whole
+screen (at most once a minute). A Scribe once stopped redrawing this way
+(each update giving up after 5 s) until it was restarted.
+
 Sleep is not a freeze (the heartbeat says "sleep", and the watchdog notices
 the clock jump after waking). Log lines are redacted (no passwords,
 tokens or Wi-Fi network names). Checked with the Kindle 3's LuaJIT against a local feed: queued

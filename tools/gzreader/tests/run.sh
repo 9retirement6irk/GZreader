@@ -99,6 +99,10 @@ sec "the Kindle Scribe's pen mode (ink that keeps up with the pen)"
 (cd "$T" && luajit penmode_test.lua "$REPO/plugins/gzreader.koplugin") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
+sec "the display not finishing its updates (logged; pen mode off and a full refresh)"
+(cd "$T" && luajit einkwatch_test.lua "$REPO/plugins/gzreader.koplugin") 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
+
 sec "saving a note: Saving…, and drafts kept while writing"
 (cd "$T" && luajit saving_test.lua "$REPO/plugins/gzreader.koplugin" "$KOBASE" "$WORK/saving") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || fail
