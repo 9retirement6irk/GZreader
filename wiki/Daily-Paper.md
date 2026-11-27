@@ -115,6 +115,39 @@ others, always the same one), and the heavy rule under the nameplate, on the
 paper and on Home, is the paper's red. Turning off KOReader's colour rendering
 puts it back in black.
 
+## Puzzles
+
+Each day's paper comes with three puzzles you do on the Kindle: a
+**sudoku**, a **word search** and a **maze**. Open the paper and choose
+**Puzzles** at its foot (with keys: move the frame down to it with the 5-way
+and press). The foot shows how many you've finished (**Puzzles 1/3**).
+
+They are made on the Kindle from the date, so they need no Wi‑Fi and no
+paper to have been fetched, and every Kindle has the same ones that day.
+What you've done is kept until the next day's paper (5 in the morning), when
+new ones take their place.
+
+The three are tabs across the top; tap one, or press a page-turn key.
+
+| | Touch (finger or pen) | Keys |
+|---|---|---|
+| **Sudoku** | Tap a square, then a number under the grid. ⌫ rubs out, **✓?** checks, **Start again** clears what you wrote. | The 5-way moves. **Press** writes the next number (1 to 9, then empty). On a keyboard: **Q W E R T Y U I O** (the keys under 1–9) or the number keys write 1–9, **Del** rubs out, **C** checks, **N** starts again. |
+| **Word search** | Tap a word's first letter, then its last. | The 5-way moves; **Press** on the first letter, then on the last. |
+| **Maze** | Tap or swipe the way to go. **Start again** goes back to the start. | The 5-way goes that way; **N** starts again on a keyboard. |
+
+- **Sudoku**: the printed numbers are on grey and can't be changed. Checking
+  marks the squares that aren't right with a cut corner; nothing is marked
+  until you ask. There is exactly one answer.
+- **Word search**: eight words, across, down, diagonal, and some backwards.
+  Found words are crossed off the list and their letters shaded (on a colour
+  Kindle, each in its own colour).
+- **Maze**: in at the top left, out at the bottom right. One move goes on
+  until a wall, a turning or a crossing. Dots show where you've been. Its
+  size follows the screen, so it differs between Kindles.
+
+**Settings → Accounts and services → Daily paper → Puzzles** takes them off
+the paper.
+
 ## When it's fetched
 
 Once a day, the first time Home (or the paper) is on the screen after
