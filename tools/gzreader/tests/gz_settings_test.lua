@@ -31,6 +31,7 @@ local real = {
     ["common/inline_icon_map"] = true,
     ["common/gz_wifi_icon"] = true,
     gzreader_sleeppreview = true,
+    gzreader_catalog = true, -- (Home and tabs → Catalog pages)
     gzsleepmode = true, -- (frontend/: which sleep screen, where its pictures come from)
 }
 local PLUGIN = arg[2] -- plugins/gzreader.koplugin (the Wallpaper tiles)
@@ -151,6 +152,15 @@ if okb then
     check(#items <= 9, "the first page fits on one screen (nine rows)")
     local lines = {}
     for i, it in ipairs(items) do if it.separator then lines[#lines + 1] = i end end
+    do -- Home and tabs: GZreader's Catalog pages row (the pages' order), before the Downloads tab
+        local ht
+        for _i, it in ipairs(items) do if it.text == "Home and tabs" then ht = it.sub_item_table end end
+        local names = {}
+        for _i, it in ipairs(ht or {}) do names[#names + 1] = tostring(it.text) end
+        local joined = "|" .. table.concat(names, "|") .. "|"
+        check(joined:find("|Catalog pages|", 1, true) and (not joined:find("Downloads tab", 1, true) or joined:find("|Catalog pages|Downloads tab|", 1, true)),
+            "Home and tabs: Catalog pages (their order) " .. joined)
+    end
     check(table.concat(lines, ",") == "2,5,6,7", "lines after Bluetooth, Sleep and wallpaper, Home and tabs, Accounts and services " .. table.concat(lines, ","))
     local general = find(items, "General").sub_item_table
     local gen = texts(general)

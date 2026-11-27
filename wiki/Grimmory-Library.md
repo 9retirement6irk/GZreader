@@ -5,11 +5,13 @@ Browsing your Grimmory library on the device, and downloading books. Keeping the
 The **Catalog** tab (called Grimmory before 1.27.x) holds what's on your
 servers, in pages:
 
-1. **Books**: your Grimmory books (below). The tab always opens here.
+1. **Requests**: with BookOrbit, asking for a book it doesn't have and what became of your requests ([Book requests](BookOrbit#book-requests)).
 2. **Magazines**: only when you've chosen a magazine library ([Magazines](#magazines), below).
-3. **Audiobooks**: Grimmory's audiobooks ([Audiobooks](Audiobooks-and-Read-Aloud)).
-4. **Music**: your Plex music ([Music](Music)).
-5. **Requests**: with BookOrbit, asking for a book it doesn't have and what became of your requests ([Book requests](BookOrbit#book-requests)).
+3. **Books**: your Grimmory books (below). **The tab always opens here**, wherever Books is in the order.
+4. **Audiobooks**: Grimmory's audiobooks ([Audiobooks](Audiobooks-and-Read-Aloud)).
+5. **Music**: your Plex music ([Music](Music)).
+
+The pages go round: past Music you come to Requests, and before Requests is Music. To put them in another order, use **Settings → Home and tabs → Catalog pages → Arrange the pages** (and **Back to the usual order** to undo it).
 
 Audiobooks and Music are only on Kindles with a speaker or headphone jack
 (Kindle 2, 3, DX, Touch) or with Bluetooth (Scribe, Paperwhite 5 and newer…); the others have the Books page alone, with no
@@ -74,7 +76,7 @@ Keep your magazines in a library of their own on Grimmory (or BookOrbit), then
 choose it in **Settings → Accounts and services → Books → Magazines**. It
 lists your libraries; pick the one with your magazines, or **Off**.
 
-- The Catalog gets a **Magazines** page after Books, with only that library's
+- The Catalog gets a **Magazines** page before Books, with only that library's
   books. In the Bookshelf view it's a magazine stand: a striped awning with the
   library's name, the search bar, wire racks with the covers face out, and a
   counter below.

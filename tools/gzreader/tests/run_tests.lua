@@ -720,6 +720,46 @@ print("Catalog tab: Books, Audiobooks and Music pages")
         and Catalog.step(all, "music", 1) == "books" and Catalog.step(all, "books", -1) == "music" and Catalog.step(all, "audiobooks", 0) == "audiobooks"
         and Catalog.step({ "books" }, "books", 1) == nil and Catalog.step({ "books" }, "books", -1) == nil,
         "pages: next and before, round the ends (after Music: Books; before Books: Music); nothing to turn to with one page")
+    -- the pages' order: Requests, Magazines, Books, Audiobooks, Music, or the one chosen in Settings
+    check(table.concat(Catalog.order(false), ",") == "requests,magazines,books,audiobooks,music"
+        and table.concat(Catalog.sections(true, true, true), ",") == "requests,magazines,books,audiobooks,music",
+        "the usual order: Requests, Magazines, Books, Audiobooks, Music")
+    check(table.concat(Catalog.order({ "music", "books", "nonsense", "music" }), ",") == "music,books,requests,magazines,audiobooks",
+        "a chosen order made whole: unknown and repeated pages dropped, the ones it lacks after, in the usual order")
+    local five = Catalog.sections(true, true, true)
+    check(Catalog.step(five, "music", 1) == "requests" and Catalog.step(five, "requests", -1) == "music" and Catalog.step(five, "books", -1) == "magazines"
+        and Catalog.step(five, nil, 0) == "requests" and Catalog.step(five, "books", 0) == "books",
+        "…round the ends with all five (after Music: Requests; before Requests: Music)")
+    ;(function()
+        local B = require("gzreader_browser")
+        local was, reopened = B.current, nil
+        B.current = { menu = {}, section = "music", openSection = function(_s, id) reopened = id end }
+        Catalog.setOrder({ "books", "music", "audiobooks" })
+        check(table.concat(G_reader_settings:readSetting("gzreader_catalog_order"), ",") == "books,music,audiobooks,requests,magazines"
+            and table.concat(Catalog.sections(true, true, true), ",") == "books,music,audiobooks,requests,magazines"
+            and table.concat(Catalog.sections(false, false, true), ",") == "books,requests" and reopened == "music",
+            "Settings → Catalog pages: the chosen order kept, the pages follow it, an open Catalog shown again on its page")
+        local item = Catalog.settingsItem()
+        check(item.text == "Catalog pages" and item.sub_item_table[1].text_func() == "Order: Books, Music, Audiobooks, Requests, Magazines"
+            and item.sub_item_table[3].enabled_func() == true, "…its row says the order; Back to the usual order offered")
+        -- Arrange the pages: KOReader's sort window, saved when it's closed
+        local saved_sw, shown_sw = package.loaded["ui/widget/sortwidget"], nil
+        package.loaded["ui/widget/sortwidget"] = { new = function(_c, o) shown_sw = o; return o end }
+        Catalog.arrange()
+        local rows = shown_sw and shown_sw.item_table or {}
+        check(#rows == 5 and rows[1].text == "Books" and rows[4].text == "Requests (with BookOrbit)", "…Arrange the pages: all five, in their order, each saying when it shows")
+        rows[1], rows[3] = rows[3], rows[1]
+        if shown_sw then shown_sw.callback() end
+        check(table.concat(Catalog.order(), ",") == "audiobooks,music,books,requests,magazines", "…moved and closed: kept")
+        package.loaded["ui/widget/sortwidget"] = saved_sw
+        item.sub_item_table[3].callback()
+        check(G_reader_settings:readSetting("gzreader_catalog_order") == nil and item.sub_item_table[3].enabled_func() == false
+            and table.concat(Catalog.sections(true, true, true), ",") == "requests,magazines,books,audiobooks,music", "…Back to the usual order")
+        B.current = was
+        local bsrc = io.open(arg[5] .. "/plugins/gzreader.koplugin/gzreader_browser.lua"):read("*a")
+        check(bsrc:find('self.section = (section and Catalog.step(self:sections(), section, 0)) or "books"', 1, true),
+            "the Catalog opens on Books, wherever Books is in the order")
+    end)()
     local p1, p2, p3 = Catalog.stripParts(all, "books"), Catalog.stripParts(all, "audiobooks"), Catalog.stripParts(all, "music")
     check(p1.left == "‹ Music" and p1.dots == "● ○ ○" and p1.right == "Audiobooks ›" and p2.left == "‹ Books" and p2.dots == "○ ● ○"
         and p2.right == "Music ›" and p3.left == "‹ Audiobooks" and p3.right == "Books ›" and Catalog.stripParts({ "books" }, "books") == nil,
@@ -2835,8 +2875,8 @@ end
     print("Magazines: their own Catalog page, left out of Books")
     local Mag = require("gzreader_magazines")
     local Catalog = require("gzreader_catalog")
-    check(table.concat(Catalog.sections(true, true), ",") == "books,magazines,audiobooks,music"
-        and table.concat(Catalog.sections(false, true), ",") == "books,magazines"
+    check(table.concat(Catalog.sections(true, true), ",") == "magazines,books,audiobooks,music"
+        and table.concat(Catalog.sections(false, true), ",") == "magazines,books"
         and table.concat(Catalog.sections(true, false), ",") == "books,audiobooks,music"
         and table.concat(Catalog.sections(false, false), ",") == "books",
         "the Catalog's pages: Magazines after Books, only with a magazine library")
@@ -2872,7 +2912,7 @@ end
     check(Mag.hider(plugin, { libraryId = 2 }) == nil and Mag.hider(plugin, { libraryId = 1 }) ~= nil and Mag.hider(plugin, {}) ~= nil,
         "lists leave them out, except the magazine library's own")
     local mb = Browser:new(plugin); mb:show()
-    check(table.concat(mb:sections(), ","):match("^books,magazines") ~= nil, "the Catalog has the Magazines page")
+    check(table.concat(mb:sections(), ","):match("magazines,books") ~= nil, "the Catalog has the Magazines page")
     local bi = Browser.bookItems(mb)
     check(bi[#bi].gz_id == "magazines", "the Books page's next page is Magazines")
     local mi_items = Browser.magazineItems(mb)
@@ -18660,8 +18700,8 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
         check(not card:find("Request a book", 1, true) and not card:find("Reading stats", 1, true),
             "requests: not on the server's card any more (their own page) " .. card)
         local Catalog = require("gzreader_catalog")
-        check(Browser.hasRequests(fake) and table.concat(Catalog.sections(false, false, true), ",") == "books,requests"
-            and table.concat(Catalog.sections(true, true, true), ",") == "books,magazines,audiobooks,music,requests"
+        check(Browser.hasRequests(fake) and table.concat(Catalog.sections(false, false, true), ",") == "requests,books"
+            and table.concat(Catalog.sections(true, true, true), ",") == "requests,magazines,books,audiobooks,music"
             and Catalog.title("requests") == "Requests",
             "requests: signed in to BookOrbit, the Catalog has a Requests page, last")
         check(Rq.can(plugin) == true and plugin.api:canRequestBooks() == true, "requests: possible with the API key")
