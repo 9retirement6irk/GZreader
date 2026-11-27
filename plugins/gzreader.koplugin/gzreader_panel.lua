@@ -215,14 +215,9 @@ function Panel.catalog()
         } },
         { id = "book", title = _("This book"), tiles = {
             { id = "sync", label = _("Sync with Grimmory"), note = _("Grimmory's books") },
-            { id = "contents", label = _("Contents") },
+            { id = "controls", label = _("Options"), note = _("what a swipe up from the bottom of the page opens") },
             { id = "bookmark", label = _("Bookmark") },
-            { id = "bookmarks", label = _("Bookmarks") },
-            { id = "gotopage", label = _("Go to page") },
             { id = "searchbook", label = _("Search book") },
-            { id = "font", label = _("Font"), note = _("books that reflow") },
-            { id = "layout", label = _("Layout") },
-            { id = "fitpictures", label = _("Fit pictures"), note = _("EPUBs") },
             { id = "readaloud", label = _("Read aloud"), available = Touch.tts },
             { id = "storyguide", label = _("Story guide"), note = _("people, places, terms and what's happened, made from the book's text by your AI service; with an AI key") },
             { id = "note", label = _("Quick note"), note = _("while Memos is connected") },
@@ -552,24 +547,12 @@ function Panel.bookTiles(plugin, ui)
     if plugin.sync then
         list[#list + 1] = { id = "sync", icon = "sync", label = _("Sync with Grimmory"), run = function() plugin:onGrimmorySyncNow() end }
     end
-    list[#list + 1] = { id = "contents", icon = "contents", label = _("Contents"), run = function()
-        if not ui:handleEvent(Event:new("ShowZenUIToc")) then ui:handleEvent(Event:new("ShowToc")) end
-    end }
+    -- reader controls, as a swipe up from the bottom opens them: contents, bookmarks, go to page, the
+    -- font, the layout (Fit pictures in it) — they were six tiles here (the owner, 2026-11-26)
+    list[#list + 1] = { id = "controls", icon = "layout", label = _("Options"), run = function() Panel.readerControls(ui) end }
     list[#list + 1] = { id = "bookmark", icon = "bookmark", label = _("Bookmark"), on = ui.view and ui.view.dogear_visible == true,
         run = send("ToggleBookmark") }
-    list[#list + 1] = { id = "bookmarks", icon = "bookmarks", label = _("Bookmarks"), run = send("ShowBookmark") }
-    list[#list + 1] = { id = "gotopage", icon = "gotopage", label = _("Go to page"), run = send("ShowGotoDialog") }
     list[#list + 1] = { id = "searchbook", icon = "searchbook", label = _("Search book"), run = send("ShowFulltextSearchInput") }
-    -- the font (reflowing books), and the layout panel (size, margins, spacing…)
-    if ui.font and ui.font.face_table and ui.document and not ui.document.info.has_pages then
-        list[#list + 1] = { id = "font", icon = "font", label = _("Font"), run = function() Panel.showFonts(ui) end }
-    end
-    list[#list + 1] = { id = "layout", icon = "layout", label = _("Layout"), run = function() Panel.showLayout(ui) end }
-    if ui.document and not ui.document.info.has_pages and ui.styletweak then
-        local PB = require("gzreader_picturebook")
-        local item = PB.menuItem(ui)
-        list[#list + 1] = { id = "fitpictures", icon = "fitpictures", label = _("Fit pictures"), on = PB.isOn(ui) == true, run = item.callback }
-    end
     local tts = plugin.tts
     -- (a narrated book: Read aloud plays its own narration, the sentence highlighted: gzreader_narration.lua)
     local okn, narrated = pcall(function() return require("gzreader_narration").forReadAloud(ui) end)
@@ -600,6 +583,28 @@ end
 --- The layout panel (KOReader's bottom config menu: size, margins, spacing…).
 --- Opened with force: ZenOS's Zen mode blocks a plain ShowConfigMenu on touch
 --- Kindles (meant for the bottom swipe), as its own reader controls do.
+--- The Options tile: on a touch Kindle, whatever the swipe up from the bottom
+--- of a book opens (Settings → Reader → Bottom swipe gesture: the page
+--- browser, reader controls, …; ZenOS's page_browser.lua); otherwise, or when
+--- that swipe is off, ZenOS's reader controls (KOReader's bottom menu where
+--- ZenOS's aren't there).
+function Panel.readerControls(ui)
+    local menu = ui and ui.menu
+    if Device.isTouchDevice and Device:isTouchDevice() then
+        local okb, BottomSwipe = pcall(require, "common/reader_bottom_swipe")
+        if okb and type(BottomSwipe) == "table" and type(BottomSwipe.gz_open) == "function" then
+            local ok, done = pcall(BottomSwipe.gz_open, ui)
+            if ok and done then return true end
+        end
+    end
+    if menu and not menu.onShowReaderControls then
+        local zen = rawget(_G, "__ZEN_UI_PLUGIN") or ui.zenos
+        if zen then pcall(function() require("modules/menu/patches/reader_controls")(zen) end) end
+    end
+    if menu and menu.onShowReaderControls then return menu:onShowReaderControls() end
+    return Panel.showLayout(ui)
+end
+
 function Panel.showLayout(ui)
     if ui.config and ui.config.onShowConfigMenu then return ui.config:onShowConfigMenu(true) end
     ui:handleEvent(Event:new("ShowConfigMenu"))
