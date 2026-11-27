@@ -14985,6 +14985,166 @@ print("Calendar tab")
     os.execute("kill $(cat " .. WORK .. "/caldav2.pid) 2>/dev/null")
 end)()
 
+print("Flashcards: cards made by the AI service, kept in Memos, and a quiz")
+;(function()
+    local Cards = require("gzreader_flashcards")
+    local AI = require("gzreader_ai")
+    -- a chapter's bounds from the contents (a sub-chapter ends at the next entry at its level or above)
+    local toc = { toc = {
+        { page = 1, depth = 1, xpointer = "/a" }, { page = 3, depth = 2, xpointer = "/b" },
+        { page = 5, depth = 2, xpointer = "/c" }, { page = 9, depth = 1, xpointer = "/d" } } }
+    local a1, b1 = Cards.tocBounds(toc, 4)
+    local a2, b2 = Cards.tocBounds(toc, 10)
+    local a3 = Cards.tocBounds({ toc = {} }, 4)
+    check(a1 == "/b" and b1 == "/c" and a2 == "/d" and b2 == nil and a3 == nil,
+        "Flashcards: a chapter is read from the contents' own places")
+    -- reading cards back
+    local cards = Cards.parse("Here you go:\nQ: What is a lay?\nA: A sailor's share\nof the profit.\n\nq. Who is Ishmael?\na: The narrator.\n\nQ: A question with no answer\n\nA: an answer with no question\nQ: Last?\nA: Yes.")
+    check(#cards == 3 and cards[1].q == "What is a lay?" and cards[1].a == "A sailor's share\nof the profit." and cards[2].q == "Who is Ishmael?" and cards[3].a == "Yes.",
+        "the cards read back from Q: and A: lines (an answer over two lines; lines that aren't a card left out)")
+    local deck = { title = "Moby-Dick", part = "Chapter 16", cards = { { q = "What is a lay?", a = "A share." }, { q = "Who?", a = "Ishmael." } } }
+    local note = Cards.noteText(deck)
+    check(note == "#flashcards\n**Flashcards: Moby-Dick** \u{00B7} Chapter 16\n\n<details>\n<summary>What is a lay?</summary>\n\nA share.\n\n</details>\n\n"
+        .. "<details>\n<summary>Who?</summary>\n\nIshmael.\n\n</details>",
+        "a deck as a Memos note: tagged, titled, each card a folded section (its question the title, its answer inside)")
+    local back = Cards.parse(note)
+    check(#back == 2 and back[1].q == "What is a lay?" and back[1].a == "A share." and back[2].q == "Who?" and back[2].a == "Ishmael.",
+        "…read back the same")
+    local mixed = Cards.parse("#flashcards\n<details><summary>Fish &amp; chips?</summary>\n\nFood.\nHot.\n\n</details>\n\n"
+        .. "<details open>\n<summary>Empty?</summary>\n\n</details>\nQ: Why salt?\nA: Against precomputed hashes.")
+    check(#mixed == 2 and mixed[1].q == "Fish & chips?" and mixed[1].a == "Food.\nHot." and mixed[2].q == "Why salt?",
+        "…and a deck edited in Memos: sections (the summary on the same line, an empty one left out) and Q:/A: lines together")
+    local amp = Cards.noteText({ title = "T", cards = { { q = "A < B & C?", a = "Yes" } } })
+    check(amp:find("<summary>A &lt; B &amp; C?</summary>", 1, true) and Cards.parse(amp)[1].q == "A < B & C?",
+        "…a question with < or & in it kept as written")
+    -- the question
+    local q = Cards.question("Moby-Dick", "Herman Melville", "Chapter 16", "Call me Ishmael.", 10)
+    check(q.text:find('The book: "Moby-Dick" by Herman Melville\nThe part: Chapter 16\n\nThe text:\nCall me Ishmael.\n\nWrite 10 flashcards', 1, true)
+        and q.system:find('"Q: "', 1, true) and q.what == "flashcards" and q.timeout == 90, "the question: the book, the part, its text, how many")
+    -- the boxes
+    local boxes, now = {}, 1000000
+    check(Cards.due(boxes, "k", now), "a card never seen is due")
+    check(Cards.answer(boxes, "k", true, now) == 1 and not Cards.due(boxes, "k", now + 3600) and Cards.due(boxes, "k", now + 86400),
+        "got it: box 1, due again the next day")
+    Cards.answer(boxes, "k", true, now + 86400)
+    check(boxes.k.box == 2 and not Cards.due(boxes, "k", now + 2 * 86400) and Cards.due(boxes, "k", now + 4 * 86400), "…box 2: three days")
+    check(Cards.answer(boxes, "k", false, now) == 1, "again: back to the first box")
+    for _k = 1, 9 do Cards.answer(boxes, "top", true, now) end
+    check(boxes.top.box == #Cards.DAYS, "…never past the last box")
+    local list = {}
+    for i = 1, 30 do list[i] = { key = string.format("c%02d", i) } end
+    boxes = { c01 = { box = 3, seen = now - 8 * 86400 }, c02 = { box = 1, seen = now - 2 * 86400 }, c03 = { box = 4, seen = now } }
+    local due = Cards.dueCards(list, boxes, now)
+    check(#due == Cards.QUIZ_MAX and due[1].key ~= "c03" and due[#due].key == "c02" or #due == Cards.QUIZ_MAX and due[1].key == "c04",
+        "the quiz: due cards only, new and low boxes first, at most " .. Cards.QUIZ_MAX)
+    check(Cards.cardKey({ q = "a", a = "b" }) == Cards.cardKey({ q = "a", a = "b" }) and Cards.cardKey({ q = "a", a = "b" }) ~= Cards.cardKey({ q = "a", a = "c" }),
+        "a card is known by its question and answer")
+    -- the chapter's text
+    local ui = { rolling = true, doc_props = { display_title = "Moby-Dick", authors = "Herman Melville" } }
+    ui.document = { file = "/mnt/us/GZreader/books/moby.epub", getCurrentPage = function() return 12 end, getPageCount = function() return 100 end,
+        getPageXPointer = function(_d, p) return "/page/" .. p end,
+        getTextFromXPointers = function(_d, a, b) return a == "/page/10" and b == "/page/15" and ("Call   me Ishmael.\n\n\n\nSome years ago. "):rep(2000) or nil end }
+    ui.toc = { isChapterStart = function(_t, p) return p == 10 end, getPreviousChapter = function() return 10 end, getNextChapter = function() return 15 end,
+        getTocTitleByPage = function() return "Loomings" end }
+    local ch = Cards.chapter(ui)
+    check(ch and ch.part == "Loomings" and ch.cut == true and #ch.text <= Cards.MAX_TEXT and ch.text:find("Call me Ishmael.\n\nSome", 1, true) and ch.pages == 5,
+        "this chapter's text: from its first page to the next chapter, spaces tidied, cut to " .. Cards.MAX_TEXT .. " bytes")
+    check(Cards.chapter({ paging = {}, document = {} }) == nil, "a PDF: no chapter text")
+    -- kept on the Kindle (a state file of its own)
+    Cards._state, Cards._settings = nil, nil
+    local was_path = Cards.statePath
+    Cards.statePath = function() return WORK .. "/flashcards-state.lua" end
+    os.remove(WORK .. "/flashcards-state.lua")
+    Cards.addDeck({ title = "Moby-Dick", book = "/mnt/us/GZreader/books/moby.epub", cards = deck.cards })
+    Cards.addDeck({ title = "Other", book = "/other.epub", cards = { { q = "x", a = "y" } } })
+    Cards._state, Cards._settings = nil, nil
+    check(#Cards.allCards("/mnt/us/GZreader/books/moby.epub") == 2 and #Cards.allCards(nil) == 3, "decks kept on the Kindle, by book (read back from the file)")
+    -- the tile and the menu
+    local was_hw, was_ai = plugin.store.handwriting, plugin.store.ai
+    plugin.store.handwriting, plugin.store.ai = nil, nil
+    local tile = Cards.tile(plugin, ui)
+    check(tile and tile.id == "flashcards" and io.open(PLUGIN .. "/icons/panel/flashcards.svg") ~= nil, "cards kept: the Flashcards tile, even with no AI key (to quiz)")
+    local UIM = require("ui/uimanager")
+    local was_show, was_close, was_ask = UIM.show, UIM.close, AI.ask
+    local stubs = {}
+    for _i, m in ipairs({ "ui/widget/infomessage", "ui/widget/textviewer", "ui/widget/buttondialog", "ui/widget/confirmbox" }) do
+        stubs[m] = package.loaded[m]
+        package.loaded[m] = { new = function(_c, o) o.kind = m:match("([%w]+)$"); return o end }
+    end
+    local shown = {}
+    UIM.show = function(_s, w) shown[#shown + 1] = w end
+    UIM.close = function(_s, w) w.closed = true end
+    local function rowText(d) local t = {}; for _i, r in ipairs(d.buttons) do t[#t + 1] = r[1].text end; return table.concat(t, "|") end
+    tile.run()
+    check(shown[1].kind == "buttondialog" and rowText(shown[1]) == "Quiz me on this book (2 due)|Quiz me on all my cards (3 due)", "no AI key: the menu has the quizzes only")
+    AI.settings(plugin).claude.key = "sk-example"
+    shown = {}
+    tile.run()
+    check(rowText(shown[1]) == "Make cards from this chapter|Quiz me on this book (2 due)|Quiz me on all my cards (3 due)", "an AI key: Make cards from this chapter first")
+    -- making cards from the chapter: asked first with how much goes, then the cards to check, then saved
+    local asked, answer
+    AI.ask = function(_p, question, cb) asked, answer = question, cb end
+    shown[1].buttons[1][1].callback()
+    local confirm = shown[#shown]
+    check(confirm.kind == "confirmbox" and confirm.text:find("Make 10 flashcards from “Loomings”?", 1, true) and confirm.text:find("Sent to Claude: about", 1, true)
+        and confirm.text:find("(its start: the chapter is longer)", 1, true) and asked == nil, "Make cards: asked first, saying what goes and to whom")
+    confirm.ok_callback()
+    check(asked and asked.text:find("The part: Loomings", 1, true) and asked.text:find("Call me Ishmael.", 1, true), "…then the chapter is sent")
+    answer("Q: Who tells the story?\nA: Ishmael.\n\nQ: Where does he go?\nA: To sea.")
+    local preview = shown[#shown]
+    check(preview.kind == "textviewer" and preview.title == "2 flashcards" and preview.text:find("1. Who tells the story?\nIshmael.", 1, true)
+        and preview.text:find("An AI wrote these", 1, true), "the cards to check before they're kept")
+    local was_conn = require("gzreader_memos").isConnected
+    require("gzreader_memos").isConnected = function() return false end
+    preview.buttons_table[1][2].callback()
+    check(#Cards.allCards(nil) == 5 and shown[#shown].text:find("2 cards saved on this Kindle", 1, true), "Save, Memos not connected: kept on the Kindle, said so")
+    require("gzreader_memos").isConnected = function() return true end
+    local Notes = require("gzreader_notes")
+    local was_add, added = Notes.addNote, nil
+    Notes.addNote = function(_p, content, vis) added = { content = content, vis = vis } end
+    plugin.store.memos = plugin.store.memos or {}
+    check(Cards.save(plugin, { title = "Moby-Dick", part = "Loomings", book = ui.document.file, cards = { { q = "Q1", a = "A1" } } }) == "memos"
+        and added and added.content:find("#flashcards\n**Flashcards: Moby-Dick** \u{00B7} Loomings", 1, true) and added.vis == "PRIVATE",
+        "Save, Memos connected: also a private note in Memos, tagged #flashcards")
+    Notes.addNote = was_add
+    require("gzreader_memos").isConnected = was_conn
+    answer(nil, "it took too long")
+    check(shown[#shown].text == "Claude didn't answer: it took too long", "no answer: said why")
+    -- the quiz: a card, its answer, Again puts it back, Got it moves on
+    shown = {}
+    local qcards = { { q = "Q one", a = "A one", key = "k1" }, { q = "Q two", a = "A two", key = "k2" } }
+    Cards.quiz(qcards)
+    local front = shown[#shown]
+    check(front.title == "Card 1 of 2" and front.text == "Q one" and front.buttons_table[1][2].text == "Show answer", "the quiz: the first question, large")
+    front.buttons_table[1][2].callback()
+    local back = shown[#shown]
+    check(back.text == "Q one\n\n\u{2014}\n\nA one" and back.buttons_table[1][1].text == "Again" and back.buttons_table[1][2].text == "Got it", "…its answer, then Again or Got it")
+    back.buttons_table[1][1].callback()
+    check(Cards.state().boxes.k1.box == 1 and shown[#shown].text == "Q two", "Again: the first box, and on to the next card")
+    shown[#shown].buttons_table[1][2].callback(); shown[#shown].buttons_table[1][2].callback()
+    check(Cards.state().boxes.k2.box == 1 and shown[#shown].text == "Q one", "Got it: up a box; the card missed comes back before the end")
+    shown[#shown].buttons_table[1][2].callback(); shown[#shown].buttons_table[1][2].callback()
+    check(shown[#shown].text == "Done: 1 of 2 right the first time.", "the end: how many were right the first time")
+    check(Cards.quiz({}) == false and shown[#shown].text:find("No cards are due", 1, true), "nothing due: said so")
+    -- the selection menu
+    local added_btn = {}
+    local hl = { addToHighlightDialog = function(_h, key, fn) added_btn[key] = fn end }
+    check(Cards.register(plugin, { highlight = hl }) and added_btn["15_gz_flashcards"], "Flashcards (AI) added to the selection menu")
+    local sel_ui = { document = ui.document, toc = ui.toc, doc_props = ui.doc_props }
+    local hh = { ui = sel_ui, selected_text = { text = "Call me Ishmael." }, onClose = function(h) h.closed = true end }
+    local b = added_btn["15_gz_flashcards"](hh, nil)
+    check(b.text == "Flashcards (AI)" and b.show_in_highlight_dialog_func() == true, "…shown with an AI key")
+    asked = nil
+    b.callback()
+    check(hh.closed and asked and asked.text:find("The text:\nCall me Ishmael.\n\nWrite 5 flashcards", 1, true), "tapped: the selection is sent, for 5 cards")
+    UIM.show, UIM.close, AI.ask = was_show, was_close, was_ask
+    for m, v in pairs(stubs) do package.loaded[m] = v end
+    plugin.store.handwriting, plugin.store.ai = was_hw, was_ai
+    Cards.statePath, Cards._state, Cards._settings = was_path, nil, nil
+    local msrc = io.open(PLUGIN .. "/main.lua"):read("*a")
+    check(msrc:find('require("gzreader_flashcards").register(self, self.ui)', 1, true), "registered when a book is set up")
+end)()
+
 print("Redirects: the sign-in stays with your own server")
 ;(function()
     local Api = require("gzreader_api")

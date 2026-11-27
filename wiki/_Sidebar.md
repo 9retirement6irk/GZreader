@@ -29,6 +29,7 @@
 - [Home and bookshelves](Home-and-Bookshelves)
 - [Picture books](Picture-Books)
 - [Notes](Notes)
+- [Flashcards](Flashcards)
 - [Calendar](Calendar)
 - [Music](Music)
 - [House (Home Assistant)](House)
