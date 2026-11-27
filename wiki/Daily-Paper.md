@@ -142,9 +142,16 @@ as usual. Open a story for the whole of it; it begins with **In brief (AI
 summary)**. The date line says who wrote the summaries (*summaries by
 Claude*).
 
+The AI also chooses the paper's **order**, as an editor would: it opens
+with good, hopeful news, keeps plenty of it near the front, mixes the
+sections and puts what matters most early. The summaries then go to the
+paper's first stories. When it gives no usable order, the paper keeps the
+ordinary mix.
+
 - **What's sent:** when the paper is fetched, each story's headline and the
   first part of its text (about a thousand words at most) go to the AI
-  service, one story at a time, about twenty a day. Nothing about you, your
+  service, one story at a time, about twenty a day; and once, for the
+  order, every story's section, headline and first line. Nothing about you, your
   Kindle or your feeds' addresses is sent.
 - **What it costs:** you pay the service by use. With Claude's small model,
   twenty short summaries a day come to a few cents a month.
