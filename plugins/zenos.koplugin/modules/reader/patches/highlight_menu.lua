@@ -35,6 +35,7 @@ local function apply()
     }
     local settings_icon = utils.resolveLocalIcon(_stock_icons_dir, "appbar.settings")
     local ai_icon = utils.resolveIcon(_icons_dir, "lookup_ai")
+    local explain_icon = utils.resolveLocalIcon(_icons_dir, "lookup_explain") -- GZreader: Explain (gzreader_explain.lua)
 
     local _plugin_ref = rawget(_G, "__ZEN_UI_PLUGIN")
 
@@ -123,6 +124,7 @@ local function apply()
         select = true, highlight = true, search = true, translate = true,
         wikipedia = true, dictionary = true, add_note = true,
         ai_assistant = true,
+        gz_explain = true, -- GZreader: its own icon in the row
     }
 
     local function get_selection_anchor(self, dialog, index)
@@ -232,6 +234,17 @@ local function apply()
                 self:translate(index)
             end,
         })
+
+        -- GZreader: Explain, the question mark (the selection sent to the AI service set up
+        -- in Accounts and services; only there when a key is set up: gzreader_explain.lua)
+        local explain_btn = find_highlight_button(self, index, "gz_explain")
+        if explain_btn and (not explain_btn.show_in_highlight_dialog_func or explain_btn.show_in_highlight_dialog_func()) then
+            table.insert(buttons[1], {
+                id = "gz_highlight_explain", icon = explain_icon,
+                text = labels and _("Explain") or nil,
+                callback = explain_btn.callback,
+            })
+        end
 
         if show_ai_assistant() then
             local ai_btn = find_highlight_button(self, index, "ai_assistant")

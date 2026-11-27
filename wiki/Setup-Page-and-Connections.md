@@ -226,6 +226,21 @@ key field left empty keeps it. Keys are kept with GZreader's other sign-ins,
 off the Kindle's USB drive, and never written to the log. Kindles without
 Wi‑Fi (Kindle 2, DX) have no AI row.
 
+### Explain what you selected
+
+With an AI key set up, the menu that comes up when you select text in a book
+has a **question mark**. Tap it and the service is asked to explain the
+selected text: a word or a name as it's meant there, or what a longer
+passage is saying, in about 150 words and without giving away what happens
+later. The answer shows in a window over the page, under the text you
+selected. It also works from an existing highlight's menu.
+
+Sent, only when you tap the question mark: the selected text (its first
+3,000 characters or so) and the book's title and author. Nothing else of the
+book, and nothing asked or answered is kept or written to the log. An AI
+wrote the answer and it can be wrong; the window says so. Without a key
+there is no question mark.
+
 ## Copy connections from another GZreader
 
 Set one GZreader up and copy its connections to the others over the Wi‑Fi,

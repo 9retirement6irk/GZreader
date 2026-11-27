@@ -250,6 +250,7 @@ end
 function AI.uses(plugin)
     local _ = require("gettext")
     local out = {}
+    if AI.ready(plugin) then out[#out + 1] = _("Explain (the question mark when you select text in a book)") end
     local okh, Hw = pcall(require, "gzreader_handwriting")
     if okh and Hw.engine(plugin) ~= "kindle" then out[#out + 1] = _("Handwriting to text") end
     local okd, D = pcall(require, "gzreader_daily")
