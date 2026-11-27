@@ -17694,7 +17694,9 @@ print("Quick panel: a volume slider on touch Kindles with sound")
     local was_scale = rawget(Screen, "scaleBySize")
     Screen.scaleBySize = function(_s, px) return px end
     local saved = { touch = Device.isTouchDevice, audio = Touch.audio, ivona = Touch.ivona,
-        hasIvona = TTS.hasIvona, volume = TTS.volume, setVolume = TTS.setVolume, volumeMax = TTS.volumeMax }
+        hasIvona = TTS.hasIvona, volume = TTS.volume, setVolume = TTS.setVolume, volumeMax = TTS.volumeMax, btAudio = TTS.bluetoothAudio }
+    local bt_on = true
+    TTS.bluetoothAudio = function() return bt_on end
     Panel.volume_present = nil
     -- which Kindles get it
     Device.isTouchDevice = function() return true end
@@ -17705,7 +17707,12 @@ print("Quick panel: a volume slider on touch Kindles with sound")
     check(Panel.hasVolume() == true, "the Kindle Touch (speaker, headphones): a volume slider")
     Touch.audio = function() return false end
     Touch.ivona = function() return true end
-    check(Panel.hasVolume() == true, "a Bluetooth Kindle (Scribe, Paperwhite 5…): a volume slider")
+    check(Panel.hasVolume() == true, "a Bluetooth Kindle (Scribe, Paperwhite 5…) with Bluetooth audio connected: a volume slider")
+    bt_on = false
+    check(Panel.hasVolume() == false, "…nothing connected: no volume slider")
+    bt_on = nil
+    check(Panel.hasVolume() == false, "…audiomgrd not answering: no volume slider")
+    bt_on = true
     Device.isTouchDevice = function() return false end
     Touch.audio = function() return true end
     check(Panel.hasVolume() == false, "the Kindle 3 (volume buttons, no touch): no slider")
@@ -17765,6 +17772,7 @@ print("Quick panel: a volume slider on touch Kindles with sound")
         "the panel lays out, paints and lets you drag the volume row")
     Device.isTouchDevice, Touch.audio, Touch.ivona = saved.touch, saved.audio, saved.ivona
     TTS.hasIvona, TTS.volume, TTS.setVolume, TTS.volumeMax = saved.hasIvona, saved.volume, saved.setVolume, saved.volumeMax
+    TTS.bluetoothAudio = saved.btAudio
     Screen.scaleBySize = was_scale
 end)()
 
