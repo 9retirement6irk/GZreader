@@ -5388,7 +5388,7 @@ do
         local home = ids(Panel.homeTiles(hplug, nil))
         check(home:match("^history,search,") and not home:match("gone") and home:match(",continue") ~= nil,
             "arrange: Home's tiles in the order chosen, the others after them in their usual order (" .. home .. ")")
-        check(ids(Panel.controls(hplug)):match("^wifi") ~= nil, "…the other groups as they were")
+        check(ids(Panel.controls(hplug)):match("^home,wifi") ~= nil, "…the other groups as they were (Controls: Home first, #461)")
         local arr = item.sub_item_table[5].sub_item_table
         local names = {}
         for _i, r in ipairs(arr) do names[#names + 1] = r.text end
