@@ -686,6 +686,21 @@ function Grimmory:menuItems()
             end,
         } or nil,
         {
+            -- (a library as the Catalog's Magazines page, left out of Books: gzreader_magazines.lua)
+            text_func = function()
+                local m = require("gzreader_magazines").get(self)
+                return T(_("Magazines: %1"), m and m.name or _("off"))
+            end,
+            help_text = fix(_("Choose one of your Grimmory libraries as your magazine library. The Catalog then has a Magazines page with only that library's books, drawn as a magazine stand, and the Books page leaves them out.")),
+            enabled_func = function() return self.api:isPaired() end,
+            keep_menu_open = true,
+            callback = function(touchmenu)
+                require("gzreader_magazines").choose(self, function()
+                    if touchmenu and touchmenu.updateItems then pcall(touchmenu.updateItems, touchmenu) end
+                end)
+            end,
+        },
+        {
             text = _("Rebuild library"),
             help_text = require("gzreader_servername").fix(_("Loads the list of your books from Grimmory again (what Authors, Series and searching use) and forgets the saved lists, so books removed from Grimmory disappear here and new ones show. The same as Refresh list from Grimmory in Authors or Series; it's also done by itself once a day.")),
             enabled_func = function() return self.api:isPaired() end,

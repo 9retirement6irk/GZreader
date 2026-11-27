@@ -67,6 +67,61 @@ if os.path.exists(audio_json):
         m.AUTHORS.append({"id": 100 + len(m.AUTHORS), "name": name, "bookCount": sum(1 for a in AUDIO.values() if a["author"] == name), "hasPhoto": False})
     m.SHELVES[6] = [101, 103]
 
+# GZ_DEMO_MAGAZINES=1: a Magazines library of made-up monthly magazines (covers
+# drawn here, each issue's file one of the demo's EPUBs), for the Catalog's
+# Magazines page. Names are invented.
+MAGS = {}
+if os.environ.get("GZ_DEMO_MAGAZINES") == "1":
+    import io
+    from PIL import Image, ImageDraw, ImageFont
+    import tempfile
+    MAG_DIR = tempfile.mkdtemp(prefix="demo-magazines-")
+    fonts = "/usr/share/fonts/truetype/dejavu/"
+
+    def mfont(name, size):
+        try:
+            return ImageFont.truetype(fonts + name, size)
+        except OSError:
+            return ImageFont.load_default()
+
+    def mag_cover(name, issue, tone, lines):
+        W, H = 600, 790
+        im = Image.new("L", (W, H), tone)
+        d = ImageDraw.Draw(im)
+        ink = 255 if tone < 120 else 10
+        d.rectangle([0, 0, W, 150], fill=255 - ink if tone < 120 else 30)
+        mf = mfont("DejaVuSerif-Bold.ttf", 96 if len(name) < 9 else 70)
+        w = d.textlength(name, font=mf)
+        d.text(((W - w) / 2, 22), name, fill=ink if tone < 120 else 240, font=mf)
+        d.text((30, 160), issue.upper(), fill=ink, font=mfont("DejaVuSans-Bold.ttf", 26))
+        y = 420
+        for ln in lines:
+            d.text((30, y), ln, fill=ink, font=mfont("DejaVuSans-Bold.ttf", 34)); y += 60
+        d.ellipse([W - 230, 230, W - 40, 420], outline=ink, width=6)
+        buf = io.BytesIO(); im.convert("RGB").save(buf, "JPEG", quality=85)
+        return buf.getvalue()
+
+    m.LIBRARIES.append({"id": 8, "name": "Magazines", "bookCount": 0})
+    titles = [("Harbor", 70, ["Lighthouses of the north", "Knots, old and new"]),
+              ("Orbit Weekly", 200, ["A comet's long return", "Backyard telescopes"]),
+              ("Field & Fern", 140, ["Spring planting", "Moss gardens"]),
+              ("Kitchen Table", 225, ["Bread, slowly", "Ten soups for winter"])]
+    months = ["November 2026", "October 2026", "September 2026", "August 2026", "July 2026"]
+    mid = 300
+    for k, month in enumerate(months):
+        for j, (name, tone, lines) in enumerate(titles):
+            if name == "Orbit Weekly" and k > 2:
+                continue
+            mid += 1
+            MAGS[mid] = (name, month)
+            open(os.path.join(MAG_DIR, "%d.jpg" % mid), "wb").write(mag_cover(name, month, tone, lines))
+            m.BOOKS.append({
+                "id": mid, "title": "%s - %s" % (name, month), "authors": [name], "primaryFileType": "EPUB",
+                "primaryFileName": "%s - %s.epub" % (name, month), "fileSizeKb": 900, "readProgress": None,
+                "primaryFileId": 1000 + mid, "libraryId": 8, "seriesName": None, "seriesNumber": None,
+                "categories": ["Magazines"], "addedOn": "2026-%02d-0%dT09:00:00Z" % (11 - k, 1 + j),
+            })
+    m.LIBRARIES[-1]["bookCount"] = len(MAGS)
 
 # when each book in progress was last read (Home's "recently read on every device")
 m.STATE["last_read"].update({2: "2026-11-20T21:10:00Z", 3: "2026-11-17T08:30:00Z", 101: "2026-11-21T18:45:00Z", 103: "2026-11-15T07:05:00Z"})
@@ -102,12 +157,14 @@ def do_GET(self):
             return self._json(401)
         types = q.get("fileType", [])
         books = [b for b in m.BOOKS if not types or b["primaryFileType"] in types]
+        if q.get("libraryId"):
+            books = [b for b in books if b["libraryId"] == int(q["libraryId"][0])]
         if q.get("status"):
             books = [m.last_read(b) for b in books if b.get("readProgress")]
             if q.get("sort") == ["lastReadTime"]:
                 books = sorted(books, key=lambda b: b.get("lastReadTime") or "", reverse=q.get("dir") == ["desc"])
         else:
-            books = list(reversed(books))
+            books = sorted(books, key=lambda b: (b.get("addedOn") or "", b["id"]), reverse=True)
         return self._json(200, m.page_of(books, q, 20))
     if len(parts) == 6 and parts[4] == "books" and parts[5].isdigit() and parts[3] == "app":
         # (a book's page: what a real library would say about it)
@@ -149,6 +206,8 @@ def do_GET(self):
         if not self._user():
             return self._json(401)
         p = os.path.join(LIB, "%s.jpg" % parts[5])
+        if parts[5].isdigit() and int(parts[5]) in MAGS:
+            p = os.path.join(MAG_DIR, "%s.jpg" % parts[5])
         if os.path.exists(p):
             data = open(p, "rb").read()
             self.send_response(200); self.send_header("Content-Type", "image/jpeg")
@@ -158,6 +217,8 @@ def do_GET(self):
         if not self._user():
             return self._json(401)
         p = os.path.join(LIB, "%s.epub" % parts[4])
+        if parts[4].isdigit() and int(parts[4]) in MAGS:
+            p = os.path.join(LIB, "1.epub") # (an issue's file: any of the demo's books)
         if os.path.exists(p):
             data = open(p, "rb").read()
             self.send_response(200); self.send_header("Content-Type", "application/epub+zip")

@@ -20,7 +20,7 @@ local MAX_AGE = 24 * 3600
 local PAGE = 50 -- (Grimmory's most: AppBookService.MAX_PAGE_SIZE)
 
 local Index = {
-    data = nil,      -- { built_at, server, user, authors = {name=count}, series = {name={count, authors}}, genres = {name=count}, libraries = {id=count}, total }
+    data = nil,      -- { built_at, server, user, magazine_library, magazines = { library, ids }, authors = {name=count}, series = {name={count, authors}}, genres = {name=count}, libraries = {id=count}, total }
     building = nil,
 }
 
@@ -28,14 +28,17 @@ local function path() return DataStorage:getSettingsDir() .. "/gzreader_index.js
 local function progressPath() return DataStorage:getSettingsDir() .. "/gzreader_index.progress" end
 
 function Index.load(store)
-    if Index.data and Index.data.server == store.server and Index.data.user == store.username then
+    if Index.data and Index.data.server == store.server and Index.data.user == store.username
+            and (Index.data.magazine_library or "") == require("gzreader_magazines").key(store) then
         return Index.data
     end
     local f = io.open(path(), "rb")
     if not f then return nil end
     local ok, data = pcall(JSON.decode, f:read("*a"))
     f:close()
-    if ok and type(data) == "table" and data.server == store.server and data.user == store.username then
+    -- (built for another magazine library, or before one was chosen: built again, its counts would be off)
+    if ok and type(data) == "table" and data.server == store.server and data.user == store.username
+            and (data.magazine_library or "") == require("gzreader_magazines").key(store) then
         Index.data = data
         return data
     end
@@ -47,9 +50,17 @@ function Index.isStale(data)
 end
 
 --- Child process: page through readable books and aggregate.
-local function collect(api, report)
+--- `magazines`: the magazine library's id, or nil: its books aren't counted
+--- (the Books page leaves them out), their ids are kept (BookOrbit's lists
+--- don't say a book's library: gzreader_magazines.lua).
+local function collect(api, report, magazines)
     local authors, series, libraries, files, total = {}, {}, {}, {}, 0
     local genres = {} -- (Grimmory's categories)
+    local mag_ids, is_mag = nil, {}
+    if magazines ~= nil then
+        mag_ids = require("gzreader_magazines").allIds(api, magazines) or {}
+        for _i, id in ipairs(mag_ids) do is_mag[tostring(id)] = true end
+    end
     local page, pages = 0, 1
     while page < pages do
         local data, err = api:listBooks{ page = page, size = PAGE, sort = "title", dir = "asc",
@@ -58,7 +69,13 @@ local function collect(api, report)
         pages = tonumber(data.totalPages) or 1
         for _, b in ipairs(type(data.content) == "table" and data.content or {}) do
             local ftype = type(b.primaryFileType) == "string" and b.primaryFileType:upper() or ""
-            if type(b) == "table" and b.isPhysical ~= true and ftype ~= "" and ftype ~= "AUDIOBOOK" then
+            local magazine = type(b) == "table" and (is_mag[tostring(b.id)]
+                or (magazines ~= nil and b.libraryId ~= nil and tostring(b.libraryId) == tostring(magazines)))
+            if magazine and type(b.primaryFileName) == "string" and b.primaryFileName ~= "" then
+                -- (still relinked when it's on the Kindle)
+                files[b.primaryFileName:match("[^/\\]+$")] = { b.id, b.primaryFileId, ftype, b.title, tonumber(b.fileSizeKb) }
+            end
+            if type(b) == "table" and not magazine and b.isPhysical ~= true and ftype ~= "" and ftype ~= "AUDIOBOOK" then
                 total = total + 1
                 local book_authors = type(b.authors) == "table" and b.authors or {}
                 for _, a in ipairs(book_authors) do
@@ -117,7 +134,9 @@ local function collect(api, report)
         end
         wpage = wpage + 1
     end
-    return { authors = authors, series = series, genres = genres, libraries = libraries, files = files, total = total, subtitles = subtitles }
+    if magazines ~= nil then libraries[tostring(magazines)] = nil end -- (not on the Books page's Libraries)
+    return { authors = authors, series = series, genres = genres, libraries = libraries, files = files, total = total, subtitles = subtitles,
+        magazines = mag_ids and { library = magazines, ids = mag_ids } or nil }
 end
 
 --- Build (or rebuild) the index. `show` = show a progress dialog.
@@ -148,6 +167,7 @@ function Index.build(plugin, show, on_done)
         end)
     end
     local store = plugin.store
+    local mag = require("gzreader_magazines").fromStore(store)
     local out, prog = path() .. ".tmp", progressPath()
     os.remove(out); os.remove(prog)
     local started = os.time()
@@ -162,11 +182,12 @@ function Index.build(plugin, show, on_done)
         local data, cerr = collect(api, function(page, pages)
             local f = io.open(prog, "wb")
             if f then f:write(page, " ", pages); f:close() end
-        end)
+        end, mag and mag.id)
         Api.poolEnd()
         if data then
             data.built_at = os.time()
             data.server, data.user = store.server, store.username
+            data.magazine_library = mag and tostring(mag.id) or ""
             local f = io.open(out, "wb")
             if f then f:write(JSON.encode(data)); f:close() end
         end

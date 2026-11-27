@@ -243,7 +243,8 @@ function Shop.cardText(id, known)
         local counts = idx and idx.libraries or nil
         local names, n = {}, 0
         for _i, lib in ipairs(type(known.libraries) == "table" and known.libraries or {}) do
-            if type(lib) == "table" and lib.id and (not counts or (tonumber(counts[tostring(lib.id)]) or 0) > 0) then
+            if type(lib) == "table" and lib.id and tostring(lib.id) ~= known.magazines
+                    and (not counts or (tonumber(counts[tostring(lib.id)]) or 0) > 0) then
                 n = n + 1
                 if type(lib.name) == "string" then names[#names + 1] = lib.name end
             end
@@ -308,6 +309,8 @@ local function cacheKey(browser, what)
     local store = browser.plugin.store or {}
     return tostring(store.server) .. "|" .. tostring(store.username) .. "|" .. what
 end
+
+Shop.cacheKey = cacheKey
 
 local ENDPOINT = { continue = "continue-reading", recent = "recently-added" }
 
@@ -561,9 +564,12 @@ function Shop.fetch(browser)
     local function go()
         st.loading = true
         local api = browser.api
+        local hide = require("gzreader_magazines").hider(browser.plugin)
         require("gzreader_async").run(api, function()
+            -- (with a magazine library: Recently added without the new issues, gzreader_magazines.lua)
             return { continue = api:continueReading(Shop.LIST_LIMIT),
-                recent = api:simpleList(ENDPOINT.recent, Shop.LIST_LIMIT) }
+                recent = hide and require("gzreader_magazines").recent(api, hide, Shop.LIST_LIMIT)
+                    or api:simpleList(ENDPOINT.recent, Shop.LIST_LIMIT) }
         end, function(res)
             st.loading = false
             if type(res) == "table" then
@@ -602,6 +608,7 @@ function Shop.readKnown(browser)
     local known = {}
     pcall(function() known.index = require("gzreader_index").load(browser.plugin.store) end)
     known.libraries = Cache.get(cacheKey(browser, "libraries"))
+    known.magazines = require("gzreader_magazines").key(browser.plugin.store) -- (its own page: not among Libraries)
     known.shelves = Cache.get(cacheKey(browser, "shelves"))
     local ab = Cache.get(cacheKey(browser, "audiobooks"))
     known.audiobooks = type(ab) == "table" and tonumber(ab.totalElements) or nil
@@ -1004,6 +1011,33 @@ local function paintContents(bb, kind, room, info)
     if #spans > 0 then pcall(Shelf().paintDepth, bb, bottom, spans) end
 end
 
+---------------------------------------------------------------- the search slip
+
+--- The search slip pinned to the wall (r = { x, y, w, h }): a magnifier, its
+--- text, its letter; `hot` takes its place for taps and the 5-way.
+function Shop.paintSlip(bb, menu, r, label, letter, hot)
+    local sx, sy = r.x, r.y
+    bb:paintRect(sx + S(2), sy + S(3), r.w, r.h, gray(0.3))
+    bb:paintRect(sx, sy, r.w, r.h, Blitbuffer.COLOR_WHITE)
+    bb:paintRect(sx + S(4), sy + r.h - S(8), r.w - S(8), 1, gray(0.25))
+    bb:paintBorder(sx, sy, r.w, r.h, math.max(1, S(1)), Blitbuffer.COLOR_BLACK)
+    clip(bb, sx + math.floor(r.w / 2), sy, S(28))
+    local rad = math.floor(r.h * 0.2)
+    local mx, my = sx + S(12) + rad, sy + math.floor(r.h / 2) - S(2)
+    bb:paintCircle(mx, my, rad, Blitbuffer.COLOR_BLACK, math.max(2, S(2)))
+    for k = 0, math.floor(rad * 0.9) do
+        bb:paintRect(mx + rad - S(1) + k, my + rad - S(1) + k, math.max(2, S(3)), math.max(2, S(3)), Blitbuffer.COLOR_BLACK)
+    end
+    local side = (letter and menu.is_enable_shortcut) and S(20) or 0
+    text(bb, label, hand(20), mx + rad + S(14), sy + math.floor(r.h / 2),
+        { middle = true, color = gray(0.6), max_width = r.w - S(60) - side })
+    if side > 0 then badge(bb, menu, letter, sx + r.w - side - S(8), sy + math.floor((r.h - side) / 2), side) end
+    if hot then
+        hot.dimen = Geom:new{ x = sx, y = sy, w = r.w, h = r.h }
+        if hot.focused then focusRing(bb, hot.dimen) end
+    end
+end
+
 ---------------------------------------------------------------- the page
 
 local Page = WidgetContainer:extend{ w = 0, h = 0 }
@@ -1222,25 +1256,8 @@ function Page:paintTo(bb, x, y)
     local menu = self.menu
     paintWall(bb, x, y, self.w, self.h)
     -- the search slip
-    local s = L.slip
-    local sx, sy = x + s.x, y + s.y
-    bb:paintRect(sx + S(2), sy + S(3), s.w, s.h, gray(0.3))
-    bb:paintRect(sx, sy, s.w, s.h, Blitbuffer.COLOR_WHITE)
-    bb:paintRect(sx + S(4), sy + s.h - S(8), s.w - S(8), 1, gray(0.25))
-    bb:paintBorder(sx, sy, s.w, s.h, math.max(1, S(1)), Blitbuffer.COLOR_BLACK)
-    clip(bb, sx + math.floor(s.w / 2), sy, S(28))
-    local r = math.floor(s.h * 0.2)
-    local mx, my = sx + S(12) + r, sy + math.floor(s.h / 2) - S(2)
-    bb:paintCircle(mx, my, r, Blitbuffer.COLOR_BLACK, math.max(2, S(2)))
-    for k = 0, math.floor(r * 0.9) do
-        bb:paintRect(mx + r - S(1) + k, my + r - S(1) + k, math.max(2, S(3)), math.max(2, S(3)), Blitbuffer.COLOR_BLACK)
-    end
-    local side = (self.search_letter and menu.is_enable_shortcut) and S(20) or 0
-    text(bb, self.search_text or _("Search titles, authors, series…"), hand(20), mx + r + S(14), sy + math.floor(s.h / 2),
-        { middle = true, color = gray(0.6), max_width = s.w - S(60) - side })
-    if side > 0 then badge(bb, menu, self.search_letter, sx + s.w - side - S(8), sy + math.floor((s.h - side) / 2), side) end
-    self.search_hot.dimen = Geom:new{ x = sx, y = sy, w = s.w, h = s.h }
-    if self.search_hot.focused then focusRing(bb, self.search_hot.dimen) end
+    Shop.paintSlip(bb, menu, { x = x + L.slip.x, y = y + L.slip.y, w = L.slip.w, h = L.slip.h },
+        self.search_text or _("Search titles, authors, series…"), self.search_letter, self.search_hot)
     -- the ledges
     for i = 1, 2 do self:paintLedge(bb, x, y, i, L) end
     -- the bookcase
@@ -1259,7 +1276,7 @@ Shop.draw = {
     gray = gray, text = text, badge = badge, focusRing = focusRing, clip = clip, wall = paintWall,
     sign = paintSign, ledge = paintLedge, ribbon = ribbon, bundle = paintBundle, spine = spine,
     spines = spines, flatPile = flatPile, tapePile = tapePile, cassette = cassette, cover = coverImage,
-    hand = hand, hash = hash,
+    hand = hand, hash = hash, slip = Shop.paintSlip, standIn = standIn,
 }
 
 ---------------------------------------------------------------- building it
@@ -1277,6 +1294,8 @@ local function letterOf(m, idx)
     if not idx or idx > per or not m.is_enable_shortcut then return nil end
     return m.item_shortcuts and m.item_shortcuts[idx]
 end
+
+Shop.entryById, Shop.letterOf = entryById, letterOf
 
 --- Draw the bookshop in place of the root list (m: the browser's Menu).
 function Shop.build(m, browser, select_number, no_recalculate_dimen)
@@ -1299,12 +1318,16 @@ function Shop.build(m, browser, select_number, no_recalculate_dimen)
         local Size = require("ui/size")
         H = H + math.max(m.page_return_arrow:getSize().h, m.page_info_text:getSize().h) + Size.padding.button
     end)
-    local L = Shop.layout(W, H)
-    if not L.fits then return false end
-    local by = entryById(m)
     local section = m.item_table.gz_catalog or "books"
     -- (not signed in to Grimmory: the slip says so, the shelves stay empty)
     local signed_out = m.item_table.gz_signed_out and true or false
+    -- the Magazines page: a magazine stand (gzreader_magstand.lua)
+    if section == "magazines" and not signed_out then
+        return require("gzreader_magstand").build(m, browser, W, H, select_number, old_dimen)
+    end
+    local L = Shop.layout(W, H)
+    if not L.fits then return false end
+    local by = entryById(m)
     local pspec = Shop.pageSpec(section, signed_out)
     -- (each page's own search line: 1.28.0's Audiobooks and Music slips
     -- looked only for the Books page's and did nothing when tapped)
@@ -1330,8 +1353,10 @@ function Shop.build(m, browser, select_number, no_recalculate_dimen)
     local audio = section == "audiobooks"
     for i, lspec in ipairs(pspec.ledges) do
         local root = by[lspec.id]
-        local books = Shop.ledgeBooks(st[lspec.key], pspec.music and function(it) return it.key ~= nil end
-            or audio and Browser_.isAudiobook or browser.isReadable or Browser_.isReadable)
+        local readable = pspec.music and function(it) return it.key ~= nil end
+            or audio and Browser_.isAudiobook or browser.isReadable or Browser_.isReadable
+        local hide = not (pspec.music or audio) and require("gzreader_magazines").hider(browser.plugin) or nil
+        local books = Shop.ledgeBooks(st[lspec.key], hide and function(b) return readable(b) and not hide(b) end or readable)
         local spec = {
             kind = lspec.kind,
             label = lspec.label,

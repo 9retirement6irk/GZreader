@@ -97,7 +97,7 @@ function Browser:show(opts)
     Browser.current = self
     local Catalog = require("gzreader_catalog")
     local section = opts and opts.section
-    self.section = (section and Catalog.step(Catalog.sections(), section, 0)) or "books"
+    self.section = (section and Catalog.step(self:sections(), section, 0)) or "books"
     -- (the Audiobooks tab: that page alone, nothing to turn to)
     self.only = opts and opts.only and self.section or nil
     self.menu = Menu:new{
@@ -215,6 +215,7 @@ function Browser:rootItems()
     -- (Browser.x(self): tests call this on a plain table)
     if section == "audiobooks" then items = Browser.audiobookItems(self)
     elseif section == "music" then items = Browser.musicItems(self)
+    elseif section == "magazines" then items = Browser.magazineItems(self)
     else items = Browser.bookItems(self) end
     items.gz_catalog = section
     return items
@@ -223,7 +224,7 @@ end
 --- The pages this Catalog turns through (one when opened on a page alone).
 function Browser:sections()
     if self.only then return { self.only } end
-    return require("gzreader_catalog").sections()
+    return require("gzreader_catalog").sections(nil, require("gzreader_magazines").get(self.plugin) ~= nil)
 end
 
 --- Turn to the page `dir` (+1, -1) from this one: false at an end.
@@ -382,11 +383,73 @@ function Browser:bookItems()
         -- (the server card's place: its account and Reading stats are in Settings → Accounts and services → Books)
         { gz_id = "genres", text = _("Genres"), callback = function() self:openGenres() end },
         -- (the next page, from the list: its letter on keyboard Kindles; the
-        -- bookshop doesn't draw it. Only on Kindles that play audio.)
+        -- bookshop doesn't draw it. Magazines when a magazine library is chosen,
+        -- else Audiobooks on Kindles that play audio.)
+        require("gzreader_magazines").get(self.plugin) and { gz_id = "magazines", text = _("Magazines"), callback = function() self:openSection("magazines") end }
+            or require("gzreader_touch").player() and { gz_id = "audiobooks", text = _("Audiobooks"), callback = function() self:openSection("audiobooks") end } or nil,
+    }
+end
+
+
+--- The Magazines page (a magazine library chosen in Settings → Accounts and
+--- services → Books: gzreader_magazines.lua): its issues only, drawn as a
+--- magazine stand in the Bookshelf view (gzreader_magstand.lua).
+function Browser:magazineItems()
+    if not Browser.signedIn(self) then return Browser.signedOutItems(self, "books") end
+    local Mag = require("gzreader_magazines")
+    local m = Mag.get(self.plugin)
+    if not m then return { gz_root = true, { text = _("No magazine library chosen (Settings → Accounts and services → Books)"), select_enabled = false } } end
+    local scope = { title = m.name, params = { libraryId = m.id } }
+    return {
+        gz_root = true,
+        { gz_id = "mag_search", gz_action = "search", text = _("Search magazines…"), callback = function() self:promptSearch(scope) end },
+        { gz_id = "mag_latest", text = _("Latest issues"), callback = function()
+            self:openPaged(_("Latest issues"), { libraryId = m.id, sort = "addedOn", dir = "desc" }, false, { keep_order = true })
+        end },
+        { gz_id = "mag_titles", text = _("Magazines A–Z"), callback = function() self:openMagazineTitles() end },
+        { gz_id = "mag_all", text = _("All issues"), callback = function()
+            self:openPaged(_("All issues"), { libraryId = m.id, sort = "title", dir = "asc" })
+        end },
+        -- (the next page, as on the Books page: its letter on keyboard Kindles)
         require("gzreader_touch").player() and { gz_id = "audiobooks", text = _("Audiobooks"), callback = function() self:openSection("audiobooks") end } or nil,
     }
 end
 
+--- The magazines (an issue's series, or its title before " - "), A–Z, each
+--- opening to its issues, newest first: from the newest 200 issues.
+function Browser:openMagazineTitles()
+    local Mag = require("gzreader_magazines")
+    local m = Mag.get(self.plugin)
+    if not m then return end
+    self:openCached{
+        key = "magazines:" .. tostring(m.id),
+        title = _("Magazines A–Z"),
+        fetch = function() return Mag.fetch(self.api, m.id) end,
+        build = function(issues)
+            Mag.noteIssues(issues)
+            local items = {}
+            for _i, g in ipairs(Mag.groups(issues)) do
+                items[#items + 1] = {
+                    text = g.name, sort_key = g.name:lower(), gz_kind = "series", gz_name = g.name, gz_count = #g.issues,
+                    mandatory = #g.issues == 1 and _("1 issue") or T(_("%1 issues"), #g.issues),
+                    callback = function() self:openMagazine(g) end,
+                }
+            end
+            table.sort(items, function(x, y) return x.sort_key < y.sort_key end)
+            return items
+        end,
+    }
+end
+
+--- One magazine's issues, newest first (a group from Mag.groups).
+function Browser:openMagazine(group)
+    local items = {}
+    for _i, b in ipairs(group.issues or {}) do
+        if isReadable(b) then items[#items + 1] = self:bookItem(b) end
+    end
+    if #items == 0 then items[1] = { text = _("Nothing here yet."), select_enabled = false } end
+    self:push(group.name, items)
+end
 
 --- The Music page's lists (gzreader_musictab.lua's, on this tab's Menu).
 function Browser:musicTab()
@@ -728,12 +791,17 @@ function Browser:openSimple(endpoint, title)
         title = title,
         fetch = function()
             if endpoint == "continue-reading" then return self.api:continueReading(30) end
+            -- (with a magazine library: Recently added without the new issues)
+            local Mag = require("gzreader_magazines")
+            local hide = endpoint == "recently-added" and Mag.hider(self.plugin)
+            if hide then return Mag.recent(self.api, hide, 30) end
             return self.api:simpleList(endpoint, 30)
         end,
         build = function(list)
             local items = {}
+            local hide = require("gzreader_magazines").hider(self.plugin) -- (the Magazines page has them)
             for _, book in ipairs(type(list) == "table" and list or {}) do
-                if type(book) == "table" and isReadable(book) then items[#items + 1] = self:bookItem(book) end
+                if type(book) == "table" and isReadable(book) and not (hide and hide(book)) then items[#items + 1] = self:bookItem(book) end
             end
             return items
         end,
@@ -998,6 +1066,7 @@ function Browser:openPaged(title, params, with_series_number, opts)
         params.sort, params.dir = Browser.sortParams()
     end
     local header = opts.header
+    local hide -- (the magazines to leave out: worked out at the first book)
     if not header and not with_series_number then
         -- search this list (a library, a shelf, an author's books…) or everything
         local scoped = params.libraryId or params.shelfId or params.magicShelfId or params.authors or params.category
@@ -1029,6 +1098,9 @@ function Browser:openPaged(title, params, with_series_number, opts)
         end,
         to_item = function(book)
             if opts.audio then return self:audiobookItem(book) end
+            -- (a book list, a search: not the magazines, unless it's the magazine library's own)
+            if hide == nil then hide = require("gzreader_magazines").hider(self.plugin, params) or false end
+            if hide and hide(book) then return nil end
             if isReadable(book) then return self:bookItem(book, with_series_number) end
         end,
     }
@@ -1076,8 +1148,9 @@ function Browser:openLibraries()
             local index = Index.load(self.plugin.store)
             local counts = index and index.libraries or {}
             local items = {}
+            local mag = require("gzreader_magazines").get(self.plugin) -- (on its own page)
             for _, lib in ipairs(type(libs) == "table" and libs or {}) do
-                if type(lib) == "table" and lib.id then
+                if type(lib) == "table" and lib.id and not (mag and tostring(mag.id) == tostring(lib.id)) then
                     local n = counts[tostring(lib.id)]
                     if not index or (n and n > 0) then -- hide audiobook-only libraries
                         local name = type(lib.name) == "string" and lib.name or T(_("Library %1"), lib.id)

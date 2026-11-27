@@ -3,6 +3,8 @@ The Catalog tab (the Grimmory tab until 1.27.x): what's on your servers, in
 pages:
 
   Books       Grimmory's books (the bookshop: gzreader_bookshop.lua)
+  Magazines   the magazine library's books, when one is chosen
+              (gzreader_magazines.lua; the stand: gzreader_magstand.lua)
   Audiobooks  Grimmory's audiobooks
   Music       Plex (gzreader_musictab.lua's lists)
 
@@ -22,23 +24,25 @@ as before.
 local _ = require("gettext")
 
 local Catalog = {
-    ORDER = { "books", "audiobooks", "music" },
+    ORDER = { "books", "magazines", "audiobooks", "music" },
 }
 
 --- The pages this Kindle has, in order (`audio`: a speaker, headphone
---- jack or Bluetooth; asked of gzreader_touch when nil).
-function Catalog.sections(audio)
+--- jack or Bluetooth; asked of gzreader_touch when nil; `magazines`: a
+--- magazine library is chosen).
+function Catalog.sections(audio, magazines)
     if audio == nil then
         local ok, on = pcall(function() return require("gzreader_touch").player() end)
         audio = ok and on == true
     end
-    if not audio then return { "books" } end
     local out = {}
-    for _i, id in ipairs(Catalog.ORDER) do out[#out + 1] = id end
+    for _i, id in ipairs(Catalog.ORDER) do
+        if id == "books" or (id == "magazines" and magazines) or (audio and id ~= "magazines") then out[#out + 1] = id end
+    end
     return out
 end
 
-local TITLES = { books = _("Books"), audiobooks = _("Audiobooks"), music = _("Music") }
+local TITLES = { books = _("Books"), magazines = _("Magazines"), audiobooks = _("Audiobooks"), music = _("Music") }
 
 --- A page's title (the title bar's label).
 function Catalog.title(id) return TITLES[id] or TITLES.books end
