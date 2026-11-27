@@ -114,7 +114,11 @@ end
 
 ---------------------------------------------------------------- a tile
 
-local Tile = InputContainer:extend{ w = 0, h = 0, icon = nil, label = "", key = nil, on = false, callback = nil, hold = nil }
+local Tile = InputContainer:extend{ w = 0, h = 0, icon = nil, label = "", sub = nil, side = nil, key = nil, on = false,
+    callback = nil, side_callback = nil, hold = nil }
+
+--- The height of a tile's side part (its bottom quarter: the Rotate tile's turn, while Manual).
+local function sideHeight(h) return math.floor(h / 4) end
 
 function Tile:init()
     self.dimen = Geom:new{ x = 0, y = 0, w = self.w, h = self.h }
@@ -133,17 +137,36 @@ function Tile:paintTo(bb, x, y)
     local r = S(10)
     bb:paintRoundedRect(x, y, w, h, Blitbuffer.COLOR_WHITE, r)
     local isz = math.floor(math.min(w, h) * 0.34)
+    -- (a side part along the bottom: the rest of the tile is its main part)
+    local sh = self.side and sideHeight(h) or 0
+    local mh = h - sh
     local label = TextBoxWidget:new{ text = self.label, face = Font:getFace("cfont", 15), width = w - S(6),
         alignment = "center", height = math.floor(h * 0.36), height_adjust = true, height_overflow_show_ellipsis = true }
     local lh = label:getSize().h
-    local top = y + math.floor((h - isz - S(6) - lh) / 2) + (self.key and S(6) or 0)
-    if self.icon then
+    local sub = self.sub and TextBoxWidget:new{ text = self.sub, face = Font:getFace("cfont", 12), width = w - S(6),
+        alignment = "center", height = math.floor(h * 0.2), height_adjust = true, height_overflow_show_ellipsis = true }
+    local subh = sub and sub:getSize().h or 0
+    if sub then isz = math.floor(isz * 0.85) end
+    -- (with a side part: no icon above the words, the side part has it)
+    if self.side then isz = 0 end
+    local gap = self.side and S(2) or S(6)
+    local top = y + math.max(S(2), math.floor((mh - isz - gap - lh - subh) / 2)) + (self.key and S(6) or 0)
+    if self.icon and isz > 0 then
         local icon = IconWidget:new{ file = iconFile(self.icon), width = isz, height = isz, alpha = true }
         icon:paintTo(bb, x + math.floor((w - isz) / 2), top)
         icon:free()
     end
-    label:paintTo(bb, x + S(4), top + isz + S(6))
+    label:paintTo(bb, x + S(4), top + isz + gap)
     label:free()
+    if sub then sub:paintTo(bb, x + S(4), top + isz + gap + lh); sub:free() end
+    if self.side then
+        -- a line across, then the side part's icon under it
+        bb:paintRect(x + S(8), y + mh, w - 2 * S(8), math.max(1, S(1)), Blitbuffer.COLOR_GRAY_9)
+        local ssz = math.floor(sh * 0.8)
+        local sicon = IconWidget:new{ file = iconFile(self.side.icon), width = ssz, height = ssz, alpha = true }
+        sicon:paintTo(bb, x + math.floor((w - ssz) / 2), y + mh + math.floor((sh - ssz) / 2))
+        sicon:free()
+    end
     if self.key then
         local side = S(20)
         local badge = Menu.getItemShortCutIcon(nil, Geom:new{ w = side, h = side }, self.key, "square")
@@ -160,8 +183,11 @@ end
 function Tile:onFocus() self.focused = true; return true end
 function Tile:onUnfocus() self.focused = false; return true end
 
-function Tile:onTapTile()
-    if self.callback then self.callback() end
+function Tile:onTapTile(_arg, ges)
+    local pos = ges and ges.pos
+    if self.side and self.side_callback and pos and pos.y >= self.dimen.y + self.h - sideHeight(self.h) then
+        self.side_callback()
+    elseif self.callback then self.callback() end
     return true
 end
 
@@ -185,15 +211,14 @@ end
 function Panel.catalog()
     return {
         { id = "controls", title = _("Controls"), tiles = {
+            { id = "home", label = _("Home"), fixed = true },
             { id = "wifi", label = usbOnly() and _("Sync") or _("Wi-Fi") },
             { id = "bluetooth", label = _("Bluetooth"), note = _("Kindles with Bluetooth"), available = function() return Panel.bluetooth() ~= nil end },
             { id = "night", label = _("Night mode"), available = function() return not nightGuarded() end },
-            { id = "rotate", label = _("Rotate") },
-            { id = "autorotate", label = _("Auto-rotate"), note = _("Kindles that turn the screen by themselves"), available = function() return require("gzreader_rotation").hasAuto() end },
+            { id = "rotate", label = _("Rotate"), note = _("Auto or Manual on Kindles that turn the screen by themselves") },
             { id = "autolight", label = _("Auto light"), note = _("Kindles with a light sensor"), available = function() return require("gzreader_autolight").available() end },
             { id = "restart", label = _("Restart") },
             { id = "sleep", label = _("Sleep") },
-            { id = "home", label = _("Home"), fixed = true },
             { id = "updates", label = _("Updates"), available = function() return not usbOnly() end },
             { id = "settings", label = _("Settings"), fixed = true },
             { id = "diagnostics", label = _("Diagnostics"), note = _("while logging is on") },
@@ -431,6 +456,7 @@ function Panel.controls(plugin)
     -- (no Wi-Fi: syncing through a computer, gzreader_usbsync.lua)
     local usb = usbOnly()
     local list = {
+        { id = "home", icon = "home", label = _("Home"), run = function() require("gzreader_tabs").goHome() end },
         usb and { id = "wifi", icon = "usb", label = _("Sync"), run = function() require("gzreader_usbsync").show(plugin) end }
             or Panel.wifiTile(),
     }
@@ -439,12 +465,11 @@ function Panel.controls(plugin)
         list[#list + 1] = { id = "night", icon = "night", label = _("Night mode"), on = G_reader_settings:isTrue("night_mode"),
             run = function() dispatch("night_mode") end }
     end
-    list[#list + 1] = { id = "rotate", icon = "rotate", label = _("Rotate"), run = function() dispatch("iterate_rotation") end }
-    list[#list + 1] = require("gzreader_rotation").autoTile() -- (Kindles with an accelerometer: Oasis, Scribe)
+    -- (Kindles with an accelerometer, Oasis and Scribe: Auto or Manual, and the turn on the tile's side while Manual)
+    list[#list + 1] = require("gzreader_rotation").tile(function() dispatch("iterate_rotation") end)
     list[#list + 1] = require("gzreader_autolight").tile() -- (Kindles with a light sensor: Voyage, Oasis, Scribe…)
     list[#list + 1] = { id = "restart", icon = "restart", label = _("Restart"), run = function() dispatch("restart") end }
     list[#list + 1] = { id = "sleep", icon = "sleep", label = _("Sleep"), run = function() dispatch("suspend") end }
-    list[#list + 1] = { id = "home", icon = "home", label = _("Home"), run = function() require("gzreader_tabs").goHome() end }
     if not usb then list[#list + 1] = Panel.updatesTile() end
     -- (a full page over the panel: a full refresh after it, or touch Kindles keep a ghost of the panel)
     list[#list + 1] = { id = "settings", icon = "settings", label = _("Settings"), full = true, run = function() require("gzreader_homemenu").settings() end }
@@ -697,10 +722,12 @@ function PanelWidget:init()
                 self.layout[#self.layout + 1] = row
                 if i > 1 then y = y + th + gap end
             end
-            local tile = Tile:new{ w = tw, h = th, icon = t.icon, label = t.label, on = t.on,
+            local tile = Tile:new{ w = tw, h = th, icon = t.icon, label = t.label, sub = t.sub, side = t.side or nil, on = t.on,
                 key = keys and g.letters[i] or nil,
                 callback = nil }
             tile.callback = function() self:pick(t, tile) end
+            -- (the side part, while there is one: the panel closes and it runs)
+            tile.side_callback = function() if t.side then self:pick({ run = t.side.run }) end end
             if t.hold then tile.hold = function() self:pick({ run = t.hold, full = true }) end end
             tile.gz_tile = t
             tile.key_letter = g.letters[i]
@@ -854,6 +881,7 @@ function PanelWidget:refreshTile(t, tile)
         for k, v in pairs(fresh) do t[k] = v end
         t.on = fresh.on -- (nil when off)
         tile.icon, tile.label, tile.on = fresh.icon, fresh.label, fresh.on and true or false
+        tile.sub, tile.side = fresh.sub, fresh.side or nil
     end
     UIManager:setDirty(self, "ui")
 end

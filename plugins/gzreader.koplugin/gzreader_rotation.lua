@@ -3,7 +3,8 @@ Screen rotation in GZreader.
 
 - Auto-rotate: Kindles with an accelerometer (Oasis, Scribe) turn the screen
   when the Kindle is turned. KOReader's `input_ignore_gsensor` switches it off;
-  the quick panel's Auto-rotate tile (`Rotation.autoTile`) turns it on or off.
+  the quick panel's Rotate tile (`Rotation.tile`) switches between Auto and
+  Manual, and turns the screen from its side while Manual.
 - One rotation everywhere: KOReader gives Home its own rotation (`fm_rotation_mode`,
   portrait unless chosen there) and each book its own, so a book read in
   landscape went back to portrait at Home. GZreader ticks KOReader's "Keep
@@ -47,22 +48,22 @@ function Rotation.setAuto(on)
     pcall(function() require("gzreader_log").info("rotation: auto-rotate", on and "on" or "off") end)
 end
 
---- The quick panel's Auto-rotate tile (nil without an accelerometer): a tap
---- turns it on or off. On is drawn inverted.
-function Rotation.autoTile()
-    if not Rotation.hasAuto() then return nil end
-    local on = Rotation.autoOn()
-    return { id = "autorotate", icon = on and "autorotate" or "autorotate_off",
-        label = on and _("Auto-rotate") or _("Auto-rotate off"), on = on,
-        run = function()
-            local now = not Rotation.autoOn()
-            Rotation.setAuto(now)
-            pcall(function()
-                UIManager():show(require("ui/widget/infomessage"):new{
-                    text = now and _("Auto-rotate on: the screen turns with the Kindle.")
-                        or _("Auto-rotate off: the screen stays as it is."), timeout = 2 })
-            end)
-        end }
+--- The quick panel's Rotate tile, `turn` turning the screen a quarter.
+--- Without an accelerometer: a tap turns the screen. With one (Oasis,
+--- Scribe): "Rotate" with Auto or Manual under it, and a tap switches
+--- between them (the panel stays open; Auto drawn inverted). While Manual,
+--- the tile's bottom quarter (`side`) shows the rotate icon: a tap there
+--- turns the screen.
+function Rotation.tile(turn)
+    if not Rotation.hasAuto() then
+        return { id = "rotate", icon = "rotate", label = _("Rotate"), run = turn }
+    end
+    local auto = Rotation.autoOn()
+    return { id = "rotate", icon = auto and "autorotate" or "autorotate_off", label = _("Rotate"),
+        sub = auto and _("Auto") or _("Manual"), on = auto, stay = true,
+        side = not auto and { icon = "rotate", run = turn } or false,
+        refresh = function() return Rotation.tile(turn) end,
+        run = function() Rotation.setAuto(not Rotation.autoOn()) end }
 end
 
 ---------------------------------------------------------------- one rotation

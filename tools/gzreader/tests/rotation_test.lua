@@ -1,5 +1,5 @@
--- Screen rotation (gzreader_rotation.lua): the Auto-rotate tile on Kindles
--- with an accelerometer, Home and books keeping the screen's rotation, and
+-- Screen rotation (gzreader_rotation.lua): the Rotate tile (Auto or Manual on
+-- Kindles with an accelerometer), Home and books keeping the screen's rotation, and
 -- GZreader's own pages (a note, the note editor, a journal entry) turning
 -- with the screen.
 --   luajit rotation_test.lua <gzreader.koplugin>
@@ -48,21 +48,31 @@ package.loaded["ui/widget/infomessage"] = { new = function(_s, o) return o end }
 
 local Rotation = require("gzreader_rotation")
 
-print("== the Auto-rotate tile")
+print("== the Rotate tile")
 ;(function()
-    check(Rotation.autoTile() == nil, "no accelerometer (Kindle 3, Paperwhite 3…): no Auto-rotate tile")
+    local turned = 0
+    local function turn() turned = turned + 1 end
+    local t = Rotation.tile(turn)
+    check(t.id == "rotate" and t.label == "Rotate" and t.icon == "rotate" and not t.sub and not t.side and not t.stay,
+        "no accelerometer (Kindle 3, Paperwhite 3…): Rotate, a tap turns the screen")
+    t.run()
+    check(turned == 1, "…turned")
     Device.has_g = true
-    local t = Rotation.autoTile()
-    check(t and t.id == "autorotate" and t.on == true and t.label == "Auto-rotate" and t.icon == "autorotate",
-        "Oasis, Scribe: the tile, on by default (KOReader's default), drawn inverted")
+    t = Rotation.tile(turn)
+    check(t.id == "rotate" and t.label == "Rotate" and t.sub == "Auto" and t.on == true and t.side == false and t.stay and t.icon == "autorotate",
+        "Oasis, Scribe: one Rotate tile, Auto under it (KOReader's default), drawn inverted, no turn on its side")
     t.run()
-    check(data.input_ignore_gsensor == true and gyro[#gyro] == false and shown[#shown].text:match("off"),
-        "a tap: off, saved as KOReader saves it (input_ignore_gsensor), the accelerometer's events ignored, said so")
-    t = Rotation.autoTile()
-    check(t.on == false and t.label == "Auto-rotate off" and t.icon == "autorotate_off", "…and the tile says it's off")
+    check(data.input_ignore_gsensor == true and gyro[#gyro] == false and turned == 1,
+        "a tap: Manual, saved as KOReader saves it (input_ignore_gsensor), the accelerometer's events ignored; the screen not turned")
+    t = t.refresh()
+    check(t.sub == "Manual" and t.on == false and t.icon == "autorotate_off" and type(t.side) == "table" and t.side.icon == "rotate",
+        "…drawn again in place (the panel open): Manual, with the rotate icon along its bottom")
+    t.side.run()
+    check(turned == 2 and data.input_ignore_gsensor == true, "…a tap on the bottom part turns the screen (still Manual)")
     t.run()
-    check(data.input_ignore_gsensor == nil and gyro[#gyro] == true and Rotation.autoOn() and shown[#shown].text:match("on"),
-        "a tap again: on")
+    t = t.refresh()
+    check(data.input_ignore_gsensor == nil and gyro[#gyro] == true and Rotation.autoOn() and t.sub == "Auto" and t.side == false,
+        "a tap again: Auto, and no side")
 end)()
 
 print("== Home and books keep the screen's rotation")
@@ -146,8 +156,9 @@ print("== which pages follow")
     check(editor:match('require%("gzreader_rotation"%)%.follow%(Editor, Editor%.gzRelayout%)'), "the note editor (and a quick note's window)")
     check(journal:match('require%("gzreader_rotation"%)%.follow%(JournalScreen,'), "a journal entry")
     local panel = source("gzreader_panel.lua")
-    check(panel:match('{ id = "autorotate", label = _%("Auto%-rotate"%)') and panel:match('require%("gzreader_rotation"%)%.autoTile%(%)'),
-        "the panel has the tile (and Settings → Home and tabs → Quick panel a tick for it)")
+    check(panel:match('require%("gzreader_rotation"%)%.tile%(function%(%) dispatch%("iterate_rotation"%) end%)') and not panel:find('id = "autorotate"', 1, true)
+        and panel:find("if self.side and self.side_callback and pos and pos.y >= self.dimen.y + self.h - sideHeight(self.h) then", 1, true),
+        "the panel has one Rotate tile (no Auto-rotate of its own); a tap on its bottom part runs the turn")
     local f = io.open(PLUGIN .. "/icons/panel/autorotate.svg"); local g = io.open(PLUGIN .. "/icons/panel/autorotate_off.svg")
     check(f and g, "its icons, on and off"); if f then f:close() end; if g then g:close() end
 end)()
