@@ -4220,23 +4220,76 @@ print("Wi-Fi network names stay out of the log and reports")
     Net._wrapScan()
     Net.automatic = true
     Net._lipc = { open_no_name = function() return handle({ { essid = "Example Net", netid = 1 }, { essid = "Other Example" } }) end }
+    -- (the scans made again run from the scheduler: gathered here and run by hand)
+    local real_in, later = UIM.scheduleIn, {}
+    UIM.scheduleIn = function(_s, secs, fn) later[#later + 1] = { secs = secs, fn = fn } end
+    local function runLater()
+        local l = table.remove(later, 1)
+        if l then l.fn() end
+        return l ~= nil
+    end
+    local was_connecting, was_isconn = Net.connecting, NM.isConnected
+    Net.connecting = {}
+    NM.isConnected = function() return false end
     local r = NM:reconnectOrShowNetworkMenu(function() cbs = cbs + 1 end, false)
+    check(r == nil and cbs == 0 and #asked == 0 and scans == 1 and #later == 1 and later[1].secs == Net.RESCAN_WAIT,
+        "empty scan on a Kindle: not \"failed\" (Wi-Fi stays on), the scan is made again a few seconds later")
+    while runLater() do end
     Log.flush()
     lf = io.open(Log.path, "rb"); logged = lf:read("*a"); lf:close()
-    check(r == nil and cbs == 1 and asked[1] == "com.lab126.cmd ensureConnection wifi:Example Net" and #asked == 1 and closed == 1
+    check(scans == 1 + Net.RESCANS and cbs == 1 and asked[1] == "com.lab126.cmd ensureConnection wifi:Example Net" and #asked == 1 and closed == 1
         and logged:find("asked the Kindle to join its saved one (2 saved)", 1, true) and not logged:find("Example Net", 1, true),
-        "empty scan: the Kindle asked to join its saved network; KOReader's connectivity check waits (not \"failed\"); no name logged")
-    asked, cbs = {}, 0
+        "still nothing after " .. Net.RESCANS .. " more scans: the Kindle asked to join its saved network; KOReader's connectivity check waits; no name logged")
+    check(Net.pickSaved({ { essid = "Example Net" }, { essid = "Other Example" } }, { ["Other Example"] = true }) == "Other Example"
+        and Net.pickSaved({ { essid = "Example Net" }, { essid = "Other Example" } }, {}) == "Example Net"
+        and Net.pickSaved({ { essid = "" }, { netid = 3 } }, {}) == nil and Net.pickSaved(nil, nil) == nil,
+        "several networks saved: the one in range is asked for, else the first")
+    -- the second scan finds the network: KOReader connects to it, nothing asked of the Kindle
+    asked, cbs, scans = {}, 0, 0
+    local empty_scan = NM.reconnectOrShowNetworkMenu
+    Net._scan = nil
+    NM.reconnectOrShowNetworkMenu = function(_self, cb)
+        scans = scans + 1
+        if scans == 1 then return false end
+        if cb then cb() end
+    end
+    Net._wrapScan()
+    r = NM:reconnectOrShowNetworkMenu(function() cbs = cbs + 1 end, false)
+    while runLater() do end
+    check(r == nil and scans == 2 and cbs == 1 and #asked == 0, "a network at the second scan: joined the usual way, no more scans, the saved network not asked for")
+    -- the Kindle joined one by itself meanwhile: no more scans
+    asked, cbs, scans = {}, 0, 0
+    NM.isConnected = function() return true end
+    Net._scan = nil
+    NM.reconnectOrShowNetworkMenu = function() scans = scans + 1; return false end
+    Net._wrapScan()
+    NM:reconnectOrShowNetworkMenu(function() cbs = cbs + 1 end, false)
+    while runLater() do end
+    check(scans == 1 and cbs == 1 and #asked == 0, "connected by itself before the next scan: taken as connected")
+    -- given up on meanwhile (the 90 s, or Wi-Fi turned off): nothing more
+    asked, cbs, scans = {}, 0, 0
+    NM.isConnected = function() return false end
+    NM:reconnectOrShowNetworkMenu(function() cbs = cbs + 1 end, false)
+    Net.connecting = nil
+    while runLater() do end
+    check(scans == 1 and cbs == 0 and #asked == 0, "the attempt dropped meanwhile: no more scans")
+    Net.connecting = {}
+    Net._scan = nil
+    NM.reconnectOrShowNetworkMenu = empty_scan
+    Net._wrapScan()
+    asked, cbs, scans = {}, 0, 0
     Net._lipc = { open_no_name = function() return handle({}) end }
     r = NM:reconnectOrShowNetworkMenu(function() cbs = cbs + 1 end, false)
-    check(r == false and cbs == 0 and #asked == 0, "no saved network: failed as before")
+    while runLater() do end
+    check(r == nil and cbs == 0 and #asked == 0 and scans == 1 + Net.RESCANS, "no saved network either: nothing connected (the 90 s end the attempt)")
     r = NM:reconnectOrShowNetworkMenu(function() cbs = cbs + 1 end, true)
     check(r == false and #asked == 0, "your own Wi-Fi menu (interactive): KOReader's own behaviour")
     Dev.isKindle = function() return false end
     Net._lipc = { open_no_name = function() return handle({ { essid = "Example Net" } }) end }
     r = NM:reconnectOrShowNetworkMenu(function() cbs = cbs + 1 end, false)
-    check(r == false and #asked == 0, "not a Kindle (the Nook): failed as before")
+    check(r == false and #asked == 0 and #later == 0, "not a Kindle (the Nook): failed as before, no scans again")
     Dev.isKindle, Net._lipc = was_kindle, nil
+    UIM.scheduleIn, Net.connecting, NM.isConnected = real_in, was_connecting, was_isconn
     NM.reconnectOrShowNetworkMenu, Net._scan, Net.automatic = saved[1], saved[2], saved[3]
     -- a saved or sent log: an older log line and crash.log's end too
     Log.flush()

@@ -30,6 +30,13 @@ On Auto:
 | Page turns, bookmarks, highlights, sleep | not turned on: changes wait for the next sync |
 | Daily update check, library index refresh | only if Wi-Fi is already on |
 
+When GZreader turns Wi‑Fi on by itself on a Kindle and the first scan finds
+no network (the radio has only just come up), it scans again up to three
+times, four seconds apart, and joins the network in range. Only if those
+find nothing either does it ask the Kindle to join a network it has saved
+(of several, one that's in range).
+If nothing connects within 90 seconds it gives up until the next time.
+
 **Downloads run with Wi‑Fi power saving off.** With power saving on, the
 Wi‑Fi chip naps between the router's beacons and downloads crawl (about
 30 KB/s on a Paperwhite 3, 5 KB/s on a Scribe). While a book, an update,
