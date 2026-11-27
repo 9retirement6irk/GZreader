@@ -32,13 +32,16 @@ local Ask = {
     SIZE = 28, -- scene units, when the writing's size can't be told
     MIN_SIZE = 18, MAX_SIZE = 72,
     LETTER = 1.25, -- the font size for writing whose letters are this many times smaller
-    MAX_TOKENS = 800,
+    MAX_TOKENS = 600,
+    MAX_WORDS = 30, -- a reply longer than this is cut at a sentence (the AI is asked for about 20)
+    MARGIN = 8, -- canvas px kept clear round a reply and inside the page's edges
     GAP = 6, -- scene units between a question and its answer
     HISTORY = 8, -- earlier questions and replies sent along
 }
 
 Ask.SYSTEM = "You are a friendly pen pal writing back on a page of someone's handwritten notebook. "
     .. "Reply warmly and briefly, in plain words: no Markdown, no lists, no headings. "
+    .. "Keep every reply short, like a note in a margin: one or two sentences, about 20 words at most. "
     .. "For a sum or a maths problem, the reply is its result (with a short working only when it helps). "
     .. "Use what was said earlier on the page: a question can follow on from an earlier one."
 
@@ -260,6 +263,31 @@ function Ask.clean(text)
     return t
 end
 
+--- `text` cut to `max` words (Ask.MAX_WORDS): whole sentences while they fit,
+--- else the first `max` words and "…". Pure.
+function Ask.short(text, max)
+    max = max or Ask.MAX_WORDS
+    if type(text) ~= "string" then return text end
+    local n = 0
+    for _w in text:gmatch("%S+") do n = n + 1 end
+    if n <= max then return text end
+    local out, count = {}, 0
+    for sentence in text:gmatch("[^%.!?]+[%.!?]*%s*") do
+        local words = 0
+        for _w in sentence:gmatch("%S+") do words = words + 1 end
+        if count + words > max then break end
+        out[#out + 1] = sentence
+        count = count + words
+    end
+    if #out > 0 then return (table.concat(out):gsub("%s+$", "")) end
+    local words = {}
+    for w in text:gmatch("%S+") do
+        if #words == max then break end
+        words[#words + 1] = w
+    end
+    return (table.concat(words, " "):gsub("[%s,;:]+$", "")) .. "…"
+end
+
 --- The AI's answer for `n` boxes: { { boxes = { i… }, read, reply }, … }.
 --- Not JSON (or none of it usable): one reply for all of them, its text.
 function Ask.parse(text, n)
@@ -279,7 +307,7 @@ function Ask.parse(text, n)
                     b = tonumber(b)
                     if b and b >= 1 and b <= n and not used[b] then boxes[#boxes + 1] = math.floor(b); used[b] = true end
                 end
-                out[#out + 1] = { boxes = boxes, read = type(r.read) == "string" and r.read or nil, reply = reply }
+                out[#out + 1] = { boxes = boxes, read = type(r.read) == "string" and r.read or nil, reply = Ask.short(reply) }
             end
         end
         -- (a reply naming no box of its own: the boxes no reply took)
@@ -291,7 +319,7 @@ function Ask.parse(text, n)
         if #out > 0 then return out end
     end
     local plain = Ask.clean(text)
-    return plain and { { boxes = all, reply = plain } } or {}
+    return plain and { { boxes = all, reply = Ask.short(plain) } } or {}
 end
 
 -- (the boxes being asked about now: not kept in the drawing, so a box saved
@@ -357,6 +385,84 @@ function Ask.room(p, all, right_edge)
     return w
 end
 
+--- Where a reply goes, canvas { x, y, w, h }: under question area `q` (as
+--- wide as `room`); else beside it on the right; else the free place nearest
+--- under it on `view` (the page as it's seen: { x0, y0, x1, y1 }). Never over
+--- writing or another box (`taken`: canvas { x0, y0, x1, y1 }), never past
+--- the view's edges. `measure(w)` is the text's height at width w. nil: no room.
+function Ask.spot(q, room, measure, taken, view, gap)
+    local pad = Ask.MARGIN
+    -- (the question itself is taken too)
+    local list = { q }
+    for _i, o in ipairs(taken) do list[#list + 1] = o end
+    taken = list
+    local min_w = math.min(room, (view.x1 - view.x0) * 0.3)
+    local function free(r)
+        if r.x < view.x0 - 0.5 or r.y < view.y0 - 0.5 or r.x + r.w > view.x1 + 0.5 or r.y + r.h > view.y1 + 0.5 then return false end
+        for _i, o in ipairs(taken) do
+            if r.x < o.x1 + pad and r.x + r.w > o.x0 - pad and r.y < o.y1 + pad and r.y + r.h > o.y0 - pad then return false end
+        end
+        return true
+    end
+    local function try(x, y, w)
+        w = math.min(w, view.x1 - x)
+        if w < min_w then return nil end
+        local r = { x = x, y = y, w = w, h = measure(w) }
+        return free(r) and r or nil
+    end
+    local first = try(q.x0, q.y1 + gap, room) or try(q.x1 + gap * 2, q.y0, view.x1 - q.x1 - gap * 2)
+    if first then return first end
+    local best, best_d
+    local step = math.max(8, (q.y1 - q.y0) / 2)
+    local half = (view.x1 - view.x0) / 2
+    local xs = { q.x0, view.x0, view.x0 + half }
+    local y = view.y0
+    while y < view.y1 do
+        for _i, x in ipairs(xs) do
+            for _j, w in ipairs({ view.x1 - x, half }) do
+                local r = try(x, y, w)
+                if r then
+                    -- (nearest under the question; a place above it counts double)
+                    local dy = y >= q.y1 and y - q.y1 or (q.y1 - y) * 2
+                    local d = dy + math.abs(x - q.x0) / 2
+                    if not best_d or d < best_d then best, best_d = r, d end
+                end
+            end
+        end
+        y = y + step
+    end
+    return best
+end
+
+--- The page's view for replies (canvas px): the paper as far as it's on the
+--- screen, inside a margin.
+function Ask.view(screen)
+    local sk, m = screen.sketch, Ask.MARGIN
+    local x0, y0, y1 = 0, 0, screen.canvas.h
+    local pr = sk.pageRect and sk:pageRect()
+    if pr and pr.w > 0 then
+        x0, y0 = math.max(x0, pr.x), math.max(y0, pr.y)
+        y1 = math.min(y1, pr.y + pr.h)
+    end
+    return { x0 = x0 + m, y0 = y0 + m, x1 = Ask.rightEdge(screen), y1 = y1 - m }
+end
+
+--- What's on the page already (canvas boxes): the writing and the text boxes but `except`.
+local function takenOn(sk, except)
+    local out = {}
+    for _i, st in ipairs(sk:live()) do
+        local b = sk:strokeBox(st)
+        if b then out[#out + 1] = { x0 = b.x0, y0 = b.y0, x1 = b.x1, y1 = b.y1 } end
+    end
+    for _i, el in ipairs(sk:liveTexts()) do
+        if el ~= except then
+            local x0, y0 = sk:toCanvas(el.x or 0, el.y or 0)
+            out[#out + 1] = { x0 = x0, y0 = y0, x1 = x0 + (el.width or 0) * sk.per_unit, y1 = y0 + (el.height or 0) * sk.per_unit }
+        end
+    end
+    return out
+end
+
 local function sceneRect(sk, r)
     local x0, y0 = sk:toScene(r.x0, r.y0)
     local x1, y1 = sk:toScene(r.x1, r.y1)
@@ -394,15 +500,37 @@ function Ask.place(screen, el, pieces, replies, size)
         local fsize = lh and Ask.sizeFor(lh, sk.per_unit) or size
         local room = Ask.room(area, pieces, edge)
         local info = { state = "answer", q = sceneRect(sk, area), read = r.read }
+        -- where there's room on the page as it's seen; smaller writing when there's none
+        local taken, view = takenOn(sk, i == 1 and el or nil), Ask.view(screen)
+        local spot
+        for _k, fs in ipairs({ fsize, math.max(Ask.MIN_SIZE, math.floor(fsize * 0.8)), Ask.MIN_SIZE }) do
+            local function measure(w)
+                local probe = { text = r.reply, width = w / sk.per_unit, fontSize = fs, fontFamily = Ask.FONT, customData = { gzAsk = info } }
+                return screen:textHeight(probe) * sk.per_unit
+            end
+            spot = Ask.spot(area, room, measure, taken, view, Ask.GAP * sk.per_unit)
+            if spot then fsize = fs; break end
+        end
+        local sx, sy, width
+        if spot then
+            sx, sy = sk:toScene(spot.x, spot.y)
+            width = round(spot.w / sk.per_unit)
+        else
+            -- (no room anywhere: under its question, as before)
+            sx, sy = sk:toScene(area.x0, area.y1)
+            sy = sy + Ask.GAP
+            width = round(room / sk.per_unit)
+        end
+        local probe = { text = r.reply, width = width, fontSize = fsize, fontFamily = Ask.FONT, customData = { gzAsk = info } }
+        local fields = { text = r.reply, x = round(sx), y = round(sy), width = width, fontSize = fsize,
+            height = round(screen:textHeight(probe)) }
         if i == 1 then
-            local sx, sy = sk:toScene(area.x0, area.y1)
-            local probe = { text = r.reply, width = round(room / sk.per_unit), fontSize = fsize, fontFamily = Ask.FONT, customData = { gzAsk = info } }
-            sk:changeText(el, { text = r.reply, x = round(sx), y = round(sy + Ask.GAP), width = probe.width, fontSize = fsize,
-                height = round(screen:textHeight(probe)) })
+            sk:changeText(el, fields)
             el.customData.gzAsk = info
             made[#made + 1] = el
         else
             local nb = Ask.box(screen, area, room, r.reply, fsize, info)
+            for k, v in pairs(fields) do nb[k] = v end
             sk:addText(nb)
             made[#made + 1] = nb
         end

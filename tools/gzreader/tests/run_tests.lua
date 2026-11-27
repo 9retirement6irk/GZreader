@@ -13349,6 +13349,26 @@ print("A pen pal on a drawing's page (gzreader_drawask.lua): ✦ and the AI writ
         and #r2 == 1 and r2[1].reply == "Just words, no JSON." and #r2[1].boxes == 3
         and r3[2].boxes[1] == 1 and r3[2].boxes[2] == 3 and #Ask.parse(nil, 2) == 0,
         "pen pal: one reply per question with its boxes (out-of-range ones dropped); plain words: one reply; a reply with no box takes those left")
+    -- short replies: the AI is asked for about 20 words; a longer one is cut at a sentence
+    local long = "Yes. " .. string.rep("word ", 40) .. "end."
+    check(Ask.SYSTEM:find("about 20 words at most", 1, true) and Ask.short("Fine as it is.") == "Fine as it is." and Ask.short(long) == "Yes."
+        and Ask.short(string.rep("w ", 50), 5) == "w w w w w…" and Ask.parse('{"replies":[{"boxes":[1],"reply":"' .. long .. '"}]}', 1)[1].reply == "Yes.",
+        "pen pal: replies kept short (asked for, then cut at a sentence past " .. Ask.MAX_WORDS .. " words)")
+    -- where a reply goes: under its question; beside it; the nearest free place on the page as seen; never past it
+    local view = { x0 = 8, y0 = 8, x1 = 940, y1 = 1392 }
+    local m40 = function() return 40 end
+    local qa = { x0 = 100, y0 = 400, x1 = 300, y1 = 440 }
+    local s1 = Ask.spot(qa, 840, m40, {}, view, 12)
+    check(s1 and s1.x == 100 and s1.y == 452 and s1.w == 840, "pen pal: a reply under its question when there's room")
+    local s2 = Ask.spot(qa, 840, m40, { { x0 = 0, y0 = 460, x1 = 1000, y1 = 600 } }, view, 12)
+    check(s2 and s2.x == 324 and s2.y == 400, "…writing under it: beside the question, on the right")
+    local qb = { x0 = 100, y0 = 1330, x1 = 940, y1 = 1370 }
+    local s3 = Ask.spot(qb, 840, m40, { { x0 = 0, y0 = 1000, x1 = 1000, y1 = 1320 }, qb }, view, 12)
+    check(s3 and s3.y + s3.h <= view.y1 and s3.y + s3.h < 1000 - Ask.MARGIN + 1, "…at the bottom of the page: in the nearest free place above, not past the page's foot (y " .. tostring(s3 and s3.y) .. ")")
+    check(Ask.spot(qa, 840, m40, { { x0 = 0, y0 = 0, x1 = 1000, y1 = 1400 } }, view, 12) == nil, "…no room anywhere: none")
+    local tall = function(w) return 40 * math.ceil(800 / w) end
+    local s4 = Ask.spot(qa, 840, tall, { { x0 = 0, y0 = 460, x1 = 1000, y1 = 600 }, { x0 = 0, y0 = 0, x1 = 90, y1 = 1400 } }, view, 12)
+    check(s4 and s4.h == tall(s4.w) and s4.x >= 90, "…its height for the width it gets")
     -- ✦ on an empty page: told how
     local said
     local real_info = package.loaded["ui/widget/infomessage"]
@@ -13438,6 +13458,19 @@ print("A pen pal on a drawing's page (gzreader_drawask.lua): ✦ and the AI writ
         "pen pal: ✦ in the drawing's top bar, answers in the handwriting font, waiting ones asked when a page opens, the eraser takes them off")
     check(dsrc:find("DrawScreen.inkText(self.canvas_bb, tw", 1, true) ~= nil and dsrc:find("dst:colorblitFrom(mask, x, y, 0, 0, w, h, Blitbuffer.COLOR_BLACK)", 1, true) ~= nil,
         "drawing: text boxes are ink on the page (the paper shows through), not white boxes")
+    ;(function()
+        -- a question written at the foot of the screen: its reply where there's room, not below the page
+        local before = #sk.texts
+        for _i, el in ipairs(sk.texts) do Ask.busy[el] = nil end
+        local qz = { stroke(100, 1340, 300, 1380) }
+        for _i, st in ipairs(qz) do sk.strokes[#sk.strokes + 1] = st end
+        Ask.tap(screen)
+        pending[#pending](' {"replies":[{"boxes":[1],"read":"and then?","reply":"Then it ends."}]}')
+        local z = sk.texts[before + 1]
+        local _zx, zy = sk:toCanvas(z.x, z.y)
+        check(z.text == "Then it ends." and zy + z.height * 2 <= 1400 - Ask.MARGIN and zy < 1340,
+            "pen pal: a question at the foot of the page: the reply in free room on the page, not below it (canvas y " .. zy .. ")")
+    end)()
     AI.ask, Hw.png = real_ask, real_png
     plugin.store.handwriting, plugin.store.ai = was_hw, was_ai
 end)()

@@ -693,6 +693,13 @@ page with the pen and tap **✦**: the AI writes back under each one, in a
 handwriting font (Caveat) about the size of your writing. Your writing stays
 as you wrote it.
 
+- **Short answers**: a sentence or two (about 20 words). A longer one is cut
+  at the end of a sentence.
+- **Where it goes**: under its question when there's room; otherwise beside
+  it, or the nearest free place on the page as you see it (above, when you
+  wrote at the bottom). Never over your writing or another box, and never
+  below the bottom of the screen; when the page is full, the writing gets
+  smaller first.
 - **Several at once**: separate pieces of writing (two sums side by side, a
   question under them) each get their own answer, under it and as wide as
   the room beside it. The lines of one question are answered together.
