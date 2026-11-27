@@ -2816,6 +2816,14 @@ do
         local hq1, bq1 = labels(Panel.homeTiles(hplug, nil)), labels(Panel.bookTiles(hplug, fakeui))
         check(hq1:match("|View|Quick note|") and bq1:match("|Quick note|$"),
             "Memos connected: Quick note at Home (after View/Sort) and in a book (last) " .. hq1 .. " " .. bq1)
+        -- a book's tiles in their order: Story guide then Flashcards, Quick note last (a new tile just before it)
+        local function ids(list) local o = {} for _i, t in ipairs(list) do o[#o + 1] = t.id end return table.concat(o, " ") end
+        local mixed = { { id = "sync" }, { id = "controls" }, { id = "readaloud" }, { id = "storyguide" }, { id = "note" },
+            { id = "markup" }, { id = "split" }, { id = "newtile" }, { id = "flashcards" } }
+        check(ids(Panel.inBookOrder(mixed)) == "sync controls readaloud storyguide flashcards markup split newtile note",
+            "a book's tiles: Flashcards next to Story guide, Quick note last (" .. ids(Panel.inBookOrder(mixed)) .. ")")
+        local pnsrc = io.open(PLUGIN .. "/gzreader_panel.lua"):read("*a")
+        check(pnsrc:find('if group == "book" then list = Panel.inBookOrder(list) end', 1, true) ~= nil, "…as the quick panel shows them")
         local quick = {}
         package.loaded["gzreader_notes"] = { quickNote = function(p) quick[#quick + 1] = p end }
         for _i, t in ipairs(Panel.bookTiles(hplug, fakeui)) do if t.id == "note" then t.run() end end
@@ -2829,14 +2837,6 @@ do
         package.loaded["gzreader_notes"] = saved_notes
         hplug.store.memos = saved_memos
     end
-    -- a book's tiles in their order: Story guide then Flashcards, Quick note last (a new tile just before it)
-    local function ids(list) local o = {} for _i, t in ipairs(list) do o[#o + 1] = t.id end return table.concat(o, " ") end
-    local mixed = { { id = "sync" }, { id = "controls" }, { id = "readaloud" }, { id = "storyguide" }, { id = "note" },
-        { id = "markup" }, { id = "split" }, { id = "newtile" }, { id = "flashcards" } }
-    check(ids(Panel.inBookOrder(mixed)) == "sync controls readaloud storyguide flashcards markup split newtile note",
-        "a book's tiles: Flashcards next to Story guide, Quick note last (" .. ids(Panel.inBookOrder(mixed)) .. ")")
-    local pnsrc = io.open(PLUGIN .. "/gzreader_panel.lua"):read("*a")
-    check(pnsrc:find('if group == "book" then list = Panel.inBookOrder(list) end', 1, true) ~= nil, "…as the quick panel shows them")
     local item = Panel.settingsItem()
     local subs = {}
     for _i, s in ipairs(item.sub_item_table) do subs[#subs + 1] = s.text end
