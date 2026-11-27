@@ -16,7 +16,10 @@ each asks about the same selection again, with the conversation so far sent
 along, and the window then shows the new answer first. With a key set up the
 selection menu's Translate opens a list of languages and the translation
 comes from the AI service (Google Translate, as before, is the list's last
-row). The conversation is gone when its window closes.
+row). The conversation is gone when its window closes, unless an answer
+was kept: Save as a note on this text makes the selection a highlight with
+the answer as its note (on an existing highlight it's added to its note),
+which GZreader's highlight sync then sends to the book server.
 
 The button is registered with KOReader's own selection menu
 (ReaderHighlight:addToHighlightDialog, key "gz_explain"); ZenOS's icon row
@@ -219,10 +222,88 @@ function Explain.show(plugin, chat)
     return viewer
 end
 
---- More rows of buttons for the conversation's window (none here; a place
---- for what's done with an answer). get_viewer(): the window, to close it.
-function Explain.extraRows(_plugin, _chat, _get_viewer)
-    return {}
+--- More rows of buttons for the conversation's window: Save as note, when
+--- the selection can still be highlighted (or was a highlight already).
+--- get_viewer(): the window, to show it again with the button changed.
+function Explain.extraRows(plugin, chat, get_viewer)
+    if not Explain.canSave(chat) then return {} end
+    local saved = chat.saved_turn == #chat.turns
+    return { { {
+        text = saved and _("Saved as its note") or (chat.item and _("Add to the highlight's note") or _("Save as a note on this text")),
+        enabled = not saved,
+        callback = function()
+            local UIManager = require("ui/uimanager")
+            local InfoMessage = require("ui/widget/infomessage")
+            local ok, done = pcall(Explain.saveNote, plugin, chat)
+            if not ok or not done then
+                UIManager:show(InfoMessage:new{ text = _("The note couldn't be saved.") })
+                return
+            end
+            UIManager:close(get_viewer())
+            Explain.show(plugin, chat)
+            UIManager:show(InfoMessage:new{ text = _("Saved. It's the note on the highlighted text, and syncs with your highlights."), timeout = 3 })
+        end,
+    } } }
+end
+
+--- Can this conversation's answer be kept as a note? (It began on a
+--- selection that has its place in the book, or on a highlight still there.)
+function Explain.canSave(chat)
+    if #chat.turns == 0 or type(chat.highlight) ~= "table" then return false end
+    if chat.item then return true end
+    return type(chat.sel) == "table" and chat.sel.pos0 ~= nil and chat.sel.pos1 ~= nil and type(chat.highlight.saveHighlight) == "function"
+end
+
+--- The note's text: the newest answer (under the question, when one was
+--- typed), and a line saying an AI wrote it. Pure.
+function Explain.noteText(chat, name)
+    local t = chat.turns[#chat.turns]
+    if not t then return nil end
+    local head = t.action == "ask" and (t.label .. "\n") or (t.action ~= "explain" and (t.label .. ": ") or "")
+    return head .. t.answer .. "\n\u{2014} " .. T(_("%1 (AI)"), tostring(name or "AI"))
+end
+
+--[[ Keep the newest answer as a note in the book:
+- on a new selection, the selection becomes a highlight with the answer as
+  its note (KOReader's own saveHighlight, the note riding on the selection);
+- on a highlight (the one the conversation began on, or the one just made),
+  the answer is added under the note it has.
+KOReader is told (AnnotationsModified), so GZreader's highlight sync sends it
+to the book server like any note. True when saved. ]]
+function Explain.saveNote(plugin, chat)
+    if not Explain.canSave(chat) then return false end
+    local Event = require("ui/event")
+    local AI = require("gzreader_ai")
+    local h = chat.highlight
+    local text = Explain.noteText(chat, AI.name(AI.provider(plugin)))
+    if not text then return false end
+    if chat.item then
+        -- (still in the book? it may have been deleted meanwhile)
+        local there = false
+        for _i, a in ipairs(h.ui.annotation.annotations) do if a == chat.item then there = true break end end
+        if not there then return false end
+        local had = type(chat.item.note) == "string" and chat.item.note ~= "" and chat.item.note or nil
+        chat.item.note = had and (had .. "\n\n" .. text) or text
+        pcall(function() h:writePdfAnnotation("content", chat.item, chat.item.note) end)
+        h.ui:handleEvent(Event:new("AnnotationsModified", had and { chat.item } or { chat.item, nb_highlights_added = -1, nb_notes_added = 1 }))
+    else
+        local sel = chat.sel
+        sel.note = text
+        if h.view and h.view.highlight and not h.view.highlight.saved_color then
+            h.view.highlight.saved_color = G_reader_settings:readSetting("highlight_color") or h._fallback_color
+        end
+        h.selected_text = sel
+        local index = h:saveHighlight(false)
+        h.selected_text = nil
+        if not index then sel.note = nil; return false end
+        chat.item, chat.sel = h.ui.annotation.annotations[index], nil
+        -- (saveHighlight counted a highlight: it's a note)
+        h.ui:handleEvent(Event:new("AnnotationsModified", { chat.item, nb_highlights_added = -1, nb_notes_added = 1 }))
+        pcall(function() require("ui/uimanager"):setDirty(h.dialog, "ui") end)
+    end
+    chat.saved_turn = #chat.turns
+    require("gzreader_log").info("explain: an answer kept as a note")
+    return true
 end
 
 --- A box to type a question in; on_done(text) when there's one.
@@ -308,8 +389,17 @@ function Explain.run(plugin, highlight, index, action, arg)
 end
 
 --- A conversation begins on `highlight`'s selection (or its highlight
---- `index`), before the menu closes: nothing to keep here.
-function Explain.began(_chat, _highlight, _index) end
+--- `index`), before the menu closes and the selection is let go: where the
+--- text is in the book is kept with the conversation, for Save as note.
+function Explain.began(chat, highlight, index)
+    chat.highlight = highlight
+    if index then
+        local ok, item = pcall(function() return highlight.ui.annotation.annotations[index] end)
+        chat.item = ok and type(item) == "table" and item or nil
+    elseif type(highlight.selected_text) == "table" then
+        chat.sel = highlight.selected_text
+    end
+end
 
 --- The selection menu's Translate, with an AI key set up: the languages,
 --- and the reader's own translator (Google Translate) under them.

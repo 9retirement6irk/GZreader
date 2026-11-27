@@ -2300,6 +2300,88 @@ print("Explain: the selection menu's question mark asks the AI service about the
         local _u3, _h3, b3 = AI.request("claude", { key = "k" }, { text = "alone" })
         check(#Json.decode(b3).messages == 1, "no history: one message, as before")
     end)()
+    -- an answer kept as a note on the selected text (it then syncs with the highlights)
+    ;(function()
+        local function button(w, text)
+            for _i, row in ipairs(w.buttons_table or {}) do
+                for _j, b in ipairs(row) do if b.text == text then return b end end
+            end
+        end
+        local events, saves = {}, 0
+        ui.handleEvent = function(_u, ev) events[#events + 1] = ev end
+        local h = ui.highlight
+        h.view = { highlight = {} }
+        h.saveHighlight = function(hh, extend)
+            saves = saves + 1
+            if not (hh.selected_text and hh.selected_text.pos0) then return nil end
+            local item = { text = hh.selected_text.text, pos0 = hh.selected_text.pos0, pos1 = hh.selected_text.pos1, note = hh.selected_text.note, extended = extend }
+            table.insert(ui.annotation.annotations, item)
+            return #ui.annotation.annotations
+        end
+        -- a selection with no place in the book (as the checks above): nothing to save on
+        shown = {}
+        h.selected_text = { text = "the whale's lay" }
+        btn.callback()
+        answer_cb("A lay is a share.")
+        check(not button(shown[#shown], "Save as a note on this text"), "a selection whose place isn't known: no Save button")
+        -- a real selection
+        shown, events = {}, {}
+        h.selected_text = { text = "the whale's lay", pos0 = "/body/p[3].0", pos1 = "/body/p[3].15" }
+        btn.callback()
+        check(h.selected_text ~= nil, "(the stand-in menu keeps the selection; the real one lets it go)")
+        h.selected_text = nil -- (as ReaderHighlight:onClose does)
+        answer_cb("A lay is a sailor's share of the voyage's profit.")
+        local win = shown[#shown]
+        local save = button(win, "Save as a note on this text")
+        check(save and save.enabled == true, "an answer about a selection: Save as a note on this text")
+        local n_before = #ui.annotation.annotations
+        save.callback()
+        local made = ui.annotation.annotations[#ui.annotation.annotations]
+        check(#ui.annotation.annotations == n_before + 1 and made.pos0 == "/body/p[3].0" and made.extended == false
+            and made.note == "A lay is a sailor's share of the voyage's profit.\n\u{2014} Claude (AI)" and h.selected_text == nil,
+            "saved: the selection is a highlight (as selected, not stretched), the answer its note, signed as an AI's")
+        check(#events == 1 and events[1].name == "AnnotationsModified" and events[1].args[1][1] == made and events[1].args[1].nb_notes_added == 1,
+            "…and the reader is told, so the highlight sync sends it")
+        local win2 = shown[#shown - 1]
+        check(win.closed and win2.kind == "viewer" and button(win2, "Saved as its note") and button(win2, "Saved as its note").enabled == false
+            and shown[#shown].kind == "info" and shown[#shown].text:find("syncs with your highlights", 1, true),
+            "the window again with the button done, and a line saying it syncs")
+        -- a follow-up's answer goes under it, on the same highlight
+        button(win2, "Simpler").callback()
+        answer_cb("A lay is a sailor's pay.")
+        local win3 = shown[#shown]
+        local add = button(win3, "Add to the highlight's note")
+        check(add and add.enabled == true and not button(win3, "Save as a note on this text"), "a new answer: it can be added to the highlight just made")
+        events = {}
+        add.callback()
+        check(#ui.annotation.annotations == n_before + 1 and made.note:find("profit.\n\u{2014} Claude (AI)\n\nSimpler: A lay is a sailor's pay.\n\u{2014} Claude (AI)", 1, true)
+            and #events == 1 and events[1].args[1].nb_notes_added == nil,
+            "…added under the first on the same highlight (no second highlight), what was asked said first")
+        -- from an existing highlight's menu: added to its note
+        shown, events = {}, {}
+        local old = ui.annotation.annotations[1]
+        old.note = "my own note"
+        added["12_gz_explain"](h, 1).callback()
+        answer_cb("It was highlighted before.")
+        local add2 = button(shown[#shown], "Add to the highlight's note")
+        check(add2 ~= nil, "an existing highlight: Add to the highlight's note")
+        add2.callback()
+        check(old.note == "my own note\n\nIt was highlighted before.\n\u{2014} Claude (AI)" and #ui.annotation.annotations == n_before + 1, "…under the note it had, nothing lost")
+        -- the highlight deleted meanwhile: said, nothing written
+        shown = {}
+        added["12_gz_explain"](h, 1).callback()
+        answer_cb("Gone by the time it's saved.")
+        local w4 = shown[#shown]
+        table.remove(ui.annotation.annotations, 1)
+        button(w4, "Add to the highlight's note").callback()
+        check(shown[#shown].text == "The note couldn't be saved." and not w4.closed, "its highlight deleted meanwhile: it says so, the answer stays on screen")
+        -- a typed question: the note has the question over the answer
+        local c = Explain.newChat("sel")
+        c.turns[1] = { action = "ask", label = "Who is he?", answer = "The mate." }
+        check(Explain.noteText(c, "Claude") == "Who is he?\nThe mate.\n\u{2014} Claude (AI)" and Explain.canSave(c) == false and Explain.noteText(Explain.newChat("x")) == nil,
+            "a typed question's note: the question, the answer, who wrote it")
+        ui.handleEvent, h.saveHighlight, h.view = nil, nil, nil
+    end)()
     UIM.show, UIM.close, AI.ask = was_show, was_close, was_ask
     package.loaded["ui/widget/infomessage"], package.loaded["ui/widget/textviewer"] = saved_im, saved_tv
     plugin.store.handwriting, plugin.store.ai = was_hw, was_ai
