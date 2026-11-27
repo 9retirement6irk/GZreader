@@ -85,6 +85,39 @@ You need the address and an API key (Immich → Account Settings → API Keys;
 at least `album.read`, `asset.read` and `asset.view`). What it does and its
 settings: [Home and bookshelves](Home-and-Bookshelves#pictures-from-immich).
 
+### Immich with single sign-on
+
+If your Immich has OAuth turned on (Administration → Settings →
+Authentication), you don't need to make an API key yourself: on the setup
+page's Immich tab, type the address and press **Sign in with single sign-on
+(SSO)**. You sign in at your identity provider, and the Kindle is connected.
+
+One-time setup, the same for every Kindle: add
+
+    https://9retirement6irk.github.io/GZreader/oauth2-callback
+
+as an extra redirect URI on **Immich's** client at your identity provider
+(next to Immich's own `…/auth/login`, `…/user-settings` and
+`app.immich:///oauth-callback`). It's the same page as for
+[Grimmory's single sign-on](#single-sign-on-sso--oidc), and it follows the
+same *Redirect* choice (your own copy of the page, or this Kindle's own
+address); the Immich tab shows the address in use.
+
+What the Kindle keeps: after the sign-in it makes an API key of its own in
+Immich, named "GZreader (*this Kindle*)", with `album.read`, `asset.read`,
+`asset.view` and `user.read`, and ends the sign-in's session. Only that key
+is kept (never logged), as when you paste one, so the Kindle stays connected
+when your sign-in at the identity provider ends. To cut a Kindle off, delete
+its key in Immich (Account Settings → API Keys); **Disconnect** on the
+Kindle forgets the key but leaves it listed there.
+
+- The phone has to be on the Kindle's Wi‑Fi while signing in, as for the rest
+  of the setup page.
+- Through the hand-off page, your identity provider has to offer PKCE
+  (Authentik, Pocket ID, Authelia and Keycloak do). Without it, use
+  *Redirect: this Kindle's own address*, or an API key.
+- Kindles without Wi‑Fi (the sync page) still use an API key.
+
 ## Connect to Grimmory
 
 *(Using BookOrbit instead of Grimmory? Choose **BookOrbit** under **Book server** in the same form: see [BookOrbit](BookOrbit).)*

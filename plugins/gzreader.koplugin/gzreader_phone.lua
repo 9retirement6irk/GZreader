@@ -182,6 +182,7 @@ local function state(S, flash)
         pictures = #Immich.have(), at = im.at, refresh_error = im.error,
         sleep = SleepMode.current(G_reader_settings), wallpaper = okw and W.isOn() or false,
         form = sec == "immich" and flash.form or { server = im.server }, error = sec == "immich" and flash.error or nil }
+    st.immich.redirect_uri, st.immich.sso_relay = g.redirect_uri, g.sso_relay
     -- the sleep screen's pictures (the screensavers folder)
     local Usb = require("gzreader_usbsync")
     st.sleep = { mode = SleepMode.current(G_reader_settings), names = Usb.screensavers(), screen = Usb.screenSize(),
@@ -470,9 +471,12 @@ function Phone.open(plugin, opts)
         return 302, nil, redirect_uri .. "#back=" .. esc(S.origin .. "/oauth2-callback") .. "&go=" .. esc(auth_url)
     end
 
+    -- (a single sign-on that isn't Grimmory's: session.kind -> its own finish)
+    local ssoFinishers = {}
     local function finishSso(query)
         local params = PairServer.parseForm(query)
         local session = S.sso
+        if session and ssoFinishers[session.kind] then return ssoFinishers[session.kind](params, session, query) end
         if params.error then
             S.sso = nil
             return grimmoryFailed({ server = session and session.base },
@@ -716,12 +720,77 @@ function Phone.open(plugin, opts)
     end
     -- Immich (gzreader_immich.lua)
     local function Immich() return require("gzreader_immich") end
-    routes["/immich"] = function(form)
-        local ok, err = Immich().connect(plugin, form.server or "", form.key or "")
-        if not ok then
-            if failedLogin() then return 200, "text/html", PairPage.gone() end
-            return back({ section = "immich", error = err, form = { server = form.server } })
+    local function immichFailed(form, err)
+        if failedLogin() then return 200, "text/html", PairPage.gone() end
+        return back({ section = "immich", error = err, form = { server = form.server } })
+    end
+    -- Single sign-on (Immich's OAuth): to the identity provider through the same
+    -- hand-off page as Grimmory's, back at /oauth2-callback (ssoFinishers.immich).
+    local function startImmichSso(form)
+        local srv = Immich().normalizeServer(form.server or "")
+        if not srv then return immichFailed(form, _("Enter your Immich address first.")) end
+        local Lan = require("gzreader_lan")
+        local info, err = Immich().ssoInfo(srv)
+        if info == nil and err == "unreachable" and Lan.plainRetry(form.server or "") then
+            -- (no https:// typed and no HTTPS there: an Immich on the home network)
+            local plain = srv:gsub("^https://", "http://")
+            local i2, e2 = Immich().ssoInfo(plain)
+            if i2 ~= nil or e2 ~= "unreachable" then srv, info, err = plain, i2, e2 end
         end
+        if info == nil then
+            if err == "unreachable" and not (form.server or ""):match("^%s*https?://") and not Lan.isPrivate(srv) then return immichFailed(form, Lan.noHttpsText()) end
+            if err == "unreachable" then return immichFailed(form, _("Couldn't reach Immich at that address.")) end
+            return immichFailed(form, T(_("That doesn't look like an Immich server (%1)."), tostring(err)))
+        end
+        if info == false then return immichFailed(form, _("Single sign-on isn't turned on for this Immich server.")) end
+        local redirect_uri, relay = Phone.ssoRedirect(plugin, S.origin)
+        local session = { kind = "immich", base = srv, input = form.server, state = PairServer.randomToken(16),
+            verifier = PairServer.randomToken(32), redirect_uri = redirect_uri, relay = relay }
+        local auth_url, serr = Immich().ssoStart(srv, redirect_uri, session.state, Api.pkceChallenge(session.verifier))
+        if not auth_url then
+            Log.warn("immich sso: not started:", tostring(serr))
+            return immichFailed(form, T(_("Immich didn't start single sign-on (%1)."), tostring(serr)))
+        end
+        if relay and not auth_url:find("code_challenge_method=S256", 1, true) then
+            -- (Immich leaves PKCE out when the provider doesn't list it; the hand-off page only opens a sign-in that has it)
+            return immichFailed(form, _("Your identity provider doesn't offer PKCE, which GZreader's sign-in page needs. Connect with an API key instead."))
+        end
+        S.sso = session
+        Log.info("immich sso: redirecting phone to", (auth_url:match("^https?://[^/?#]+") or "?"), "redirect_uri", redirect_uri)
+        if not relay then return 302, nil, auth_url end
+        local esc = require("socket.url").escape
+        return 302, nil, redirect_uri .. "#back=" .. esc(S.origin .. "/oauth2-callback") .. "&go=" .. esc(auth_url)
+    end
+    local immichConnected
+    ssoFinishers.immich = function(params, session, query)
+        if params.error then
+            S.sso = nil
+            return immichFailed({ server = session.input }, T(_("Sign-in didn't complete: %1"), params.error_description or params.error))
+        end
+        if not params.code or params.state ~= session.state then return 200, "text/html", PairPage.gone() end
+        S.sso = nil -- single use
+        local name = "GZreader"
+        pcall(function() name = "GZreader (" .. require("gzreader_copy").deviceName(plugin) .. ")" end)
+        local key, err = Immich().ssoFinish(session.base, session.redirect_uri .. "?" .. query, session.state, session.verifier, name)
+        if not key then
+            Log.warn("immich sso: not finished:", tostring(err))
+            if tostring(err):match("^no_key:") then
+                return immichFailed({ server = session.input }, T(_("Signed in, but Immich didn't let the Kindle make its API key (%1)."), tostring(err):sub(8)))
+            end
+            return immichFailed({ server = session.input }, T(_("Immich didn't accept the sign-in: %1"), tostring(err)))
+        end
+        Log.info("immich sso: signed in; this Kindle's own API key made", session.relay and "(hand-off page)" or "(this Kindle's address)")
+        local ok, cerr = Immich().connect(plugin, session.base, key)
+        if not ok then return immichFailed({ server = session.input }, cerr) end
+        return immichConnected()
+    end
+    routes["/immich"] = function(form)
+        if form.action == "sso" then return startImmichSso(form) end
+        local ok, err = Immich().connect(plugin, form.server or "", form.key or "")
+        if not ok then return immichFailed(form, err) end
+        return immichConnected()
+    end
+    immichConnected = function()
         S.changes.immich = true
         local st = plugin.store.immich
         toast(_("Immich: connected."))
