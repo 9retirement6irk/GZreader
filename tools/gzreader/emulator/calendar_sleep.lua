@@ -1,7 +1,9 @@
 -- The calendar as the sleep screen (gzreader_sleepcalendar.lua): a calendar
 -- link set up (never fetched here: its events are put in as if synced),
 -- Wallpaper's tiles with Today's and This week's calendar, then each as the
--- sleep screen, the way the Kindle shows it going to sleep.
+-- sleep screen, the way the Kindle shows it going to sleep; then a picture as
+-- the wallpaper with the calendar card over it and a sleep screen message.
+--   GZ_EMU_PICTURE=tools/gzreader/tests/media/cover.jpg \
 --   GZ_EMU_MODEL=scribe GZ_EMU_TREE=<tree>/koreader run.sh calendar_sleep.lua <out>
 -- Checks go to <out>/calendar-sleep-checks.txt.
 local s = { start = 14 }
@@ -80,6 +82,38 @@ add({ fn = measure("Today's calendar"), after = 5 })
 add({ fn = sleep("gz_calendar_week"), after = 8 })
 add({ shot = "calsleep-3-week" })
 add({ fn = measure("This week's calendar"), after = 5 })
+-- the card over another wallpaper: a picture from the folder, with the sleep message too
+add({ fn = function(E)
+    local dir = E.out .. "/pictures"
+    os.execute("mkdir -p '" .. dir .. "' && cp '" .. os.getenv("GZ_EMU_PICTURE") .. "' '" .. dir .. "/a.jpg'")
+    G_reader_settings:saveSetting("screensaver_dir", dir)
+    G_reader_settings:saveSetting("gzreader_sleep_calendar_card", "top")
+    G_reader_settings:makeTrue("screensaver_show_message")
+    G_reader_settings:saveSetting("screensaver_message", "Gone reading")
+    local P = require("gzreader_sleeppreview")
+    P.choose("random_image")
+    local Screensaver = require("ui/screensaver")
+    Screensaver:setup()
+    E.say("sleep:", tostring(Screensaver.screensaver_type))
+    check(Screensaver.screensaver_type == "random_image", "a picture as the wallpaper, the calendar card on")
+    Screensaver:show()
+end, after = 8 })
+add({ shot = "calsleep-4-card" })
+add({ fn = function(E)
+    -- the card's place: dark text on a white card at the top, the picture below it
+    local Screen = require("device").screen
+    local w, h = Screen:getWidth(), Screen:getHeight()
+    local white, n = 0, 0
+    for x = math.floor(w * 0.25), math.floor(w * 0.75), 23 do
+        n = n + 1
+        if E.display:getPixel(x, math.floor(h * 0.06)):getColor8().a > 240 then white = white + 1 end
+    end
+    E.say("card: white share at the top", string.format("%.2f", white / n))
+    check(white / n > 0.6, "the card drawn at the top of the picture")
+    require("ui/screensaver"):close()
+    G_reader_settings:delSetting("gzreader_sleep_calendar_card")
+    G_reader_settings:makeFalse("screensaver_show_message")
+end, after = 5 })
 add({ fn = function(E)
     -- without the plugin's drawing: a picture instead, never a blank screen
     local Screensaver = require("ui/screensaver")

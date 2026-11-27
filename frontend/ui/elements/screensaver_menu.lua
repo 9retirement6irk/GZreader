@@ -186,6 +186,7 @@ local sub_item_table = {
             },
         },
     },
+    -- (GZreader: the calendar card over the wallpaper goes here: gzreader_sleepcalendar.lua)
     {
         text = _("Sleep screen message"),
         sub_item_table = {
@@ -290,6 +291,16 @@ if ui.document then
             ui.doc_settings:flipNilOrFalse("exclude_screensaver")
         end,
     })
+end
+
+-- GZreader: the calendar card over the wallpaper, before Sleep screen message (gzreader_sleepcalendar.lua)
+do
+    local ok, card = pcall(function() return require("gzreader_sleepcalendar").cardItem() end)
+    if ok and card then
+        for i, item in ipairs(sub_item_table) do
+            if item.text == _("Sleep screen message") then table.insert(sub_item_table, i, card); break end
+        end
+    end
 end
 
 return sub_item_table

@@ -682,6 +682,20 @@ function Screensaver:show()
         end
     end
 
+    -- GZreader: small cards laid over the wallpaper, as the message is (the calendar's:
+    -- gzreader_sleepcalendar.lua); not over a sleep screen that is one already
+    if Screensaver.gz_cards and not (Screensaver.gz_screens and Screensaver.gz_screens[self.screensaver_type]) then
+        for _name, make in pairs(Screensaver.gz_cards) do
+            local ok, card = pcall(make, screen_w, screen_h)
+            if ok and type(card) == "table" and card.widget then
+                local placed = CustomPositionContainer:new{ widget = card.widget, vertical_position = card.vertical or 0.04 }
+                widget = widget and OverlapGroup:new{ dimen = { w = screen_w, h = screen_h }, widget, placed } or placed
+            elseif not ok then
+                logger.warn("Screensaver: a card couldn't be drawn:", card)
+            end
+        end
+    end
+
     if self.overlay_message then
         widget = addOverlayMessage(widget, message_height, self.overlay_message)
     end

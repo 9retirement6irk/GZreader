@@ -1899,4 +1899,86 @@ function Calendar.sleepPage(plugin, layout, w, h)
     return desk
 end
 
+---------------------------------------------------------------- a card over the wallpaper
+
+Calendar.CARD_EVENTS = 5 -- at most this many events on the card
+Calendar.CARD_DAYS = 7   -- from today and the next days
+
+--- The events still to come (not over at `now`), soonest first, starting in
+--- the next `days` days: at most `n`. Pure.
+function Calendar.upcoming(events, now, n, days)
+    local until_t = addDays(dayStart(now), days or Calendar.CARD_DAYS)
+    local out = {}
+    for _i, ev in ipairs(events or {}) do
+        local finish = ev.finish or ev.start
+        if ev.start and finish and finish > now and ev.start < until_t then out[#out + 1] = ev end
+    end
+    table.sort(out, function(a, b)
+        if a.start ~= b.start then return a.start < b.start end
+        return (a.title or "") < (b.title or "")
+    end)
+    while #out > (n or Calendar.CARD_EVENTS) do out[#out] = nil end
+    return out
+end
+
+--- When an event is, said for the card: "9:30 AM", "All day", "Tomorrow 7:00 PM",
+--- "Sat 5:30 PM", "Sat" (all day). Pure.
+function Calendar.cardWhen(ev, now)
+    local today = dayStart(now)
+    local day = dayStart(math.max(ev.start, today))
+    local all = ev.all_day or (ev.start <= day and (ev.finish or ev.start) >= addDays(day, 1))
+    local prefix
+    if day == today then prefix = nil
+    elseif day == addDays(today, 1) then prefix = _("Tomorrow")
+    else prefix = WDAY[os.date("*t", day).wday] end
+    if all then return prefix or _("All day") end
+    local t = clock(ev.start)
+    return prefix and (prefix .. " " .. t) or t
+end
+
+--- A card for the sleep screen, `w` wide at most: today's date over the next
+--- events (from the events kept on the Kindle). nil with no calendar.
+function Calendar.sleepCard(plugin, w)
+    if not plugin or not Calendar.hasSources(plugin) then return nil end
+    Calendar.plugin = plugin
+    if not Calendar.events then pcall(Calendar.loadCache) end
+    local now = os.time()
+    local d = os.date("*t", now)
+    local width = math.min(w, math.max(S(300), math.floor(w * 0.62)))
+    local pad = S(18)
+    local inner = width - 2 * pad - 2 * Size.border.thin
+    local ink, grey = Blitbuffer.COLOR_BLACK, Blitbuffer.COLOR_DARK_GRAY
+    local group = VerticalGroup:new{ align = "left" }
+    group[#group + 1] = TextWidget:new{ text = WEEKDAY[d.wday], face = Font:getFace("cfont", 26), bold = true,
+        fgcolor = ink, max_width = inner }
+    group[#group + 1] = TextWidget:new{ text = MONTHS[d.month] .. " " .. d.day, face = Font:getFace("cfont", 18),
+        fgcolor = grey, max_width = inner }
+    group[#group + 1] = VerticalSpan:new{ width = S(10) }
+    local list = Calendar.upcoming(Calendar.events or {}, now)
+    if #list == 0 then
+        group[#group + 1] = TextWidget:new{ text = _("Nothing on the calendar this week."), face = Font:getFace("cfont", 17),
+            fgcolor = grey, max_width = inner }
+    end
+    local when_w = math.floor(inner * 0.36)
+    for _i, ev in ipairs(list) do
+        local when = TextWidget:new{ text = Calendar.cardWhen(ev, now), face = Font:getFace("cfont", 16), fgcolor = grey,
+            max_width = when_w - S(8) }
+        local what = TextWidget:new{ text = ev.title or "", face = Font:getFace("cfont", 18), fgcolor = ink,
+            max_width = inner - when_w }
+        group[#group + 1] = HorizontalGroup:new{ align = "center",
+            LeftContainer:new{ dimen = Geom:new{ w = when_w, h = what:getSize().h }, when }, what }
+        group[#group + 1] = VerticalSpan:new{ width = S(4) }
+    end
+    local synced = Calendar.hasNetSources(plugin) and Calendar.syncedText(Calendar.cached_at)
+    if synced then
+        group[#group + 1] = VerticalSpan:new{ width = S(6) }
+        group[#group + 1] = TextWidget:new{ text = synced, face = Font:getFace("cfont", 12), fgcolor = grey, max_width = inner }
+    end
+    return FrameContainer:new{
+        width = width, padding = pad, margin = 0, bordersize = Size.border.thin, radius = S(12),
+        background = Blitbuffer.COLOR_WHITE, color = Blitbuffer.COLOR_DARK_GRAY,
+        group,
+    }
+end
+
 return Calendar

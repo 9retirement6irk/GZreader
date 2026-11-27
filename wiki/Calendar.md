@@ -87,3 +87,16 @@ waits for Wi‑Fi. It stays fresh by itself: when Wi‑Fi connects and the last
 sync is more than an hour old, the calendar syncs again (and whenever the
 Calendar tab opens, as before). The page says when it last synced, in small
 grey type. To go back, tap another tile.
+
+### A calendar card over your wallpaper
+
+To keep your own wallpaper (a picture, the book's cover) and still see what's
+coming up, put a small calendar card on top of it, the way the sleep screen
+message sits on top. In **Settings → Sleep and wallpaper → Sleep**, tap
+**Calendar on the wallpaper** and choose **At the top** or **At the bottom**
+(or **Off**). The card shows the day and date, then up to five events from
+today and the next seven days ("12:00 PM", "Tomorrow", "Sat 7:00 PM"), and
+when it last synced. It works with any wallpaper and with a sleep screen
+message at the same time; it isn't drawn over the calendar sleep screens,
+which show the calendar already. It's drawn from the events kept on the
+Kindle and synced when Wi‑Fi connects, as above.

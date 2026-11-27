@@ -225,6 +225,11 @@ With a calendar set up (see [Calendar](Calendar)), there are two more tiles:
 have events) and **This week's calendar** (the week, a day a row). See
 [Calendar → On the sleep screen](Calendar#on-the-sleep-screen).
 
+To mix them, keep any wallpaper and lay a small calendar card over it:
+**Settings → Sleep and wallpaper → Sleep → Calendar on the wallpaper**, at the
+top or at the bottom. A sleep screen message can go with it. See
+[Calendar → A calendar card over your wallpaper](Calendar#a-calendar-card-over-your-wallpaper).
+
 To have the cover fill the whole screen with no bars at the edges, tick
 **Wallpaper options → Border fill, rotation, and fit → Scale cover to fill
 screen**: the cover (or picture) keeps its proportions and is scaled up until
