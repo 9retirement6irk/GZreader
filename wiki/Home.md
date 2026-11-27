@@ -10,7 +10,7 @@ the Nook 1st Edition and Nook Simple Touch.
 
 | Your server | What the e-reader does with it |
 |---|---|
-| [Grimmory](https://grimmory.org) (books; [BookOrbit](https://github.com/bookorbit/bookorbit) is in testing) | browse and download your books and audiobooks; keep your place, bookmarks, highlights and notes in sync |
+| [Grimmory](https://grimmory.org) or [BookOrbit](https://github.com/bookorbit/bookorbit) (your book server: either one) | browse and download your books and audiobooks; keep your place, bookmarks, highlights, notes and ratings in sync; request books (BookOrbit) |
 | [Memos](https://usememos.com) | sticky notes, a rich text editor, drawings, a journal |
 | [Plex](https://www.plex.tv) | music, and audiobooks from a Plex library |
 | [Immich](https://immich.app) | your photos as the sleep screen and wallpaper, and in notes |

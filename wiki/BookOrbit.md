@@ -1,8 +1,22 @@
 # BookOrbit
 
-GZreader can use [BookOrbit](https://github.com/bookorbit/bookorbit) as its book server instead of Grimmory. You pick one or the other when you sign in; a Kindle is signed in to one book server at a time.
+[BookOrbit](https://github.com/bookorbit/bookorbit) is one of GZreader's two book servers, alongside [Grimmory](https://grimmory.org). On a Kindle with Wi-Fi, the Catalog, downloads, sync and Home's reading stats work with either. You pick one when you sign in; a Kindle is signed in to one book server at a time.
 
-What works with BookOrbit today:
+## Grimmory or BookOrbit
+
+Both give you the Catalog (books, audiobooks, magazines, genres), downloads, an auto-download shelf, reading position, highlights, notes, bookmarks and ratings synced both ways, reading time, and Home's reading stats and recently read. Where they differ:
+
+| | Grimmory | BookOrbit |
+|---|---|---|
+| Signing in | its password, or single sign-on | its KOReader sync user (below), and an API key for audiobooks, collections, genres and requests |
+| Shelves | shelves and magic shelves | collections and SmartScopes (on the Collections card) |
+| Requesting books it doesn't have | no | yes: the Catalog's Requests page |
+| Kindles without Wi-Fi (Kindle 2, DX: the sync page) | yes | not yet |
+| Downloads of a read-along book | the file | narrated or book only, to choose |
+
+Grimmory's side is in [Library and Catalog](Grimmory-Library) and [Grimmory sync](Grimmory-Sync); BookOrbit's is on this page.
+
+## What works with BookOrbit
 
 | | |
 |---|---|

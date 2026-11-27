@@ -1,4 +1,4 @@
-Browsing your Grimmory library on the device, and downloading books. Keeping them in sync with Grimmory: [Grimmory sync](Grimmory-Sync).
+Browsing your book server's library on the device, and downloading books. This page describes it with Grimmory; BookOrbit works the same way, with the differences on [BookOrbit](BookOrbit#grimmory-or-bookorbit). Keeping them in sync: [Grimmory sync](Grimmory-Sync), or [BookOrbit](BookOrbit) with BookOrbit.
 
 ## The Catalog tab
 

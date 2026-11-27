@@ -1,4 +1,4 @@
-Listening on Kindles with a speaker or headphone jack (Kindle 2, 3, DX, Touch), or with Bluetooth (Scribe, Paperwhite 5 and newer, Colorsoft…; through Bluetooth headphones or a speaker): Grimmory audiobooks, and any book read aloud in the Kindle's own voice. Music from Plex: [Music](Music). Audiobooks can also have a tab of their own: [the Audiobooks tab](Grimmory-Library#the-catalog-tab). Not on Kobos (no speaker; their Bluetooth only works in Kobo's own software): [Kobo](Kobo).
+Listening on Kindles with a speaker or headphone jack (Kindle 2, 3, DX, Touch), or with Bluetooth (Scribe, Paperwhite 5 and newer, Colorsoft…; through Bluetooth headphones or a speaker): Grimmory or BookOrbit audiobooks, and any book read aloud in the Kindle's own voice. Music from Plex: [Music](Music). Audiobooks can also have a tab of their own: [the Audiobooks tab](Grimmory-Library#the-catalog-tab). Not on Kobos (no speaker; their Bluetooth only works in Kobo's own software): [Kobo](Kobo).
 
 ## Audiobooks (experimental)
 
@@ -6,7 +6,7 @@ Catalog tab → **Audiobooks** page (swipe left from Books, or the page-turn
 button). It's laid out like the Books page: **Search audiobooks…** at the top
 (titles, authors and series, audiobooks only), two shelves with covers face
 out, **Continue listening** (what you've listened to on this Kindle, latest
-first, then what Grimmory has in progress, with a ribbon and how far you
+first, then what your book server has in progress, with a ribbon and how far you
 are) and **Recently added**, each ending in a bundle that opens the whole
 list, then a bookcase with **All audiobooks**, **Authors**, **Shelves**,
 **Series** and **Genres** (the cards count what's known). Audiobooks on the

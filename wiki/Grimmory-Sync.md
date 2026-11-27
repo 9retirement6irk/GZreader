@@ -1,4 +1,4 @@
-What GZreader keeps the same on the device and in Grimmory (its web reader and your other devices): reading position, ratings, reading sessions, bookmarks, highlights and notes.
+What GZreader keeps the same on the device and in Grimmory (its web reader and your other devices): reading position, ratings, reading sessions, bookmarks, highlights and notes. With BookOrbit the same things sync both ways too: see [BookOrbit](BookOrbit).
 
 ## Progress sync
 
