@@ -250,8 +250,28 @@ end
 
 function Panel.showAll() G_reader_settings:delSetting(HIDDEN_KEY) end
 
+--- The order of a book's tiles, by id (the owner, 2026-11-26): the book's
+--- own tools, then what's made from it (Story guide, Flashcards), notes, what
+--- plays, and Quick note last. A tile not listed goes just before Quick note.
+Panel.BOOK_ORDER = { "sync", "controls", "contents", "bookmark", "bookmarks", "gotopage", "searchbook", "font", "layout",
+    "fitpictures", "readaloud", "storyguide", "storysofar", "flashcards", "markup", "split", "music", "audiobook", "note" }
+
+--- `list` in Panel.BOOK_ORDER (a copy; tiles with the same place keep theirs). Pure.
+function Panel.inBookOrder(list)
+    local rank = {}
+    for i, id in ipairs(Panel.BOOK_ORDER) do rank[id] = i end
+    local unknown = (rank.note or #Panel.BOOK_ORDER + 1) - 0.5
+    local keyed = {}
+    for i, t in ipairs(list) do keyed[i] = { t = t, r = rank[t.id] or unknown, i = i } end
+    table.sort(keyed, function(a, b) if a.r ~= b.r then return a.r < b.r end return a.i < b.i end)
+    local out = {}
+    for i, k in ipairs(keyed) do out[i] = k.t end
+    return out
+end
+
 --- The tiles of a group the user hasn't hidden.
 local function shown(group, list)
+    if group == "book" then list = Panel.inBookOrder(list) end
     local out = {}
     for _i, t in ipairs(list) do
         if not t.id or Panel.isShown(group, t.id) then out[#out + 1] = t end

@@ -23,10 +23,10 @@ keep each tile under an inch wide (seven on a Scribe, eight turned sideways).
 - **This book** (while reading): Sync with Grimmory, **Options** (what a
   swipe up from the bottom of the page opens, as set in Settings → Reader →
   Bottom swipe gesture: the page browser or reader controls), Bookmark, Search
-  book, Read aloud,
-  **Quick note** and **Mark up** (draw on the page, kept as a note) while
-  [Memos](Notes) is connected, and Music and Audiobook
-  while one plays or is paused.
+  book, Read aloud, the tiles made from the book (Story guide, Flashcards),
+  **Mark up** (draw on the page, kept as a note) while [Memos](Notes) is
+  connected, Music and Audiobook while one plays or is paused, and
+  **Quick note** last (while Memos is connected).
 
 On a touch Kindle with a frontlight the panel also has a light slider (the swipe that opens the panel leaves the light alone; tap or
 drag it; − and + step), and
