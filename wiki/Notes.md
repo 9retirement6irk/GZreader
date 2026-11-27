@@ -718,7 +718,10 @@ API to `/api` are found too.
   (`settings/gzreader-notes.json`); new notes, edits, ticks and pins made
   without Wi‑Fi wait in a queue and are sent the next time the Notes tab can
   reach Memos ("not sent yet" on the note meanwhile). The Notes tab keeps
-  Wi‑Fi up while it's open (Wi‑Fi on Auto).
+  Wi‑Fi up while it's open (Wi‑Fi on Auto). The queue goes in order, so one
+  change that can't be sent holds the ones after it. A drawing's upload may
+  take up to five minutes on slow Wi‑Fi; if it's tried again, GZreader first
+  looks whether the note has that drawing already, so it isn't added twice.
 
 ## Saving
 

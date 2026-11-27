@@ -20026,6 +20026,50 @@ print("Immich photos for notes and drawings (gzreader_immichpick.lua): the Memos
     local got = c:get(note.name)
     check(got and got.attachments and got.attachments[1] and got.attachments[1].filename == "IMG_0002.jpg" and got.attachments[1].type == "image/jpeg"
         and not Notes.isDrawing(got.attachments[1]), "…in Memos: the note's attachment, a JPEG, not taken for a drawing")
+    -- a drawing whose upload reached Memos though the Kindle gave up waiting (the
+    -- owner's Scribe, 2026-11-25): the retries each added it to the note again
+    ;(function()
+        local dn = c:create("Stuck drawing", "PRIVATE")
+        local dpath = WORK .. "/stuck.canvas.png"
+        local df = io.open(dpath, "wb"); df:write(string.rep("p", 4321)); df:close()
+        local dq = { op = "attach", name = dn.name, drawings = { { path = dpath, filename = "drawing-20261125-182513.canvas.png" } } }
+        for _k = 1, 4 do c:uploadAttachment(dpath, "drawing-20261125-182513.canvas.png", dn.name) end -- (what the retries left)
+        local other = io.open(WORK .. "/other.canvas.png", "wb"); other:write("zz"); other:close()
+        c:uploadAttachment(WORK .. "/other.canvas.png", "drawing-20261125-190000.canvas.png", dn.name)
+        local real_up, ups = Memos.uploadAttachment, 0
+        Memos.uploadAttachment = function(...) ups = ups + 1; return real_up(...) end
+        check(c:uploadDrawings(dq, dn.name) == true and ups == 0, "a drawing Memos has already isn't uploaded again")
+        local after = c:get(dn.name)
+        local same = Memos.sameFile(after.attachments, "drawing-20261125-182513.canvas.png", 4321)
+        check(#same == 1 and #after.attachments == 2, "…and the extra copies are taken off the note (the other drawing stays)")
+        -- an edited file of another size isn't taken for the one there
+        df = io.open(dpath, "wb"); df:write(string.rep("p", 5000)); df:close()
+        check(c:uploadDrawings(dq, dn.name) == true and ups == 1, "a file of another size is sent")
+        -- a photo (not named by its second) is sent as before, even twice
+        local pq = { op = "attach", name = dn.name, drawings = { { path = dpath, filename = "IMG_0002.jpg", type = "image/jpeg" } } }
+        ups = 0
+        c:uploadDrawings(pq, dn.name); c:uploadDrawings(pq, dn.name)
+        check(ups == 2, "photos aren't matched by name")
+        -- a new note's drawings: nothing asked first
+        local gets, real_get = 0, Memos.get
+        Memos.get = function(...) gets = gets + 1; return real_get(...) end
+        local made = c:createWithDrawing({ content = "new", visibility = "PRIVATE", drawings = { { path = dpath, filename = "drawing-20261125-200000.canvas.png" } } })
+        check(made and gets == 0, "a note made just now isn't asked what it has")
+        -- Memos unreachable when asked: nothing sent, the queue waits
+        Memos.get = function() return nil, "unreachable" end
+        ups = 0
+        local ok3, err3, sent3 = c:uploadDrawings(dq, dn.name)
+        check(ok3 == nil and err3 == "unreachable" and sent3 == 0 and ups == 0, "Memos not answering: nothing sent, tried again later")
+        Memos.get, Memos.uploadAttachment = real_get, real_up
+        check(Memos.UPLOAD_TIMEOUTS[1] >= 60 and Memos.UPLOAD_TIMEOUTS[2] >= 300, "uploads wait a minute for a byte, five in all")
+        local msrc = io.open(PLUGIN .. "/gzreader_memos.lua"):read("*a")
+        check(select(2, msrc:gsub("timeouts = Memos%.UPLOAD_TIMEOUTS", "")) == 2 and not msrc:find("timeouts = { 15, 120 }", 1, true),
+            "…both kinds of upload")
+        local asrc = io.open(PLUGIN .. "/gzreader_api.lua"):read("*a")
+        check(require("gzreader_api").HELPER_BODY_MAX == 64 * 1024
+            and asrc:find("if pooled and not (body and #body > Api.HELPER_BODY_MAX) then", 1, true) ~= nil,
+            "a big upload goes straight to the server, not through the request helper")
+    end)()
     local held = { name = note.name, attachments = {}, content = "Garden visit" }
     local queue_before = #(plugin.store.memos.queue or {})
     local real_send = Notes.sendSoon
