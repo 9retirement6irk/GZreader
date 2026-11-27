@@ -148,6 +148,82 @@ end
 --- Forget what any server lacked (connecting again, tests).
 function Memos.forgetLacks() os.remove(Memos.lacksPath()) end
 
+---------------------------------------------------------------- single sign-on
+-- A Memos with an identity provider set up (Settings → SSO; Memos 26.10+ and
+-- the fork, whose API is at /api): the setup page signs in at the provider
+-- (gzreader_phone.lua, the same hand-off page as Grimmory's), Memos gives a
+-- short session for the code, and with it the Kindle makes an access token of
+-- its own, named after itself, and signs the session out. What's kept is that
+-- token, as when one is pasted: so a sign-in that ends at the provider doesn't
+-- sign the Kindle out. The session's tokens, the code and the PKCE secret are
+-- never kept or logged.
+Memos.SSO_PREFIX = "/api"
+
+local function said(data, code)
+    local m = type(data) == "table" and data.message
+    return type(m) == "string" and m ~= "" and m or (code and ("http_" .. code) or "unreachable")
+end
+
+--- The identity providers this Memos offers: { { name = "identity-providers/…",
+--- title, client_id, auth_url, scopes = "…" } } ({} when it has none, or is an
+--- older Memos), or nil, err ("unreachable", "http_<code>").
+function Memos.ssoProviders(server)
+    local Api = require("gzreader_api")
+    local code, data = Api.rawRequest("GET", server .. Memos.SSO_PREFIX .. "/identity-providers", { timeouts = { 10, 20 }, expected = { [404] = true, [410] = true } })
+    if type(code) ~= "number" then return nil, "unreachable" end
+    if code == 404 or code == 410 then return {} end
+    if code >= 300 or type(data) ~= "table" then return nil, "http_" .. code end
+    local out = {}
+    for _i, p in ipairs(type(data.identityProviders) == "table" and data.identityProviders or {}) do
+        local o = type(p) == "table" and type(p.config) == "table" and p.config.oauth2Config
+        if type(o) == "table" and type(p.name) == "string" and type(o.clientId) == "string" and o.clientId ~= ""
+            and type(o.authUrl) == "string" and o.authUrl:match("^https?://") then
+            local scopes = {}
+            for _j, sc in ipairs(type(o.scopes) == "table" and o.scopes or {}) do scopes[#scopes + 1] = tostring(sc) end
+            out[#out + 1] = { name = p.name, title = type(p.title) == "string" and p.title ~= "" and p.title or nil,
+                client_id = o.clientId, auth_url = o.authUrl, scopes = table.concat(scopes, " ") }
+        end
+    end
+    return out
+end
+
+--- The provider's sign-in address for one of ssoProviders' entries: a code
+--- with PKCE, coming back to `redirect_uri`.
+function Memos.ssoAuthUrl(provider, redirect_uri, state, challenge)
+    local q = query({ response_type = "code", client_id = provider.client_id, redirect_uri = redirect_uri, state = state,
+        scope = provider.scopes ~= "" and provider.scopes or nil, code_challenge = challenge, code_challenge_method = "S256" })
+    return provider.auth_url .. (provider.auth_url:find("?", 1, true) and ("&" .. q:sub(2)) or q)
+end
+
+-- (the session's cookie from the sign-in's answer, to sign that session out)
+local function refreshCookie(headers)
+    local sc = type(headers) == "table" and (headers["set-cookie"] or headers["Set-Cookie"])
+    local v = type(sc) == "string" and sc:match("memos_refresh=([^;,%s]+)")
+    return v and ("memos_refresh=" .. v) or nil
+end
+
+--- Finish a sign-in with the provider's code. Returns the access token made
+--- for this Kindle (described as `token_name`), or nil, err.
+function Memos.ssoFinish(server, provider_name, code, redirect_uri, verifier, token_name)
+    local Api = require("gzreader_api")
+    local base = server .. Memos.SSO_PREFIX
+    local c, data, headers = Api.rawRequest("POST", base .. "/auth/signin", { timeouts = { 15, 30 },
+        body = { ssoCredentials = { identityProvider = provider_name, code = code, redirectUri = redirect_uri, codeVerifier = verifier } } })
+    if type(c) ~= "number" then return nil, "unreachable" end
+    local session = type(data) == "table" and type(data.accessToken) == "string" and data.accessToken ~= "" and data.accessToken
+    local user = type(data) == "table" and type(data.user) == "table" and type(data.user.name) == "string" and data.user.name:match("^users/[^/]+$")
+    if c >= 300 or not session or not user then return nil, said(data, c) end
+    local auth = { ["Authorization"] = "Bearer " .. session }
+    local tc, tdata = Api.rawRequest("POST", base .. "/" .. user .. "/personalAccessTokens", {
+        headers = auth, body = { description = token_name }, timeouts = { 10, 20 } })
+    local token = type(tc) == "number" and tc < 300 and type(tdata) == "table" and type(tdata.token) == "string" and tdata.token ~= "" and tdata.token
+    -- (the session was only for making the token: signed out whether that worked or not)
+    auth["Cookie"] = refreshCookie(headers)
+    Api.rawRequest("POST", base .. "/auth/signout", { headers = auth, body = {}, timeouts = { 10, 20 } })
+    if not token then return nil, "no_token:" .. said(tdata, type(tc) == "number" and tc or nil) end
+    return token
+end
+
 --- The signed-in user ({ name, username, displayName }), or nil, err.
 function Memos:me()
     local code, data, err = self:request("GET", "/auth/me")

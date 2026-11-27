@@ -28,6 +28,15 @@ A new note's `attachments: [{name}]`: attachments sent before without a note bec
   GET   /kidpix/sticker-svg/index.json       two small categories (STICKER_INDEX)
   GET   /kidpix/sticker-svg/<slug>/<n>.svgz  a coloured disc on a clear ground, gzipped
 Sign-in: "Authorization: Bearer <token>" (TOKEN below).
+--sso (with --prefix /api or --memos26: Memos 26.10+ and the fork): an identity provider set up, with a stand-in at /idp:
+  GET   /api/identity-providers  (no sign-in) {identityProviders: [{name, type, title, config: {oauth2Config}}]}; without --sso: none
+  GET   /idp/authorize           the provider: back to redirect_uri with ?code&state (or ?error)
+  POST  /api/auth/signin         {ssoCredentials: {identityProvider, code, redirectUri, codeVerifier}} -> {user, accessToken}
+                                 and a memos_refresh cookie (the session)
+  POST  /api/users/1/personalAccessTokens  (the session's access token) {description} -> {personalAccessToken, token}
+  POST  /api/auth/signout        ends the session whose memos_refresh cookie came along
+  A token made that way signs in like TOKEN. Test helpers: POST /__sso?deny=1|0&refuse=1|0 (a sign-in cancelled at
+  the provider; access tokens refused); /__state's "sso": the tokens made (descriptions), sessions open and ended.
 
   python3 -I mock_memos.py PORT [--sample] [--prefix /api] [--memos26] [--spaces] [--journal] [--drawings]
 
@@ -40,10 +49,10 @@ in them). Without it the server is older: no /spaces, and a note with a
 Test helpers: GET /__state (all notes), POST /__reset, POST /__offline?on=1.
 """
 import os
-import base64, json, re, sys, time, threading, zlib, struct
+import base64, hashlib, json, re, secrets, sys, time, threading, zlib, struct
 from datetime import datetime, timezone, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, urlencode
 
 TOKEN = "memos-test-token"
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 0
@@ -102,6 +111,12 @@ GONE_MESSAGE = ("API v1 has been removed. Use /api/... for REST and /memos.api.<
 
 LOCK = threading.Lock()
 STATE = {"memos": [], "next": 1, "log": [], "offline": False, "files": {}, "loose": {}}
+SSO = "--sso" in sys.argv
+SSO_STATE = {"made": [], "open": 0, "ended": 0, "deny": False, "refuse": False}
+# (sign-in secrets, never in /__state)
+SSO_CODES = {}     # the provider's code -> {challenge, redirect_uri}
+SSO_SESSIONS = {}  # a session's access token -> its refresh cookie's value (None once signed out)
+SSO_TOKENS = set() # access tokens made over a session
 # the fork (journaling mode or its Immich): a picture in a note's text must be one of the note's
 # attachments, as its UpdateMemo / CreateMemo check ("managed image attachment … must be bound to the memo")
 FORK = "--journal" in sys.argv or "--immich" in sys.argv
@@ -339,6 +354,8 @@ class H(BaseHTTPRequestHandler):
 
     def authed(self):
         a = self.headers.get("Authorization", "")
+        if a.startswith("Bearer ") and a[7:] in SSO_TOKENS:
+            return True
         if a != "Bearer " + TOKEN:
             self.send(401, {"code": 16, "message": "Unauthenticated"})
             return False
@@ -377,7 +394,36 @@ class H(BaseHTTPRequestHandler):
         self.note(u)
         if u.path == "/__state":
             return self.send(200, {"memos": STATE["memos"], "log": STATE["log"], "immich_fetched": STATE.get("immich_fetched", []), "stickers_fetched": STATE.get("stickers_fetched", []), "meteo": STATE.get("meteo", []),
-                                   "loose": sorted(STATE["loose"].keys())})
+                                   "loose": sorted(STATE["loose"].keys()),
+                                   "sso": {"made": SSO_STATE["made"], "open": SSO_STATE["open"], "ended": SSO_STATE["ended"]}})
+        if u.path == "/idp/authorize" and SSO:
+            # the identity provider: Memos' client, a registered redirect address, a PKCE challenge
+            q = parse_qs(u.query)
+            ru, st = q.get("redirect_uri", [""])[0], q.get("state", [""])[0]
+            if q.get("client_id") != ["memos"] or q.get("response_type") != ["code"] or not st \
+                    or q.get("code_challenge_method") != ["S256"] or not q.get("code_challenge") or q.get("scope") != ["openid profile email"]:
+                return self.send(400, {"error": "invalid_request"})
+            if not ru.endswith("/oauth2-callback"):
+                return self.send(400, ctype="text/html", raw=b"<h1>Invalid redirect URI</h1>")
+            if SSO_STATE["deny"]:
+                loc = ru + "?" + urlencode({"error": "access_denied", "error_description": "User cancelled", "state": st})
+            else:
+                code = secrets.token_hex(8)
+                SSO_CODES[code] = {"challenge": q["code_challenge"][0], "redirect_uri": ru}
+                loc = ru + "?" + urlencode({"code": code, "state": st})
+            self.send_response(302)
+            self.send_header("Location", loc)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        if u.path == PREFIX + "/identity-providers" and PREFIX == "/api":
+            base = "http://" + (self.headers.get("Host") or ("127.0.0.1:%d" % PORT))
+            idps = [{"name": "identity-providers/authentik", "type": "OAUTH2", "title": "Authentik", "identifierFilter": "",
+                     "config": {"oauth2Config": {"clientId": "memos", "clientSecret": "", "authUrl": base + "/idp/authorize",
+                                                 "tokenUrl": base + "/idp/token", "userInfoUrl": base + "/idp/userinfo",
+                                                 "scopes": ["openid", "profile", "email"],
+                                                 "fieldMapping": {"identifier": "preferred_username", "displayName": "name", "email": "email"}}}}]
+            return self.send(200, {"identityProviders": idps if SSO else []})
         if STATE["offline"]:
             self.close_connection = True
             return
@@ -536,12 +582,19 @@ class H(BaseHTTPRequestHandler):
         if u.path == "/__offline":
             STATE["offline"] = "on=1" in u.query
             return self.send(200, {})
+        if u.path == "/__sso":
+            for name in ("deny", "refuse"):
+                if name + "=" in u.query:
+                    SSO_STATE[name] = (name + "=1") in u.query
+            return self.send(200, {})
         if STATE["offline"]:
             self.close_connection = True
             return
         p = self.api(u.path)
         if p is None:
             return self.missing(u)
+        if SSO and PREFIX == "/api" and p in ("/auth/signin", "/users/1/personalAccessTokens", "/auth/signout"):
+            return self.sso(p, self.body())
         if not self.authed():
             return
         if p == "/memos":
@@ -657,6 +710,50 @@ class H(BaseHTTPRequestHandler):
                 STATE["loose"][a["name"]] = a  # (not a note's yet: a note made later can have it)
             return self.send(200, a)
         return self.send(404, {"message": "not found"})
+
+    def sso(self, p, b):
+        if p == "/auth/signin":
+            cred = b.get("ssoCredentials") if isinstance(b.get("ssoCredentials"), dict) else None
+            if not cred:
+                return self.send(400, {"code": 3, "message": "invalid credentials"})
+            if cred.get("identityProvider") != "identity-providers/authentik":
+                return self.send(400, {"code": 3, "message": "identity provider not found"})
+            grant = SSO_CODES.pop(str(cred.get("code")), None)
+            proof = base64.urlsafe_b64encode(hashlib.sha256(str(cred.get("codeVerifier") or "").encode()).digest()).decode().rstrip("=")
+            if not grant or grant["redirect_uri"] != cred.get("redirectUri") or grant["challenge"] != proof:
+                return self.send(500, {"code": 13, "message": "failed to exchange token, error: invalid_grant"})
+            access, refresh = "sess-" + secrets.token_urlsafe(18), secrets.token_urlsafe(18)
+            SSO_SESSIONS[access] = refresh
+            SSO_STATE["open"] += 1
+            body = json.dumps({"user": {"name": "users/1", "username": "will", "displayName": "Will", "role": "HOST"},
+                               "accessToken": access, "accessTokenExpireTime": "2030-01-01T00:15:00Z"}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Set-Cookie", "memos_refresh=%s; Path=/; Expires=Wed, 01 Jan 2031 00:00:00 GMT; HttpOnly; SameSite=Lax" % refresh)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        a = self.headers.get("Authorization", "")
+        access = a[7:] if a.startswith("Bearer ") else ""
+        if access not in SSO_SESSIONS:
+            return self.send(401, {"code": 16, "message": "Unauthenticated"})
+        if p == "/users/1/personalAccessTokens":
+            if SSO_STATE["refuse"]:
+                return self.send(403, {"code": 7, "message": "permission denied"})
+            token = "memos_pat_" + secrets.token_urlsafe(18)
+            SSO_TOKENS.add(token)
+            SSO_STATE["made"].append(str(b.get("description") or ""))
+            return self.send(200, {"personalAccessToken": {"name": "users/1/personalAccessTokens/%d" % len(SSO_TOKENS),
+                                                           "description": b.get("description") or "", "createTime": "2026-01-01T00:00:00Z"},
+                                   "token": token})
+        # /auth/signout: the session whose refresh cookie came along is ended
+        cookie = self.headers.get("Cookie") or ""
+        if SSO_SESSIONS.get(access) and ("memos_refresh=" + SSO_SESSIONS[access]) in cookie:
+            SSO_SESSIONS[access] = None
+            SSO_STATE["open"] -= 1
+            SSO_STATE["ended"] += 1
+        return self.send(200, {})
 
     def do_PATCH(self):
         u = urlparse(self.path)
