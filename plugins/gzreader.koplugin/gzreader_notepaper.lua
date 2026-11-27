@@ -19,24 +19,38 @@ Notepaper.DIR = (debug.getinfo(1, "S").source:match("^@(.*)/[^/]*$") or ".") .. 
 Notepaper.W, Notepaper.H = 1113, 1440
 
 --- The papers, in the order the chooser lists them: the Kindle Scribe's
---- notebook templates (the owner, 2026-11-16). Made by
---- tools/gzreader/make_notepaper.py (graph, dots and checklist: earlier).
+--- thirty notebook templates, in its order (the owner, 2026-11-16 and
+--- 2026-11-24). Made by tools/gzreader/make_notepaper.py (college, graph,
+--- dots, checklist and Cornell: earlier). In colour: a colour screen shows
+--- them so (the legal pad's yellow, the planners' bands), the others grey.
 Notepaper.LIST = {
     { id = "blank", label = _("Blank") },
-    { id = "ruled-medium", label = _("Medium ruled"), file = "ruled-medium.png" },
-    { id = "ruled-medium-margin", label = _("Medium ruled with margin"), file = "ruled-medium-margin.png" },
-    { id = "ruled-wide", label = _("Wide ruled"), file = "ruled-wide.png" },
-    { id = "ruled-wide-margin", label = _("Wide ruled with margin"), file = "ruled-wide-margin.png" },
     { id = "ruled-narrow", label = _("Narrow ruled"), file = "ruled-narrow.png" },
+    { id = "ruled-medium", label = _("Medium ruled"), file = "ruled-medium.png" },
+    { id = "ruled-wide", label = _("Wide ruled"), file = "ruled-wide.png" },
     { id = "ruled-narrow-margin", label = _("Narrow ruled with margin"), file = "ruled-narrow-margin.png" },
-    { id = "vertical", label = _("Vertical ruled"), file = "vertical.png" },
+    { id = "legal", label = _("Legal pad"), file = "legal.png" },
+    { id = "ruled-medium-margin", label = _("Medium ruled with margin"), file = "ruled-medium-margin.png" },
+    { id = "college", label = _("College rule"), file = "college.png" },
+    { id = "ruled-wide-margin", label = _("Wide ruled with margin"), file = "ruled-wide-margin.png" },
+    { id = "ruled-medium-top", label = _("Medium ruled top"), file = "ruled-medium-top.png" },
+    { id = "ruled-medium-bottom", label = _("Medium ruled bottom"), file = "ruled-medium-bottom.png" },
     { id = "vertical-margin", label = _("Vertical ruled with margin"), file = "vertical-margin.png" },
+    { id = "vertical", label = _("Vertical ruled"), file = "vertical.png" },
     { id = "graph", label = _("Graph"), file = "graph.png" },
+    { id = "graph-large", label = _("Graph large"), file = "graph-large.png" },
     { id = "dots", label = _("Dotted"), file = "dots.png" },
+    { id = "dots-top", label = _("Dotted top"), file = "dots-top.png" },
+    { id = "dots-bottom", label = _("Dotted bottom"), file = "dots-bottom.png" },
+    { id = "checklist-small", label = _("Checklist small"), file = "checklist-small.png" },
     { id = "checklist", label = _("Checklist"), file = "checklist.png" },
+    { id = "two-column", label = _("2 Column"), file = "two-column.png" },
     { id = "daily", label = _("Daily planner"), file = "daily.png" },
     { id = "weekly", label = _("Weekly planner"), file = "weekly.png" },
+    { id = "weekly-2", label = _("Weekly planner 2"), file = "weekly-2.png" },
     { id = "monthly", label = _("Monthly planner"), file = "monthly.png" },
+    { id = "meeting", label = _("Meeting notes"), file = "meeting.png" },
+    { id = "cornell", label = _("Cornell note"), file = "cornell.png" },
     { id = "habit", label = _("Habit tracker"), file = "habit.png" },
     { id = "storyboard", label = _("Storyboard"), file = "storyboard.png" },
     { id = "music", label = _("Music"), file = "music.png" },
@@ -45,10 +59,8 @@ Notepaper.LIST = {
 --- The papers GZreader offered before these: no longer in the chooser, but
 --- a page drawn on one is still known as it (and stays on it).
 Notepaper.EARLIER = {
-    { id = "college", label = _("College ruled"), file = "college.png" },
     { id = "wide", label = _("Wide ruled (punched)"), file = "wide.png" },
     { id = "gregg", label = _("Gregg ruled"), file = "gregg.png" },
-    { id = "cornell", label = _("Cornell notes"), file = "cornell.png" },
     -- (the margin papers before they had their punched holes)
     { id = "ruled-medium-margin-plain", label = _("Medium ruled with margin (no holes)"), file = "ruled-medium-margin-plain.png" },
     { id = "ruled-wide-margin-plain", label = _("Wide ruled with margin (no holes)"), file = "ruled-wide-margin-plain.png" },

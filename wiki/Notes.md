@@ -483,13 +483,20 @@ API to `/api` are found too.
     order after sending, since Memos lists a note's newest attachment first). A page rubbed out to nothing is left out (or
     taken off the note, when it's already in Memos).
   - **Paper:** shows the papers as a grid of small square tiles, six to a row
-    (four on a narrow screen), as the Kindle Scribe's notebook templates:
-    **Blank**, **Medium ruled**, **Wide ruled** and **Narrow ruled** (each
-    also **with margin**: notebook paper, with a red margin line and three
-    punched holes), **Vertical ruled** (and **with margin**),
-    **Graph**, **Dotted**, **Checklist**, **Daily planner**, **Weekly
-    planner**, **Monthly planner**, **Habit tracker**, **Storyboard** and
-    **Music**, then your own. The page's paper has a thick border. Tap one
+    (four on a narrow screen): all thirty of the Kindle Scribe's notebook
+    templates, in its order. **Blank**; **Narrow**, **Medium** and **Wide
+    ruled** (each also **with margin**: notebook paper, with a red margin
+    line and three punched holes); **Legal pad** (yellow); **College rule**;
+    **Medium ruled top** and **bottom** (half the page ruled); **Vertical
+    ruled** (and **with margin**); **Graph** and **Graph large**;
+    **Dotted**, **Dotted top** and **bottom**; **Checklist small** and
+    **Checklist**; **2 Column**; **Daily planner**, **Weekly planner**,
+    **Weekly planner 2** (seven columns), **Monthly planner**; **Meeting
+    notes**; **Cornell note**; **Habit tracker**, **Storyboard** and
+    **Music**. Then your own. The papers are in colour (blue rules, red
+    margin lines, the legal pad's yellow, the planners' teal, green and
+    purple bands): a colour Kindle shows them so, in the chooser and under
+    your drawing, and so does Memos; the other Kindles show them grey. The page's paper has a thick border. Tap one
     to put the page on it; where there are more rows than fit, scroll with a
     finger. **A new drawing asks which paper first,** in a window over the
     Notes tab: tap one, then **Create** (**Cancel**, or a tap outside the
