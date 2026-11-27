@@ -234,6 +234,15 @@ API to `/api` are found too.
     over it (the bar in the kind's colour on a colour Kindle).
   - Save writes the note the way Memos' rich editor writes it. Lines you
     didn't change are kept exactly as they were.
+- **Emoji** (touch Kindles): the on-screen keyboard's **☺** key, beside
+  **⌥** (bottom left), turns the keys into emoji, the way Shift turns them to capitals.
+  Three rows of emoji, then a key for each kind (🕘 Recent, the ones you've
+  used, then Smileys, People, Animals and nature, Food, Travel and places,
+  Activities, Objects and Symbols; the one shown has a •). The bottom row has
+  **ABC** (back to the letters), **◀ ▶** (the page, on into the next kind),
+  the space bar (it shows the kind and page), **⌫** and **⮠**. A tap types an
+  emoji and the emoji stay up for more. They show in black (OpenMoji), in
+  colour on a colour Kindle.
 - **The on-screen keyboard** keeps **⮠ Enter** and **← →** on its letters page
   in boxes where you type several lines (notes, KOReader's text editor).
   One-line boxes (search, names, passwords) keep the shorter bottom row, with

@@ -57,7 +57,13 @@ local function apply_responsive_keyboard()
 
     if not VirtualKeyboard._zen_touch_qwerty then
         VirtualKeyboard._zen_touch_qwerty = true
-        local original_add_keys = VirtualKeyboard.addKeys
+        -- GZreader: keys GZreader adds after ZenOS's changes (the ☺ key: gzreader_emojikeyboard.lua)
+        local koreader_add_keys = VirtualKeyboard.addKeys
+        local function original_add_keys(kb, ...)
+            local last = VirtualKeyboard.gz_last_keys
+            if last then return last(kb, koreader_add_keys, ...) end
+            return koreader_add_keys(kb, ...)
+        end
         function VirtualKeyboard:addKeys(...)
             local keys = self.KEYS
             local layouts = self.lang_to_keyboard_layout
