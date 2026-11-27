@@ -159,6 +159,58 @@ function Article.leadImage(html)
     return nil
 end
 
+--- Is `text` markup shown as text (a page's "Embed" box holds the code to
+--- paste, e.g. <iframe src="…">), not prose?
+function Article.isMarkup(text)
+    text = tostring(text or "")
+    return text:find("<%s*%a[%w%-]*%s+[%w%-:]+%s*=") ~= nil or text:find("<%s*/%s*%a[%w%-]*%s*>") ~= nil
+        or text:lower():find("<%s*iframe") ~= nil
+end
+
+-- how a picture's caption ends on pages that fold them ("… KUT News hide caption")
+local CAPTION_ENDS = { "hide caption$", "toggle caption$", "enlarge this image$" }
+
+--[[ What isn't the story, out of its paragraphs (`list`: strings, in order;
+`title`: the headline, when known). Returns a new list.
+- Markup shown as text (Article.isMarkup).
+- Picture captions that end with the page's "hide caption" button.
+- The headline said again.
+- The short lines over the story, before its first real paragraph: the
+  section ("News"), "By", the writer's name.
+Never everything: when nothing would be left, `list` comes back as it was. ]]
+function Article.tidy(list, title)
+    local function norm(t) return (tostring(t or ""):lower():gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")) end
+    local head = norm(title)
+    local out, started = {}, false
+    for _i, text in ipairs(list or {}) do
+        local low = norm(text)
+        local drop = Article.isMarkup(text) or (head ~= "" and low == head)
+        if not drop then
+            for _j, pat in ipairs(CAPTION_ENDS) do
+                if low:find(pat) then drop = true; break end
+            end
+        end
+        if not drop and not started then
+            -- (a line over the story: short, and not a sentence)
+            if #text < 60 and not text:find("[%.!%?\"\u{201D}]%s*$") then drop = true else started = true end
+        end
+        if not drop then out[#out + 1] = text end
+    end
+    if #out == 0 then return list or {} end
+    return out
+end
+
+--- Article.tidy for a story's text as it's kept (paragraphs with an empty
+--- line between them).
+function Article.tidyText(text, title)
+    if type(text) ~= "string" or text == "" then return text end
+    local list = {}
+    for para in (text .. "\n\n"):gmatch("(.-)\n\n+") do
+        if para:find("%S") then list[#list + 1] = para end
+    end
+    return table.concat(Article.tidy(list, title), "\n\n")
+end
+
 --- The story's text from its page: paragraphs separated by an empty line,
 --- or nil (and why: "not html", "too big", "no article").
 function Article.extract(html, content_type)
@@ -192,7 +244,7 @@ function Article.extract(html, content_type)
             out[#out + 1] = p.text
         end
     end
-    return table.concat(out, "\n\n")
+    return table.concat(Article.tidy(out), "\n\n")
 end
 
 return Article

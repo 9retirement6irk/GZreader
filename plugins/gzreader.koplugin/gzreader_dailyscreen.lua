@@ -1806,6 +1806,22 @@ local function feedLabel(f)
     return (f.name and (f.name .. " · ") or "") .. D.site(f.url)
 end
 
+-- A story fetched from its own page by an earlier build still has the
+-- page's embed code, captions and byline lines in it: tidied when it's
+-- shown, as Article.extract tidies new ones. (A feed's own text is left.)
+do
+    local as_kept = Paper.articleText
+    function Paper.articleText(item)
+        if type(item) == "table" and item.full and type(item.text) == "string" and item.text ~= "" then
+            local copy = {}
+            for k, v in pairs(item) do copy[k] = v end
+            copy.text = require("gzreader_article").tidyText(item.text, item.title)
+            item = copy
+        end
+        return as_kept(item)
+    end
+end
+
 --- feeds.txt in the GZreader folder or at the top of the Kindle's drive.
 function Paper.feedFiles(plugin)
     local out = {}

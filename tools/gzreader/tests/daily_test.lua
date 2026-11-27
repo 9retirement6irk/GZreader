@@ -727,6 +727,28 @@ check(two == P1 .. "\n\n" .. P2 .. "\n\n" .. P3, "several <article>s: the one wi
 local latin = Article.extract("<html><head><meta charset=\"iso-8859-1\"></head><body><p>" .. P1 .. " Caf\233.</p><p>" .. P2 .. "</p><p>" .. P3 .. "</p></body></html>")
 check(latin and latin:find("Café.", 1, true), "a Latin-1 page read as UTF-8 (from its meta tag; or from the answer's content type)")
 check(Article.extract("<html><body><p>" .. P1 .. " Caf\233.</p><p>" .. P2 .. "</p><p>" .. P3 .. "</p></body></html>", "text/html; charset=ISO-8859-1"):find("Café.", 1, true), "… the content type")
+-- a page with an "Embed" box, folded captions and a byline over the story (the owner's NPR story, 2026-11-25)
+do
+    local embed = '&lt;iframe src="https://www.example.com/player/embed/1/2" width="100%" height="290" frameborder="0" scrolling="no" title="embedded audio player"&gt;'
+    local page = "<html><body><article><p>News</p><p>By</p><p>Ana Writer</p><p>The bakery where everything is free</p>"
+        .. "<ul><li><b>Embed</b> <code>" .. embed .. "</code></li></ul>"
+        .. "<p>A baker walks up to the table during the monthly gathering in the park. Sam Photo/Example News hide caption</p>"
+        .. "<p>" .. P1 .. "</p><p>Short but a sentence.</p><p>" .. P2 .. "</p><p>The menu included scones. Sam Photo/Example News toggle caption</p><p>" .. P3 .. "</p></article></body></html>"
+    local got = Article.extract(page)
+    check(got and not got:find("iframe", 1, true) and not got:find("Embed", 1, true), "an Embed box's code isn't part of the story")
+    check(got and not got:find("hide caption", 1, true) and not got:find("toggle caption", 1, true), "folded picture captions are left out")
+    check(got and got:sub(1, #P1) == P1 and got:find("Short but a sentence.", 1, true) and got:find(P3, 1, true),
+        "the section, By and the writer's name over the story are left out; short sentences inside it stay")
+    check(Article.isMarkup('<iframe src="x">') and Article.isMarkup("see </div> here") and Article.isMarkup('<a href="https://example.com">')
+        and not Article.isMarkup("Prices rose 3 < 4 percent, and x > y.") and not Article.isMarkup("He said <no> twice."), "markup is told from prose with a < in it")
+    local kept = "News\n\nBy\n\nThe bakery where everything is free\n\n\u{2022} Embed " .. '<iframe src="https://www.example.com/e" width="100%">' .. "\n\n" .. P1 .. "\n\n" .. P2
+    check(Article.tidyText(kept, "The bakery where everything is free") == P1 .. "\n\n" .. P2, "a story kept by an earlier build is tidied when it's shown, its headline said again too")
+    check(Article.tidyText("Only a title line", nil) == "Only a title line" and Article.tidyText("", nil) == "" and Article.tidyText(nil) == nil, "never everything: a one-line text stays")
+    local Paper2 = require("gzreader_dailyscreen")
+    local shown = Paper2.articleText({ title = "T", text = kept, full = true })
+    local feed_only = Paper2.articleText({ title = "T", text = "News\n\n" .. P1 })
+    check(not shown:find("iframe", 1, true) and shown:find(P1, 1, true) and feed_only:find("News", 1, true), "an opened story shows it tidied; a feed's own text is left as the feed wrote it")
+end
 check(select(2, Article.extract("<html>" .. string.rep("x", Article.MAX_HTML) .. "</html>")) == "too big", "a page over " .. (Article.MAX_HTML / 1024 / 1024) .. " MB isn't read")
 check(Article.extract("<html><body><p>" .. P1 .. "</p><p>" .. P1 .. "</p><p>" .. P2 .. "</p><p>" .. P3 .. "</p></body></html>") == P1 .. "\n\n" .. P2 .. "\n\n" .. P3, "a paragraph the page has twice is kept once")
 

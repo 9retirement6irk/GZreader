@@ -74,6 +74,9 @@ used as they are (up to about 2,500 words a story).
   summary.
 - A story behind a paywall, or on a page built by scripts, keeps the feed's
   summary, and says so at its end.
+- Only the story is kept: the page's section and byline lines over it, its
+  headline said again, picture captions and boxes of code to embed it
+  elsewhere are left out.
 - **Settings → Accounts and services → Daily paper → Whole stories** turns it off (a faster
   fetch, summaries only).
 
