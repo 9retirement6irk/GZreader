@@ -98,7 +98,9 @@ you turn it on). On, the front light follows the room: dim in the dark,
 brighter in a bright room, changing gently every 15 seconds or so while the
 Kindle is awake, and at once when it wakes. Move the light's slider yourself
 while it's on and it remembers how much brighter or dimmer you like it. A
-light you've turned off stays off.
+light you've turned off stays off. Before each change it reads where the
+light really is, so a light moved some other way (the Kindle's own
+brightness) is followed from there instead of jumping back.
 
 **Settings → General → Schedules → Brightness** has Auto light too, at the
 top, with its adjustments:
