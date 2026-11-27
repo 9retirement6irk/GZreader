@@ -20666,12 +20666,12 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
     check(plugin.store.downloads["104"] and plugin.store.downloads["104"].path == other,
         "after signing in to BookOrbit the books already on the Kindle are matched without waiting for the library list")
     runLoop(function() return plugin.matching == nil end, 5)
-    do
+    ;(function()
         local mf = io.open(PLUGIN .. "/main.lua", "rb")
         local msrc = mf:read("*a"); mf:close()
         local hook = msrc:match("function Grimmory:onNetworkConnected%(%)(.-)\nend\n") or ""
         check(hook:find("pcall(self.matchLibraryFiles, self)", 1, true) ~= nil, "…and again whenever Wi-Fi comes on")
-    end
+    end)()
     os.remove(other); os.remove(ldir .. "/Stray.epub")
     plugin.store.downloads["104"] = nil
 
@@ -21020,7 +21020,7 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
     check(plugin.api:hasApiKey(), "the setup page: a good key is kept")
     screen.on_cancel()
     -- collections (GZreader's shelves): changed with the API key, your own only
-    do
+    ;(function()
         local Sh = require("gzreader_shelves")
         local NM = require("ui/network/manager")
         local was_conn = NM.isConnected
@@ -21079,9 +21079,9 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
         bctl("/_mock/set", '{"collection_owners": {}}')
         plugin.store.shelves_cache, plugin.store.pending.shelves = nil, nil
         NM.isConnected = was_conn
-    end
+    end)()
     -- book requests: the Catalog's Requests page, with the API key
-    do
+    ;(function()
         local Rq = require("gzreader_bo_requests")
         local Browser = require("gzreader_browser")
         local NetQ = require("gzreader_net")
@@ -21231,9 +21231,9 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
         check(not texts(Browser.grimmoryItems(fake)):find("Request a book", 1, true), "requests: not offered on a Kindle without Wi-Fi")
         NetQ.run, NetQ.usb = was_run, was_usb
         package.loaded["ui/widget/infomessage"], package.loaded["ui/widget/confirmbox"] = IM_was, CB_was
-    end
+    end)()
     -- signing in with only the API key: the key gets (or makes) the e-reader sign-in
-    do
+    ;(function()
         local md5 = require("ffi/sha2").md5
         local Zip = require("gzreader_zipread")
         check(Zip.read("not a zip at all, just some text", "x.lua") == nil and Zip.read("", "x.lua") == nil and Zip.read(nil, "x.lua") == nil,
@@ -21312,9 +21312,9 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
         local ltext = lf and lf:read("*a") or ""
         if lf then lf:close() end
         check(not ltext:find(KEY, 1, true) and not ltext:find(md5("hunter22"), 1, true), "the log has neither the API key nor the sync key")
-    end
+    end)()
     -- reading stats from BookOrbit: Home's widget and the page a tap opens
-    do
+    ;(function()
         local GS = require("gzreader_grimstats")
         local Page = require("gzreader_statspage")
         -- the dashboard turned into the widget's values (Sunday 22 November 2026 is "today")
@@ -21420,9 +21420,9 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
         for _i, it in ipairs(Browser.grimmoryItems({ plugin = plugin, api = plugin.api, push = function() end })) do rows[#rows + 1] = it.text end
         check(not table.concat(rows, "|"):find("Reading stats", 1, true), "the server's card has no Reading stats row " .. table.concat(rows, "|"))
         plugin.store.grimmory_stats = nil
-    end
+    end)()
     -- with BookOrbit, nothing of Grimmory's runs or is loaded
-    do
+    ;(function()
         local Async = require("gzreader_async")
         local run, ran, answered = Async.run, 0, nil
         Async.run = function() ran = ran + 1 end
@@ -21441,9 +21441,9 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
         end
         check(top and msrc:find('require(self.api.koreader_positions and "gzreader_bo_bookmarks" or "gzreader_bookmarks")', 1, true) ~= nil,
             "Grimmory's bookmark, highlight and position modules are loaded only when Grimmory is the server")
-    end
+    end)()
     -- what the API key needs, and BookOrbit's settings for the sync sign-in
-    do
+    ;(function()
         local BookOrbit = require("gzreader_bookorbit")
         check(BookOrbit.KEY_NEEDS:find("Access: Read and write", 1, true) and BookOrbit.KEY_NEEDS:find("“KOReader sync” to sign in with the key", 1, true)
             and BookOrbit.KEY_NEEDS:find("“Request books” to request books", 1, true) and BookOrbit.KEY_NEEDS:find("not Administrator access", 1, true),
@@ -21501,9 +21501,9 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
         bctl("/_mock/set", '{"key_ko_permission": true, "ko_delivery": null}')
         plugin:setBookOrbitApiKey(KEY)
         check(plugin.store.bookorbit.delivery == "automatic" and plugin.store.username == "will-kindle", "Automatic: nothing to say")
-    end
+    end)()
     -- the setup page's Books tab: named for the server, each server's own way in, and what happened said
-    do
+    ;(function()
         plugin.api:clearTokens()
         plugin.store.bookorbit, plugin.store.username = nil, nil
         bctl("/_mock/reset")
@@ -21560,9 +21560,9 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
         check(type(summary) == "string" and summary:find("BookOrbit: connected as will-kindle.", 1, true) ~= nil and not summary:find("Grimmory", 1, true),
             "the Kindle's summary after setup names BookOrbit " .. tostring(summary))
         check(plugin.api:hasApiKey() and plugin.store.username == "will-kindle", "(signed in with the key saved for what follows)")
-    end
+    end)()
     -- the Catalog speaks the server's words: BookOrbit, Collections, SmartScope
-    do
+    ;(function()
         local Name = require("gzreader_servername")
         local was = rawget(_G, "__GZ_BOOK_SERVER")
         rawset(_G, "__GZ_BOOK_SERVER", function() return plugin:backend() end)
@@ -21593,9 +21593,9 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
             end
         end
         check(#left == 0, "the Catalog's screens have no text naming Grimmory that doesn't follow the server " .. table.concat(left, " "))
-    end
+    end)()
     -- Home's recently read from BookOrbit: its books in progress and, with the key, its audiobooks
-    do
+    ;(function()
         local Recent = require("gzreader_serverrecent")
         plugin.api:putProgress("a201", { fileProgress = { bookFileId = 6201, positionData = "20000", positionHref = "0" } })
         -- (a book read on another device: its progress as BookOrbit keeps it)
@@ -21636,9 +21636,9 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
         G_reader_settings:delSetting(Recent.SETTING)
         plugin.store.server_recent = nil
         bctl("/_mock/set", next(was_progress or {}) and ('{"progress": ' .. require("gzreader_json").encode(was_progress) .. '}') or '{"progress": {}}')
-    end
+    end)()
     -- Genres: BookOrbit's e-reader catalog has none; its main API's, with the API key
-    do
+    ;(function()
         local counts = plugin.api:genreCounts()
         check(counts and counts.Travel == 2 and counts.Memoir == 1 and counts.Nature == 1 and next(counts) ~= nil,
             "BookOrbit: the books' genres counted (the main API, the API key)")
@@ -21667,9 +21667,9 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
         local label, body = require("gzreader_browser").aboutServer(plugin)
         check(label == "About BookOrbit" and body:find("AGPL", 1, true) and body:find("isn't part of it or endorsed by it", 1, true),
             "About BookOrbit: still says what BookOrbit is and that GZreader isn't part of it")
-    end
+    end)()
     -- Magazines with BookOrbit: its lists don't say a book's library, so by the library's ids
-    do
+    ;(function()
         local Mag = require("gzreader_magazines")
         Mag.set(plugin, { id = 2, name = "Non-fiction" })
         local ids = Mag.allIds(plugin.api, 2)
@@ -21690,7 +21690,7 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
         check(rows["Magazines: Non-fiction"] ~= nil, "Settings → Books: the Magazines row names the library")
         Mag.set(plugin, nil)
         Mag.forget()
-    end
+    end)()
     -- signing in again as the same user keeps the key; another user doesn't get it
     plugin:connect(BO, "will-kindle", "hunter22", "bookorbit")
     check(plugin.api:hasApiKey(), "signing in again to the same server and user keeps the API key")
