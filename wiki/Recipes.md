@@ -118,6 +118,26 @@ long it takes, the **ingredients** (under their sections, if the recipe has
 them), the **steps**, numbered, and the **notes**. Turn its pages with the
 page keys or a swipe; Back closes it.
 
+### The recipe card (Bookshelf view)
+
+In the Bookshelf view a recipe is a ruled index card out of the recipe box:
+its name in handwriting under a paper clip, what it makes and the times, and
+its category on a divider's tab behind it. On the card's lines are the
+ingredients, the steps and the notes.
+
+- **Crossing off:** each ingredient has a circle. Tap the ingredient to cross
+  it off, and again to bring it back; on a Kindle with a 5-way, move to it
+  with Up and Down and press. What's crossed off is remembered until GZreader
+  is restarted.
+- **More than one card:** a long recipe continues on the next card. **Turn the
+  card** (or tap the right of the card, swipe left, or use the page keys) and
+  **Back** (the left of the card, swipe right) to go back. A heading is never
+  left alone at the foot of a card.
+- **Recipe box**, the Back key or a swipe down puts the card away.
+
+On a colour Kindle the card is cream with blue lines and a red rule under the
+name.
+
 ## Without Wi‑Fi in the kitchen
 
 The list as last fetched is kept on the Kindle and shown at once when the tab

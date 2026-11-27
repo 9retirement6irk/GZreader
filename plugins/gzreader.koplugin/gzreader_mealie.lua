@@ -288,11 +288,17 @@ end
 --- A recipe as its page shows it: { slug, name, desc, facts = { "Serves 4",
 --- "Total 45 minutes" … }, ingredients = { { title = … } | { text = … } },
 --- steps = { { title = … } | { text = … } }, notes = { { title, text } },
---- source }, or nil.
+--- cats = { names } (when it has any), source }, or nil.
 function Mealie.recipe(o)
     if type(o) ~= "table" or not str(o.slug) then return nil end
     local r = { slug = o.slug, name = str(o.name) or o.slug, desc = Mealie.plain(o.description), facts = {},
         ingredients = {}, steps = {}, notes = {}, source = str(o.orgURL) }
+    for _i, c in ipairs(type(o.recipeCategory) == "table" and o.recipeCategory or {}) do
+        if type(c) == "table" and str(c.name) then
+            r.cats = r.cats or {}
+            r.cats[#r.cats + 1] = c.name
+        end
+    end
     local y = Mealie.yieldText(o)
     if y then r.facts[#r.facts + 1] = y end
     for _i, f in ipairs({ { "totalTime", _("Total %1") }, { "prepTime", _("Prep %1") }, { "performTime", _("Cook %1") } }) do
