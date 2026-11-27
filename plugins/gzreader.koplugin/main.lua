@@ -2727,6 +2727,8 @@ function Grimmory:downloadAndOpen(book, menu, opts)
     end
     name = util.getSafeFilename(name, dir)
     local path = dir .. "/" .. name
+    -- (a copy replacing the one on the Kindle, at its own place: gzreader_narratedopen.lua's Download with narration)
+    if type(opts.gz_path) == "string" then path = opts.gz_path end
     local title = type(book.title) == "string" and book.title or name
     if book.gz_quiet and not Mod.Download.active then
         UIManager:show(InfoMessage:new{ text = T(_("Downloading “%1”…"), title), timeout = 2 })
@@ -2791,6 +2793,8 @@ function Grimmory:downloadAndOpen(book, menu, opts)
             end
         end
         local shown = Titles.full(title, sub)
+        -- (asked for by the caller: what to do with it now it's here, gzreader_narratedopen.lua)
+        if type(opts.gz_after) == "function" then return opts.gz_after(path) end
         if book.gz_quiet and not watching then
             UIManager:show(InfoMessage:new{ text = (info.left or 0) > 0
                 and T(_("Downloaded “%1”. %2 more in the queue."), shown, info.left)

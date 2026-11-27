@@ -191,10 +191,16 @@ function HomeMenu.manageBook(plugin, book)
     if book.context then return HomeMenu.manage(book, open, delete) end
     local ButtonDialog = require("ui/widget/buttondialog")
     local d
-    d = ButtonDialog:new{ title = bookTitle(book.path), buttons = {
+    local buttons = {
         { { text = _("Open"), callback = function() UIManager:close(d); open() end } },
         { { text = _("Delete from this Kindle"), callback = function() UIManager:close(d); delete() end } },
-    } }
+    }
+    -- (a BookOrbit book whose copy has no narration: gzreader_narratedopen.lua)
+    local okn, narr = pcall(function() return require("gzreader_narratedopen").manageRow(book.path) end)
+    if okn and narr then
+        buttons[#buttons + 1] = { { text = narr.text, callback = function() UIManager:close(d); narr.callback() end } }
+    end
+    d = ButtonDialog:new{ title = bookTitle(book.path), buttons = buttons }
     UIManager:show(d)
 end
 
@@ -252,11 +258,15 @@ end
 function HomeMenu.manage(book, open, delete)
     local ok, icons = pcall(require, "common/inline_icon_map")
     local function label(icon, text) return (ok and icon) and (icon .. "  " .. text) or text end
-    rawset(_G, "__GZ_CONTEXT_PREPEND", {
+    local rows = {
         { text = label(icons and icons.reading, _("Open")), callback = open },
         { text = label(icons and icons.delete, _("Delete from this Kindle")), callback = delete },
         filter = HomeMenu.manageRows,
-    })
+    }
+    -- (a BookOrbit book whose copy has no narration: Download with narration, gzreader_narratedopen.lua)
+    local okn, narr = pcall(function() return book.path and require("gzreader_narratedopen").manageRow(book.path) end)
+    if okn and narr then rows[#rows + 1] = { text = label(icons and icons.download, narr.text), callback = narr.callback } end
+    rawset(_G, "__GZ_CONTEXT_PREPEND", rows)
     local okc, err = pcall(book.context)
     if not okc then Log.warn("book menu:", err) end
     -- not picked up (the menu didn't open): don't leak into the next one

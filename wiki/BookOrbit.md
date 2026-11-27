@@ -134,9 +134,28 @@ A narrated EPUB (BookOrbit's read-along books sent with their narration, or
 any EPUB 3 with "media overlays") plays its own narration on a Kindle with
 sound.
 
-- **Downloading one** (from its page or the Catalog) asks **Narrated book**
-  (with its size) or **Book only** (the text and pictures: much smaller;
-  its size shows once BookOrbit has made that copy).
+- **Downloading one**: its page has **With narration** (with its size) and
+  **Book only** (the text and pictures: much smaller) over Download; pick
+  one, then Download. Until BookOrbit has made the book-only copy once, its
+  size is worked out from the narrated copy less its audio (shown with ≈;
+  this needs the API key).
+- **Every download has the same page**: a book from the Catalog's Books
+  page, an audiobook from its Audiobooks page, and a book or audiobook on
+  Home that isn't on the Kindle. It shows the cover, the title, the author,
+  the rating BookOrbit fetched (Goodreads first, else Hardcover and the
+  others), the genres, the pages, year and publisher, for an audiobook how
+  long it is and who reads it, and the description. Over **Download** are
+  the choices, each with its size: **Narrated book**, **Ebook only**,
+  **Audiobook only** for a book that has both (the audiobook chosen first
+  on the Audiobooks page), or **With narration** / **Book only** for a
+  narrated book alone. With the audiobook chosen the button is **Download &
+  listen**. (The rating needs the API key.)
+  Downloading from elsewhere (the Catalog's lists) asks **Narrated book** or
+  **Book only**.
+- **Already on the Kindle without its narration**: hold the book on Home or
+  in Downloads → **Download with narration**. BookOrbit's narrated copy
+  replaces the one on the Kindle, in the same place, so your page,
+  highlights and notes stay. (Close the book first.)
 - **Opening one** asks **Read**, **Read with narration** or **Listen as
   audiobook**:
   - *Read with narration*: the book, its narration playing from where you
