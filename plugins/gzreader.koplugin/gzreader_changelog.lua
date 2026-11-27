@@ -9,7 +9,7 @@ return {
     {
         version = "next",
         changes = {
-            { short = "Keyboard: emoji keys (the ☺ key beside Shift)", text = "On touch Kindles the on-screen keyboard has a ☺ key beside Shift (the space bar keeps its size). A tap turns the keys into emoji, as Shift turns them to capitals: three rows of emoji, a key for each kind (Recent first, then Smileys, People, Animals and nature, Food, Travel and places, Activities, Objects and Symbols), and ABC, ◀ ▶, the space bar, ⌫ and Enter. A tap types the emoji and the emoji stay up for more; ABC goes back to the letters. Emoji show in black, in colour on a colour Kindle." },
+            { short = "Keyboard: emoji keys (the ☺ key beside ⌥)", text = "On touch Kindles the on-screen keyboard has a ☺ key beside ⌥, bottom left (the space bar keeps its size). A tap turns the keys into emoji, as Shift turns them to capitals: three rows of emoji, a key for each kind (Recent first, then Smileys, People, Animals and nature, Food, Travel and places, Activities, Objects and Symbols), and ABC, ◀ ▶, the space bar, ⌫ and Enter. A tap types the emoji and the emoji stay up for more; ABC goes back to the letters. Emoji show in black, in colour on a colour Kindle." },
         },
     },
     {

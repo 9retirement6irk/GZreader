@@ -57,7 +57,13 @@ local function apply_responsive_keyboard()
 
     if not VirtualKeyboard._zen_touch_qwerty then
         VirtualKeyboard._zen_touch_qwerty = true
-        local original_add_keys = VirtualKeyboard.addKeys
+        -- GZreader: keys GZreader adds after ZenOS's changes (the ☺ key: gzreader_emojikeyboard.lua)
+        local koreader_add_keys = VirtualKeyboard.addKeys
+        local function original_add_keys(kb, ...)
+            local last = VirtualKeyboard.gz_last_keys
+            if last then return last(kb, koreader_add_keys, ...) end
+            return koreader_add_keys(kb, ...)
+        end
         function VirtualKeyboard:addKeys(...)
             local keys = self.KEYS
             local layouts = self.lang_to_keyboard_layout
@@ -136,12 +142,7 @@ local function apply_responsive_keyboard()
                 and bottom_row and #bottom_row == 7 and bottom_row[4][2] == " "
                 and not gz_multiline(self.inputbox)
             local space_width = simplify_bottom and bottom_row[4].width
-            -- GZreader: the x key found by its letter (GZreader's ☺ key can sit before it: gzreader_emojikeyboard.lua)
-            local x_at = 3
-            for index, k in ipairs(english_letters and keys[4] or {}) do
-                if type(k) == "table" and type(k[2]) == "table" and k[2][1] == "x" then x_at = index break end
-            end
-            local x_key = english_letters and keys[4] and keys[4][x_at]
+            local x_key = english_letters and keys[4] and keys[4][3]
             local clean_x_key
             if x_key then
                 clean_x_key = {}
@@ -172,7 +173,7 @@ local function apply_responsive_keyboard()
             end
 
             if hide_comma then table.remove(row) end
-            if clean_x_key then keys[4][x_at] = clean_x_key end
+            if clean_x_key then keys[4][3] = clean_x_key end
             if simplify_bottom then
                 bottom_row[4].width = 7
                 keys[5] = { bottom_row[1], bottom_row[4], bottom_row[2] }
@@ -187,7 +188,7 @@ local function apply_responsive_keyboard()
                 keys[5] = bottom_row
                 HashKey.restore(bottom_row, hash_saved)
             end
-            if clean_x_key then keys[4][x_at] = x_key end
+            if clean_x_key then keys[4][3] = x_key end
             if hide_comma then row[#row + 1] = last_key end
         end
     end

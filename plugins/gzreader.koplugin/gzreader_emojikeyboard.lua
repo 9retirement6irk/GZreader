@@ -1,6 +1,6 @@
 --[[--
-Emoji on the on-screen keyboard. A ☺ key sits beside Shift (the two share
-Shift's old width, so the space bar keeps its size). A tap on ☺ turns the
+Emoji on the on-screen keyboard. A ☺ key sits beside ⌥ on the bottom row
+(the two share ⌥'s old width, so the space bar keeps its size). A tap on ☺ turns the
 keyboard itself into emoji, as Shift turns it to capitals:
 
   😀 😃 😄 😁 😆 😅 🤣 😂 🙂 🙃      three rows of emoji (a page of a kind)
@@ -18,10 +18,11 @@ Emoji show in OpenMoji's black font everywhere and in colour on a colour
 Kindle (frontend/gzcoloremoji.lua), as in notes. Kindles with a keyboard
 have no on-screen keyboard: their Sym key's symbols are as before.
 
-How: GZreader wraps KOReader's VirtualKeyboard.addKeys. On the letters it
-lays out a copy of the keys with ☺ after Shift (`withKey`); in emoji mode
-(`kb.gz_emoji`) the keys are `Emoji.layout`'s, laid out as the symbols'
-page is (layer 3) so ZenOS's letter-page changes leave them alone.
+How: ZenOS's keyboard patch (responsive_keyboard.lua) calls
+`VirtualKeyboard.gz_last_keys` in place of KOReader's addKeys, after its own
+changes to the rows (the short bottom row of one-line boxes, the comma row
+in notes). On the letters it lays out a copy of the keys with ☺ after ⌥
+(`withKey`); in emoji mode (`kb.gz_emoji_on`) the keys are `Emoji.layout`'s.
 ]]
 
 local Log = require("gzreader_log")
@@ -145,42 +146,40 @@ local function copyRow(row)
     return out
 end
 
---- `keys` (a layout's KEYS) with the ☺ key: after Shift (a label in
---- `shift_labels`), the two sharing Shift's width, when Shift is wide enough;
---- otherwise before the last row's space bar, which gives it one unit. A copy
---- (only the changed row is new); nil when there's no room. Pure.
-function Emoji.withKey(keys, shift_labels)
-    if type(keys) ~= "table" or #keys == 0 then return nil end
-    local function copyWith(r, row)
+--- `keys` (a layout's KEYS) with the ☺ key on the last row: after ⌥ (a
+--- label in `option_labels`), the two sharing ⌥'s width, when it's wide
+--- enough; otherwise before the space bar, which gives it one unit. A copy
+--- (only the last row is new); nil when there's no room. Pure.
+function Emoji.withKey(keys, option_labels)
+    if type(keys) ~= "table" or #keys == 0 or type(keys[#keys]) ~= "table" then return nil end
+    local last = keys[#keys]
+    local function with(row)
         local copy = {}
         for i, rr in ipairs(keys) do copy[i] = rr end
-        copy[r] = row
+        copy[#keys] = row
         return copy
     end
-    for r, row in ipairs(keys) do
-        for j, k in ipairs(type(row) == "table" and row or {}) do
-            local w = type(k) == "table" and (tonumber(k.width) or 1) or 0
-            if type(k) == "table" and shift_labels and k.label and shift_labels[k.label] and w >= 1.4 then
-                local out = copyRow(row)
-                local shift = {}
-                for n, v in pairs(k) do shift[n] = v end
-                shift.width = w / 2
-                out[j] = shift
-                table.insert(out, j + 1, { label = Emoji.KEY, width = w / 2, gz_emoji_key = true })
-                return copyWith(r, out)
-            end
+    local function copyKey(k, width)
+        local c = {}
+        for n, v in pairs(k) do c[n] = v end
+        c.width = width
+        return c
+    end
+    for j, k in ipairs(last) do
+        local w = type(k) == "table" and (tonumber(k.width) or 1) or 0
+        if type(k) == "table" and option_labels and k.label and option_labels[k.label] and w >= 1.4 then
+            local out = copyRow(last)
+            out[j] = copyKey(k, w / 2)
+            table.insert(out, j + 1, { label = Emoji.KEY, width = w / 2, gz_emoji_key = true })
+            return with(out)
         end
     end
-    local last = keys[#keys]
-    for j, k in ipairs(type(last) == "table" and last or {}) do
+    for j, k in ipairs(last) do
         if type(k) == "table" and k.label == "_" and (tonumber(k.width) or 1) >= 2 then
             local out = copyRow(last)
-            local space = {}
-            for n, v in pairs(k) do space[n] = v end
-            space.width = (tonumber(k.width) or 1) - 1
-            out[j] = space
+            out[j] = copyKey(k, (tonumber(k.width) or 1) - 1)
             table.insert(out, j, { label = Emoji.KEY, gz_emoji_key = true })
-            return copyWith(#keys, out)
+            return with(out)
         end
     end
     return nil
@@ -291,49 +290,51 @@ local function plain(k)
     k.hold_callback, k.swipe_callback, k.key_chars = nil, nil, nil
 end
 
-function Emoji.install()
-    local ok, VirtualKeyboard = pcall(require, "ui/widget/virtualkeyboard")
-    if not ok or VirtualKeyboard._gz_emoji then return false end
-    local Device = require("device")
-    if not (Device.isTouchDevice and Device:isTouchDevice()) then return false end
-    VirtualKeyboard._gz_emoji = true
-    local orig = VirtualKeyboard.addKeys
-    function VirtualKeyboard:addKeys(...)
-        local keys, layer = self.KEYS, self.keyboard_layer
-        local kb = self
-        local emoji, with
-        if self.gz_emoji_on and type(keys) == "table" and type(keys[1]) == "table" then
-            local state = Emoji.state(self)
-            state.per = (#keys - 2) * #keys[1]
-            emoji = Emoji.layout(state, #keys[1], #keys)
-            self.KEYS, self.keyboard_layer = emoji, 3
-        elseif (tonumber(layer) or 1) <= 2 then
-            -- the letters only: the symbols' pages are ZenOS's own (responsive_keyboard.lua)
-            with = Emoji.withKey(keys, self.shiftmode_keys)
-            if with then self.KEYS = with end
-        end
-        local res = { pcall(orig, self, ...) }
-        self.KEYS, self.keyboard_layer = keys, layer
-        if not res[1] then error(res[2]) end
-        local shown = emoji or with
-        for r, row in ipairs(self.layout or {}) do
-            for c, vkey in ipairs(row) do
-                local def = shown and shown[r] and shown[r][c]
-                if emoji and type(def) == "table" and def.gz then
-                    local gz = def.gz
-                    -- (⌫ stays KOReader's own: hold for the start of the line)
-                    if gz.blank then
-                        vkey.callback = function() end; plain(vkey)
-                    elseif not gz.back then
-                        vkey.callback = function() Emoji.press(kb, gz) end; plain(vkey)
-                    end
-                elseif vkey.label == Emoji.KEY then
-                    vkey.callback = function() Emoji.open(kb) end; plain(vkey)
+--- Lays out keyboard `kb` with `add` (KOReader's addKeys): ☺ on the letters,
+--- or the emoji keys, then their taps wired up.
+function Emoji.addKeys(kb, add, ...)
+    local keys, layer = kb.KEYS, kb.keyboard_layer
+    local emoji, with
+    if kb.gz_emoji_on and type(keys) == "table" and type(keys[1]) == "table" then
+        local state = Emoji.state(kb)
+        state.per = (#keys - 2) * #keys[1]
+        emoji = Emoji.layout(state, #keys[1], #keys)
+        kb.KEYS = emoji
+    elseif (tonumber(layer) or 1) <= 2 then
+        -- the letters only: the symbols' pages are ZenOS's own
+        with = Emoji.withKey(keys, kb.symbolmode_keys)
+        if with then kb.KEYS = with end
+    end
+    local res = { pcall(add, kb, ...) }
+    kb.KEYS = keys
+    if not res[1] then error(res[2]) end
+    local shown = emoji or with
+    for r, row in ipairs(kb.layout or {}) do
+        for c, vkey in ipairs(row) do
+            local def = shown and shown[r] and shown[r][c]
+            if emoji and type(def) == "table" and def.gz then
+                local gz = def.gz
+                -- (⌫ stays KOReader's own: hold for the start of the line)
+                if gz.blank then
+                    vkey.callback = function() end; plain(vkey)
+                elseif not gz.back then
+                    vkey.callback = function() Emoji.press(kb, gz) end; plain(vkey)
                 end
+            elseif vkey.label == Emoji.KEY then
+                vkey.callback = function() Emoji.open(kb) end; plain(vkey)
             end
         end
-        return unpack(res, 2)
     end
+    return unpack(res, 2)
+end
+
+function Emoji.install()
+    local ok, VirtualKeyboard = pcall(require, "ui/widget/virtualkeyboard")
+    if not ok or VirtualKeyboard.gz_last_keys then return false end
+    local Device = require("device")
+    if not (Device.isTouchDevice and Device:isTouchDevice()) then return false end
+    -- called by ZenOS's keyboard patch (responsive_keyboard.lua) after its own changes
+    VirtualKeyboard.gz_last_keys = Emoji.addKeys
     return true
 end
 

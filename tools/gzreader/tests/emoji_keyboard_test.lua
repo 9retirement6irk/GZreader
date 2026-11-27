@@ -27,22 +27,28 @@ end
 local function labels(r) local t = {} for _i, k in ipairs(r) do t[#t + 1] = k.label or (type(k[2]) == "table" and k[2][1]) or k[2] or k[1] end return table.concat(t, " ") end
 local function units(r) local n = 0 for _i, k in ipairs(r) do n = n + (k.width or 1) end return n end
 local keys = layout()
-local with = E.withKey(keys, { [SHIFT] = true })
-local row = with and with[2]
-check(row and labels(row):find("^" .. SHIFT .. " ☺ z x c") and row[1].width == 0.75 and row[2].width == 0.75 and units(row) == units(keys[2]),
-    "☺ right after Shift, the two sharing Shift's width (0.75 each): " .. (row and labels(row) or "?"))
-check(with[3] == keys[3] and keys[3][4].width == 3.0 and #keys[3] == 7, "…the space bar keeps its size: the bottom row is the layout's own (7 keys)")
-check(keys[2][1].width == 1.5 and #keys[2] == 9 and with[1] == keys[1], "…the layout itself untouched (a copy), the other rows shared")
+local OPT = { ["⌥"] = true }
+local with = E.withKey(keys, OPT)
+local row = with and with[3]
+check(row and labels(row) == "⌥ ☺ 🌐 . _ ← → ⮠" and row[1].width == 0.75 and row[2].width == 0.75 and row[1].bold == keys[3][1].bold and units(row) == units(keys[3]),
+    "☺ right after ⌥ on the bottom row, the two sharing ⌥'s width (0.75 each): " .. (row and labels(row) or "?"))
+check(row and row[5].width == 3.0, "…the space bar keeps its size")
+check(with[2] == keys[2] and #keys[2] == 9 and keys[2][1].width == 1.5, "…Shift's row is the layout's own")
+check(keys[3][1].width == 1.5 and #keys[3] == 7 and with[1] == keys[1], "…the layout itself untouched (a copy), the other rows shared")
+-- the short bottom row of a one-line box (ZenOS: ⌥, space, 🌐) and a note's (⌥ 🌐 , . space ⮠)
+local short = E.withKey({ { { "q" } }, { { label = "⌥", width = 1.5 }, { label = "_", " ", width = 7 }, { label = "🌐" } } }, OPT)
+check(short and labels(short[2]) == "⌥ ☺ _ 🌐" and short[2][3].width == 7, "…on a one-line box's short row too: " .. (short and labels(short[2]) or "?"))
 local nos = E.withKey(layout(), {})
-check(nos and #nos[3] == 8 and nos[3][4].label == E.KEY and nos[3][5].width == 2.0, "no Shift known: ☺ before the space bar, which gives it a unit")
-check(E.withKey({ { { "a" } }, { { label = "_", " " } } }, {}) == nil and E.withKey({}) == nil, "no Shift or space bar wide enough: no ☺ key")
+check(nos and #nos[3] == 8 and nos[3][4].label == E.KEY and nos[3][5].width == 2.0, "no ⌥ known: ☺ before the space bar, which gives it a unit")
+check(E.withKey({ { { "a" } }, { { label = "_", " " } } }, {}) == nil and E.withKey({}) == nil, "no ⌥ or space bar wide enough: no ☺ key")
 local src = io.open(REPO .. "/plugins/gzreader.koplugin/gzreader_emojikeyboard.lua"):read("*a")
 check(src:find("if not (Device.isTouchDevice and Device:isTouchDevice()) then return false end", 1, true), "only on touch Kindles (keyboard Kindles have no on-screen keyboard)")
 local main = io.open(REPO .. "/plugins/gzreader.koplugin/main.lua"):read("*a")
 check(main:find('pcall(function() require("gzreader_emojikeyboard").install() end)', 1, true), "installed when GZreader starts")
 local zen = io.open(REPO .. "/plugins/zenos.koplugin/modules/global/patches/responsive_keyboard.lua"):read("*a")
-check(zen:find('k[2][1] == "x" then x_at = index break end', 1, true) and zen:find("keys[4][x_at] = clean_x_key", 1, true) and not zen:find("keys[4][3] = ", 1, true),
-    "ZenOS finds the x key by its letter (☺ sits before it), so its Σ is still taken off")
+check(zen:find("local last = VirtualKeyboard.gz_last_keys", 1, true) and zen:find("if last then return last(kb, koreader_add_keys, ...) end", 1, true),
+    "ZenOS's keyboard patch hands the rows to GZreader after its own changes (its short row, a note's comma row)")
+check(src:find("VirtualKeyboard.gz_last_keys = Emoji.addKeys", 1, true), "…which is where ☺ goes in")
 
 print("== the emoji keys")
 local state = E.state({}, settings)
@@ -87,10 +93,10 @@ for _i, g in ipairs(E.GROUPS) do bad = bad + (E.ICONS[g.id] and 0 or 1) end
 check(bad == 0 and E.ICONS.recent, "every kind has its key")
 
 print("== on KOReader's keyboard")
-local VK = { keyboard_layer = 2, shiftmode_keys = { [SHIFT] = true } }
+local VK = { keyboard_layer = 2, symbolmode_keys = OPT }
 VK.__index = VK
 local seen
-function VK:addKeys()
+local function koreaderAdd(self)
     seen = { keys = self.KEYS, layer = self.keyboard_layer }
     self.layout = {}
     for r, rr in ipairs(self.KEYS) do
@@ -100,17 +106,18 @@ function VK:addKeys()
         end
     end
 end
+-- as ZenOS's patch calls it
+function VK:addKeys() local last = VK.gz_last_keys if last then return last(self, koreaderAdd) end return koreaderAdd(self) end
 package.loaded["ui/widget/virtualkeyboard"] = VK
 package.loaded["device"] = { isTouchDevice = function() return true end }
 check(E.install() and not E.install(), "installed once")
 local vk = setmetatable({ KEYS = layout(), inputbox = kb.inputbox, addChar = kb.addChar, delChar = kb.delChar, _refresh = function() end }, VK)
 local orig_keys = vk.KEYS
 vk:addKeys()
-check(#seen.keys[2] == 10 and seen.keys[2][2].label == E.KEY and vk.KEYS == orig_keys, "the letters: laid out with ☺ after Shift; the keyboard's own keys put back")
-local fn = vk.layout[2][2].callback
-fn()
-check(vk.gz_emoji_on and #seen.keys == 3 and seen.layer == 3 and seen.keys[#seen.keys][1].label == "ABC" and vk.keyboard_layer == 2,
-    "a tap on ☺: the emoji keys laid out (as the symbols' page is), the letters' layer kept")
+check(#seen.keys[3] == 8 and seen.keys[3][2].label == E.KEY and vk.KEYS == orig_keys, "the letters: laid out with ☺ after ⌥; the keyboard's own keys put back")
+vk.layout[3][2].callback()
+check(vk.gz_emoji_on and #seen.keys == 3 and seen.keys[#seen.keys][1].label == "ABC" and vk.KEYS == orig_keys,
+    "a tap on ☺: the emoji keys laid out, the keyboard's own keys put back")
 check(vk.layout[1][1].hold_callback == nil, "…an emoji key has no hold popup")
 local n0 = #typed
 vk.layout[1][1].callback()
@@ -118,7 +125,7 @@ check(#typed == n0 + 1, "…a tap on one types it")
 local last = vk.layout[#vk.layout]
 check(last[5].callback and last[5].hold_callback, "…⌫ is KOReader's own (hold: to the start of the line)")
 last[1].callback()
-check(not vk.gz_emoji_on and seen.keys[2][2].label == E.KEY, "ABC: the letters again, ☺ beside Shift")
+check(not vk.gz_emoji_on and seen.keys[3][2].label == E.KEY, "ABC: the letters again, ☺ beside ⌥")
 vk.keyboard_layer = 4; vk:addKeys()
 check(seen.keys == orig_keys, "the symbols' pages: the keyboard's own keys (ZenOS's)")
 

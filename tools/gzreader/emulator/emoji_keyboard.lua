@@ -1,5 +1,5 @@
 -- The emoji keys (gzreader_emojikeyboard.lua) on KOReader's real keyboard:
--- ☺ beside Shift, the space bar its own size, a tap on ☺ turns the keys to
+-- ☺ beside ⌥ on the bottom row, the space bar its own size, a tap on ☺ turns the keys to
 -- emoji (the keyboard keeps its height), an emoji typed, ABC back.
 --   GZ_EMU_MODEL=scribe GZ_EMU_TREE=<tree>/koreader run.sh emoji_keyboard.lua <out>
 -- Checks go to <out>/emoji-keyboard-checks.txt.
@@ -29,7 +29,8 @@ add({ fn = function(E)
     for _r, r in ipairs(kb.layout) do if find({ layout = { r } }, "☺") then row = r end end
     local labels = {}
     for _i, k in ipairs(row or {}) do labels[#labels + 1] = k.label end
-    check(row and labels[2] == "☺" and row[1].width == row[2].width, "☺ right after Shift, the two the same width: " .. table.concat(labels, " "))
+    check(row and row == kb.layout[#kb.layout] and labels[1] == "⌥" and labels[2] == "☺" and row[1].width == row[2].width,
+        "☺ right after ⌥ on the bottom row, the two the same width: " .. table.concat(labels, " "))
     local space = find(kb, "_")
     local letter = find(kb, "q")
     check(space and letter and space.width > 2.5 * letter.width, "the space bar its own size (" .. (space and space.width or 0) .. " px, a letter " .. (letter and letter.width or 0) .. ")")

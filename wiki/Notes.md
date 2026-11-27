@@ -206,7 +206,7 @@ API to `/api` are found too.
   - Save writes the note the way Memos' rich editor writes it. Lines you
     didn't change are kept exactly as they were.
 - **Emoji** (touch Kindles): the on-screen keyboard's **☺** key, beside
-  **Shift**, turns the keys into emoji, the way Shift turns them to capitals.
+  **⌥** (bottom left), turns the keys into emoji, the way Shift turns them to capitals.
   Three rows of emoji, then a key for each kind (🕘 Recent, the ones you've
   used, then Smileys, People, Animals and nature, Food, Travel and places,
   Activities, Objects and Symbols; the one shown has a •). The bottom row has
