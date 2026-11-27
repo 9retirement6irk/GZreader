@@ -1,5 +1,5 @@
 --[[--
-Settings → Sleep and wallpaper → Sleep → Wallpaper: each sleep screen as a tile with a
+Settings → Sleep and wallpaper → Wallpaper: each sleep screen as a tile with a
 small preview of what it shows, instead of a list of radio buttons.
 
   * GZreader's own (the default): the book's cover while reading, a picture

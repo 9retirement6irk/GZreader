@@ -17,7 +17,7 @@
 -- A book's pages are not changed: the font size, margins and what's worked
 -- out from them (the calls from BOOK_CALLERS) keep KOReader's scale, so a
 -- book looks as it did. A DPI the user set in KOReader's own Screen menu
--- wins too. Settings → Display and light → Size of menus and text (big screens
+-- wins too. Settings → Display and light → Menu text → Size of menus and text (big screens
 -- only; `gzreader_ui_size`: nil/auto, smaller, larger, koreader) changes
 -- it from the next start.
 -- Called from reader.lua right after the device is set up.
@@ -119,7 +119,7 @@ function M.apply(device, settings)
     return s
 end
 
---- Settings → Display and light → Size of menus and text, on big screens (nil
+--- Settings → Display and light → Menu text → Size of menus and text, on big screens (nil
 --- elsewhere). `restart`: asks to restart (UIManager:askForRestart).
 function M.menuItem(device, restart)
     if not device then
