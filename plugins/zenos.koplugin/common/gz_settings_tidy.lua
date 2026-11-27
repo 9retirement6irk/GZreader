@@ -450,6 +450,135 @@ function M.accountValues(root, opts)
     end
 end
 
+---------------------------------------------------------------- a connection row on every service's page
+
+--- Each service's page as Books' is (the owner, 2026-11-26): its first row says
+--- what it's connected to ("Connected to Immich as Will", or Not connected), and
+--- the ways to connect, the keys, disconnecting and About are on that row's own
+--- page; the page itself keeps what the service does here. Rows are told by
+--- their text (`rows`: whole texts; `prefixes`: a text's start). `label(g)`:
+--- the row's text while connected (nil: not connected).
+M.CONNECTIONS = {
+    {
+        page = "AI",
+        rows = { "Set up from your browser (QR code)", "Claude", "Online service (OpenAI-style)", "Try it", "Remove the keys" },
+        prefixes = { "Claude key", "Claude model", "Service address", "Service key", "Service model" },
+        label = function(g)
+            local ok, AI = pcall(require, "gzreader_ai")
+            if not (ok and AI.ready(g)) then return nil end
+            local name = AI.name(AI.provider(g))
+            local okm, model = pcall(function()
+                local p = AI.provider(g)
+                local cfg = AI.settings(g)[p] or {}
+                return (cfg.model or "") ~= "" and cfg.model or (p == "claude" and AI.CLAUDE_MODEL) or nil
+            end)
+            return M.T(gettext()("Connected to %1"), name) .. ((okm and type(model) == "string" and model ~= "") and (" (" .. model .. ")") or "")
+        end,
+    },
+    {
+        page = "Photos",
+        rows = { "Connect with QR code", "Connect by typing", "About Immich", "Disconnect", "Remove Immich from this Kindle" },
+        prefixes = { "Set up Immich on the sync page" },
+        label = function(g)
+            local st = type(g.store) == "table" and g.store.immich or {}
+            if not (type(st) == "table" and type(st.server) == "string" and (st.key or "") ~= "") then return nil end
+            return st.user and M.T(gettext()("Connected to Immich as %1"), st.user) or gettext()("Connected to Immich")
+        end,
+    },
+    {
+        page = "House",
+        rows = { "Connect with QR code", "Find Home Assistant on this Wi-Fi", "Connect by typing", "About Home Assistant", "Disconnect" },
+        label = function(g)
+            local ok, on = pcall(function() return require("gzreader_house").client(g):isConnected() end)
+            if not (ok and on) then return nil end
+            local st = type(g.store) == "table" and g.store.homeassistant or {}
+            local where = st.name or (type(st.server) == "string" and st.server:gsub("^https?://", "")) or nil
+            return where and M.T(gettext()("Connected to Home Assistant (%1)"), where) or gettext()("Connected to Home Assistant")
+        end,
+    },
+    {
+        page = "Recipes",
+        rows = { "Connect with QR code", "Connect by typing", "About Mealie", "Disconnect" },
+        label = function(g)
+            local ok, on = pcall(function() return require("gzreader_recipes").client(g):isConnected() end)
+            if not (ok and on) then return nil end
+            local st = type(g.store) == "table" and g.store.mealie or {}
+            local who = st.name or st.username
+            return who and M.T(gettext()("Connected to Mealie as %1"), who) or gettext()("Connected to Mealie")
+        end,
+    },
+    {
+        page = "Music",
+        rows = { "Plex: sign in with a code", "Plex: sign in with QR code", "About Plex music", "Sign out of Plex" },
+        prefixes = { "Signed in as", "Plex server:" },
+        label = function(g)
+            local st = type(g.store) == "table" and g.store.plex or {}
+            if not (type(st) == "table" and st.token) then return nil end
+            return M.T(gettext()("Connected to Plex as %1"), st.username or "?")
+        end,
+    },
+}
+
+function M.T(s, ...) return require("ffi/util").template(s, ...) end
+
+--- `list` (a service page's rows) with its connection rows on a first row of
+--- their own (`spec`: one of CONNECTIONS; `g`: GZreader's plugin). Returns the list.
+function M.connectionFirst(list, spec, g)
+    local _ = gettext()
+    if type(list) ~= "table" or rawget(list, "_gz_connection") then return list end
+    local function isConn(it)
+        local l = M.label(it)
+        if not l then return false end
+        for _i, t in ipairs(spec.rows or {}) do if l == _(t) then return true end end
+        for _i, p in ipairs(spec.prefixes or {}) do if l:sub(1, #_(p)) == _(p) then return true end end
+        return false
+    end
+    local conn, rest = {}, {}
+    for _i, it in ipairs(list) do
+        if type(it) == "table" and isConn(it) then conn[#conn + 1] = it else rest[#rest + 1] = it end
+    end
+    if #conn == 0 then return list end
+    if conn[#conn] then conn[#conn].separator = nil end
+    for i = #list, 1, -1 do list[i] = nil end
+    list[1] = M.icon({
+        text_func = function()
+            local ok, l = pcall(spec.label, g or {})
+            return (ok and l) or _("Not connected")
+        end,
+        help_text = _("What this is connected to; on its page, the ways to connect, and disconnecting."),
+        sub_item_table = conn,
+        separator = #rest > 0 or nil,
+    }, "connect")
+    for _i, it in ipairs(rest) do list[#list + 1] = it end
+    list._gz_connection = true
+    return list
+end
+
+--- Every service page in Accounts and services with a CONNECTIONS entry gets its
+--- connection row; Notes' Memos row says "Connected to Memos as …" as Books' does.
+function M.connectionRows(root, opts)
+    local _ = gettext()
+    local _a, accounts = M.section(root, "accounts")
+    local gz = opts and opts.gzreader
+    for _i, spec in ipairs(M.CONNECTIONS) do
+        local row = M.find(accounts, _(spec.page))
+        M.onPage(row, function(list) M.connectionFirst(list, spec, gz and gz()) end)
+    end
+    local notes = M.find(accounts, _("Notes"))
+    M.onPage(notes, function(list)
+        local memos = M.find(list, function(it) return M.startsWith(it, _("Memos:")) end)
+        if not memos or rawget(memos, "_gz_named") then return end
+        memos._gz_named = true
+        local was = memos.text_func
+        memos.text_func = function()
+            local l = was and was() or ""
+            if l == _("Memos: not connected") then return _("Not connected") end
+            local who = l:match("^" .. _("Memos:"):gsub("%p", "%%%0") .. "%s*(.-)%s*·") or l:match("^" .. _("Memos:"):gsub("%p", "%%%0") .. "%s*(.+)$")
+            return who and M.T(_("Connected to Memos as %1"), who) or l
+        end
+    end)
+end
+
 ---------------------------------------------------------------- all of it
 
 --- Settings' first page (gz_settings_tree.build's) made simpler. `opts`:
@@ -457,7 +586,7 @@ end
 --- (nil: asked of the device) }.
 function M.apply(root, opts)
     opts = opts or {}
-    for _i, step in ipairs({ M.noImmichCopy, M.aiOnce, M.flatSleep, M.menuText, M.penPage, M.transferOrReset, M.dailyPaperHome, M.ownNames, M.accountValues }) do
+    for _i, step in ipairs({ M.noImmichCopy, M.aiOnce, M.flatSleep, M.menuText, M.penPage, M.transferOrReset, M.dailyPaperHome, M.ownNames, M.accountValues, M.connectionRows }) do
         local ok, err = pcall(step, root, opts)
         if not ok then
             pcall(function() require("logger").warn("GZreader settings: a tidying step failed:", tostring(err)) end)

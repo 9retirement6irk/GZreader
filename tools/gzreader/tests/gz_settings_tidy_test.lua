@@ -231,5 +231,46 @@ print("== GZreader's own names and values")
     check(paper.mandatory_func() == "On", "…On")
 end)()
 
+print("== a connection row on every service's page")
+;(function()
+    local store = { immich = { server = "https://photos.example.com", key = "k", user = "Will" }, plex = {} }
+    local g = { store = store }
+    package.loaded["gzreader_ai"] = { ready = function() return true end, provider = function() return "claude" end, name = function() return "Claude" end,
+        settings = function() return { claude = { model = "" } } end, CLAUDE_MODEL = "claude-haiku-5-5" }
+    package.loaded["gzreader_house"] = { client = function() return { isConnected = function() return false end } end }
+    local function page()
+        return {
+            { text = "Accounts and services", _zen_settings_root = "accounts", sub_item_table = {
+                { text = "Notes", sub_item_table_func = function() return { { text_func = function() return "Memos: Will · notes.example.com" end, sub_item_table = {} }, { text = "Layout" } } end },
+                { text = "AI", sub_item_table_func = function()
+                    return { { text = "Set up from your browser (QR code)", separator = true }, { text = "Claude", radio = true }, { text = "Online service (OpenAI-style)" },
+                        { text_func = function() return "Claude key: set" end }, { text_func = function() return "Service model: not set" end }, { text = "Try it" },
+                        { text_func = function() return "Used for: Explain" end }, { text = "Dictionary with AI" }, { text = "Remove the keys" } }
+                end },
+                { text = "Photos", sub_item_table_func = function()
+                    return { { text = "Sleep screen" }, { text_func = function() return "Pictures kept on the Kindle: 3" end }, { text = "Disconnect" } }
+                end },
+                { text = "House", sub_item_table_func = function()
+                    return { { text = "Connect with QR code" }, { text = "Find Home Assistant on this Wi-Fi" }, { text = "Connect by typing" }, { text = "About Home Assistant" } }
+                end },
+            } },
+        }
+    end
+    local p = Tidy.apply(page(), { gzreader = function() return g end, pen = false })
+    local acc = sec(p, "accounts")
+    local ai = Tidy.find(acc, "AI").sub_item_table_func()
+    check(Tidy.label(ai[1]) == "Connected to Claude (claude-haiku-5-5)" and texts(ai[1].sub_item_table)
+        == "Set up from your browser (QR code) | Claude | Online service (OpenAI-style) | Claude key: set | Service model: not set | Try it | Remove the keys"
+        and texts(ai) == "Connected to Claude (claude-haiku-5-5) | Used for: Explain | Dictionary with AI",
+        "AI: a first row saying what's connected, holding the ways to connect, the keys, Try it, Remove the keys; the rest stays")
+    local ph = Tidy.find(acc, "Photos").sub_item_table_func()
+    check(Tidy.label(ph[1]) == "Connected to Immich as Will" and texts(ph[1].sub_item_table) == "Disconnect"
+        and texts(ph) == "Connected to Immich as Will | Sleep screen | Pictures kept on the Kindle: 3", "Photos: connected to Immich as Will, Disconnect on its page")
+    local ho = Tidy.find(acc, "House").sub_item_table_func()
+    check(#ho == 1 and Tidy.label(ho[1]) == "Not connected" and #ho[1].sub_item_table == 4, "House, not connected: one row, Not connected, the ways to connect on it")
+    local no = Tidy.find(acc, "Notes").sub_item_table_func()
+    check(Tidy.label(no[1]) == "Connected to Memos as Will", "Notes: Connected to Memos as Will (as Books says it)")
+end)()
+
 print(string.format("%d passed, %d failed", pass, fail))
 os.exit(fail == 0 and 0 or 1)
