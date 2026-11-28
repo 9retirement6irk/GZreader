@@ -26,11 +26,11 @@ Tap it again (or press) to open it.
 
 The board is drawn as a game table, everything on it big enough to tap:
 
-- **Today's paper**: four playing cards, one for each of the [daily
-  paper's](Daily-Paper#puzzles) puzzles (sudoku, word search, crossword,
-  maze), each with a picture of its puzzle. This is where the paper's
-  puzzles are played (the paper itself has no Puzzles button); their words
-  come from the day's stories. A card says
+- **Today's paper**: three playing cards, one for each of the [daily
+  paper's](Daily-Paper#puzzles) word search, crossword and maze, each with a
+  picture of its puzzle. This is where the paper's puzzles are played (the
+  paper itself has no Puzzles button); their words come from the day's
+  stories. There is no sudoku. A card says
   **Started** once you've begun it, and gets a ✓ stamp when it's done. They
   come with each day's paper (without a paper, from the puzzles' own word
   list).
@@ -87,8 +87,8 @@ when, which puzzle, which theme (or the daily paper), how long from your first
 move, and whether you took help (**Check**, or a hint). The last 200 are kept.
 
 Achievements unlock as you go and are shown for a moment when they do: your
-first puzzle, ten, fifty and a hundred; one of each kind of puzzle; all four
-of a day's paper puzzles; a crossword without **Check**; a puzzle within three
+first puzzle, ten, fifty and a hundred; one of each kind of puzzle; all three
+of a day's paper puzzles on the board; a crossword without **Check**; a puzzle within three
 minutes; puzzles from your books (one, then five different books); four
 seasons; five categories; an AI theme; three, seven and thirty days running;
 a puzzle after midnight, and one before seven in the morning.

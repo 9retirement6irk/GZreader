@@ -246,7 +246,7 @@ local function pageClass()
         self.keyboard = Device:hasKeyboard() and true or false
         self.glyphs = {}
         self.pz = self.pz or self.plugin
-        self.kinds = P().kindsOf(self.pz)
+        self.kinds = self.kinds or P().kindsOf(self.pz) -- (the game board gives the paper's without the sudoku)
         if Device:hasKeys() then
             local g = Device.input.group
             self.key_events = {
@@ -1206,17 +1206,20 @@ function Screen_.unlocked(list)
 end
 
 --- Open the day's puzzles (at one of them: "sudoku", "words", "maze"), or
---- with opts.set a game board's themed set (gzreader_gameboard.lua).
+--- with opts.set a game board's themed set (gzreader_gameboard.lua);
+--- opts.kinds: only these of the paper's puzzles, as tabs (the game board's).
 function Screen_.show(plugin, kind, opts)
     if Screen_.instance and not Screen_.instance.closed then return Screen_.instance end
     local set = opts and opts.set
     -- (a word puzzle not started is made again if the paper has been fetched since)
     if not set then pcall(function() P().freshen(plugin) end) end
     local pz = set and P().forSet(plugin, set) or plugin
-    local kinds = P().kindsOf(pz)
+    local kinds = (not set and opts and type(opts.kinds) == "table" and opts.kinds) or P().kindsOf(pz)
     local want = kind
-    if not want then want = kinds[1] end
-    local self = pageClass():new{ plugin = plugin, pz = pz, set = set, kind = want }
+    local offered = false
+    for _i, k in ipairs(kinds) do if k == want then offered = true end end
+    if not offered then want = kinds[1] end
+    local self = pageClass():new{ plugin = plugin, pz = pz, set = set, kind = want, kinds = kinds }
     Screen_.instance = self
     UIManager:show(self)
     return self

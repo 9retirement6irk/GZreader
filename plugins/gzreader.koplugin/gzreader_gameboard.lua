@@ -403,12 +403,11 @@ Board.ACHIEVEMENTS = {
     { id = "ten", title = _("Ten down"), text = _("Finish ten puzzles."), test = function(s) return (s.total or 0) >= 10 end },
     { id = "fifty", title = _("Fifty down"), text = _("Finish fifty puzzles."), test = function(s) return (s.total or 0) >= 50 end },
     { id = "hundred", title = _("A hundred down"), text = _("Finish a hundred puzzles."), test = function(s) return (s.total or 0) >= 100 end },
-    { id = "sudoku", title = _("Number cruncher"), text = _("Solve a sudoku."), test = function(s) return (s.counts.sudoku or 0) >= 1 end },
     { id = "words", title = _("Word hunter"), text = _("Find every word in a word search."), test = function(s) return (s.counts.words or 0) >= 1 end },
     { id = "cross", title = _("Crossworder"), text = _("Fill in a crossword."), test = function(s) return (s.counts.cross or 0) >= 1 end },
     { id = "maze", title = _("Way out"), text = _("Find your way through a maze."), test = function(s) return (s.counts.maze or 0) >= 1 end },
     { id = "scramble", title = _("Unscrambled"), text = _("Put every word of a scramble right."), test = function(s) return (s.counts.scramble or 0) >= 1 end },
-    { id = "paper", title = _("The whole paper"), text = _("Finish all four of a day's paper puzzles."), test = function(s) return (s.paper or 0) >= 1 end },
+    { id = "paper", title = _("The whole paper"), text = _("Finish all three of a day's paper puzzles on the board."), test = function(s) return (s.paper or 0) >= 1 end },
     { id = "unaided", title = _("No help needed"), text = _("Fill in a crossword without Check."), test = function(s) return (s.unaided or 0) >= 1 end },
     { id = "quick", title = _("Quick thinker"), text = _("Finish a puzzle within three minutes of starting it."), test = function(s) return (s.quick or 0) >= 1 end },
     { id = "book", title = _("Bookworm"), text = _("Finish a puzzle made from one of your books."), test = function(s) return count(s.books) >= 1 end },
@@ -483,9 +482,20 @@ function Board.solved(pz, kind, now)
     local first, info = P.markDone(pz, kind)
     if not first then return {} end
     local set = rawget(pz, "gz_set")
-    local n = select(2, P.finished(pz))
+    local done, n = P.finished(pz)
+    local of = #P.kindsOf(pz)
+    if not set then
+        -- the paper's: the board has them without the sudoku (one finished in the paper isn't the board's)
+        n, of = 0, #P.BOARD_KINDS
+        local on_board = false
+        for _i, k in ipairs(P.BOARD_KINDS) do
+            if k == kind then on_board = true end
+            if done[k] then n = n + 1 end
+        end
+        if not on_board then return {} end
+    end
     return Board.record(P.owner(pz), { kind = kind, set = set, began = info.began, helped = info.helped,
-        done_n = n, of = #P.kindsOf(pz) }, now)
+        done_n = n, of = of }, now)
 end
 
 --- The achievements, with when each was unlocked: { { a, at } }, and how many are.
