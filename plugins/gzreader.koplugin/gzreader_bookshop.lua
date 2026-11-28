@@ -1384,6 +1384,16 @@ end
 
 Shop.entryById, Shop.letterOf = entryById, letterOf
 
+--- The bookshop, the magazine stand and the order desk are one page, whatever
+--- the list under them says: a list of ZenOS rows (gzreader_rows.lua) takes as
+--- many rows a page as fit their height, so the Requests page's 49 rows made
+--- 5 pages and the Menu's ‹ 1 / 5 › showed under the desk's counter.
+function Shop.onePage(m)
+    local n = math.max(1, #(m.item_table or {}))
+    if (m.perpage or 0) < n then m.perpage = n end
+    m.page_num, m.page = 1, 1
+end
+
 --- Draw the bookshop in place of the root list (m: the browser's Menu).
 function Shop.build(m, browser, select_number, no_recalculate_dimen)
     local old_dimen = m.dimen and m.dimen:copy()
@@ -1398,6 +1408,7 @@ function Shop.build(m, browser, select_number, no_recalculate_dimen)
         no_recalculate_dimen = false
     end
     m:_recalculateDimen(no_recalculate_dimen)
+    Shop.onePage(m)
     local W = m.item_dimen.w
     -- (one page: its page numbers aren't shown, the bookshop takes their room)
     local H = m.available_height
