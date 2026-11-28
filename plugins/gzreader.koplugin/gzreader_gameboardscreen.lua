@@ -413,8 +413,24 @@ local function pageClass()
         local pdone, pn, pof = Screen_.paperDone(plugin)
         local pstate = {}
         pcall(function() pstate = Pz().state(plugin) end)
-        label(_("TODAY'S PAPER"), T(_("%1 of %2 done"), pn, pof))
+        label(_("TODAY'S PAPER · BINGO"), T(_("%1 of %2 done"), pn, pof))
         cards(Pz().BOARD_KINDS, pdone, type(pstate.began) == "table" and pstate.began or nil, 1, function(kind) return self:open(kind) end)
+        -- bingo: the fourth card of the row (gzreader_bingo.lua; its own page)
+        do
+            local okb, bingo = pcall(function() return require("gzreader_bingo").state(plugin) end)
+            local c = { kind = "bingo", done = okb and bingo.won ~= nil, began = okb and (bingo.called or 0) > 0, row = 1,
+                x = margin + #Pz().BOARD_KINDS * (cw + gap), y = y - ch - gap, w = cw, h = ch,
+                run = function()
+                    require("gzreader_bingoscreen").show(plugin, { on_close = function()
+                        if not self.closed then self:rebuild() end
+                    end })
+                    return true
+                end }
+            c.name = self:text(_("Bingo"), card_face, cw - S(12))
+            c.note = (not c.done and c.began) and self:text(_("Started"), note_face, cw - S(12)) or nil
+            self.cards[#self.cards + 1] = c
+            self.items[#self.items + 1] = c
+        end
         -- the theme: its lid, the die, its cards
         local set = B.current(plugin)
         local sdone, sn, sof = Screen_.setDone(plugin, set)
@@ -542,6 +558,22 @@ local function pageClass()
             end
             bb:paintCircle(x + math.floor(c / 2), y + math.floor(c / 2), math.max(2, math.floor(c / 4)), black)
             bb:paintRect(x + (n - 1) * c + math.floor(c / 3), y + (n - 1) * c + math.floor(c / 3), math.max(2, math.floor(c / 3)), math.max(2, math.floor(c / 3)), shade(0.4))
+        elseif kind == "bingo" then
+            -- a little card: five by five, a line of counters across it, a ball beside
+            local n = 5
+            local c = math.floor(d * 0.78 / n)
+            local gx, gy = x, y + math.floor((d - c * n) / 2)
+            for i = 0, n do
+                bb:paintRect(gx + i * c, gy, thin, c * n + thin, black)
+                bb:paintRect(gx, gy + i * c, c * n + thin, thin, black)
+            end
+            local dots = { { 0, 0 }, { 1, 1 }, { 2, 2 }, { 3, 3 }, { 4, 4 }, { 3, 0 }, { 0, 3 }, { 4, 1 } }
+            for _i, p in ipairs(dots) do
+                bb:paintCircle(gx + p[1] * c + math.floor(c / 2), gy + p[2] * c + math.floor(c / 2), math.max(2, math.floor(c * 0.34)), black)
+            end
+            local r = math.floor(d * 0.12)
+            bb:paintCircle(x + d - r, y + r + math.floor(d * 0.06), r, black)
+            bb:paintCircle(x + d - r, y + r + math.floor(d * 0.06), math.floor(r * 0.6), Blitbuffer.COLOR_WHITE)
         else -- the scramble: letter tiles, out of line
             local word = "PUZLE"
             local c = math.floor(d / 5.6)

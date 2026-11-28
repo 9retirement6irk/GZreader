@@ -407,6 +407,8 @@ Board.ACHIEVEMENTS = {
     { id = "cross", title = _("Crossworder"), text = _("Fill in a crossword."), test = function(s) return (s.counts.cross or 0) >= 1 end },
     { id = "maze", title = _("Way out"), text = _("Find your way through a maze."), test = function(s) return (s.counts.maze or 0) >= 1 end },
     { id = "scramble", title = _("Unscrambled"), text = _("Put every word of a scramble right."), test = function(s) return (s.counts.scramble or 0) >= 1 end },
+    { id = "bingo", title = _("Bingo!"), text = _("Win a game of bingo."), test = function(s) return (s.counts.bingo or 0) >= 1 end },
+    { id = "bingo_quick", title = _("Quick caller"), text = _("Win at bingo within 30 calls."), test = function(s) return (s.bingo_quick or 0) >= 1 end },
     { id = "paper", title = _("The whole paper"), text = _("Finish all three of a day's paper puzzles on the board."), test = function(s) return (s.paper or 0) >= 1 end },
     { id = "unaided", title = _("No help needed"), text = _("Fill in a crossword without Check."), test = function(s) return (s.unaided or 0) >= 1 end },
     { id = "quick", title = _("Quick thinker"), text = _("Finish a puzzle within three minutes of starting it."), test = function(s) return (s.quick or 0) >= 1 end },
@@ -513,6 +515,7 @@ end
 --- A puzzle's name, for the history.
 function Board.kindName(kind)
     if kind == "scramble" then return _("Word scramble") end
+    if kind == "bingo" then return _("Bingo") end
     return require("gzreader_puzzlescreen").tabLabel(kind)
 end
 

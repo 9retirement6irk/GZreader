@@ -299,14 +299,117 @@ check(plugin.store.games.history[1].src == "paper" and Pz.state(plugin).recorded
 local kinds_text = table.concat(Pz.BOARD_KINDS, " ")
 local has_sudoku_award = false
 for _i, a in ipairs(B.ACHIEVEMENTS) do if a.id == "sudoku" or a.text:lower():find("sudoku", 1, true) then has_sudoku_award = true end end
-local before = #plugin.store.games.history
+local hist_before = #plugin.store.games.history
 local none = B.solved(plugin, "sudoku", now + 30)
-check(kinds_text == "words cross maze" and not has_sudoku_award and #B.ACHIEVEMENTS == 21
-    and #none == 0 and #plugin.store.games.history == before and Pz.state(plugin).recorded.sudoku,
-    "no sudoku on the board: three paper puzzles, 21 achievements, a sudoku done in the paper stays the paper's")
+check(kinds_text == "words cross maze" and not has_sudoku_award and #B.ACHIEVEMENTS == 23
+    and #none == 0 and #plugin.store.games.history == hist_before and Pz.state(plugin).recorded.sudoku,
+    "no sudoku on the board: three paper puzzles, 23 achievements (two of them bingo's), a sudoku done in the paper stays the paper's")
 local GS = require("gzreader_gameboardscreen")
 local pdone, pn, pof = GS.paperDone(plugin)
 check(pof == 3 and pn <= 3 and type(pdone) == "table", "the board counts the paper's three (" .. pn .. "/" .. pof .. ")")
+
+print("== bingo")
+do
+    local Bingo = require("gzreader_bingo")
+    local card = Bingo.card("2026-11-28:1")
+    local cols_ok, seen = true, {}
+    for sq = 1, 25 do
+        local n, col = card[sq], (sq - 1) % 5
+        if sq == 13 then
+            if n ~= 0 then cols_ok = false end
+        else
+            if n < col * 15 + 1 or n > col * 15 + 15 or seen[n] then cols_ok = false end
+            seen[n] = true
+        end
+    end
+    check(#card == 25 and cols_ok, "a card: five numbers of each column's fifteen (B 1-15 … O 61-75), none twice, the middle free")
+    local same, other = Bingo.card("2026-11-28:1"), Bingo.card("2026-11-28:2")
+    check(table.concat(same, ",") == table.concat(card, ",") and table.concat(other, ",") ~= table.concat(card, ","),
+        "the same game is the same card (after a restart); another game, another card")
+    local order, all = Bingo.order("2026-11-28:1"), {}
+    for _i, n in ipairs(order) do all[n] = true end
+    local every = #order == 75
+    for n = 1, 75 do if not all[n] then every = false end end
+    check(every and table.concat(order, ",") ~= table.concat(Bingo.order("2026-11-28:2"), ","), "the caller: all 75 balls, each once, in the game's own order")
+    check(Bingo.name(7) == "B 7" and Bingo.name(61) == "O 61" and Bingo.name(45) == "N 45" and Bingo.name(0) == "", "a ball as it's called: B 7, N 45, O 61")
+    check(#Bingo.LINES == 12 and Bingo.line("1111100000000000000000000") ~= nil and Bingo.line("1000001000001000001000001") ~= nil
+        and Bingo.line("0000100010001000100010000") ~= nil and Bingo.line("0100001000010000100001000") ~= nil
+        and Bingo.line("1111000000001000000000000") == nil, "bingo: a row, a column or a diagonal of five (twelve lines); four isn't")
+
+    -- a game
+    plugin.store.games.bingo = nil
+    local save_n = 0
+    local real_save, real_soon = plugin.save, plugin.saveSoon
+    plugin.save = function() save_n = save_n + 1 end
+    plugin.saveSoon = function() save_n = save_n + 1 end
+    local b = Bingo.state(plugin, now)
+    check(b.played == 1 and b.called == 0 and b.marks:sub(13, 13) == "1" and select(2, b.marks:gsub("1", "")) == 1 and b.won == nil,
+        "a won_new game: nothing called, only the free square daubed")
+    local first_sq = 1
+    check(Bingo.daub(plugin, first_sq, now) == "not called" and b.marks:sub(first_sq, first_sq) == "0",
+        "a square can't be daubed before its number is called")
+    local n1 = Bingo.call(plugin, now)
+    check(n1 == Bingo.order(b.seed)[1] and b.called == 1 and b.began == now and #Bingo.calledBalls(b) == 1, "Call: the caller's first ball")
+    -- call until the middle row's four numbers are out (the row with the free square), daubing them
+    local row = { 11, 12, 14, 15 }
+    local need = {}
+    for _i, sq in ipairs(row) do need[b.card[sq]] = sq end
+    local left, guard, last_sq = 4, 0, nil
+    local waited_ok = true
+    while left > 0 and guard < 80 do
+        guard = guard + 1
+        local n = n1
+        n1 = nil
+        n = n or Bingo.call(plugin, now + guard)
+        if need[n] then
+            if left > 1 then
+                local w = Bingo.waiting(b)
+                local hit = false
+                for _i, sq in ipairs(w) do if sq == need[n] then hit = true end end
+                if not hit then waited_ok = false end
+                check(Bingo.daub(plugin, need[n], now + guard) == "daubed" or false, "…a called square daubed (" .. Bingo.name(n) .. ")")
+                check(Bingo.daub(plugin, need[n], now + guard) == "already", "…once")
+            end
+            left = left - 1
+            if left == 0 then last_sq = need[n] end
+        end
+    end
+    local calls = b.called
+    local history_before = #plugin.store.games.history
+    local what, won_new = Bingo.daub(plugin, last_sq, now + 200)
+    check(waited_ok, "the squares called and not yet daubed are known (for a test; the page doesn't show them)")
+    local won_ids = {}
+    for _i, a in ipairs(type(won_new) == "table" and won_new or {}) do won_ids[a.id] = true end
+    check(what == "bingo" and b.won == calls and b.best == calls and b.wins == 1 and won_ids.bingo == true,
+        "five in a line: BINGO, in the calls it took (" .. calls .. "); the Bingo! achievement")
+    local entry = plugin.store.games.history[1]
+    check(#plugin.store.games.history == history_before + 1 and entry.k == "bingo" and entry.s == Bingo.calls(calls) and entry.d == nil
+        and B.kindName("bingo") == "Bingo" and plugin.store.games.stats.counts.bingo == 1,
+        "in the board's history: Bingo · " .. Bingo.calls(calls))
+    check((won_ids.bingo_quick == true) == (calls <= Bingo.QUICK), "Quick caller only for a win within 30 calls")
+    check(Bingo.call(plugin, now + 300) == nil and Bingo.daub(plugin, 1, now + 300) == "over", "won: no more calls or daubs in this game")
+    local nb = Bingo.deal(plugin, now + 400)
+    check(nb.played == 2 and nb.called == 0 and nb.won == nil and nb.best == calls and nb.wins == 1
+        and table.concat(nb.card, ",") ~= table.concat(card, ",") and save_n > 0,
+        "New game: another card, the best and the wins kept, saved")
+    -- the hall's lines
+    local BS = require("gzreader_bingoscreen")
+    local l0 = BS.lines(nb)
+    check(l0.count == "Call the first ball to begin." and l0.earlier == "", "the hall before the first ball")
+    for _i = 1, 7 do Bingo.call(plugin, now + 500) end
+    local l7 = BS.lines(nb, "x")
+    local _, dots = l7.earlier:gsub(" · ", "")
+    check(l7.count == "Ball 7 of 75" and dots == 4 and l7.note == "x", "after seven: Ball 7 of 75, the five before it")
+    local L = BS.layout(1072, 1448, function(v) return v * 2 end)
+    local L2 = BS.layout(600, 800, function(v) return v end)
+    local function inside(Lx, w, hh)
+        local bt = Lx.buttons
+        return Lx.fits and Lx.grid.x >= 0 and Lx.grid.x + Lx.cell * 5 <= w and bt.call.y + bt.call.h <= hh and bt.new.x + bt.new.w <= w
+            and Lx.grid.y >= Lx.ball.y + Lx.ball.d and bt.call.y >= Lx.grid.y + Lx.cell * 5 and bt.call.x + bt.call.w <= bt.new.x
+    end
+    check(inside(L, 1072, 1448) and inside(L2, 600, 800), "the hall's layout on a Paperwhite and a Kindle 3: ball, card and buttons, nothing over anything or off the screen")
+    plugin.save, plugin.saveSoon = real_save, real_soon
+end
 
 print("== the setup guide's page")
 plugin.store.games.enabled = nil
