@@ -182,7 +182,8 @@ notes: [Notes](Notes)):
   − and + step. The swipe that opens the panel moves neither slider.
 - **Volume:** on touch Kindles with sound, a slider under those sets the
   volume: on Kindles with Bluetooth (Scribe, Paperwhite 5 and newer…) the
-  Kindle's own Bluetooth volume, in the same 8 steps as Amazon's slider; on
+  Kindle's own Bluetooth volume, in the same 8 steps as Amazon's slider,
+  shown only while Bluetooth headphones or a speaker are connected; on
   the Kindle Touch its speaker and headphones, 0 to 15, the volume read
   aloud and audiobooks use. Its − has a quiet speaker, + a loud one. Tap −
   or +, tap the bar, or drag. (The Kindle 2,

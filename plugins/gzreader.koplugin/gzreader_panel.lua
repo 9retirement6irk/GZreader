@@ -26,7 +26,7 @@ playing; Updates when an update was found) is drawn inverted. Touch Kindles: tap
 Kindles with a warm light (Device:hasNaturalLight(): Paperwhite 5 and newer,
 Oasis 3, Scribe, Colorsoft) get a warmth slider under it, cool to warm, in
 the Kindle's own steps (powerd's native warmth, 0 to 24).
-Touch Kindles with sound (the Kindle Touch; Bluetooth Kindles) get a volume
+Touch Kindles with sound (the Kindle Touch; Bluetooth Kindles while Bluetooth audio is connected) get a volume
 slider under those: TTS.volume, the speaker's 0 to 15 or the Kindle's
 Bluetooth volume 1 to 8 (the Kindle 2, 3 and DX: their volume buttons).
 
@@ -1053,12 +1053,16 @@ end
 ---------------------------------------------------------------- the volume
 
 --- Whether the panel gets a volume slider: touch Kindles with sound (the
---- Kindle Touch's speaker and headphones; Bluetooth Kindles, the volume of
---- Bluetooth headphones or a speaker). The Kindle 2, 3 and DX have volume buttons.
+--- Kindle Touch's speaker and headphones), and Bluetooth Kindles only while
+--- Bluetooth headphones or a speaker are connected (audiomgrd's
+--- audioOutputConnected, asked each time the panel opens: the owner,
+--- 2026-11-27). The Kindle 2, 3 and DX have volume buttons.
 function Panel.hasVolume()
     if Panel.volume_present ~= nil then return Panel.volume_present end
     local ok, yes = pcall(function()
-        return Device:isTouchDevice() and (Touch.audio() or Touch.ivona()) and true or false
+        if not Device:isTouchDevice() then return false end
+        if Touch.audio() then return true end
+        return Touch.ivona() and require("gzreader_tts").bluetoothAudio() == true
     end)
     return ok and yes or false
 end
