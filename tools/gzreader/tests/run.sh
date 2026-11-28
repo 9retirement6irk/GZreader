@@ -114,6 +114,10 @@ sec "mark up a PDF (its pages as drawing pages)"
 (cd "$T" && luajit pdfmarkup_test.lua "$REPO/plugins/gzreader.koplugin" "$T/lib" "$KOBASE" "$WORK/pdfmarkup") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
+sec "CoverBrowser's database is set up once, not at every start"
+(cd "$T" && luajit coverdb_test.lua "$REPO/plugins/coverbrowser.koplugin") 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
+
 sec "Settings' easter egg (the version tapped seven times: the 15 puzzle)"
 (cd "$T" && luajit easteregg_test.lua "$REPO/plugins/gzreader.koplugin") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || fail
