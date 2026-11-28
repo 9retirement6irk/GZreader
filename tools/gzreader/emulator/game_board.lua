@@ -89,8 +89,8 @@ add({ fn = function(E)
     local G = require("gzreader_gameboardscreen")
     local b = G.instance
     E.board = b
-    check(E, b ~= nil and #b.items == 12 and #b.cards == 8 and b.lid and b.die and b.cab and b.score,
-        "opened: a game table: 4 paper cards, the theme's lid and die, 4 theme cards, the trophy cabinet and the score card: " .. (b and #b.items or 0))
+    check(E, b ~= nil and #b.items == 11 and #b.cards == 7 and b.lid and b.die and b.cab and b.score,
+        "opened: a game table: 3 paper cards (no sudoku), the theme's lid and die, 4 theme cards, the trophy cabinet and the score card: " .. (b and #b.items or 0))
     local inside, apart = true, true
     for i, t in ipairs(b.items) do
         if t.x < b.frame or t.y < b.frame or t.x + t.w > b.dimen.w - b.frame or t.y + t.h > b.dimen.h - b.frame then inside = false end

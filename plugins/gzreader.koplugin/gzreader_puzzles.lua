@@ -27,6 +27,7 @@ puzzles on the board are the paper's own: the plugin itself.
 local Puzzles = {
     KINDS = { "sudoku", "words", "cross", "maze" },
     SET_KINDS = { "cross", "words", "scramble", "maze" }, -- (a game board's themed set)
+    BOARD_KINDS = { "words", "cross", "maze" }, -- (the paper's puzzles the game board offers: no sudoku)
     SCRAMBLE_WORDS = 6,
     CROSS_SIZE = 11,   -- the crossword is laid out in a square this big, then trimmed to what it uses
     CROSS_WORDS = 9,   -- words wanted in it

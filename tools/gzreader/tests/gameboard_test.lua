@@ -263,12 +263,12 @@ check(h.k == "cross" and h.s == "From Book 7" and h.src == "book" and h.d == 100
 local again = B.record(plugin, { kind = "cross", set = bset, began = t1 - 100, helped = true }, t1 + 10)
 check(#again == 0, "an achievement comes once")
 check(plugin.store.games.stats.unaided == 1, "help taken: not unaided")
--- the paper's puzzles: all four on one day
-for i, k in ipairs({ "sudoku", "words", "maze" }) do B.record(plugin, { kind = k, done_n = i, of = 4 }, t1 + 60 * i) end
-local full = B.record(plugin, { kind = "cross", done_n = 4, of = 4 }, t1 + 600)
+-- the paper's puzzles on the board (no sudoku): all three on one day
+for i, k in ipairs({ "words", "maze" }) do B.record(plugin, { kind = k, done_n = i, of = 3 }, t1 + 60 * i) end
+local full = B.record(plugin, { kind = "cross", done_n = 3, of = 3 }, t1 + 600)
 local fid = {}
 for _i, a in ipairs(full) do fid[a.id] = true end
-check(fid.paper and plugin.store.games.history[1].src == "paper" and plugin.store.games.history[1].s == nil, "the paper's four done in a day: The whole paper")
+check(fid.paper and plugin.store.games.history[1].src == "paper" and plugin.store.games.history[1].s == nil, "the paper's three on the board done in a day: The whole paper")
 -- streaks
 local days = { ["2030-03-12"] = 1, ["2030-03-13"] = 2, ["2030-03-14"] = 1 }
 check(B.streak(days, "2030-03-14") == 3 and B.streak(days, "2030-03-15") == 3 and B.streak(days, "2030-03-16") == 0, "a streak: days running, to today or yesterday")
@@ -279,7 +279,7 @@ check(plugin.store.games.unlocked.streak7 and plugin.store.games.unlocked.streak
 check(unlocked >= 10 and B.achievementsText(plugin):find("unlocked", 1, true) and B.achievementsText(plugin):find("Still to do", 1, true),
     "the achievements listed: those unlocked, then the rest (" .. unlocked .. " of " .. #B.ACHIEVEMENTS .. ")")
 for i = 1, 210 do B.record(plugin, { kind = "words" }, t1 + i) end
-check(#plugin.store.games.history == B.HISTORY_MAX and plugin.store.games.stats.total == 222 and plugin.store.games.unlocked.hundred, "the history keeps the last 200; the count goes on")
+check(#plugin.store.games.history == B.HISTORY_MAX and plugin.store.games.stats.total == 221 and plugin.store.games.unlocked.hundred, "the history keeps the last 200; the count goes on")
 check(B.tookText(45) == "45 s" and B.tookText(300) == "5 min" and B.tookText(3900) == "1 h 5 min" and B.tookText(200000) == "2 days" and B.tookText(nil) == nil,
     "how long, in words")
 
@@ -293,8 +293,20 @@ check(#plugin.store.games.history == 1 and plugin.store.games.history[1].s == "M
     "a set's puzzle finished on its page: in the history, with its theme")
 B.solved(pz3, "maze", now + 9)
 check(#plugin.store.games.history == 1, "… once, however often the page says it's done")
-B.solved(plugin, "sudoku", now + 20)
-check(plugin.store.games.history[1].src == "paper" and Pz.state(plugin).recorded.sudoku, "the paper's puzzle finished from the board or the paper: in the history as the paper's")
+B.solved(plugin, "words", now + 20)
+check(plugin.store.games.history[1].src == "paper" and Pz.state(plugin).recorded.words, "the paper's puzzle finished from the board or the paper: in the history as the paper's")
+-- no sudoku on the board: not among its paper cards, not an achievement, and one finished in the paper isn't the board's
+local kinds_text = table.concat(Pz.BOARD_KINDS, " ")
+local has_sudoku_award = false
+for _i, a in ipairs(B.ACHIEVEMENTS) do if a.id == "sudoku" or a.text:lower():find("sudoku", 1, true) then has_sudoku_award = true end end
+local before = #plugin.store.games.history
+local none = B.solved(plugin, "sudoku", now + 30)
+check(kinds_text == "words cross maze" and not has_sudoku_award and #B.ACHIEVEMENTS == 21
+    and #none == 0 and #plugin.store.games.history == before and Pz.state(plugin).recorded.sudoku,
+    "no sudoku on the board: three paper puzzles, 21 achievements, a sudoku done in the paper stays the paper's")
+local GS = require("gzreader_gameboardscreen")
+local pdone, pn, pof = GS.paperDone(plugin)
+check(pof == 3 and pn <= 3 and type(pdone) == "table", "the board counts the paper's three (" .. pn .. "/" .. pof .. ")")
 
 print("== the setup guide's page")
 plugin.store.games.enabled = nil

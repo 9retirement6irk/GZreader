@@ -46,11 +46,15 @@ end
 
 ---------------------------------------------------------------- what the board says
 
---- The paper's puzzles done today, and how many there are.
+--- The paper's puzzles on the board (Puzzles.BOARD_KINDS: no sudoku) done
+--- today, and how many there are.
 function Screen_.paperDone(plugin)
-    local ok, out, n = pcall(Pz().finished, plugin)
-    if not ok then return {}, 0, #Pz().KINDS end
-    return out, n, #Pz().KINDS
+    local kinds = Pz().BOARD_KINDS
+    local ok, out = pcall(Pz().finished, plugin)
+    if not ok then return {}, 0, #kinds end
+    local n = 0
+    for _i, k in ipairs(kinds) do if out[k] then n = n + 1 end end
+    return out, n, #kinds
 end
 
 --- The themed set's puzzles done, and how many there are.
@@ -61,7 +65,7 @@ function Screen_.setDone(plugin, set)
     return out, n, #Pz().kindsOf(pz)
 end
 
---- The lid's lines: { "Today's paper 2/4", "Autumn 1/4", "★ 3/22" }.
+--- The lid's lines: { "Today's paper 2/3", "Autumn 1/4", "★ 3/21" }.
 function Screen_.lidLines(plugin)
     local B = Board()
     local pn, pof = select(2, Screen_.paperDone(plugin))
@@ -347,7 +351,7 @@ local function pageClass()
 
     --- Lay it out as a game table (everything drawn in paintTo):
     --- - the board's frame, its name and the date on a banner, a round close token;
-    --- - TODAY'S PAPER: four playing cards, each a picture of its puzzle;
+    --- - TODAY'S PAPER: three playing cards (no sudoku), each a picture of its puzzle;
     --- - the theme's box lid (tap: choose a theme) and a die (New puzzles), then its four cards;
     --- - the trophy cabinet (every achievement, the ones won dark) and the score card.
     --- self.items: what a tap or Press runs, { x, y, w, h, row, run, … }.
@@ -410,7 +414,7 @@ local function pageClass()
         local pstate = {}
         pcall(function() pstate = Pz().state(plugin) end)
         label(_("TODAY'S PAPER"), T(_("%1 of %2 done"), pn, pof))
-        cards(Pz().KINDS, pdone, type(pstate.began) == "table" and pstate.began or nil, 1, function(kind) return self:open(kind) end)
+        cards(Pz().BOARD_KINDS, pdone, type(pstate.began) == "table" and pstate.began or nil, 1, function(kind) return self:open(kind) end)
         -- the theme: its lid, the die, its cards
         local set = B.current(plugin)
         local sdone, sn, sof = Screen_.setDone(plugin, set)
@@ -492,21 +496,7 @@ local function pageClass()
     function Page:picture(bb, kind, x, y, d)
         local black = Blitbuffer.COLOR_BLACK
         local thin = math.max(1, math.floor(d / 120))
-        if kind == "sudoku" then
-            local c = math.floor(d / 9)
-            local g = c * 9
-            local digits = { [1] = "5", [5] = "3", [11] = "7", [13] = "9", [19] = "1", [24] = "6", [30] = "8", [34] = "2", [40] = "4",
-                [44] = "7", [49] = "3", [57] = "6", [61] = "1", [66] = "9", [70] = "5", [75] = "2", [80] = "8" }
-            for i = 0, 80 do
-                if digits[i] and c >= S(8) then centred(bb, self:glyph(digits[i], math.floor(c * 0.6)), x + (i % 9) * c, y + math.floor(i / 9) * c, c)
-                elseif digits[i] then bb:paintRect(x + (i % 9) * c + math.floor(c / 3), y + math.floor(i / 9) * c + math.floor(c / 3), math.max(1, math.floor(c / 3)), math.max(1, math.floor(c / 3)), shade(0.5)) end
-            end
-            for k = 0, 9 do
-                local t = (k % 3 == 0) and thin * 2 or thin
-                bb:paintRect(x + k * c - math.floor(t / 2), y, t, g, black)
-                bb:paintRect(x, y + k * c - math.floor(t / 2), g, t, black)
-            end
-        elseif kind == "words" then
+        if kind == "words" then
             local rows = { "GAMEBO", "RTWORD", "AXPUZL", "SEARCH", "ZLEFUN", "MQBOOK" }
             local c = math.floor(d / 6)
             for r, line in ipairs(rows) do
@@ -737,7 +727,7 @@ local function pageClass()
     end
 
     function Page:open(kind, set)
-        PzScreen().show(self.plugin, kind, set and { set = set } or nil)
+        PzScreen().show(self.plugin, kind, set and { set = set } or { kinds = Pz().BOARD_KINDS })
         return true
     end
 
