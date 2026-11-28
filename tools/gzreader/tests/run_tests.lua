@@ -18588,6 +18588,62 @@ print("Narrated EPUBs (gzreader_narration.lua): EPUB 3 media overlays, the sente
     AB.load = saved_load
     plugin.store.downloads["777"] = nil
     AB.open = saved_open
+    ;(function() -- narrated books on the walkman (Downloads → Audiobooks)
+        local meta = Open.parseMeta([[<package><metadata><dc:title>Tom &amp; Jerry</dc:title><dc:creator id="a"> Some One </dc:creator>
+            <meta name="cover" content="c2"/></metadata><manifest><item id="c1" href="img/front.jpg" properties="cover-image" media-type="image/jpeg"/>
+            <item id="c2" href="img/other.jpg" media-type="image/jpeg"/></manifest></package>]], "OEBPS/content.opf")
+        local meta2 = Open.parseMeta([[<metadata><dc:title>X</dc:title><meta name="cover" content="c2"/></metadata><manifest><item id="c2" href="c.png"/></manifest>]], "content.opf")
+        check(meta.title == "Tom & Jerry" and meta.author == "Some One" and meta.cover == "OEBPS/img/front.jpg" and meta2.cover == "c.png" and meta2.author == nil,
+            "the walkman: a book's title, author and cover picture from its OPF (EPUB 3's cover-image, else EPUB 2's meta)")
+        local Folder = require("gzreader_abfolder")
+        -- (the stand-in written as a plain file: no libarchive writer here)
+        local saved_ws, stubs = Folder.writeStub, {}
+        Folder.writeStub = function(p, id)
+            local e = p.store.audiobooks[id]
+            e.stub = e.stub or (e.title or id) .. ".epub"
+            os.execute("mkdir -p '" .. Folder.entryDir(p) .. "'")
+            local path = Folder.entryDir(p) .. "/" .. e.stub
+            local f = io.open(path, "w"); f:write(tostring(e.title)); f:close()
+            stubs[#stubs + 1] = id
+            return path
+        end
+        local lib = WORK .. "/walkman-lib"
+        os.execute("rm -rf '" .. lib .. "' && mkdir -p '" .. lib .. "/Fiction' && cp '" .. epub .. "' '" .. lib .. "/Fiction/narrated.epub' && cp '"
+            .. WORK .. "/plain.epub' '" .. lib .. "/plain.epub'")
+        local nb = lib .. "/Fiction/narrated.epub"
+        local saved_lib = plugin.libraryDir
+        plugin.libraryDir = function() return lib end
+        local nid = Open.idFor(nb)
+        local got
+        Open.scan(plugin, function(n) got = n end)
+        local e = plugin.store.audiobooks[nid]
+        local stub = Folder.stubPath(plugin, nid)
+        check(got == 1 and e and e.narrated == nb and type(e.title) == "string" and stub and lfs.attributes(stub, "mode") == "file"
+            and stub:find(lib .. "/Audiobooks/", 1, true) == 1 and plugin.store.narration_no[lib .. "/plain.epub"] ~= nil,
+            "the walkman: a narrated book on the Kindle gets its cassette in Downloads → Audiobooks (" .. tostring(e and e.title) .. "); a plain one doesn't, and isn't looked into again")
+        check(Folder.idForPath(plugin, stub) == nid, "…its stand-in is that audiobook's")
+        opened_ab = nil
+        AB.open = function(_p, b) opened_ab = b end
+        Open.PLUGIN = plugin
+        Folder.open(plugin, nid)
+        check(opened_ab and opened_ab.id == nid and opened_ab.files and #opened_ab.files == 1,
+            "…a tap listens to it: made into an audiobook the first time, and played")
+        AB.open = saved_open
+        if opened_ab then os.execute("rm -rf '" .. opened_ab.dir .. "'") end
+        os.remove(nb)
+        got = nil
+        Open.scan(plugin, function(n) got = n end)
+        check(got == 0 and plugin.store.audiobooks[nid] == nil and lfs.attributes(stub, "mode") == nil,
+            "…its book gone from the Kindle (and not kept as an audiobook): off the walkman")
+        check(Open.onWalkman(plugin, lib .. "/plain.epub") == false, "a book without narration: not on the walkman")
+        local dsrc = io.open(PLUGIN .. "/gzreader_download.lua"):read("*a")
+        local fsrc = io.open(PLUGIN .. "/gzreader_abfolder.lua"):read("*a")
+        check(dsrc:find('require("gzreader_narratedopen").onWalkman(plugin, dest_path)', 1, true) and fsrc:find('require("gzreader_narratedopen").scan(plugin)', 1, true),
+            "…a narrated book downloaded goes on the walkman, and the Kindle's are looked for at start")
+        plugin.libraryDir = saved_lib
+        Folder.writeStub = saved_ws
+        os.execute("rm -rf '" .. lib .. "'")
+    end)()
     if abook then os.execute("rm -rf '" .. abook.dir .. "'") end
     Open.PLUGIN = nil
     -- BookOrbit: downloading a narrated book asks with or without its narration, with the sizes

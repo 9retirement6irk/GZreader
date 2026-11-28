@@ -178,9 +178,15 @@ sound.
   - *Listen as audiobook*: the audiobook player, with the book's chapters,
     the sleep timer and the cover. If BookOrbit's audiobook of the same
     book is downloaded, that plays; otherwise the book's own narration,
-    copied out of it once (nothing to download; it then shows in
-    Downloads → Audiobooks too). It starts where the narration was; opening
-    the book after listening goes to where the audiobook was.
+    copied out of it once (nothing to download). It starts where the
+    narration was; opening the book after listening goes to where the
+    audiobook was.
+- **On the walkman** (Downloads → Audiobooks, the cassette walkman on the
+  shelf): every narrated book on the Kindle is there as an audiobook too,
+  a cassette with the book's cover, title and author, from the moment it's
+  downloaded (books already on the Kindle are found a few seconds after
+  GZreader starts). A tap listens to it as above. Delete the book and its
+  cassette goes too (unless it was made into an audiobook).
 - **In the book**, the quick panel's **Read aloud** plays the narration from
   this page (tap again to stop). Books without narration are read aloud with
   the Kindle's voice, as before; Settings → Audio → **Narrated books** can

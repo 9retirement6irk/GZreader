@@ -219,6 +219,8 @@ function Download.start(plugin, book, dest_path, on_done, from_queue, token_read
                 took > 0 and string.format("(%d KB/s)", math.floor(got / 1024 / took + 0.5)) or "")
             -- (laid out in the background if the Kindle is charging: gzreader_layout.lua)
             pcall(function() require("gzreader_layout").schedule(plugin, 60) end)
+            -- (a narrated book: an audiobook on the walkman too, gzreader_narratedopen.lua)
+            UIManager:nextTick(function() pcall(function() require("gzreader_narratedopen").onWalkman(plugin, dest_path) end) end)
         else
             if result_err == "cancelled" or tostring(result_err):match("^http_4") then os.remove(part) end
             Log.warn("download failed", "book=" .. tostring(book.id), tostring(result_err), "after " .. took .. "s",
