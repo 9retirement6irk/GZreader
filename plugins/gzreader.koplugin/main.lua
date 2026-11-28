@@ -430,6 +430,11 @@ function Grimmory:installDailyPaper()
         if not paperOn() then return nil end
         return require("gzreader_dailyscreen").shelfItem(plugin, ctx, area_h, cover_w)
     end)
+    -- (the game board beside it: gzreader_gameboardscreen.lua loads only when it's on)
+    rawset(_G, "__GZ_SHELF_GAMES", function(ctx, area_h, cover_w)
+        if not require("gzreader_gameboard").enabled(plugin) then return nil end
+        return require("gzreader_gameboardscreen").shelfItem(plugin, ctx, area_h, cover_w)
+    end)
     if not Grimmory.lazy_logged then
         Grimmory.lazy_logged = true
         Log.info("start: loaded only when used: daily paper", package.loaded["gzreader_dailyscreen"] and "loaded" or "not loaded",
@@ -955,8 +960,16 @@ function Grimmory:sectionItems(section)
         end
         return items
     end
-    -- (no rows of GZreader's in Home: the daily paper is in Accounts and services, with the
-    -- other things fetched from the web: Grimmory:dailySettingsItems; the owner, 2026-11-18)
+    -- (the daily paper is in Accounts and services, with the other things fetched from the
+    -- web: Grimmory:dailySettingsItems; the owner, 2026-11-18. The game board, made on the
+    -- Kindle, is Home's own: gzreader_gameboardscreen.lua)
+    if section == "home" then
+        return { icon("widgets", {
+            text = _("Game board"),
+            help_text = _("A box of puzzles on Home's bookshelf, beside the daily paper."),
+            sub_item_table_func = function() return require("gzreader_gameboardscreen").settingsItems(self) end,
+        }) }
+    end
     return {}
 end
 
@@ -2357,6 +2370,10 @@ function Grimmory:onCloseDocument()
     if self.tts then self.tts:stop(); self.tts = nil end
     self.bookmarks = nil
     pcall(function() require("gzreader_darktext").onClosed() end) -- (the screen's own temperature again)
+    -- (the game board's words from the pages just read, when it's on)
+    if type(self.store) == "table" and type(self.store.games) == "table" and self.store.games.enabled then
+        pcall(function() require("gzreader_gameboard").harvest(self, self.ui) end)
+    end
     if self.annotations then
         pcall(self.annotations.onClose, self.annotations)
         self.annotations = nil

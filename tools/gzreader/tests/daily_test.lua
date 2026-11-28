@@ -1343,8 +1343,9 @@ local tree = read(REPO .. "/plugins/zenos.koplugin/common/gz_settings_tree.lua")
 check(tree:find('row(_("Daily paper"), _("Feeds"), "dailySettingsItems", "history")', 1, true) ~= nil,
     "Settings → Accounts and services has the daily paper (with the other things fetched from the web)")
 local sh = read(REPO .. "/plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/shelf.lua")
-check(sh:find('rawget(_G, "__GZ_SHELF_PAPER")', 1, true) and sh:find("opts.gz_home", 1, true) and sh:find("gz_paper = true", 1, true),
-    "ZenOS's shelf asks for the newspaper, on Home's first shelf only")
+check(sh:find('{ "__GZ_SHELF_PAPER", "gz:daily-paper" }, { "__GZ_SHELF_GAMES", "gz:game-board" }', 1, true) and sh:find("rawget(_G, gz_hook[1])", 1, true)
+    and sh:find("r == 1 and opts.gz_home", 1, true) and sh:find("gz_paper = true", 1, true),
+    "ZenOS's shelf asks for the newspaper, then the game board, on Home's first shelf only")
 check(sh:find("i == picked and slot.gz_paper", 1, true) and sh:find("slot.face:paintTo", 1, true) and sh:find("ctx.focusHomeTarget(slot.target)", 1, true),
     "… stands it on its side, and turns it to its front page when it's picked, as a book shows its cover")
 check(read(REPO .. "/plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/strip_common.lua"):find("gz_home = true", 1, true), "Home's shelf says it's Home's")

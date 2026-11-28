@@ -142,6 +142,10 @@ sec "the daily paper (feeds read, an edition a day, Home's widget and Settings)"
 (cd "$T" && luajit daily_test.lua "$REPO" "$T/lib" "$WORK/daily" "$KOBASE") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
+sec "the game board (themed puzzles, words from books, the AI's theme, history, achievements)"
+(cd "$T" && luajit gameboard_test.lua "$REPO/plugins/gzreader.koplugin" "$T/lib") 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
+
 sec "screen rotation (Auto-rotate tile, Home keeps the rotation, notes turn with the screen)"
 (cd "$T" && luajit rotation_test.lua "$REPO/plugins/gzreader.koplugin") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || fail

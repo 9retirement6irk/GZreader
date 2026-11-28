@@ -1203,6 +1203,32 @@ function M.build_install_pages(ctx)
         for i, page in ipairs(pages) do if page.title == _("Library View") then at = i + 1 end end
         table.insert(pages, at, recent_page)
     end
+    -- GZreader: what stands on Home's shelf among the books: the daily paper and/or
+    -- the game board (both off unless ticked; gzreader_gameboard.lua), after the
+    -- other pages about Home
+    local okh, shelf_page = pcall(function()
+        local g = grimmoryPlugin(ctx)
+        local okb, Board = pcall(require, "gzreader_gameboard")
+        if not (g and okb and type(g.store) == "table") then return nil end
+        return {
+            title       = _("On Home's shelf"),
+            description = _("Two things can stand on Home's bookshelf among your books:") .. "\n"
+                .. _("The daily paper: news from feeds you choose, once a day, with puzzles.") .. "\n"
+                .. _("The game board: the paper's puzzles and themed ones from your books, the season or a category, with achievements.") .. "\n"
+                .. _("Either can be changed later in Settings."),
+            choice_type = "checkbox",
+            gz_home_shelf = true,
+            choices     = Board.setupChoices(g),
+            on_apply    = function(sel) pcall(Board.applySetup, g, sel) end,
+        }
+    end)
+    if okh and shelf_page then
+        local at = #pages
+        for i, page in ipairs(pages) do
+            if page.title == _("Library View") or page.gz_server_recent then at = i + 1 end
+        end
+        table.insert(pages, at, shelf_page)
+    end
     if connect_page then table.insert(pages, 1, connect_page) end
     if grimmory_page then
         if type(grimmory_page.fill_sync) == "function" then

@@ -189,9 +189,12 @@ print("== GZreader's own names and values")
     package.loaded["gzreader_calendar"] = { hasNetSources = function() return false end }
     package.loaded["gzreader_immich"] = { new = function() return { isConnected = function() return false end } end }
     package.loaded["gzreader_daily"] = { enabled = function() return paper_on end }
+    local board_on = false
+    package.loaded["gzreader_gameboard"] = { enabled = function() return board_on end }
     local function page()
         return {
-            { text = "Home and tabs", _zen_settings_root = "home", sub_item_table = { { text = "Home", sub_item_table = { { text = "Presets", sub_item_table = { { text = "Zen Default" }, { text_func = function() return "Zen Default" end } } } } },
+            { text = "Home and tabs", _zen_settings_root = "home", sub_item_table = { { text = "Home", sub_item_table = { { text = "Presets", sub_item_table = { { text = "Zen Default" }, { text_func = function() return "Zen Default" end } } },
+                    { text = "Game board", sub_item_table = { { text = "Game board on Home's bookshelf" } } } } },
                 { text = "Status bar" } } },
             { text = "Reader", _zen_settings_root = "reader", sub_item_table = {
                 { text = "Highlight / Lookup", sub_item_table = { { text = "Zen quick lookup" }, { text = "Zen highlight menu" } } },
@@ -214,8 +217,9 @@ print("== GZreader's own names and values")
     check(Tidy.label(bsb) == "Presets" and texts(bsb.sub_item_table) == "Your settings before a preset", "…the bottom status bar's Presets; Backup of Original named for what it is")
     check(texts(Tidy.find(reader, "Closing a book").sub_item_table_func()[1].sub_item_table) == "End-of-book page", "…End of document action: End-of-book page")
     local home = sec(p, "home")
-    check(texts(home) == "Home | Daily paper | Home's status bar" and texts(home[1].sub_item_table[1].sub_item_table) == "Standard | Standard",
-        "Home and tabs: Home's status bar (the reader has its own); Home's preset Standard")
+    check(texts(home) == "Home | Daily paper | Game board | Home's status bar" and texts(home[1].sub_item_table[1].sub_item_table) == "Standard | Standard",
+        "Home and tabs: Home's status bar (the reader has its own); Home's preset Standard; " .. texts(home))
+    check(texts(home[1].sub_item_table) == "Presets", "Game board: on Home and tabs itself, after the daily paper, not inside Home's page")
     local acc = sec(p, "accounts")
     local function val(name) return Tidy.find(acc, name).mandatory_func() end
     check(val("Books") == "Not connected" and val("Notes") == "Memos" and val("Calendar") == "Not connected" and val("Photos") == "Not connected",
@@ -229,6 +233,10 @@ print("== GZreader's own names and values")
     check(paper.mandatory == nil and paper.mandatory_func() == "Off", "Home and tabs → Daily paper: Off")
     paper_on = true
     check(paper.mandatory_func() == "On", "…On")
+    local board = Tidy.find(home, "Game board")
+    check(board.mandatory_func() == "Off", "Home and tabs → Game board: Off")
+    board_on = true
+    check(board.mandatory_func() == "On", "…On")
 end)()
 
 print("== a connection row on every service's page")
