@@ -1,4 +1,4 @@
-Connecting GZreader to your servers: the setup page in your browser, Grimmory (with single sign-on), copying connections from another GZreader, and servers behind Cloudflare. Kindles without Wi‑Fi do this on a computer: [Sync with a computer](Sync-with-a-Computer).
+Connecting GZreader to your servers: the setup page in your browser, your book server (Grimmory, with single sign-on, or [BookOrbit](BookOrbit)), copying connections from another GZreader, and servers behind Cloudflare. Kindles without Wi‑Fi do this on a computer: [Sync with a computer](Sync-with-a-Computer).
 
 ## The setup page (from your browser)
 
@@ -121,9 +121,9 @@ Kindle forgets the key but leaves it listed there.
   *Redirect: this Kindle's own address*, or an API key.
 - Kindles without Wi‑Fi (the sync page) still use an API key.
 
-## Connect to Grimmory
+## Connect to Grimmory or BookOrbit
 
-*(Using BookOrbit instead of Grimmory? Choose **BookOrbit** under **Book server** in the same form: see [BookOrbit](BookOrbit).)*
+*(BookOrbit: choose **BookOrbit** under **Book server** in the same form; what it needs is on [BookOrbit](BookOrbit#what-you-need-in-bookorbit).)*
 
 Open the **Catalog** tab. Grimmory's options (connection, sync, bookmarks,
 highlights, auto-download shelf) are in **Settings → Accounts and services → Books**

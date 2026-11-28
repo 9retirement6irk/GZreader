@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>GZreader – your self-hosted library on a Kindle</title>
-<meta name="description" content="GZreader is an e-reader for self-hosters: your own servers on a jailbroken Kindle, a Kobo or a rooted Nook, from the Kindle 2 and Nook 1 to the Kindle Scribe. Books and audiobooks from Grimmory with your place, bookmarks, highlights and notes in sync; notes and drawings in Memos; music from Plex; photos from Immich; your calendars; Home Assistant. Every connection is optional.">
-<meta name="keywords" content="Grimmory, BookLore, Kindle, Plex music on Kindle, Kindle audiobooks, KOReader, KOReader plugin, Kindle jailbreak, KUAL, Kindle Keyboard, Kindle 3, Kindle 2, Kindle DX, Kindle without Wi-Fi, USB sync, Paperwhite, e-ink, self-hosted, ebook sync, audiobooks, Memos, CalDAV">
+<meta name="description" content="GZreader is an e-reader for self-hosters: your own servers on a jailbroken Kindle, a Kobo or a rooted Nook, from the Kindle 2 and Nook 1 to the Kindle Scribe. Books and audiobooks from Grimmory or BookOrbit with your place, bookmarks, highlights and notes in sync; notes and drawings in Memos; music from Plex; photos from Immich; your calendars; Home Assistant. Every connection is optional.">
+<meta name="keywords" content="Grimmory, BookLore, BookOrbit, Kindle, Plex music on Kindle, Kindle audiobooks, KOReader, KOReader plugin, Kindle jailbreak, KUAL, Kindle Keyboard, Kindle 3, Kindle 2, Kindle DX, Kindle without Wi-Fi, USB sync, Paperwhite, e-ink, self-hosted, ebook sync, audiobooks, Memos, CalDAV">
 <link rel="canonical" href="https://9retirement6irk.github.io/GZreader/">
 <meta property="og:type" content="website">
 <meta property="og:title" content="GZreader – your self-hosted library on a Kindle">
-<meta property="og:description" content="Your self-hosted library on a Kindle: books from Grimmory, notes from Memos, music from Plex, photos from Immich, your calendars and Home Assistant, on Kindles, Kobos and Nooks.">
+<meta property="og:description" content="Your self-hosted library on a Kindle: books from Grimmory or BookOrbit, notes from Memos, music from Plex, photos from Immich, your calendars and Home Assistant, on Kindles, Kobos and Nooks.">
 <meta property="og:url" content="https://9retirement6irk.github.io/GZreader/">
 <meta property="og:image" content="https://9retirement6irk.github.io/GZreader/social-preview.png">
 <meta name="twitter:card" content="summary_large_image">
@@ -21,7 +21,7 @@
   "name": "GZreader",
   "applicationCategory": "BookApplication",
   "operatingSystem": "Kindle (jailbroken), KOReader",
-  "description": "An e-reader for self-hosters, built on KOReader and ZenOS for Kindles, Kobos and Nooks: books from Grimmory, notes from Memos, music from Plex, photos from Immich, calendars and Home Assistant.",
+  "description": "An e-reader for self-hosters, built on KOReader and ZenOS for Kindles, Kobos and Nooks: books from Grimmory or BookOrbit, notes from Memos, music from Plex, photos from Immich, calendars and Home Assistant.",
   "url": "https://9retirement6irk.github.io/GZreader/",
   "downloadUrl": "https://github.com/9retirement6irk/GZreader/releases/latest",
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
@@ -153,7 +153,7 @@
     <img class="logo" src="gzreader-logo.svg" alt="GZreader logo" width="96" height="96">
     <h1>GZreader</h1>
     <p class="tag">Your <strong>self-hosted library</strong> on a <strong>Kindle</strong>.</p>
-    <p class="tag sub">Books from Grimmory, notes from Memos, music from Plex, photos from Immich, your calendars and
+    <p class="tag sub">Books from Grimmory or BookOrbit, notes from Memos, music from Plex, photos from Immich, your calendars and
       Home Assistant: the servers you run yourself, on Kindles from the Kindle 2 to the Scribe, on Kobos and on the first Nooks.</p>
     <div class="cta">
       <a class="btn primary" href="https://github.com/9retirement6irk/GZreader/releases/latest">Download the latest release</a>
@@ -195,10 +195,10 @@
     and, as test builds, Kobos (no jailbreak: NickelMenu or KFMon starts it) and rooted Nooks: the Nook 1st Edition and the Nook Simple Touch.</p>
 
   <h2 id="servers">Your servers, on an e-reader</h2>
-  <p>It began as a reader for a Grimmory library (the name is Grimmory + ZenOS + KOReader) and has grown past books.
+  <p>It began as a reader for a Grimmory library (the name is Grimmory + ZenOS + KOReader); it now works just as well with BookOrbit, and has grown past books.
     Each connection is optional: without any of them it's still a reader you can send books to from your browser.</p>
   <ul class="servers">
-    <li><strong><a href="https://grimmory.org">Grimmory</a></strong> (formerly BookLore): browse and download your books and audiobooks; your place, bookmarks, highlights and notes stay in sync. <a href="https://github.com/bookorbit/bookorbit">BookOrbit</a> is in testing.</li>
+    <li><strong><a href="https://grimmory.org">Grimmory</a></strong> (formerly BookLore) or <strong><a href="https://github.com/bookorbit/bookorbit">BookOrbit</a></strong>, your book server: browse and download your books and audiobooks; your place, bookmarks, highlights, notes and ratings stay in sync. With BookOrbit you can also request books it doesn't have yet.</li>
     <li><strong><a href="https://usememos.com">Memos</a></strong>: sticky notes, a rich text editor, drawings and a journal.</li>
     <li><strong>Plex</strong>: music, and audiobooks from a Plex library.</li>
     <li><strong><a href="https://immich.app">Immich</a></strong>: your photos as the sleep screen and wallpaper, and in notes.</li>
@@ -214,14 +214,14 @@
     <div class="page">
       <img src="screenshots/catalog-books.png" alt="The Books page: Continue reading and Recently added on display ledges, then a bookcase of lists" width="600" height="800" loading="lazy">
       <h3>Books</h3>
-      <p>Your Grimmory library: Continue reading, Recently added, All books, libraries, shelves, authors, series and search.</p>
+      <p>Your Grimmory or BookOrbit library: Continue reading, Recently added, All books, libraries, shelves, authors, series and search.</p>
       <p class="dl"><strong>Download</strong> or <strong>Download &amp; open</strong>. Your place, bookmarks, highlights and ratings stay in sync.</p>
     </div>
     <div class="page">
       <img src="screenshots/catalog-audiobooks.png" alt="The Audiobooks page: Continue listening and Recently added, then All audiobooks, Authors, Shelves, Series" width="600" height="800" loading="lazy">
       <h3>Audiobooks</h3>
-      <p>Grimmory's audiobooks (or a Plex audiobook library): Continue listening, Recently added, authors, shelves and series.</p>
-      <p class="dl"><strong>Download &amp; listen</strong> opens a cassette walkman. Your place is kept, and synced with Grimmory.</p>
+      <p>Grimmory's or BookOrbit's audiobooks (or a Plex audiobook library): Continue listening, Recently added, authors, shelves and series.</p>
+      <p class="dl"><strong>Download &amp; listen</strong> opens a cassette walkman. Your place is kept, and synced with your book server.</p>
     </div>
     <div class="page">
       <img src="screenshots/catalog-music.png" alt="The Music page: Plex albums as CD cases on Recently played and Recently added, then Playlists, Albums, Artists" width="600" height="800" loading="lazy">
@@ -233,7 +233,7 @@
   <p class="fine catalog-note">Audiobooks and Music are on Kindles with a speaker or headphone jack (Kindle 2, 3, DX, Touch) or with Bluetooth (Scribe, Paperwhite 5 and newer…); the others have the Books page.</p>
 
   <div class="features">
-    <div class="feature"><h3>Reading and Grimmory sync</h3><p>KOReader's reader for EPUB, PDF, MOBI, CBZ and more. Your place, bookmarks, highlights, notes and ratings go both ways with Grimmory, and your books stand on shelves on the Kindle.</p></div>
+    <div class="feature"><h3>Reading, synced with your book server</h3><p>KOReader's reader for EPUB, PDF, MOBI, CBZ and more. Your place, bookmarks, highlights, notes and ratings go both ways with Grimmory or BookOrbit, and your books stand on shelves on the Kindle.</p></div>
     <div class="feature"><h3>Set up and send books from your browser</h3><p>Scan a QR code or type the Kindle's address and a PIN. One page connects everything, single sign-on included, and sends books from your phone or computer straight to the Kindle.</p></div>
     <div class="feature"><h3>Notes</h3><p>Your Memos notes as sticky notes, written in a rich text editor like Memos' own: headings, bold, lists and checklists, formatted as you type.</p></div>
     <div class="feature"><h3>Calendars</h3><p>CalDAV accounts and calendar links (Proton, Google, Outlook…) as an agenda, day, week or month.</p></div>
@@ -257,7 +257,7 @@
           <ul>
             <li>Where you are in every book</li>
             <li>Bookmarks, highlights and notes</li>
-            <li>Reading time and ratings, for Grimmory's stats</li>
+            <li>Reading time and ratings, for Grimmory's stats (with BookOrbit, not yet)</li>
             <li>Notes you wrote or ticked, to Memos</li>
           </ul>
         </div>
@@ -344,7 +344,7 @@
 
   <footer>
     GZreader is free software, built on KOReader (AGPL-3.0) and ZenOS.
-    Grimmory, Kindle and other names belong to their owners; GZreader isn't affiliated with Amazon or the Grimmory project.
+    Grimmory, BookOrbit, Kindle and other names belong to their owners; GZreader isn't affiliated with Amazon or the Grimmory or BookOrbit projects.
     · <a href="https://github.com/9retirement6irk/GZreader">github.com/9retirement6irk/GZreader</a>
   </footer>
 </div>
