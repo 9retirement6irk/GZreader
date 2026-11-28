@@ -214,6 +214,10 @@ sec "the watchdog (its own process: freezes, waking up)"
 (cd "$T" && luajit watchdog_test.lua "$REPO/plugins/gzreader.koplugin" "$WORK") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
+sec "the placeholder cover's frame kept on disk (drawn once per size, not at every start)"
+(cd "$T" && luajit placeholder_cover_test.lua "$REPO/plugins/zenos.koplugin") 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
+
 sec "the shelves' look"
 (cd "$T" && luajit shelf_look_test.lua "$REPO" "$KOBASE") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || fail

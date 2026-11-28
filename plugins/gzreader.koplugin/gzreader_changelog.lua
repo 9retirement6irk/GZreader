@@ -21,6 +21,7 @@ return {
             { short = "Magazines stand among the books on their side, a little taller", text = "Magazine issues you download stand among the books on the Downloads shelves and on Home's shelf on their side: a thin spine, a bit taller than the books, with the magazine's name and the issue along it. Picked, an issue turns to show its cover, as a book does." },
             { short = "Catalog: no page arrows under the order desk", text = "The Catalog's Requests page no longer shows page arrows and a page number under the order desk's counter when you have many requests: the desk is one page, with +N more and Didn't arrive for the rest." },
             { short = "A little quicker to start: the cover database is set up once", text = "GZreader no longer sets up the covers' database again at every start when it is already there. Nothing looks different; the start is a little shorter." },
+            { short = "A little quicker to start: the blank cover's frame is kept", text = "The decorated frame drawn for books without a cover is kept on the Kindle once drawn, so it isn't drawn from scratch at every start. Nothing looks different." },
         },
     },
     {

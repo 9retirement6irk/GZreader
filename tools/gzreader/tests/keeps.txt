@@ -45,6 +45,7 @@
 1 plugins/zenos.koplugin/common/brand_migration.lua
 9 plugins/zenos.koplugin/common/cover_disk_cache.lua
 2 plugins/zenos.koplugin/common/cover_render_cache.lua
+2 plugins/zenos.koplugin/common/cover_utils.lua
 2 plugins/zenos.koplugin/common/db_library.lua
 1 plugins/zenos.koplugin/common/dispatch_action.lua
 2 plugins/zenos.koplugin/common/gz_bluetooth.lua
