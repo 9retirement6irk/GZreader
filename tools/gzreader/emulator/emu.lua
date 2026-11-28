@@ -969,21 +969,6 @@ table.insert(package.loaders, 2, function(name)
 end)
 
 table.insert(package.loaders, 2, function(name)
-    if name ~= "gzreader_homemenu" then return nil end
-    return function()
-        local m = dofile(package.searchpath(name, package.path))
-        local orig = m.show
-        m.show = function(...)
-            local c = os.clock()
-            local r = { orig(...) }
-            say(string.format("HomeMenu.show took %.2f s CPU", os.clock() - c))
-            return unpack(r)
-        end
-        return m
-    end
-end)
-
-table.insert(package.loaders, 2, function(name)
     if name ~= "gzreader_tts" then return nil end
     return function()
         local m = dofile(package.searchpath(name, package.path))

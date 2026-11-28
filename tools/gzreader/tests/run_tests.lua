@@ -4373,8 +4373,6 @@ do
     local icon, label = Tasks.status()
     check(icon and label:match("%d+%%") and label:match("%+2"), "title bar: percentage and how many wait " .. tostring(label))
     check(Download.unqueue(29) and #Download.queue == 1, "take a book out of the queue")
-    local hm = require("gzreader_homemenu").items(plugin)
-    check(hm[1].text_func():match("^Downloads %(2%)"), "GZreader menu starts with Downloads (2) while downloading")
     Tasks.show()
     -- the screen kept current: only the lines that changed, on the page shown
     local function rect(x, y, w, h)
@@ -5510,17 +5508,6 @@ do
     check(M.onToggleZenMode and stayed and zp.config.features.zen_mode == true and zapplied == true and zsaved == 1,
         "ZenOS's Toggle Zen Mode action (a gesture) keeps it on, and turns it on if it was off")
     Panel.showAll()
-    -- More: the full Home menu, still without KOReader settings or night mode
-    NG.applies = function() return true end
-    local items = HomeMenu.items(hplug)
-    NG.applies = ng_applies
-    local all = {}
-    for _i, it in ipairs(items) do all[#all + 1] = it.text or it.text_func() end
-    all = table.concat(all, "|")
-    check(all:match("Continue reading") and not all:match("KOReader settings") and not all:match("Night mode"),
-        "More (the Home menu): no KOReader settings, no night mode on a Kindle 3… " .. all)
-    HomeMenu.open = nil
-
     hui.menu._gz_full = true; hui.menu:onShowMenu(); hui.menu._gz_full = nil
     check(full_shown == 1 and panel_shown == 2, "All settings reaches the original full menu")
     Panel.show = panel_show
@@ -16222,13 +16209,7 @@ print("Music (Plex): the server, downloads, the player")
     items = Tab.controlItems(plugin)
     check(items[1].text == "Pause" and items[2].text == "Next track", "menus: Music while playing")
     local mi = Tab.menuItem(plugin)
-    check(mi.text_func() == "Music: Tone A — The Tones", "Home / Reading menu: what's playing")
-    local RM = require("gzreader_readmenu")
-    local found = false
-    for _i, it in ipairs(RM.items({ ui = { view = {}, document = { info = {} } } })) do
-        if it.text_func and tostring(it.text_func()):match("^Music") then found = true end
-    end
-    check(found, "Reading menu: a Music line (Kindles with audio)")
+    check(mi.text_func() == "Music: Tone A — The Tones", "the Music line: what's playing")
     Music.current:stop()
     Engine.exec, Engine.alive = saved_exec, saved_alive
     Music.delete(plugin, Music.find(plugin, "album", "202"))

@@ -61,7 +61,6 @@ function Plex:new(store)
     return setmetatable({ store = store }, self)
 end
 
-function Plex:isSignedIn() return self.store.token ~= nil end
 function Plex:isConnected() return self.store.token ~= nil and type(self.store.server) == "table" and self.store.server.uri ~= nil end
 
 --- This Kindle's id for Plex (made once; Plex lists it under Authorized Devices).

@@ -633,38 +633,6 @@ function Panel.showLayout(ui)
     ui:handleEvent(Event:new("ShowConfigMenu"))
 end
 
---- The fonts, as a list (the one in use ticked): picking one sets it.
---- (KOReader's font menu, outside its top menu: letter keys, the 5-way, taps.)
-function Panel.showFonts(ui)
-    local face_table = ui.font.face_table
-    if face_table.needs_refresh and face_table.refresh_func then face_table = face_table.refresh_func() end
-    local items, current = {}, 1
-    for _i, it in ipairs(face_table) do
-        if it.menu_item_id and it.callback then
-            local on = it.checked_func and it.checked_func()
-            if on then current = #items + 1 end
-            -- (ZenOS rows: the font icon, the one in use ticked on the right)
-            items[#items + 1] = { text = it.text_func and it.text_func() or it.text or it.menu_item_id,
-                mandatory = on and "\u{2713}" or nil, gz_run = it.callback, gz_icon = "font" }
-        end
-    end
-    require("gzreader_rows").mark(items)
-    local menu
-    menu = Menu:new{ title = _("Font"), item_table = items, covers_fullscreen = true, is_borderless = true,
-        width = Screen:getWidth(), height = Screen:getHeight(),
-        is_popout = false, title_bar_fm_style = true,
-        onMenuSelect = function(_m, item)
-            UIManager:close(menu)
-            if item.gz_run then UIManager:nextTick(item.gz_run) end
-            return true
-        end }
-    require("gzreader_rows").apply(menu)
-    -- open at the page with the font in use
-    pcall(function() menu:onGotoPage(math.ceil(current / menu.perpage)) end)
-    UIManager:show(menu)
-    return menu
-end
-
 ---------------------------------------------------------------- the panel
 
 local PanelWidget = FocusManager:extend{ name = "gzreader quick panel", modal = true }
@@ -819,9 +787,6 @@ function PanelWidget:sliderAt(kind, x, final)
     self:setSlider(kind, v, not final)
     return true
 end
-
---- The light at the slider's position x.
-function PanelWidget:lightAt(x, final) return self:sliderAt("light", x, final) end
 
 --- A finger put down: a slider follows a drag only if it went down on it
 --- (_light_touched: which one, "light" or "warmth", or false).
