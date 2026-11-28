@@ -164,8 +164,9 @@ API to `/api` are found too.
 - **Tags** show as grey chips **where their line is**, as on the web; a tag
   inside a sentence stays in it. A journal entry's mood, feeling, cause and
   activity tags (`#mood/…`, `#felt/…`, `#impact/…`, `#did/…`, or the
-  prefixes set in Memos' journal settings) are always at the top, under the
-  entry's heading. There's no list of every tag at the bottom any more.
+  prefixes set in Memos' journal settings) show as the **state of mind
+  panel** after the text instead (see Journal below). There's no list of
+  every tag at the bottom any more.
 - **Tag colours** (Colorsoft, Scribe Colorsoft): a tag you gave a colour in
   Memos (Settings → Tags, a name or a pattern such as `project/.*`) shows in
   it, in a note and on the tag chips at the top of the Notes tab, as on the
@@ -668,9 +669,15 @@ API to `/api` are found too.
     Kindles and the Kindle 4 keep the rows of buttons (for the keys and the
     5-way).
   - **Saved entries** show their mood as the web does: the **face beside the
-    note's time** on the board's sticky note and, on its page, the face and
-    the mood's name above the text, and the **tags as light grey chips**
-    at the top, under the entry's heading.
+    note's time** on the board's sticky note and, on its page, the **state
+    of mind panel** after the text, as the Memos fork draws it: the face,
+    Overall today (or Right now) and the mood's name, the seven steps with
+    yours marked, then **Feelings**, **Because of** (each with its icon) and
+    **Did** (your activities' icons). The line of journal tags isn't shown;
+    the tags stay in the note as written. Tap an item (keyboard Kindles: its
+    letter) to see the notes with that tag. On grey screens the steps carry
+    −3 to +3 and yours is black; on a Colorsoft they're in the fork's
+    colours, with a frame round yours.
   - A **prompt** (**↻ Another** for the next one) and, right under it, your
     **words on lined paper**, typed straight in as plain text. A tap in it
     brings the keyboard; the questions above fold away while you type, so

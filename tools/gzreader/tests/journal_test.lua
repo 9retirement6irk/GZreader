@@ -271,5 +271,48 @@ check(select(2, src:gsub("log_url = shown", "")) == 1 and src:find("local functi
     and not src:find("Log.info(.-place%.name") and not src:find("Log.info(.-lat"),
     "privacy: the addresses asked are logged without their query (no place, no coordinates in the log)")
 
+print("== the state of mind panel (the fork's journalState, JournalStatePanel)")
+local State = require("gzreader_journalstate")
+local mind = State.of({ "Mood/Pleasant", "mood/today", "felt/grateful", "felt/calm", "felt/grateful", "felt/nope", "impact/self-care",
+    "impact/nope", "did/reading", "did/Walk", "did/a/b", "trip" }, Journal.defaults())
+local function idsOf(list) local o = {} for i, it in ipairs(list) do o[i] = it.id end return table.concat(o, " ") end
+check(mind and mind.valence == "pleasant" and mind.kind == "today" and mind.mood_tag == "Mood/Pleasant",
+    "its mood: the step, the kind (a day's when none), the tag that records it (as written, to filter by)")
+check(idsOf(mind.feelings) == "grateful calm" and mind.feelings[1].label == "Grateful" and mind.feelings[1].tag == "felt/grateful",
+    "feelings: the fork's words only, each once, in the note's order")
+check(idsOf(mind.impacts) == "self-care" and mind.impacts[1].icon == "bath" and mind.impacts[1].label == "Self care",
+    "because of: the fork's causes only, each with its icon")
+check(idsOf(mind.activities) == "reading walk" and mind.activities[1].icon == "book-open" and mind.activities[1].label == "Reading"
+    and mind.activities[2].icon == "star" and mind.activities[2].label == "Walk" and mind.activities[2].tag == "did/Walk",
+    "did: any one-segment activity; the settings' label and icon, else its words and a star")
+check(State.isShown(mind, "mood/pleasant") and State.isShown(mind, "MOOD/TODAY") and State.isShown(mind, "felt/calm")
+    and State.isShown(mind, "did/walk") and not State.isShown(mind, "felt/nope") and not State.isShown(mind, "impact/nope")
+    and not State.isShown(mind, "did/a/b") and not State.isShown(mind, "trip") and not State.isShown(nil, "felt/calm"),
+    "the tags it draws are left out of the note's tag line; the rest (unknown words, deeper tags, other tags) stay")
+local now = State.of({ "mood/good", "mood/now" }, Journal.defaults())
+check(now and now.valence == "pleasant" and now.kind == "now" and now.mood_tag == "mood/good" and State.isShown(now, "mood/now"),
+    "an old face (#mood/good) and a check-in's #mood/now")
+check(State.of({ "trip", "mood/today" }, Journal.defaults()) == nil and State.of({}, nil) == nil and State.of(nil, nil) == nil,
+    "no panel for a note without journal tags (a lone #mood/today is no mood)")
+local own = State.of({ "feel/happy", "why/work", "done/gym" }, Journal.settings({ feelingTagPrefix = "Feel", impactTagPrefix = "why/",
+    activityTagPrefix = "done", activities = { { id = "Gym", label = "The gym", icon = "dumbbell" } } }))
+check(own and own.valence == nil and idsOf(own.feelings) == "happy" and idsOf(own.impacts) == "work"
+    and own.activities[1].label == "The gym" and own.activities[1].icon == "dumbbell",
+    "the user's own prefixes and activities (Memos' journal settings)")
+local grey, colour = State.steps("pleasant", false), State.steps("pleasant", true)
+check(#grey == 7 and grey[1].label == "\u{2212}3" and grey[7].label == "+3" and grey[6].chosen and not grey[5].chosen and grey[6].fill == nil,
+    "grey screens: the seven steps carry −3 … +3, the chosen one marked")
+check(colour[6].fill == "#f2a44a" and colour[1].fill ~= "#363a8a" and colour[1].fill:match("^#%x%x%x%x%x%x$"),
+    "colour screens: the chosen step in the fork's colour, the others lighter")
+local function exists(p) local fh = io.open(p, "rb"); if fh then fh:close() end return fh ~= nil end
+local missing = {}
+for _i, id in ipairs(Journal.IMPACTS) do
+    if not exists(PLUGIN .. "/icons/journal/" .. State.IMPACT_ICONS[id] .. ".svg") then missing[#missing + 1] = id end
+end
+for _i, icon in ipairs(Journal.ACTIVITY_ICONS) do
+    if not exists(PLUGIN .. "/icons/journal/" .. icon .. ".svg") then missing[#missing + 1] = icon end
+end
+check(#missing == 0, "an icon for every cause and every activity icon (" .. table.concat(missing, " ") .. ")")
+
 print(("journal: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)
