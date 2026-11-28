@@ -34,6 +34,15 @@ The board is drawn as a game table, everything on it big enough to tap:
   **Started** once you've begun it, and gets a ✓ stamp when it's done. They
   come with each day's paper (without a paper, from the puzzles' own word
   list).
+- **Bingo**: the fourth card of that row opens the bingo hall. It's the
+  75-ball game, played alone against the caller: **Call the next ball**
+  (keyboard Kindles: N) shows a ball such as B 7 or O 61, and you daub the
+  square yourself by tapping it (5-way and Press on Kindles with keys). A
+  square can't be daubed before its number is called, and the middle one is
+  free. Five in a line, across, down or corner to corner, is **BINGO**: the
+  hall says how many calls it took and keeps your best (about 41 is
+  average). **New game** deals another card. A game half played is still
+  there after a restart. Everything happens on the Kindle; nothing is sent.
 - **The theme's box lid**: the theme on the board and how many of its
   puzzles are done. Tap it to choose another theme. The **die** beside it
   gives **New puzzles** on the same theme.
@@ -87,8 +96,8 @@ when, which puzzle, which theme (or the daily paper), how long from your first
 move, and whether you took help (**Check**, or a hint). The last 200 are kept.
 
 Achievements unlock as you go and are shown for a moment when they do: your
-first puzzle, ten, fifty and a hundred; one of each kind of puzzle; all three
-of a day's paper puzzles on the board; a crossword without **Check**; a puzzle within three
+first puzzle, ten, fifty and a hundred; one of each kind of puzzle; a game of bingo, and one won within 30 calls;
+all three of a day's paper puzzles on the board; a crossword without **Check**; a puzzle within three
 minutes; puzzles from your books (one, then five different books); four
 seasons; five categories; an AI theme; three, seven and thirty days running;
 a puzzle after midnight, and one before seven in the morning.

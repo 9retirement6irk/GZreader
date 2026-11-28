@@ -24,6 +24,7 @@ return {
             { short = "A little quicker to start: the blank cover's frame is kept", text = "The decorated frame drawn for books without a cover is kept on the Kindle once drawn, so it isn't drawn from scratch at every start. Nothing looks different." },
             { short = "A slightly smaller download: four unused files left out", text = "The package and updates no longer carry four ZenOS files GZreader never loads (about 250 KB). Nothing looks or works differently." },
             { short = "Starts without checking for the pre-1.35 folder layout", text = "The one-time move of GZreader into its own folder (1.35) is no longer run or checked at every start: every device has made it. A version before 1.35 has to be updated to 1.35 first, or installed fresh." },
+            { short = "Bingo on the game board", text = "The game board has a Bingo card beside the paper's puzzles: the 75-ball game against the caller. Call a ball, daub your squares yourself, five in a line is BINGO; the hall keeps how many calls your best game took. Two achievements go with it. Played on the Kindle alone: nothing is sent." },
         },
     },
     {
