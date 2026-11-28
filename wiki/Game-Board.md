@@ -27,10 +27,10 @@ Tap it again (or press) to open it.
 The board is drawn as a game table, everything on it big enough to tap:
 
 - **Today's paper**: three playing cards, one for each of the [daily
-  paper's](Daily-Paper#puzzles) word search, crossword and maze (the board
-  has no sudoku), each with a picture of its puzzle. They are the paper's
-  own, kept in the same place: a word found on the board is found in the
-  paper, and a maze finished in the paper is ticked on the board. A card says
+  paper's](Daily-Paper#puzzles) word search, crossword and maze, each with a
+  picture of its puzzle. This is where the paper's puzzles are played (the
+  paper itself has no Puzzles button); their words come from the day's
+  stories. There is no sudoku. A card says
   **Started** once you've begun it, and gets a ✓ stamp when it's done. They
   come with each day's paper (without a paper, from the puzzles' own word
   list).
@@ -82,7 +82,7 @@ before or after. On a keyboard, **H** is a hint and **N** starts again.
 
 ## Achievements and history
 
-Every puzzle you finish, on the board or in the paper, goes into the history:
+Every puzzle you finish goes into the history:
 when, which puzzle, which theme (or the daily paper), how long from your first
 move, and whether you took help (**Check**, or a hint). The last 200 are kept.
 
