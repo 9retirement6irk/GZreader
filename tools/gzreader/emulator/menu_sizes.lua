@@ -7,11 +7,6 @@ local s = { start = 16 }
 local function add(t) s[#s + 1] = t end
 local results = {}
 
-local function plugin()
-    local fm = require("apps/filemanager/filemanager").instance
-    return fm and fm.gzreader
-end
-
 --- Font sizes of the text in the top window (the most used one is "its" size).
 local function measure(name)
     return function(E)
