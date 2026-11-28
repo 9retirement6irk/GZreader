@@ -162,6 +162,19 @@ local function ornate_background(width, height, paper)
     local cached = RenderCache:get(cache_key, width, height)
     if cached then return cached end
 
+    -- GZreader: the drawn frame is kept on disk per size (as pre-sized covers are,
+    -- cover_disk_cache.lua; made again when the frame's file changes): drawing
+    -- the SVG again at every start was about 3% of one.
+    local ok_disk, Disk = pcall(require, "common/cover_disk_cache")
+    local on_disk = ok_disk and type(Disk) == "table" and ORNATE_FRAME_PATH ~= nil and paper == Blitbuffer.COLOR_WHITE
+    if on_disk then
+        local ok_load, kept = pcall(Disk.load, ORNATE_FRAME_PATH, width, height)
+        if ok_load and kept then
+            RenderCache:put(cache_key, width, height, kept)
+            return kept
+        end
+    end
+
     local background = Blitbuffer.new(width, height, Blitbuffer.TYPE_BBRGB32)
     background:paintRect(0, 0, width, height, paper)
 
@@ -190,6 +203,7 @@ local function ornate_background(width, height, paper)
         end
     end
 
+    if on_disk then pcall(Disk.save, ORNATE_FRAME_PATH, width, height, background) end -- GZreader
     RenderCache:put(cache_key, width, height, background)
     return background
 end
