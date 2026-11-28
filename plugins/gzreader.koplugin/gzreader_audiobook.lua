@@ -698,7 +698,6 @@ function Player:offerRemote(ms, plex, on_done)
     })
 end
 
-
 --- Keep Grimmory's description of the book (audiobooks downloaded before
 --- GZreader 1.6.2 don't have it; it can also change on the server).
 function Player:noteDetails(remote)
@@ -960,12 +959,6 @@ function Player:setSleep(minutes)
 end
 
 function Player:cancelSleep() self.sleep_at, self.sleep_end_of_chapter = nil, nil end
-
-function Player:sleepText()
-    if self.sleep_end_of_chapter then return _("Sleep: end of chapter") end
-    if self.sleep_at then return T(_("Sleep in %1"), Audiobook.fmt((self.sleep_at - os.time()) * 1000)) end
-    return nil
-end
 
 ---------------------------------------------------------------- screen
 

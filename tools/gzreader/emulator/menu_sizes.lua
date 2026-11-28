@@ -7,11 +7,6 @@ local s = { start = 16 }
 local function add(t) s[#s + 1] = t end
 local results = {}
 
-local function plugin()
-    local fm = require("apps/filemanager/filemanager").instance
-    return fm and fm.gzreader
-end
-
 --- Font sizes of the text in the top window (the most used one is "its" size).
 local function measure(name)
     return function(E)
@@ -60,9 +55,6 @@ add({ fn = function()
     end
 end, after = 6 })
 add({ fn = measure("2-home"), after = 1 })
-add({ fn = function() require("gzreader_homemenu").show(plugin()) end, after = 4 })
-add({ fn = measure("3-gz-menu"), after = 1 })
-add({ fn = closeTop, after = 3 })
 add({ fn = function() require("gzreader_homemenu").settings() end, after = 6 })
 add({ fn = measure("4-settings"), after = 1 })
 add({ fn = closeTop, after = 3 })
@@ -76,11 +68,6 @@ add({ fn = function()
     require("apps/reader/readerui"):showReader(dir .. "/sizes.epub")
 end, after = 25 })
 add({ fn = measure("6-book"), after = 1 })
-add({ fn = function()
-    local ui = require("apps/reader/readerui").instance
-    require("gzreader_readmenu").show(ui and ui.gzreader)
-end, after = 4 })
-add({ fn = measure("7-reading-menu"), after = 1 })
 add({ fn = function(E)
     local json = require("json")
     local f = io.open(E.out .. "/sizes.json", "w")

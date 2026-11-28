@@ -114,8 +114,6 @@ function Ask.face(el, size)
     return nil
 end
 
-function Ask.isHand(el) return Ask.face(el, 20) ~= nil end
-
 ---------------------------------------------------------------- pure parts (run_tests.lua)
 
 --- The boxes still waiting for an answer among `texts`.

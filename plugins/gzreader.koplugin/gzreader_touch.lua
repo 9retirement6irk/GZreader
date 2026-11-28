@@ -98,19 +98,6 @@ function Touch.text(with_keys, touch, dpad)
     return dpad or with_keys
 end
 
---- A row of buttons (touch): actions = { { text, callback }, … }.
-function Touch.buttonRow(width, actions, opts)
-    local ButtonTable = require("ui/widget/buttontable")
-    opts = opts or {}
-    local row = {}
-    for _i, a in ipairs(actions) do
-        row[#row + 1] = { text = a.text or a[1], callback = a.callback or a[2], enabled = a.enabled ~= false,
-            font_size = opts.font_size, font_bold = opts.bold }
-    end
-    return ButtonTable:new{ width = width, buttons = { row }, zero_sep = true, show_parent = opts.show_parent,
-        sep_width = 0 }
-end
-
 --- How wide each chip of a row is: icon chips (`icon_file`) square-ish,
 --- `icon_w` wide; text chips share the rest. Returns { w, … } per action.
 function Touch.chipWidths(width, actions, gap, icon_w)
