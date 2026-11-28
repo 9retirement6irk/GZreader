@@ -40,6 +40,7 @@
 11 platform/kindle/extensions/koreader/menu.json
 10 platform/kindle/koreader.sh
 5 platform/kindle/launchpad/koreader.ini
+1 plugins/coverbrowser.koplugin/bookinfomanager.lua
 15 plugins/statistics.koplugin/main.lua
 1 plugins/zenos.koplugin/common/brand_migration.lua
 9 plugins/zenos.koplugin/common/cover_disk_cache.lua
