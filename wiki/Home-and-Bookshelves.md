@@ -106,6 +106,13 @@ the book once you open one.
   cassette walkman with its headphones sitting on it, and **Music** (downloaded from Plex) as a
   CD player with headphones. In lists and tiles both folders are always first,
   whatever the sort.
+- **Magazines** (the issues you download from the Catalog's Magazines page)
+  stand among the books **on their side**: a thin spine, a bit taller than
+  the books, with the magazine's name and the issue along it. Picked (a tap
+  or the 5-way), an issue turns to show its cover as a book does; another
+  tap, Press or its letter opens it. The same on Home's shelf. Which books
+  are magazines: the magazine library chosen in **Settings → Accounts and
+  services → Books → Magazines** ([Magazines](Grimmory-Library#magazines)).
 - **Inside Audiobooks and Music** each audiobook is a cassette and each album
   or playlist a CD, always facing out with its cover showing, and its name on
   a little plate on the shelf under it. A tap (or Press, or its letter) opens

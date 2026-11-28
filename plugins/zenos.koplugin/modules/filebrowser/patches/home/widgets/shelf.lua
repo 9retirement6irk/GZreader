@@ -36,6 +36,9 @@ M.MAX_SPINE = 58
 M.TAPE_SPINE = 34
 M.TAPE_TALL = 0.6
 M.TAPE_SHADE = 0.72
+-- GZreader: a magazine issue stands on its side as a thin spine, a bit taller than the books
+M.MAG_SPINE = 26   -- its width (px at 160 dpi): a book's is 44-58
+M.MAG_OVER = 6     -- how much taller than the room a book can fill (px at 160 dpi)
 --- How many spines a shelf of `width` holds.
 function M.perRow(width)
     return math.max(4, math.min(24, math.floor((width - S(16)) / S(M.MAX_SPINE))))
@@ -94,12 +97,29 @@ function M.look(book, area_h)
     }
 end
 
+--- GZreader: is `book` a magazine issue (a download of the magazine library)?
+function M.isMagazine(book)
+    if type(book) ~= "table" or book.is_group == true then return false end
+    if book.gz_magazine ~= nil then return book.gz_magazine == true end
+    local hook = rawget(_G, "__GZ_IS_MAGAZINE")
+    local ok, yes = pcall(function() return hook and book.path and hook(book.path) end)
+    book.gz_magazine = ok and yes == true or false
+    return book.gz_magazine
+end
+
+--- GZreader: a magazine issue's spine on a shelf `area_h` high: thin, and
+--- taller than any book there (its shade from its name, as a book's).
+function M.magazineLook(book, area_h)
+    local look = M.look(book, area_h)
+    return { w = S(M.MAG_SPINE), h = math.max(S(60), area_h + S(M.MAG_OVER)), shade = look.shade }
+end
+
 local spine_cache = {}
 local spine_cache_n = 0
 
 local function cache_key(book, w, h, shade)
     return table.concat({ tostring(book.path or book.group_label), book_title(book), book_author(book),
-        tostring(book_number(book)), w, h, shade }, "\30")
+        tostring(book_number(book)), w, h, shade, book.gz_magazine == true and "mag" or "" }, "\30")
 end
 
 --- How dark (+) or light (-) a spine is across its width (0: left, 1: right):
@@ -427,6 +447,49 @@ local function draw_tape_side(book, w, h, shade)
     return stood
 end
 
+--- GZreader: a magazine issue on its side: a thin glossy spine, the
+--- magazine's name in bold along it from the top and the issue after it.
+local function draw_magazine_side(book, w, h, shade)
+    local lying = Blitbuffer.new(h, w, Blitbuffer.TYPE_BB8) -- (lying down: h long, w thick; its left end is the top)
+    local dark = shade >= 0.5
+    local ink = dark and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK
+    lying:fill(Blitbuffer.gray(shade))
+    local name, issue = book_title(book), ""
+    pcall(function() name, issue = require("gzreader_magazines").spineWords(book_title(book)) end)
+    local inset = S(8)
+    local room = h - 2 * inset
+    local across = w - S(6)
+    local function fit(text, size, bold, max_w)
+        local t
+        repeat
+            if t then t:free() end
+            t = TextWidget:new{ text = text, face = Font:getFace("cfont", size), bold = bold, fgcolor = ink, max_width = max_w }
+            size = size - 1
+        until t:getSize().h <= across or size < 7
+        return t
+    end
+    local n = fit(name, 13, true, room)
+    local ns = n:getSize()
+    n:paintTo(lying, inset, math.floor((w - ns.h) / 2))
+    local used = inset + ns.w
+    n:free()
+    if issue ~= "" and room - ns.w > S(30) then
+        local i = fit(issue, 10, false, room - ns.w - S(14))
+        local is = i:getSize()
+        -- (a rule between them, as a magazine's spine has)
+        lying:paintRect(used + S(6), math.floor(w / 2), S(2), 1, ink)
+        i:paintTo(lying, used + S(12), math.floor((w - is.h) / 2))
+        i:free()
+    end
+    local stood = lying:rotatedCopy(270)
+    lying:free()
+    M.shadeRamp(stood, 0, 0, w, h)
+    -- the glossy cover's edge, lighter on the left
+    stood:paintRect(0, 0, 1, h, Blitbuffer.gray(math.max(0, shade - 0.25)))
+    stood:paintBorder(0, 0, w, h, 1, Blitbuffer.gray(M.boardShade(shade)))
+    return stood
+end
+
 local function spine_bb(book, w, h, shade)
     local key = cache_key(book, w, h, shade)
     local bb = spine_cache[key]
@@ -435,8 +498,12 @@ local function spine_bb(book, w, h, shade)
         for k, v in pairs(spine_cache) do v:free(); spine_cache[k] = nil end
         spine_cache_n = 0
     end
-    bb = (book.is_group ~= true and type(book.gz_shape) == "table") and draw_tape_side(book, w, h, shade)
-        or draw_spine(book, w, h, shade)
+    if book.gz_magazine == true then
+        bb = draw_magazine_side(book, w, h, shade)
+    else
+        bb = (book.is_group ~= true and type(book.gz_shape) == "table") and draw_tape_side(book, w, h, shade)
+            or draw_spine(book, w, h, shade)
+    end
     spine_cache[key] = bb
     spine_cache_n = spine_cache_n + 1
     return bb
@@ -915,6 +982,9 @@ function M.build(books, opts)
             local tape = book.is_group ~= true and type(book.gz_shape) == "table"
             if tape then
                 look = { w = S(M.TAPE_SPINE), h = math.max(S(60), math.floor(area_h * M.TAPE_TALL)), shade = M.TAPE_SHADE }
+            elseif M.isMagazine(book) then
+                -- GZreader: a magazine issue on its side, thin and taller than the books
+                look = M.magazineLook(book, area_h)
             end
             if x + look.w > width - S(4) - keep and #shelf.slots > 0 then break end
             if x + look.w > width - S(4) then break end

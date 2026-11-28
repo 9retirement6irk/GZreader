@@ -265,6 +265,8 @@ function Grimmory:init()
             local SV = require("gzreader_shelfview")
             SV.plugin = plugin_ref -- (the authors Grimmory has, for spines whose files have none)
             rawset(_G, "__GZ_GRIMMORY_AUTHORS", SV.grimmoryAuthors) -- (Home's shelf too: shelf.lua)
+            -- (magazine issues stand on their side, taller than the books: Home's shelf too)
+            rawset(_G, "__GZ_IS_MAGAZINE", function(path) return require("gzreader_magazines").isDownloaded(plugin_ref, path) end)
             SV.install()
             -- square covers in the Bookshelf view (also when it was chosen earlier)
             local GV = require("common/gz_view")
@@ -2791,6 +2793,8 @@ function Grimmory:downloadAndOpen(book, menu, opts)
             subtitle = info.subtitle,
             format = type(book.primaryFileType) == "string" and book.primaryFileType or nil,
             file_id = tonumber(book.primaryFileId),
+            -- (an issue of the magazine library: on its side on the shelves)
+            magazine = require("gzreader_magazines").mark(self, book),
         }
         -- Grimmory's progress, for the book's first opening without Wi-Fi
         -- (gzreader_sync.lua: Sync:onReady)

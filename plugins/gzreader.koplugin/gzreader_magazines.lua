@@ -263,4 +263,65 @@ function Mag.noteIssues(issues)
     end
 end
 
+---------------------------------------------------------------- on the Kindle's shelves
+
+--- What a download entry records (store.downloads[id].magazine): the
+--- magazine library's id when the book was one of its issues, else nil.
+function Mag.mark(plugin, book)
+    local ok, yes = pcall(Mag.isMagazine, plugin, book)
+    return ok and yes and Mag.key(plugin.store) or nil
+end
+
+Mag.PATHS_FOR = 2 -- (seconds a list of the downloaded issues is kept: one shelf page asks for each spine)
+
+--- The magazine issues downloaded to this Kindle: { [path] = true }. A
+--- download is one when it was marked so (Mag.mark) for the magazine library
+--- chosen now, or its book is one of that library's (Mag.ids).
+function Mag.downloadedPaths(plugin, now)
+    now = now or os.time()
+    local store = type(plugin) == "table" and plugin.store
+    local key = store and Mag.key(store) or ""
+    local c = Mag._paths
+    if c and c.store == store and c.key == key and c.downloads == (store and store.downloads) and now - c.at < Mag.PATHS_FOR then
+        return c.paths
+    end
+    local paths = {}
+    if key ~= "" then
+        local ids
+        for id, e in pairs(type(store.downloads) == "table" and store.downloads or {}) do
+            if type(e) == "table" and type(e.path) == "string" then
+                local yes = e.magazine ~= nil and tostring(e.magazine) == key
+                if not yes and e.magazine == nil then
+                    ids = ids or Mag.ids(plugin)
+                    yes = ids[tostring(id)] == true
+                end
+                if yes then paths[e.path] = true end
+            end
+        end
+    end
+    Mag._paths = { store = store, key = key, downloads = store and store.downloads, at = now, paths = paths }
+    return paths
+end
+
+--- Is the file at `path` a magazine issue (drawn on its side, a thin spine
+--- taller than the books, on the shelves)?
+function Mag.isDownloaded(plugin, path)
+    return type(path) == "string" and Mag.downloadedPaths(plugin)[path] == true
+end
+
+--- An issue's spine words: the magazine, and the issue (what's after the
+--- magazine's name in its title: "Wired - November 2026" → "Wired",
+--- "November 2026"); the issue "" when the title is only the name.
+function Mag.spineWords(title)
+    title = type(title) == "string" and title or ""
+    local name = Mag.titleOf({ title = title })
+    local rest = title:sub(#name + 1)
+    for _i, sep in ipairs(SEPARATORS) do
+        if rest:sub(1, #sep) == sep then rest = rest:sub(#sep + 1); break end
+    end
+    rest = rest:gsub("^%s+", ""):gsub("%s+$", "")
+    if name == "?" or name == "" then name, rest = title, "" end
+    return name, rest
+end
+
 return Mag
