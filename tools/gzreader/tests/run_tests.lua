@@ -21162,6 +21162,15 @@ print("BookOrbit as the book server: sign in, browse, covers, download")
                     "…its layout at " .. size[1] .. " x " .. size[2] .. ": plate, slips on the rail, the shelf, the counter's pad and drawer, nothing over anything")
             end
             check(not Desk.layout(300, 200, px).fits, "…too small a page: the list instead")
+            -- one page, whatever the rows under it say (the Scribe showed ‹ 1 / 5 › under the counter)
+            local Shop1 = require("gzreader_bookshop")
+            local fake = { item_table = {}, perpage = 12, page = 3, page_num = 5 }
+            for k = 1, 49 do fake.item_table[k] = { text = tostring(k) } end
+            Shop1.onePage(fake)
+            local bsrc = io.open(PLUGIN .. "/gzreader_bookshop.lua"):read("*a")
+            check(fake.perpage == 49 and fake.page_num == 1 and fake.page == 1
+                and bsrc:find("m:_recalculateDimen(no_recalculate_dimen)\n    Shop.onePage(m)", 1, true) ~= nil,
+                "the shop, the stand and the desk are one page: 49 rows that ZenOS's row height made 5 pages are one, no page arrows")
             local okc, Colour = pcall(require, "gzreader_colour")
             if okc then
                 local was = Colour.enabled
