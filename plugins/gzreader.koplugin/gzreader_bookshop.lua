@@ -536,11 +536,16 @@ function Shop.fetchAudio(browser)
             local cont = api:listBooks{ page = 0, size = Shop.LIST_LIMIT, status = api.IN_PROGRESS or require("gzreader_api").IN_PROGRESS,
                 sort = "lastReadTime", dir = "desc", fileType = audio }
             local recent = api:listBooks{ page = 0, size = Shop.LIST_LIMIT, sort = "addedOn", dir = "desc", fileType = audio }
-            return { ab_continue = type(cont) == "table" and cont.content or nil, ab_recent = type(recent) == "table" and recent.content or nil }
+            return { ab_continue = type(cont) == "table" and cont.content or nil, ab_recent = type(recent) == "table" and recent.content or nil,
+                total = type(recent) == "table" and tonumber(recent.totalElements) or nil }
         end, function(res)
             st.loading = false
             if type(res) == "table" then
                 local Cache = require("gzreader_listcache")
+                -- (how many audiobooks there are, from the server: All audiobooks' count)
+                if res.total and res.total > 0 then
+                    Cache.put(require("gzreader_browser").savedKey(browser, "audio-count"), { total = res.total })
+                end
                 for _i, id in ipairs({ "ab_continue", "ab_recent" }) do
                     if type(res[id]) == "table" then
                         st[id .. "_remote"] = res[id]
@@ -1062,6 +1067,74 @@ local function coverImage(book, w, h, kind)
     return standIn(book, w, h), w, h
 end
 
+Shop.TAPE_RATIO = 0.64 -- a cassette's height for its width
+
+local function coversMod() return require("gzreader_covers") end
+
+--- An audiobook (the Audiobooks page's ledges draw it as a cassette). Pure.
+function Shop.isTape(book)
+    return type(book) == "table" and type(book.primaryFileType) == "string" and book.primaryFileType:upper() == "AUDIOBOOK"
+end
+
+--- An audiobook on the Audiobooks page's ledges: a cassette facing out, w wide
+--- with its foot on `bottom`, its label carrying the cover (`cover`, a widget
+--- `cs` square at most, or nil) and the title and author. Returns its rect.
+function Shop.paintTape(bb, x, bottom, w, book, cover, cs)
+    local h = math.floor(w * Shop.TAPE_RATIO)
+    local y = bottom - h
+    bb:darkenRect(x + S(4), y + S(4), w, h, 0.3)
+    bb:paintRoundedRect(x, y, w, h, gray(0.7), S(6))
+    bb:paintBorder(x, y, w, h, 1, gray(0.95), S(6))
+    for _i, c in ipairs({ { S(6), S(6) }, { w - S(7), S(6) }, { S(6), h - S(7) }, { w - S(7), h - S(7) } }) do
+        bb:paintCircle(x + c[1], y + c[2], math.max(2, S(2)), gray(0.25))
+    end
+    -- the label: the cover on the left, the title and author beside it
+    local lx, ly, lw, lh = x + S(11), y + S(9), w - S(22), math.floor(h * 0.6)
+    bb:paintRect(lx, ly, lw, lh, gray(0.03))
+    bb:paintRect(lx, ly, lw, S(4), gray(0.55))
+    local tx = lx + S(5)
+    if cover then
+        local cy = ly + S(6) + math.floor((lh - S(9) - cs) / 2)
+        pcall(function() cover:paintTo(bb, lx + S(5), cy) end)
+        bb:paintBorder(lx + S(5), cy, cover:getSize().w, cover:getSize().h, 1, gray(0.5))
+        tx = lx + S(10) + cover:getSize().w
+    end
+    local tw = lx + lw - tx - S(4)
+    if tw > S(20) then
+        local TextBoxWidget = require("ui/widget/textboxwidget")
+        local title = TextBoxWidget:new{ text = book.title or "", face = hand(11), bold = true, width = tw,
+            height = lh - S(10), height_adjust = true, height_overflow_show_ellipsis = true }
+        local th = title:getSize().h
+        local who = type(book.authors) == "table" and table.concat(book.authors, ", ") or book.author
+        local by = (type(who) == "string" and who ~= "") and Font:getFace("cfont", 9) or nil
+        local bh = by and require("ui/widget/textwidget"):new{ text = who, face = by }:getSize().h or 0
+        -- (the author under the title when both fit on the label, else the title alone)
+        local both = by and ly + S(7) + th + bh <= ly + lh
+        local top = ly + S(6) + math.floor((lh - S(6) - th - (both and bh or 0)) / 2)
+        title:paintTo(bb, tx, top)
+        title:free()
+        if both then text(bb, who, by, tx, top + th, { max_width = tw, color = gray(0.6) }) end
+    end
+    -- the window with the reels, and the head opening at the foot
+    local wy = ly + lh + S(3)
+    local ww, wh = math.floor(lw * 0.5), math.max(S(10), h - (wy - y) - S(12))
+    local wx = lx + math.floor((lw - ww) / 2)
+    bb:paintRoundedRect(wx, wy, ww, wh, gray(0.35), math.floor(wh / 2))
+    for _i, cx in ipairs({ wx + math.floor(wh / 2) + S(2), wx + ww - math.floor(wh / 2) - S(2) }) do
+        local r = math.floor(wh / 2) - S(2)
+        if r > 1 then
+            bb:paintCircle(cx, wy + math.floor(wh / 2), r, Blitbuffer.COLOR_WHITE)
+            bb:paintCircle(cx, wy + math.floor(wh / 2), math.max(1, math.floor(r * 0.45)), gray(0.7))
+        end
+    end
+    local hw = math.floor(w * 0.5)
+    for k = 0, S(7) - 1 do
+        local inset = math.floor((S(7) - k) * S(4) / S(7))
+        bb:paintRect(x + math.floor((w - hw) / 2) - S(4) + inset, bottom - S(7) + k, hw + 2 * S(4) - 2 * inset, 1, gray(0.85))
+    end
+    return { x = x, y = y, w = w, h = h }
+end
+
 function Page:paintLedge(bb, ox, oy, i, L)
     local menu = self.menu
     local led = L.ledges[i]
@@ -1102,11 +1175,25 @@ function Page:paintLedge(bb, ox, oy, i, L)
             end
             if item.hot.focused then focusRing(bb, item.hot.dimen) end
         elseif item.book then
-            local widget, iw, ih = coverImage(item.book, led.box_w, led.box_h, self.cover_kind)
-            local x = cx + math.floor((col.w - iw - p) / 2)
-            local y = bottom - ih - p
-            Sh.paintBook(bb, widget, x, y, iw, ih)
-            if widget.free then widget:free() end
+            local x, y, iw, ih
+            if Shop.isTape(item.book) then
+                -- an audiobook: a cassette facing out, its cover and name on the label
+                local tw = col.w - S(6)
+                local cs = math.floor(tw * Shop.TAPE_RATIO * 0.42)
+                local widget = cs >= S(16) and coversMod().image(item.book.id, self.cover_kind, cs, cs) or nil
+                local ImageWidget = require("ui/widget/imagewidget")
+                local cw = widget and ImageWidget:new{ image = widget, image_disposable = false } or nil
+                local r = Shop.paintTape(bb, cx + math.floor((col.w - tw) / 2), bottom, tw, item.book, cw, cs)
+                if cw and cw.free then cw:free() end
+                x, y, iw, ih = r.x, r.y, r.w, r.h
+            else
+                local widget
+                widget, iw, ih = coverImage(item.book, led.box_w, led.box_h, self.cover_kind)
+                x = cx + math.floor((col.w - iw - p) / 2)
+                y = bottom - ih - p
+                Sh.paintBook(bb, widget, x, y, iw, ih)
+                if widget.free then widget:free() end
+            end
             item.hot.dimen = Geom:new{ x = x, y = y, w = iw, h = ih }
             if spec.kind == "continue" then
                 -- a ribbon, and how far you are on a strip at the bottom
