@@ -10,6 +10,10 @@ _updateItemsBuildUI) is replaced by this one; every other list keeps its own.
   shelf draws them: shelf.lua). The book the 5-way is on, or that was
   tapped, turns to show its cover; tap it again, Press or its letter opens
   it. Hold: the book's menu.
+- Magazine issues (downloads of the magazine library, gzreader_magazines.lua)
+  stand among the books on their side: a thin spine, a bit taller than the
+  books, the magazine's name and the issue along it. They turn to show
+  their cover as a book does.
 - Folders are spines too (light grey, a tab at the top). A series
   (ZenOS's series grouping) is a spine that turns to show its first book's
   cover, the others behind it.
@@ -150,6 +154,7 @@ function View.itemWidth(entry, row_h)
     if not entry.is_file and type(entry.series_items) == "table" and type(entry.series_items[1]) == "table" then
         p = entry.series_items[1].path or p -- (a series: its first book's spine)
     end
+    if entry.is_file and p and View.isMagazine(p) then return S(Shelf().MAG_SPINE) end
     if p then return Shelf().look({ path = p }, S(100)).w end
     return Shelf().look({ title = (entry.text or ""):gsub("/$", "") }, S(100)).w
 end
@@ -319,6 +324,14 @@ function View.customProps(path)
     props = okr and type(props) == "table" and props or nil
     custom_cache[path] = { file = file, mtime = mtime, props = props }
     return props
+end
+
+--- Is the file at `path` a magazine issue (gzreader_magazines.lua)? It stands
+--- on its side as a thin spine, taller than the books; picked, it turns to
+--- show its cover as a book does.
+function View.isMagazine(path)
+    local ok, yes = pcall(function() return require("gzreader_magazines").isDownloaded(View.plugin, path) end)
+    return ok and yes == true
 end
 
 local function bookOf(entry, missing)
@@ -833,6 +846,11 @@ function View.buildUI(menu)
                 book = is_book and bookOf(entry, missing) or folderOf(entry)
             end
             local look = Sh.look(book, area_h)
+            if is_book and not case and View.isMagazine(entry.path) then
+                -- a magazine issue: on its side, a thin spine taller than the books
+                book.gz_magazine = true
+                look = Sh.magazineLook(book, area_h)
+            end
             local shade = (is_book or series) and look.shade or 0.12
             local kind = case or (series and "series") or (is_book and "book") or "folder"
             local item = Item:new{ menu = menu, entry = entry, idx = idx, slot = slot, kind = kind,

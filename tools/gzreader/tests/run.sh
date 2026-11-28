@@ -115,6 +115,10 @@ sec "Settings' easter egg (the version tapped seven times: the 15 puzzle)"
 (cd "$T" && luajit easteregg_test.lua "$REPO/plugins/gzreader.koplugin") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
+sec "magazine issues on the shelves (on their side, taller than the books)"
+(cd "$T" && luajit magshelf_test.lua "$REPO/plugins/gzreader.koplugin" "$REPO/plugins/zenos.koplugin") 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
+
 sec "notes formatted (Memos' rich editor: reading and writing its Markdown; the formatted page)"
 (cd "$T" && luajit blocks_test.lua "$REPO/plugins/gzreader.koplugin") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || fail
