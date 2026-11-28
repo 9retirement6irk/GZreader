@@ -23,6 +23,7 @@ return {
             { short = "A little quicker to start: the cover database is set up once", text = "GZreader no longer sets up the covers' database again at every start when it is already there. Nothing looks different; the start is a little shorter." },
             { short = "A little quicker to start: the blank cover's frame is kept", text = "The decorated frame drawn for books without a cover is kept on the Kindle once drawn, so it isn't drawn from scratch at every start. Nothing looks different." },
             { short = "A slightly smaller download: four unused files left out", text = "The package and updates no longer carry four ZenOS files GZreader never loads (about 250 KB). Nothing looks or works differently." },
+            { short = "Starts without checking for the pre-1.35 folder layout", text = "The one-time move of GZreader into its own folder (1.35) is no longer run or checked at every start: every device has made it. A version before 1.35 has to be updated to 1.35 first, or installed fresh." },
         },
     },
     {
