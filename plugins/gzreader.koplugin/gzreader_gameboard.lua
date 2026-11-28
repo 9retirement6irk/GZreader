@@ -6,7 +6,7 @@ themselves are gzreader_puzzles.lua's, on gzreader_puzzlescreen.lua's page.
 
 On it:
 - today's paper puzzles: the paper's own (store.daily.puzzles), so what's
-  done on the board is done in the paper and the other way round;
+  the paper itself has no Puzzles button since 2026-11-27: they're played here;
 - a themed set: a crossword, a word search, a word scramble and a maze,
   their words from the book you're reading, from several of your books,
   the season, a category (gzreader_gamewords.lua), or a theme the AI

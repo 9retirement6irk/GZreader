@@ -951,8 +951,29 @@ local function pageClass()
             self.header[#self.header + 1] = { widget = widget, x = x, y = y }
             if gap then y = y + widget:getSize().h + gap end
         end
-        local name = TextWidget:new{ text = _("The Daily Paper"), face = serifBold(first and 26 or 13), max_width = inner_w - S(60) }
+        -- the top left: fetch again (a refresh icon) and Aa (the front page's type)
+        local btn = first and S(40) or S(30)
+        local top_room = btn * 2 + S(8)
+        local name = TextWidget:new{ text = _("The Daily Paper"), face = serifBold(first and 26 or 13), max_width = inner_w - (top_room + S(10)) * 2 }
+        local name_y = y
         head(name, margin + math.floor((inner_w - name:getSize().w) / 2), S(2))
+        do
+            local IconWidget = require("ui/widget/iconwidget")
+            local by = name_y + math.max(0, math.floor((name:getSize().h - btn) / 2))
+            -- (ZenOS's plain refresh arrow; KOReader's reload icon if it's missing)
+            local here = (debug.getinfo(1, "S").source or ""):match("^@(.*)/[^/]+$") or "plugins/gzreader.koplugin"
+            local arrow = here .. "/../zenos.koplugin/icons/settings_refresh.svg"
+            local fh = io.open(arrow, "r")
+            if fh then fh:close() end
+            local icon = IconWidget:new{ file = fh and arrow or nil, icon = (not fh) and "cre.render.reload" or nil, width = btn - S(14), height = btn - S(14) }
+            local aa = TextWidget:new{ text = "Aa", face = Font:getFace("smallinfofontbold", first and 12 or 9) }
+            self.widgets[#self.widgets + 1] = icon
+            self.widgets[#self.widgets + 1] = aa
+            self.top = {
+                fetch = { widget = icon, x = margin, y = by, w = btn, h = btn },
+                type = { widget = aa, x = margin + btn + S(8), y = by, w = btn, h = btn },
+            }
+        end
         self.rules = { { y = y, h = S(first and 3 or 2), color = Paper.ink(Paper.MAST_COLOR) }, { y = y + S(first and 5 or 4), h = 1 } }
         y = y + S(first and 8 or 6)
         if first then
@@ -1012,25 +1033,13 @@ local function pageClass()
                 y = y + box_h + S(7)
             end
         end
-        -- the foot: fetch, the page, the arrows
+        -- the foot: the page, the arrows
         local foot_face = Font:getFace("smallinfofont", 10)
-        local fetch = TextWidget:new{ text = (self.keyboard and "F \u{00B7} " or "") .. ((edition and edition.day == D.day()) and _("Fetch again") or _("Fetch today's paper")), face = foot_face }
-        local foot_h = fetch:getSize().h + S(10)
+        local probe = TextWidget:new{ text = "Page", face = foot_face }
+        local foot_h = probe:getSize().h + S(10)
+        probe:free()
         local foot_y = H - foot_h
-        self.widgets[#self.widgets + 1] = fetch
-        self.foot = { y = foot_y, h = foot_h, fetch = { widget = fetch, x = margin, y = foot_y + S(5), w = fetch:getSize().w + S(20) } }
-        -- Aa: the front page's type (touch: a tap; keys: Paper.typeKeys)
-        local aa = TextWidget:new{ text = "Aa", face = Font:getFace("smallinfofontbold", 10) }
-        self.widgets[#self.widgets + 1] = aa
-        self.foot.type = { widget = aa, x = self.foot.fetch.x + self.foot.fetch.w + S(14), y = foot_y + S(5), w = aa:getSize().w + S(28) }
-        -- the day's puzzles (gzreader_puzzles.lua), with how many are done
-        self.foot.puzzles = nil
-        local pz_label = Paper.puzzlesLabel(self.plugin)
-        if pz_label then
-            local pzw = TextWidget:new{ text = (self.keyboard and "P \u{00B7} " or "") .. pz_label, face = Font:getFace("smallinfofontbold", 10) }
-            self.widgets[#self.widgets + 1] = pzw
-            self.foot.puzzles = { widget = pzw, x = self.foot.type.x + self.foot.type.w, y = foot_y + S(5), w = pzw:getSize().w + S(20) }
-        end
+        self.foot = { y = foot_y, h = foot_h }
         self.close_w = Device:isTouchDevice() and S(48) or 0
 
         self.blocks, self.col_rules = {}, {}
@@ -1136,7 +1145,7 @@ local function pageClass()
 
     --- Everything the 5-way can stop on, with where it is: { id, x, y, w, h }.
     --- A story's id is its number on the page; the others "diary", "fetch",
-    --- "type", "puzzles".
+    --- "type" (the top left's buttons).
     function PaperPage:stops()
         local out = {}
         local d = self.diary
@@ -1144,14 +1153,10 @@ local function pageClass()
         for i, b in ipairs(self.blocks) do
             out[#out + 1] = { id = i, x = b.x - S(4), y = b.y - S(3), w = b.w + S(8), h = math.min(b.h, b.clip or b.h) + S(6) }
         end
-        local f = self.foot
-        local function foot(id, item, pad)
-            local sz = item.widget:getSize()
-            out[#out + 1] = { id = id, x = item.x - pad, y = item.y - S(2), w = sz.w + pad * 2, h = sz.h + S(4) }
-        end
-        foot("fetch", f.fetch, S(4))
-        foot("type", f.type, S(6))
-        if f.puzzles then foot("puzzles", f.puzzles, S(6)) end
+        -- (the top left's buttons first: Up from the first story reaches them)
+        local t = self.top
+        table.insert(out, 1, { id = "type", x = t.type.x, y = t.type.y, w = t.type.w, h = t.type.h })
+        table.insert(out, 1, { id = "fetch", x = t.fetch.x, y = t.fetch.y, w = t.fetch.w, h = t.fetch.h })
         return out
     end
 
@@ -1217,14 +1222,18 @@ local function pageClass()
         end
         local f = self.foot
         bb:paintRect(x + margin, y + f.y, W - margin * 2, 1, Blitbuffer.COLOR_BLACK)
-        f.fetch.widget:paintTo(bb, x + f.fetch.x, y + f.fetch.y)
         f.label.widget:paintTo(bb, x + f.label.x, y + f.label.y)
-        f.type.widget:paintTo(bb, x + f.type.x, y + f.type.y)
-        bb:paintBorder(x + f.type.x - S(6), y + f.type.y - S(1), f.type.widget:getSize().w + S(12), f.type.widget:getSize().h + S(2), 1, Blitbuffer.COLOR_DARK_GRAY)
-        if f.puzzles then
-            local pw, ph = f.puzzles.widget:getSize().w, f.puzzles.widget:getSize().h
-            f.puzzles.widget:paintTo(bb, x + f.puzzles.x, y + f.puzzles.y)
-            bb:paintBorder(x + f.puzzles.x - S(6), y + f.puzzles.y - S(1), pw + S(12), ph + S(2), 1, Blitbuffer.COLOR_DARK_GRAY)
+        -- the top left's two buttons: rounded, their icon or letters in the middle
+        for _i, b in ipairs({ self.top.fetch, self.top.type }) do
+            bb:paintRoundedRect(x + b.x, y + b.y, b.w, b.h, Blitbuffer.COLOR_WHITE, S(6))
+            bb:paintBorder(x + b.x, y + b.y, b.w, b.h, math.max(1, S(1)), Blitbuffer.COLOR_DARK_GRAY, S(6))
+            local sz = b.widget:getSize()
+            b.widget:paintTo(bb, x + b.x + math.floor((b.w - sz.w) / 2), y + b.y + math.floor((b.h - sz.h) / 2))
+        end
+        if D.refreshing then
+            -- (fetching: the refresh button greyed until it's done)
+            local b = self.top.fetch
+            bb:lightenRect(x + b.x + 1, y + b.y + 1, b.w - 2, b.h - 2, 0.6)
         end
         -- the 5-way's frame
         if self.keys then
@@ -1262,14 +1271,10 @@ local function pageClass()
         return self:act(i)
     end
 
-    --- Do one of the page's own things: "fetch", "type", "puzzles", "diary".
+    --- Do one of the page's own things: "fetch", "type", "diary".
     function PaperPage:act(what)
         if what == "fetch" then Paper.refresh(self.plugin, self); return true end
         if what == "type" then Paper.frontDialog(self.plugin); return true end
-        if what == "puzzles" then
-            if self.foot.puzzles then Paper.puzzles(self.plugin) end
-            return true
-        end
         if what == "diary" then
             if not self.diary then return true end
             -- (the Calendar tab, for the day's events in full)
@@ -1314,11 +1319,11 @@ local function pageClass()
     function PaperPage:at(px, py)
         local W = self.dimen.w
         if self.close_w > 0 and px >= W - self.close_w and py <= self.close_w then return "close" end
+        for _i, id in ipairs({ "fetch", "type" }) do
+            local b = self.top[id]
+            if px >= b.x - S(4) and px < b.x + b.w + S(4) and py >= b.y - S(6) and py < b.y + b.h + S(6) then return id end
+        end
         if py >= self.foot.y then
-            if px <= self.foot.fetch.x + self.foot.fetch.w then return "fetch" end
-            if px >= self.foot.type.x - S(14) and px <= self.foot.type.x + self.foot.type.w then return "type" end
-            local pz = self.foot.puzzles
-            if pz and px > pz.x - S(8) and px <= pz.x + pz.w then return "puzzles" end
             if px >= W * 0.75 then return "next" end
             if px >= W * 0.5 then return "prev" end
             return nil
@@ -1410,7 +1415,7 @@ end
 -- (the letter is shown beside each byline; the number keys work too)…
 Paper.STORY_KEYS = { "Q", "W", "E", "R", "T", "Y", "U", "I", "O" }
 -- …and the page's own things with a letter each.
-Paper.PAGE_KEYS = { P = "puzzles", F = "fetch", D = "diary" }
+Paper.PAGE_KEYS = { F = "fetch", D = "diary" }
 
 --- Which stop the 5-way goes to from one, towards a side ("n", "e", "s",
 --- "w"): its id, or nil when nothing lies that way. `stops` = { { id, x, y,
@@ -1465,17 +1470,9 @@ end
 
 ---------------------------------------------------------------- the day's puzzles
 
---- The foot's "Puzzles" label with how many of the three are done; nil when
---- they're switched off.
-function Paper.puzzlesLabel(plugin)
-    local ok, Pz = pcall(require, "gzreader_puzzles")
-    if not ok or not Pz.on(plugin) then return nil end
-    local n = select(2, Pz.finished(plugin))
-    if n == 0 then return _("Puzzles") end
-    return T(_("Puzzles %1/%2"), n, #Pz.KINDS)
-end
-
---- Open the day's puzzles (gzreader_puzzlescreen.lua).
+--- Open the day's puzzles (gzreader_puzzlescreen.lua): the game board's
+--- Today's paper cards (the paper itself has no Puzzles button since the game
+--- board, gzreader_gameboard.lua, holds them).
 function Paper.puzzles(plugin, kind)
     require("gzreader_log").info("daily paper: the puzzles opened")
     return require("gzreader_puzzlescreen").show(plugin, kind)
@@ -2298,17 +2295,6 @@ function Paper.settingsItems(plugin)
                 local st = D.store(plugin)
                 if st.calendar == false then st.calendar = nil else st.calendar = false end
                 plugin:save()
-            end,
-        },
-        {
-            text = _("Puzzles"),
-            help_text = _("A sudoku, a word search and a maze with each day's paper, to do on the Kindle: open the paper and choose Puzzles at its foot. They are made on this Kindle from the date, so they need no Wi-Fi, and what you've done is kept until the next day's paper."),
-            enabled_func = on,
-            checked_func = function() return on() and require("gzreader_puzzles").on(plugin) end,
-            callback = function()
-                local Pz = require("gzreader_puzzles")
-                Pz.setOn(plugin, not Pz.on(plugin))
-                if Paper.instance and not Paper.instance.closed then Paper.instance:reload() end
             end,
         },
         { text = _("Feeds"), enabled_func = on, sub_item_table_func = function() return Paper.feedItems(plugin) end },
