@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "A slightly smaller download: four unused files left out", text = "The package and updates no longer carry four ZenOS files GZreader never loads (about 250 KB). Nothing looks or works differently." },
+        },
+    },
+    {
         version = "2026.11.26",
         changes = {
             { short = "Quick panel: Home first, one Rotate tile, Reader tools, and your own order", text = "The quick panel's Controls start with Home, and on a Kindle that turns the screen by itself Rotate is one tile with Auto or Manual under it (while Manual, its bottom part turns the screen). In a book, one Reader tools tile opens what a swipe up from the bottom opens (font, layout with Fit pictures, search, bookmarks, highlights), with Story guide, Flashcards, Mark up and Notes after it and Quick note last. Settings → Quick panel can arrange the tiles and add tiles of your own." },

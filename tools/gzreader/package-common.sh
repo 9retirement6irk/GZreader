@@ -44,6 +44,11 @@ for the Grimmory KOReader build by tools/gzreader/build-wordnet-stardict.py.
 TXT
 }
 
+# ZenOS's OPDS patch (the OPDS plugin isn't in the package), its own updater
+# (gz_updater.lua stands in), its Controls settings page (the quick panel
+# replaced it) and its bug reporter (Report a problem is GZreader's).
+GZ_UNUSED_ZENOS="modules/global/patches/opds_browser.lua modules/settings/zen_updater.lua modules/settings/sections/menu_settings.lua modules/settings/zen_bugreporter.lua"
+
 # Remove what a reading + sync device doesn't use. $2…: the other e-readers'
 # device code to remove (frontend/device.lua only loads one of these after
 # detecting that device).
@@ -57,6 +62,13 @@ gz_trim() {
     local d
     for d in "$@"; do
         rm -rf "$KO/frontend/device/$d"
+    done
+    # ZenOS files GZreader never loads (kept in the repo as upstream has them,
+    # so merges stay clean): about 6,000 lines, 250 KB. package_trim_test.py
+    # fails if anything starts to load one of them.
+    local f
+    for f in $GZ_UNUSED_ZENOS; do
+        rm -f "$KO/plugins/zenos.koplugin/$f"
     done
 }
 
