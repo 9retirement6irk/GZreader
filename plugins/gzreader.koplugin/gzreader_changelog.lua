@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "A little quicker to start: the cover database is set up once", text = "GZreader no longer sets up the covers' database again at every start when it is already there. Nothing looks different; the start is a little shorter." },
+        },
+    },
+    {
         version = "2026.11.26",
         changes = {
             { short = "Quick panel: Home first, one Rotate tile, Reader tools, and your own order", text = "The quick panel's Controls start with Home, and on a Kindle that turns the screen by itself Rotate is one tile with Auto or Manual under it (while Manual, its bottom part turns the screen). In a book, one Reader tools tile opens what a swipe up from the bottom opens (font, layout with Fit pictures, search, bookmarks, highlights), with Story guide, Flashcards, Mark up and Notes after it and Quick note last. Settings → Quick panel can arrange the tiles and add tiles of your own." },

@@ -155,6 +155,14 @@ end
 
 function BookInfoManager:createDB()
     local db_conn = SQ3.open(self.db_location)
+    -- GZreader: a database already at this version has its tables (the version is
+    -- only written once they're made): nothing to set up. Making it WAL and running
+    -- the schema again at every start was about 4% of a start.
+    if tonumber(db_conn:rowexec("PRAGMA user_version;")) == BOOKINFO_DB_VERSION then
+        db_conn:close()
+        self.db_created = true
+        return
+    end
     -- Make it WAL, if possible
     if Device:canUseWAL() then
         db_conn:exec("PRAGMA journal_mode=WAL;")
