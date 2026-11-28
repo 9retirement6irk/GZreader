@@ -74,7 +74,7 @@ A change applies to today's paper at once, on Home and in an open paper.
   them; **Done** closes the box. The choices are kept, and are also in the
   daily paper's settings under **Story text**. They set opened stories; the
   paper's own pages have their own (next).
-- **The paper's pages**: **Aa** at the foot of the paper (the **Aa** key on
+- **The paper's pages**: **Aa** at the top left of the paper (the **Aa** key on
   a Kindle with a keyboard; **Menu** on a Kindle 4) sets the type of the pages themselves: the headlines, how
   each story begins, the weather and TODAY boxes. Four sizes (Small, Normal,
   Large, Larger) and the same typefaces. Bigger type puts fewer stories on a
@@ -170,8 +170,8 @@ to put good news first only while Story order is *Mixed, good news first*.
   Kindle or your feeds' addresses is sent.
 - **What it costs:** you pay the service by use. With Claude's small model,
   twenty short summaries a day come to a few cents a month.
-- **When it starts:** with the next paper fetched (**Fetch again** at the
-  paper's foot does it at once). Today's paper, fetched before, stays as it
+- **When it starts:** with the next paper fetched (the **refresh** button at
+  the paper's top left does it at once). Today's paper, fetched before, stays as it
   was.
 - **When the service doesn't answer:** the stories it didn't answer for show
   how they begin, as in the ordinary paper. If no story got a summary (a
@@ -189,7 +189,8 @@ to put good news first only while Story order is *Mixed, good news first*.
 
 On a Kindle with keys, a frame shows where you are, and the 5-way moves it
 **every way**: up and down a column, left and right between the columns,
-along the foot (Fetch, Aa, Puzzles), and up to the TODAY box. **Press** opens
+up to the TODAY box, and up again to the top left's two buttons (Fetch
+again and Aa). **Press** opens
 what's framed. When nothing lies further that way, right or down turns to the
 next page and left or up to the one before; the page-turn keys always turn
 the page.
@@ -200,7 +201,6 @@ everything:
 | Key | Does |
 |---|---|
 | **Q W E R T Y U I O** (or 1–9) | Open the first to ninth story on the page. Each story shows its letter beside its byline. |
-| **P** | Puzzles |
 | **F** | Fetch the paper again |
 | **D** | Today's events, in the Calendar tab (when the TODAY box is showing) |
 | **Aa** | The type of the paper's pages |
@@ -209,30 +209,26 @@ everything:
 
 ## Puzzles
 
-Each day's paper comes with four puzzles you do on the Kindle: a
-**sudoku**, a **word search**, a **crossword** and a **maze**. Open the paper and choose
-**Puzzles** at its foot (with keys: move the frame to it with the 5-way and
-press; on a keyboard, **P**). The foot shows how many you've finished (**Puzzles 1/4**).
+Each day's paper comes with three puzzles you do on the Kindle: a
+**word search**, a **crossword** and a **maze**. They're on the
+[game board](Game-Board), under **Today's paper**: turn the game board on to
+play them (the paper itself has no Puzzles button).
 
-They are made on the Kindle, so they need no Wi‑Fi. The sudoku and the maze
-come from the date alone. The word search and the crossword take their
+They are made on the Kindle, so they need no Wi‑Fi. The maze comes from the
+date alone. The word search and the crossword take their
 **words from the paper's stories** when there is a paper (see below), and
 words of their own when there isn't.
 What you've done is kept until the next day's paper (5 in the morning), when
 new ones take their place.
 
-The four are tabs across the top; tap one, or press a page-turn key.
+The three are tabs across the top; tap one, or press a page-turn key.
 
 | | Touch (finger or pen) | Keys |
 |---|---|---|
-| **Sudoku** | Tap a square, then a number under the grid. ⌫ rubs out, **✓?** checks, **Start again** clears what you wrote. | The 5-way moves. **Press** writes the next number (1 to 9, then empty). On a keyboard: **Q W E R T Y U I O** (the keys under 1–9) or the number keys write 1–9, **Del** rubs out, **C** checks, **N** starts again. |
 | **Word search** | Draw along a word with a finger or the pen, from its first letter to its last (either way round), as you'd circle it on paper. Or tap its first letter, then its last. | The 5-way moves; **Press** on the first letter, then on the last. |
 | **Crossword** | Tap a square, then a letter under the grid. Tap the square you're on again to turn from across to down. ⌫ rubs out, **✓?** checks, **Start again** clears. Tap the clue to see all the clues. | The 5-way moves from square to square (sideways reads across, up and down reads down). On a keyboard the letter keys write, **Del** rubs out and **Press** turns from across to down. Without a keyboard (Kindle 4), **Press** writes the next letter (A to Z, then empty). |
 | **Maze** | Tap or swipe the way to go. **Start again** goes back to the start. | The 5-way goes that way; **N** starts again on a keyboard. |
 
-- **Sudoku**: the printed numbers are on grey and can't be changed. Checking
-  marks the squares that aren't right with a cut corner; nothing is marked
-  until you ask. There is exactly one answer.
 - **Word search**: eight words, across, down, diagonal, and some backwards.
   With a paper on the Kindle the words are taken from its stories, headline
   words first: plain words of four to eight letters, without everyday words
@@ -265,8 +261,8 @@ The four are tabs across the top; tap one, or press a page-turn key.
   until a wall, a turning or a crossing. Dots show where you've been. Its
   size follows the screen, so it differs between Kindles.
 
-**Settings → Home and tabs → Daily paper → Puzzles** takes them off
-the paper.
+On the game board they're the paper's own, so they follow the paper's words,
+and each one you finish goes into the board's history and achievements.
 
 ## When it's fetched
 
@@ -275,7 +271,7 @@ Once a day, the first time Home (or the paper) is on the screen after
 
 - With [Wi‑Fi](Wi-Fi) on **Auto**, GZreader turns Wi‑Fi on for it and off
   again afterwards. On **On** it's fetched straight away. On **Off** nothing
-  is fetched until you ask: **Fetch today's paper** at the foot of the
+  is fetched until you ask: the **refresh** button at the top left of the
   paper (or **Settings → Home and tabs → Daily paper → Fetch now**), which turns
   Wi‑Fi on for that.
 - If the feeds can't be reached, yesterday's paper stays (the widget says

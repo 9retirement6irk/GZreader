@@ -30,38 +30,13 @@ add({ fn = function(E)
     -- (no fetch: an edition given here)
     D.fetch = function() return nil, "offline" end
     local Paper = require("gzreader_dailyscreen")
+    -- (the paper has no Puzzles button since the game board: they open from its Today's paper cards)
     local page = Paper.show(p)
     E.paper = page
-    check(E, page.foot.puzzles ~= nil and Paper.puzzlesLabel(p) == "Puzzles", "Puzzles at the foot of the paper")
-    local f = page.foot
-    check(E, f.puzzles.x + f.puzzles.w <= page.dimen.w * 0.5 and f.puzzles.x >= f.type.x + f.type.widget:getSize().w,
-        "…beside Aa, clear of the page arrows (" .. f.puzzles.x .. "+" .. f.puzzles.w .. " of " .. page.dimen.w .. ")")
-    check(E, page:at(f.puzzles.x + 6, f.y + 6) == "puzzles" and page:at(f.type.x + 2, f.y + 6) == "type", "a tap there is Puzzles; Aa is still Aa")
-end, after = 5 })
-add({ shot = "puzzles-0-paper" })
-if KEYS then
-    -- the 5-way along the foot to Puzzles (Fetch → Aa → Puzzles), and back out; then its letter, P
-    add({ fn = function(E)
-        E.paper.focus = "fetch"
-        E.paper:redraw()
-    end, after = 3 })
-    add({ key = "Right", after = 3 })
-    add({ key = "Right", after = 3 })
-    add({ shot = "puzzles-0b-focus" })
-    add({ fn = function(E) check(E, E.paper.focus == "puzzles", "Right twice from Fetch: the frame is on Puzzles") end, after = 1 })
-    add({ key = "Press", after = 6 })
-    add({ fn = function(E)
-        local Scr = require("gzreader_puzzlescreen")
-        check(E, Scr.instance ~= nil, "Press there opens the puzzles")
-        if Scr.instance then require("ui/uimanager"):close(Scr.instance) end
-    end, after = 4 })
-    add({ key = "P", after = 6 })
-else
-    add({ fn = function(E)
-        local f = E.paper.foot
-        E.paper:onGzTap(nil, { pos = { x = f.puzzles.x + 6, y = f.y + 6 } })
-    end, after = 6 })
-end
+    check(E, page.foot.puzzles == nil and page.top and page.top.fetch and page.top.type, "the paper: no Puzzles button; Fetch and Aa at the top left")
+    require("ui/uimanager"):close(page)
+    Paper.puzzles(p)
+end, after = 6 })
 add({ fn = function(E)
     local Scr = require("gzreader_puzzlescreen")
     E.pz = Scr.instance
@@ -264,7 +239,7 @@ add({ fn = function(E)
     end
     check(E, pz.at == goal and pz.info.done, "walked to the way out: solved")
     local n = select(2, Pz.finished(plugin()))
-    check(E, n == 1 and require("gzreader_dailyscreen").puzzlesLabel(plugin()) == "Puzzles 1/4", "the paper's foot counts it: Puzzles 1/4")
+    check(E, n == 1, "one of the four done")
 end, after = 5 })
 add({ shot = "puzzles-5-maze-solved" })
 -- closed and opened again: everything as left
