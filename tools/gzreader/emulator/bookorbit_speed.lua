@@ -102,7 +102,7 @@ add({ fn = function(E)
     table.sort(new)
     E.say("GZreader modules loaded:", all, "| loaded since signing in:", table.concat(new, " "))
     local grim = {}
-    for _i, k in ipairs{ "gzreader_bookmarks", "gzreader_annotations", "gzreader_cfi", "gzreader_copy", "gzreader_sso", "gzreader_migrate", "gzreader_sessions" } do
+    for _i, k in ipairs{ "gzreader_bookmarks", "gzreader_annotations", "gzreader_cfi", "gzreader_copy", "gzreader_sso", "gzreader_sessions" } do
         grim[#grim + 1] = k .. "=" .. tostring(package.loaded[k] ~= nil)
     end
     E.say("Grimmory-only modules loaded:", table.concat(grim, " "))

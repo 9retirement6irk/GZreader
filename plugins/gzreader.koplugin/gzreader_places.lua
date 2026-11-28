@@ -12,11 +12,9 @@ drive, beside KOReader rather than in its place.
 (The drive doesn't tell capitals from small letters, so a gzreader/ folder
 for the program beside GZreader/ for the books would have been one folder.)
 
-Until 1.35 GZreader was installed in KOReader's place (koreader/, or
-.adds/koreader on a Kobo), its books straight in GZreader/, music and
-audiobooks in the hidden GZreader/.music and .audiobooks, and the notes in
-koreader/settings and koreader/cache. Running from there ("legacy"), these
-answer the old places; gzreader_migrate.lua moves everything once.
+Run from anywhere else (the emulator's tree, the tests), these answer the
+places the caller gives ("legacy": the old layout, from before 1.35, when
+GZreader was installed in KOReader's place; devices were moved over then).
 
 Sign-ins stay on the device's own disk (gzreader_secrets.lua).
 
@@ -24,8 +22,7 @@ The Nook: its program and settings stay on its own disk (/data/gzreader:
 programs can't run from the card, which is FAT); everything else is in
 GZreader/ on the card (GZ_NOOK_HOME): app (the parts of the program that are
 only read, mounted into it by gzreader.sh, checked against fingerprints on
-/data), books, music, audiobooks, notes. Once moved (gzreader_migrate.lua's
-NOOK_DONE), these answer the new places.
+/data), books, music, audiobooks, notes.
 ]]
 
 local lfs = require("libs/libkoreader-lfs")
@@ -63,19 +60,21 @@ function Places.isNew(app)
     return (parent:match("([^/]+)$") or ""):lower() == Places.FOLDER:lower()
 end
 
---- The Nook's GZreader folder on its card, once moved there (nil: not a Nook, or not yet).
-function Places.nookRoot(app)
+--- The Nook's GZreader folder on its card (nil: not a Nook, or its card isn't there).
+function Places.nookRoot()
     local home = os.getenv("GZ_NOOK_HOME")
     if not home or home == "" then return nil end
-    app = app or Places.app()
-    if lfs.attributes(app .. "/settings/gzreader-folder.done", "mode") ~= "file" then return nil end
-    return (home:gsub("/+$", "")) .. "/" .. Places.FOLDER
+    home = home:gsub("/+$", "")
+    if lfs.attributes(home, "mode") ~= "directory" then return nil end
+    local root = home .. "/" .. Places.FOLDER
+    if lfs.attributes(root, "mode") ~= "directory" then lfs.mkdir(root) end
+    return root
 end
 
 --- The GZreader folder (one-folder layout), or nil (legacy).
 function Places.root(app)
     app = app or Places.app()
-    if not Places.isNew(app) then return Places.nookRoot(app) end
+    if not Places.isNew(app) then return Places.nookRoot() end
     return (app:match("^(.*)/[^/]+$"))
 end
 
@@ -102,41 +101,57 @@ function Places.notes(name, legacy)
     return name and (dir .. "/" .. name) or dir
 end
 
---- After the move into GZreader/ (gzreader_migrate.lua, at this start): logged,
---- and said once on the screen. A Kobo: its library keeps out of GZreader's own folders.
-function Places.announce()
+--- A Kobo: Nickel's library leaves GZreader's own folders alone (the
+--- program, its notes, music and audiobooks), as it leaves hidden folders:
+--- its ExcludeSyncFolders setting, in [FeatureSettings] of `conf` (Nickel isn't
+--- running while GZreader is; it reads it at its next start). True when changed.
+Places.KOBO_EXCLUDE = "GZreader/(app|notes|music|audiobooks)(/.*)?"
+Places.KOBO_DEFAULT = "(\\\\.(?!kobo|adobe).+|([^.][^/]*/)+\\\\..+)"
+function Places.koboExclude(conf)
+    local f = io.open(conf, "rb")
+    if not f then return false end
+    local text = f:read("*a")
+    f:close()
+    if text:find(Places.KOBO_EXCLUDE, 1, true) then return false end
+    local lines, found, section, insert_at = {}, false, nil, nil
+    for line in (text .. (text:sub(-1) == "\n" and "" or "\n")):gmatch("([^\n]*)\n") do
+        local sec = line:match("^%[(.-)%]")
+        if sec then section = sec end
+        local value = section == "FeatureSettings" and line:match("^ExcludeSyncFolders=(.*)$")
+        if value then
+            value = value:gsub("\r$", "")
+            line = "ExcludeSyncFolders=" .. (value == "" and Places.KOBO_EXCLUDE or ("(" .. value .. ")|" .. Places.KOBO_EXCLUDE))
+            found = true
+        end
+        lines[#lines + 1] = line
+        if sec == "FeatureSettings" then insert_at = #lines end
+    end
+    if not found then
+        local entry = "ExcludeSyncFolders=(" .. Places.KOBO_DEFAULT .. ")|" .. Places.KOBO_EXCLUDE
+        if insert_at then table.insert(lines, insert_at + 1, entry)
+        else lines[#lines + 1] = ""; lines[#lines + 1] = "[FeatureSettings]"; lines[#lines + 1] = entry end
+    end
+    local tmp = conf .. ".gztmp"
+    local out = io.open(tmp, "wb")
+    if not out then return false end
+    local ok = out:write(table.concat(lines, "\n") .. "\n")
+    out:close()
+    if not ok then os.remove(tmp); return false end
+    return os.rename(tmp, conf) ~= nil
+end
+
+--- At each start on a Kobo: its library keeps out of GZreader's own folders
+--- (written once; put back if the Kobo's settings were reset).
+function Places.keepKoboOut()
     local root = Places.root()
     if not root then return end
-    local Log = require("gzreader_log")
     local okd, Device = pcall(require, "device")
-    if okd and Device.isKobo and Device:isKobo() then
-        local home = root:match("^(.*)/[^/]+$")
-        local ok, changed = pcall(function()
-            return dofile(Places.app() .. "/plugins/gzreader.koplugin/gzreader_migrate.lua").koboExclude(home .. "/.kobo/Kobo/Kobo eReader.conf")
-        end)
-        if ok and changed then Log.info("places: the Kobo's library leaves GZreader/app, notes, music and audiobooks alone (ExcludeSyncFolders)") end
+    if not (okd and Device.isKobo and Device:isKobo()) then return end
+    local home = root:match("^(.*)/[^/]+$")
+    local ok, changed = pcall(Places.koboExclude, home .. "/.kobo/Kobo/Kobo eReader.conf")
+    if ok and changed then
+        require("gzreader_log").info("places: the Kobo's library leaves GZreader/app, notes, music and audiobooks alone (ExcludeSyncFolders)")
     end
-    local note = Places.app() .. "/settings/gzreader-moved.json"
-    if lfs.attributes(note, "mode") ~= "file" then return end
-    local f = io.open(note, "rb")
-    local text = f and f:read("*a") or ""
-    if f then f:close() end
-    os.remove(note)
-    local ok, moved = pcall(require("gzreader_json").decode, text)
-    if not ok or type(moved) ~= "table" then return end
-    Log.info(string.format("places: moved from %s into %s: %d books, %d saved paths in %d files", tostring(moved.from), root,
-        tonumber(moved.books) or 0, tonumber(moved.paths) or 0, tonumber(moved.files) or 0))
-    local _ = require("gettext")
-    local T = require("ffi/util").template
-    require("ui/uimanager"):scheduleIn(3, function()
-        local said
-        if moved.device == "nook" then
-            said = T(_("GZreader's things on the card are in one folder now: %1\n\napp: the parts of GZreader kept on the card\nbooks: your books\nmusic, audiobooks: what you downloaded\nnotes: your notes kept here\n\nEverything was moved there, your reading positions with it."), root)
-        else
-            said = T(_("GZreader now has a folder of its own, beside %2: %1\n\napp: GZreader itself\nbooks: your books\nmusic, audiobooks: what you downloaded\nnotes: your notes kept here\n\nEverything was moved there, your reading positions with it, and the %3 folder is free for %2."), root, "KOReader", "koreader")
-        end
-        require("ui/uimanager"):show(require("ui/widget/infomessage"):new{ text = said })
-    end)
 end
 
 return Places

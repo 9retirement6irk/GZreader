@@ -45,7 +45,7 @@ Everything is in one **GZreader** folder at the top of the drive, beside KOReade
 
 Sign-ins (passwords, tokens, calendar links) are kept on the device's own disk instead, where a computer can't read them. KOReader keeps `koreader/`, its own KUAL entry and its settings; GZreader has its own (`extensions/gzreader`, the **GZreader** item), so you can use both.
 
-**Updating from a version before 1.35** (GZreader was installed in KOReader's place, `koreader/`): the first start after the update moves everything into the GZreader folder by itself: GZreader, your books (with their reading positions, history and collections), music, audiobooks and notes. It takes a moment and starts again once; a message says it's done. The `koreader` folder is then free for KOReader.
+**A version before 1.35** (GZreader installed in KOReader's place, `koreader/`) can't be updated straight to this one: the step that moved it into the GZreader folder is gone. Update to 1.35 first and start it once, or install this version fresh.
 
 Kindle 2 and DX (no Wi‑Fi): the setup is done from a computer instead. → [Sync with a computer](Sync-with-a-Computer)
 
