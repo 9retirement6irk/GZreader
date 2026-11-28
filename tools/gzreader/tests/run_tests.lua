@@ -16702,7 +16702,7 @@ print("Menus drawn as ZenOS rows: an icon, short labels, an arrow")
     package.loaded["common/ui/icon_menu_item"] = saved_ii
     -- the lists use it
     for _i, mod in ipairs({ "gzreader_calendar", "gzreader_notes", "gzreader_musictab", "gzreader_tasks", "gzreader_usbsync",
-            "gzreader_copy", "gzreader_panel", "gzreader_shelves", "gzreader_browser" }) do
+            "gzreader_copy", "gzreader_shelves", "gzreader_browser" }) do
         local fh = io.open(PLUGIN .. "/" .. mod .. ".lua")
         local src = fh and fh:read("*a") or ""
         if fh then fh:close() end
