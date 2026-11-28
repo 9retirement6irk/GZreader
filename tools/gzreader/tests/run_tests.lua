@@ -15313,6 +15313,8 @@ print("Calendar tab")
         local o = ch and ch.offer
         check(o and o.grimmory and o.grimmory.username == "will" and o.memos and o.memos.user == "Will" and o.caldav
             and o.caldav.calendars == 2 and #o.links == 1 and o.links[1].name == "Family", "copy: the right PIN shows what the sender has")
+        check(o and type(o.settings) == "table" and type(o.settings.count) == "number" and o.settings.count > 0 and type(o.downloads) == "table"
+            and type(o.downloads.text) == "string", "copy: the offer also lists the settings (how many) and the downloads (in words)")
         local otxt = json.encode(o or {})
         check(not otxt:find("memos-test-token", 1, true) and not otxt:find("demo-app-password", 1, true) and not otxt:find("abc123", 1, true),
             "copy: what's shown has no token, password or link in it")

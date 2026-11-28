@@ -190,6 +190,10 @@ sec "Settings kept simple (each thing in one place, few taps)"
 (cd "$T" && luajit gz_settings_tidy_test.lua "$REPO/plugins/zenos.koplugin") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
+sec "copy from another GZreader: settings, game data, downloads"
+(cd "$T" && luajit copymore_test.lua "$REPO/plugins/gzreader.koplugin" "$T/lib") 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
+
 sec "Reset GZreader (settings, downloads, accounts; the setup guide)"
 (cd "$T" && luajit reset_test.lua "$REPO/plugins/gzreader.koplugin" "$WORK") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || fail

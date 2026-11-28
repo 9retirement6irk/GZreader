@@ -1440,6 +1440,8 @@ function Grimmory:afterLogin(previous, backend)
     -- (the Catalog, if it's open saying to sign in: its page again)
     local B = package.loaded["gzreader_browser"]
     if B and B.signInChanged then UIManager:nextTick(B.signInChanged) end
+    -- (books and audiobooks copied over from another GZreader: downloaded now: gzreader_copymore.lua)
+    if self.store.copy_pending then UIManager:scheduleIn(4, function() pcall(require("gzreader_copymore").resume, self) end) end
 end
 
 function Grimmory:onGrimmoryPair(touchmenu)
@@ -2077,6 +2079,8 @@ function Grimmory:onNetworkConnected()
     -- BookOrbit: books in the folder that aren't tied to one of its books yet (it does nothing
     -- when every file is tied, or was asked about before and hasn't changed)
     UIManager:scheduleIn(10, function() pcall(self.matchLibraryFiles, self) end)
+    -- downloads copied over from another GZreader, still waiting (gzreader_copymore.lua)
+    if self.store.copy_pending then UIManager:scheduleIn(16, function() pcall(require("gzreader_copymore").resume, self) end) end
 end
 
 ---------------------------------------------------------------- reader integration
