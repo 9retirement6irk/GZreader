@@ -163,27 +163,22 @@ if os.getenv("GZ_EMU_MODEL") == "k3" or not os.getenv("GZ_EMU_MODEL") then
         local want = table.concat({ "1", "2", tostring(E.right_top), "2", "1", "diary", "1", "2", tostring(E.right_top) }, " ")
         check(E, table.concat(E.trail, " ") == want and page.page == 1, "Down, Right, Left, Up, Up, Down, Down, Right: " .. table.concat(E.trail, " ") .. " (wanted " .. want .. "), no page turned")
     end, after = 1 })
-    -- down the right column to the foot, along it, and up again
-    add({ fn = function(E) E.trail = {} end, after = 1 })
-    for _i, key in ipairs({ "Down", "Down", "Down", "Down", "Down", "Down" }) do
-        add({ fn = function(E)
-            local page = require("gzreader_dailyscreen").instance
-            if page.focus ~= "puzzles" and page.page == 1 then E.key("Down") end
-        end, after = 3 })
-    end
-    add({ fn = function(E) check(E, require("gzreader_dailyscreen").instance.focus == "puzzles", "down the right column ends on Puzzles at the foot") end, after = 1 })
-    add({ key = "Left", after = 3 })
-    add({ fn = function(E) check(E, require("gzreader_dailyscreen").instance.focus == "type", "Left: Aa") end, after = 1 })
-    add({ key = "Left", after = 3 })
-    add({ shot = "daily-2b-foot" })
+    -- up to the top left: Fetch and Aa, and down again
     add({ fn = function(E)
         local page = require("gzreader_dailyscreen").instance
-        check(E, page.focus == "fetch" and page.foot.fetch.widget.text:sub(1, 1) == "F" and page.foot.puzzles.widget.text:sub(1, 1) == "P", "Left: Fetch; the foot names its letters (F, P)")
-    end, after = 1 })
+        page.focus = "diary"
+        if not page.diary then page.focus = 1 end
+        page:redraw()
+    end, after = 3 })
     add({ key = "Up", after = 3 })
+    add({ fn = function(E) check(E, require("gzreader_dailyscreen").instance.focus == "fetch", "Up from the top: Fetch, at the top left") end, after = 1 })
+    add({ key = "Right", after = 3 })
+    add({ shot = "daily-2b-top" })
+    add({ fn = function(E) check(E, require("gzreader_dailyscreen").instance.focus == "type", "Right: Aa beside it") end, after = 1 })
+    add({ key = "Down", after = 3 })
     add({ fn = function(E)
         local page = require("gzreader_dailyscreen").instance
-        check(E, type(page.focus) == "number" and page.blocks[page.focus].x == page.blocks[2].x, "Up from Fetch: the left column's last story (" .. tostring(page.focus) .. ")")
+        check(E, page.focus == "diary" or page.focus == 1, "Down: back into the page (" .. tostring(page.focus) .. ")")
     end, after = 1 })
     -- a story's letter
     add({ key = "W", after = 6 })
@@ -310,7 +305,7 @@ add({ fn = function(E)
     page:reload()
     check(E, page.ai ~= true and #page.blocks == E.plain_blocks, "switched off: the ordinary paper again")
 end, after = 8 })
--- the pages' type: Aa at the foot; Large + Sans, laid out again
+-- the pages' type: Aa at the top left; Large + Sans, laid out again
 add({ fn = function(E)
     local Paper = require("gzreader_dailyscreen")
     local page = Paper.instance
@@ -318,8 +313,10 @@ add({ fn = function(E)
     page:build()
     E.front_blocks = #page.blocks
     E.front_h = page.blocks[2] and page.blocks[2].h or 0
-    check(E, page:at(page.foot.type.x + 4, page.foot.y + 6) == "type", "Aa at the foot of the paper")
-    page:onGzTap(nil, { pos = { x = page.foot.type.x + 4, y = page.foot.y + 6 } })
+    local t = page.top
+    check(E, page:at(t.type.x + 4, t.type.y + 4) == "type" and page:at(t.fetch.x + 4, t.fetch.y + 4) == "fetch" and t.fetch.x < t.type.x and t.type.x + t.type.w < page.dimen.w * 0.3,
+        "Fetch (refresh) and Aa at the top left of the paper")
+    page:onGzTap(nil, { pos = { x = t.type.x + 4, y = t.type.y + 4 } })
     check(E, Paper.front_dialog ~= nil, "…opens the pages' type box")
     Paper.frontRows(plugin())[1][3].run()
     Paper.frontRows(plugin())[2][2].run()
