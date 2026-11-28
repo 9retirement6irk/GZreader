@@ -13435,15 +13435,8 @@ print("Notes (Memos v0.31)")
         end
         -- a note's page: a <details> section folded under its title, opened by a
         -- tap (or its letter) where it is; the boxes after it still tick the
-        -- right line; a journal entry's tags at the top, other tag lines in place
+        -- right line; a journal entry's state of mind panel, other tag lines in place
         do
-            local Journal = require("gzreader_journal")
-            check(Notes.isJournalTag("mood/neutral", Journal.settings(nil)) and Notes.isJournalTag("Felt/Drained", Journal.settings(nil))
-                and Notes.isJournalTag("did/work", Journal.settings(nil)) and Notes.isJournalTag("impact/family", Journal.settings(nil))
-                and not Notes.isJournalTag("trip", Journal.settings(nil)) and not Notes.isJournalTag("mood/", Journal.settings(nil))
-                and not Notes.isJournalTag("moody", Journal.settings(nil))
-                and Notes.isJournalTag("feel/x", Journal.settings({ feelingTagPrefix = "feel" })),
-                "journal tags: under the mood, feeling, cause or activity prefix (as set in Memos' journal settings)")
             local real_save = Notes.saveContent
             local saved
             Notes.saveContent = function(_p, m) saved = m.content end
@@ -13464,9 +13457,21 @@ print("Notes (Memos v0.31)")
                 "note page: a section's row opens and folds it (laid out again); the box after it, the note's second, ticks its own line")
             Notes.saveContent = real_save
             local nsrc7 = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
-            check(nsrc7:find('table.insert(page, page[1] and page[1].kind == "heading" and 2 or 1, { kind = "toptags" })', 1, true)
-                and not nsrc7:find("add(Notes.tagChips(m.tags", 1, true),
-                "note page: a journal entry's tags at the top under its heading; no list of every tag at the bottom")
+            check(nsrc7:find("add(JState.widget(mind, inner,", 1, true) ~= nil
+                and nsrc7:find("if not JState.isShown(mind, t) then list[#list + 1] = t end", 1, true) ~= nil
+                and not nsrc7:find("toptags", 1, true) and not nsrc7:find("add(Notes.tagChips(m.tags", 1, true),
+                "note page: a journal entry's tags drawn as the state of mind panel after the text, left out of their line; other tags stay where they are")
+            -- a tap on one of the panel's items: the note closes, the board shows the notes with that tag
+            local real_filter = Notes.setFilter
+            local filtered
+            Notes.setFilter = function(_p, f) filtered = f end
+            local closed = false
+            local tv = setmetatable({ memo = memo, plugin = plugin, picks = { { tag = "felt/Calm" } },
+                onClose = function() closed = true end }, { __index = Notes._NoteView })
+            tv:pickIndex(1)
+            Notes.setFilter = real_filter
+            check(closed and filtered and filtered.kind == "tag" and filtered.value == "felt/Calm",
+                "note page: a state of mind item shows the notes with its tag (as written)")
         end
         -- S sorts (keyboard Kindles)
         local sorted_shown

@@ -1,8 +1,8 @@
 -- A note with a <details> section (the fork's "Text from …" blocks), as
 -- Memos' web app shows it: on the note's page a row with a chevron and the
 -- section's title, folded until tapped, its code in a grey box; a journal
--- entry's mood, feeling and activity tags as chips at the top, under its
--- heading; in the note editor (the formatted page) the same row, the chevron
+-- entry's mood, feeling and activity tags as the state of mind panel after
+-- the text (journal_state.lua); in the note editor (the formatted page) the same row, the chevron
 -- opening and folding it, what's in it indented. Save leaves the note as it was.
 --   python3 -I demo/mock_memos.py 18090 &
 --   GZ_EMU_MODEL=pw3 GZ_EMU_TREE=<tree>/koreader run.sh notes_details.lua <out>
@@ -60,11 +60,12 @@ add({ fn = function(E)
     check(pick and v.picks[pick].open == false and t:find("Text from drawing-20261117-185526.canvas.png", 1, true)
         and not t:find("Work took most", 1, true) and not t:find("<details>", 1, true) and not t:find("<summary>", 1, true),
         "the note's page: the section a row with its title, folded (no <details> or <summary> shown)")
-    local a = t:find("#mood/neutral", 1, true)
     local b = t:find("Text from drawing", 1, true)
+    local a = t:find("Overall today", 1, true)
     local h = t:find("Tuesday, November 17, 2026", 1, true)
-    check(h and a and b and h < a and a < b and t:find("#errands", 1, true) and t:find("#outside", 1, true),
-        "the journal's tags as chips at the top, under the heading; other tag lines where they are")
+    check(h and a and b and h < b and b < a and not t:find("#mood/neutral", 1, true) and t:find("Drained", 1, true)
+        and t:find("#errands", 1, true) and t:find("#home", 1, true),
+        "the journal's tags as the state of mind panel after the text (not as chips); other tag lines where they are")
     E.pick = pick
     v:pickIndex(pick)
 end, after = 3 })

@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Journal entries: the state of mind panel, as in Memos", text = "A journal entry's page shows its mood, feelings, causes and activities as the Memos fork's state of mind panel after the text: the face and mood with the seven steps (−3 to +3 on grey screens, the fork's colours on a Colorsoft), Feelings, Because of with icons and Did with your activities' icons, in place of the line of tags. Tap an item, or press its letter, to see the notes with that tag." },
+        },
+    },
+    {
         version = "2026.11.26",
         changes = {
             { short = "Quick panel: Home first, one Rotate tile, Reader tools, and your own order", text = "The quick panel's Controls start with Home, and on a Kindle that turns the screen by itself Rotate is one tile with Auto or Manual under it (while Manual, its bottom part turns the screen). In a book, one Reader tools tile opens what a swipe up from the bottom opens (font, layout with Fit pictures, search, bookmarks, highlights), with Story guide, Flashcards, Mark up and Notes after it and Quick note last. Settings → Quick panel can arrange the tiles and add tiles of your own." },
