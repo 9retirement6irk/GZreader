@@ -1032,18 +1032,6 @@ function Notes.moodFace(m, size)
     return v and require("gzreader_moodface").widget{ valence = v, size = size } or nil
 end
 
---- Is `tag` (without its #) one the journal writes: under the mood, feeling,
---- cause (impact) or activity prefix of the journal settings (Journal.settings)?
-function Notes.isJournalTag(tag, settings)
-    local Journal = require("gzreader_journal")
-    tag = tostring(tag or ""):lower()
-    for _i, key in ipairs({ "moodTagPrefix", "feelingTagPrefix", "impactTagPrefix", "activityTagPrefix" }) do
-        local p = Journal.normalizePrefix(settings and settings[key] or "")
-        if p ~= "" and #tag > #p and tag:sub(1, #p) == p then return true end
-    end
-    return false
-end
-
 --- A code block on a note's page (Sticky.page's "code"), as the web shows
 --- one: a light grey box with rounded corners, its language small at the
 --- top, the text as written in a fixed-width face.
@@ -2473,35 +2461,15 @@ function NoteView:build()
         for _i, w in ipairs(Inline.widgets(para, inner, Notes.PAGE_TEXT)) do add(w) end
         para = {}
     end
-    -- a journal entry's mood: its face (as the web shows it by the note's time) and the step's name
-    local mood = Notes.moodOf(m)
-    if mood then
-        add(HorizontalGroup:new{ align = "center", Notes.moodFace(m, S(30)), HorizontalSpan:new{ width = S(8) },
-            TextWidget:new{ text = require("gzreader_journal").VALENCE_LABELS[mood] or mood, face = Font:getFace("cfont", 16),
-                fgcolor = Blitbuffer.COLOR_DARK_GRAY } })
-        add(VerticalSpan:new{ width = S(8) })
-    end
     -- the text, as the web shows it: a <details> section folded under its
     -- title (a tap or its letter opens it), code in a grey box, a line of
-    -- tags as chips where it is; a journal entry's mood, feeling, cause and
-    -- activity tags at the top, under its heading (Notes.isJournalTag)
+    -- tags as chips where it is. A journal entry's mood, feeling, cause and
+    -- activity tags are drawn as the fork's state of mind panel after the
+    -- text (gzreader_journalstate.lua), and left out of their line.
     local page = Sticky.page(m.content)
     local journal = Notes.journalSettings(self.plugin)
-    local top, top_seen = {}, {}
-    local function journalTags(items)
-        for _i, l in ipairs(items) do
-            if l.kind == "tags" then
-                for _j, t in ipairs(l.tags) do
-                    if Notes.isJournalTag(t, journal) and not top_seen[t:lower()] then
-                        top_seen[t:lower()] = true
-                        top[#top + 1] = t
-                    end
-                end
-            elseif l.kind == "details" then journalTags(l.items) end
-        end
-    end
-    journalTags(page)
-    if #top > 0 then table.insert(page, page[1] and page[1].kind == "heading" and 2 or 1, { kind = "toptags" }) end
+    local JState = require("gzreader_journalstate")
+    local mind = JState.of((m.tags and #m.tags > 0) and m.tags or Notes.tagsIn(m.content), journal)
     self.opened = self.opened or {}
     local n_check = 0
     -- (items into a column `width` wide: `put` adds a widget, `say` a line to the
@@ -2540,12 +2508,9 @@ function NoteView:build()
                     put(before > 0 and HorizontalGroup:new{ HorizontalSpan:new{ width = before }, pic } or pic)
                     put(VerticalSpan:new{ width = S(6) })
                 end
-            elseif l.kind == "toptags" or l.kind == "tags" then
-                local list = top
-                if l.kind == "tags" then
-                    list = {}
-                    for _j, t in ipairs(l.tags) do if not Notes.isJournalTag(t, journal) then list[#list + 1] = t end end
-                end
+            elseif l.kind == "tags" then
+                local list = {}
+                for _j, t in ipairs(l.tags) do if not JState.isShown(mind, t) then list[#list + 1] = t end end
                 if #list > 0 then
                     done()
                     put(VerticalSpan:new{ width = S(6) })
@@ -2594,6 +2559,23 @@ function NoteView:build()
         done()
     end
     lay(page, inner, "", add, function(t) para[#para + 1] = t end, flush)
+    -- the state of mind panel (each item shows the notes with its tag)
+    if mind then
+        add(VerticalSpan:new{ width = S(10) })
+        add(JState.widget(mind, inner, { colour = require("gzreader_colour").enabled(), item = function(tag, w)
+            -- (keyboard Kindles: its letter before it, as checklist items have)
+            local key = Touch.letter(KEYS[#self.picks + 1])
+            self.picks[#self.picks + 1] = { tag = tag }
+            local idx = #self.picks
+            local sc = key and Menu.getItemShortCutIcon(nil, Geom:new{ w = S(22), h = S(22) }, key, "square")
+            if sc then w = HorizontalGroup:new{ align = "center", sc, HorizontalSpan:new{ width = S(4) }, w } end
+            if self.focus == idx then
+                w = FrameContainer:new{ bordersize = Size.border.thick, padding = 0, margin = 0, radius = S(6), w }
+            end
+            return self:tappable(idx, w)
+        end }))
+        add(VerticalSpan:new{ width = S(6) })
+    end
     -- the note's drawings, after its text, as wide as the page (a tap opens one)
     local shown = {}
     local sheets = Notes.drawings(m)
@@ -2825,6 +2807,10 @@ function NoteView:pickIndex(idx)
         self:refresh()
     elseif pick.att then
         Notes.tapAttachment(self.plugin, self.memo, pick.att)
+    elseif pick.tag then
+        -- a state of mind item: the notes with its tag
+        self:onClose()
+        Notes.setFilter(self.plugin, { kind = "tag", value = pick.tag })
     elseif pick.details then
         -- a folded section opens (or folds again) where it is
         self.opened = self.opened or {}
