@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Catalog: no page arrows under the order desk", text = "The Catalog's Requests page no longer shows page arrows and a page number under the order desk's counter when you have many requests: the desk is one page, with +N more and Didn't arrive for the rest." },
+        },
+    },
+    {
         version = "2026.11.26",
         changes = {
             { short = "Quick panel: Home first, one Rotate tile, Reader tools, and your own order", text = "The quick panel's Controls start with Home, and on a Kindle that turns the screen by itself Rotate is one tile with Auto or Manual under it (while Manual, its bottom part turns the screen). In a book, one Reader tools tile opens what a swipe up from the bottom opens (font, layout with Fit pictures, search, bookmarks, highlights), with Story guide, Flashcards, Mark up and Notes after it and Quick note last. Settings → Quick panel can arrange the tiles and add tiles of your own." },
