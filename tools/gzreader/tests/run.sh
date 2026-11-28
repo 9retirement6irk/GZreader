@@ -270,6 +270,10 @@ sec "the updater checks GitHub's certificate (real TLS servers, test certificate
 (cd "$T" && timeout 120 luajit tls_test.lua "$REPO/plugins/gzreader.koplugin" $((PORT + 90))) 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || fail
 
+sec "the package leaves out ZenOS files GZreader never loads"
+(cd "$T" && python3 package_trim_test.py) 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail
+
 sec "release notes from the changelog"
 timeout 60 python3 "$T/release_notes_test.py" 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || fail

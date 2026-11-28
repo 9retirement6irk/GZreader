@@ -22,6 +22,7 @@ return {
             { short = "Catalog: no page arrows under the order desk", text = "The Catalog's Requests page no longer shows page arrows and a page number under the order desk's counter when you have many requests: the desk is one page, with +N more and Didn't arrive for the rest." },
             { short = "A little quicker to start: the cover database is set up once", text = "GZreader no longer sets up the covers' database again at every start when it is already there. Nothing looks different; the start is a little shorter." },
             { short = "A little quicker to start: the blank cover's frame is kept", text = "The decorated frame drawn for books without a cover is kept on the Kindle once drawn, so it isn't drawn from scratch at every start. Nothing looks different." },
+            { short = "A slightly smaller download: four unused files left out", text = "The package and updates no longer carry four ZenOS files GZreader never loads (about 250 KB). Nothing looks or works differently." },
         },
     },
     {
