@@ -10,6 +10,7 @@ return {
         version = "next",
         changes = {
             { short = "Fixed: nothing loading from your servers after installing some plugins", text = "With some plugins installed through ZenPM (a crossword plugin, for one), shelves, notes, photos and the Catalog's Requests page stopped loading with \"bad argument #1 to 'inflateInit2_'\": the plugin and GZreader both used zlib, each in its own way. GZreader now uses zlib under names of its own, so the two no longer get in each other's way." },
+            { short = "Fixed: the on-screen keyboard's ☺ key, note bar and short rows were missing", text = "Since the ✍ handwriting key came in, ZenOS's keyboard changes stopped applying on touch Kindles (\"VirtualKey class not found\" in the log): no ☺ emoji key, no # and arrows bar over a note's keyboard, and no short bottom row in one-line boxes. They're back." },
         },
     },
     {
