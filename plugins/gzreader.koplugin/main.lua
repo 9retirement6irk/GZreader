@@ -286,8 +286,8 @@ function Grimmory:init()
         end
         -- downloads / audiobook preparing cut short last time: ask what to do
         pcall(function() require("gzreader_recovery").schedule(self) end)
-        -- GZreader moved into its own folder at this start (gzreader_migrate.lua): said once
-        pcall(function() require("gzreader_places").announce() end)
+        -- a Kobo's own library keeps out of GZreader's folders (gzreader_places.lua)
+        pcall(function() require("gzreader_places").keepKoboOut() end)
         -- a drawing never saved (GZreader stopped while it was open): ask what to do
         pcall(function() require("gzreader_drawdraft").schedule(self) end)
         -- GZreader's own parts still its own (ZenPM could replace ZenOS), ZenPM's tile: gzreader_addons.lua

@@ -54,7 +54,7 @@ gz_overlay "$KO" platform/kindle/koreader.sh
 
 # 3. Launchers: GZreader's own (KUAL's extensions/gzreader, the launchpad's
 #    gzreader.ini), to GZreader/app, beside KOReader's (plugins/gzreader.koplugin/
-#    launchers: the move from koreader/ installs them too, gzreader_migrate.lua).
+#    launchers).
 LAUNCH="$REPO/plugins/gzreader.koplugin/launchers/kindle"
 rm -rf "$STAGE/extensions/koreader"
 mkdir -p "$STAGE/extensions"

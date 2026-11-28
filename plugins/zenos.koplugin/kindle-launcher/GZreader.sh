@@ -7,10 +7,8 @@
 
 # Framework shutdown can also send SIGTERM to this launcher.
 trap ':' TERM
-# GZreader in its own folder (GZreader/app, beside KOReader); before 1.35 it
-# was in KOReader's place (koreader/), where it is until its first start moves it.
+# GZreader in its own folder (GZreader/app, beside KOReader)
 APP=/mnt/us/GZreader/app
-[ -f "$APP/koreader.sh" ] || APP=/mnt/us/koreader
 if [ -d /mnt/us/extensions/kual ]; then
     "$APP/koreader.sh" --kual --framework_stop
 else

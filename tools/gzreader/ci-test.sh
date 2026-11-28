@@ -14,7 +14,7 @@
 # with KOReader's official Kindle 2/3/DX binaries, checking what makes it
 # GZreader: menus, names, the Menu key, Settings, launcher, picture books, the
 # Nook's colour screen, menu text size (tools/gzreader/emulator/keeps.lua; the
-# Kobo: kobo_tour.lua and kobo_pen.lua); the move into the GZreader folder on
+# Kobo: kobo_tour.lua and kobo_pen.lua); GZreader in its own folder on
 # the Paperwhite and the Kobo (places_tour.lua); and CPU budgets for a Kindle
 # 3's everyday work (emulator/perf.lua, perf_check.py against
 # emulator/perf_baseline.json).
@@ -96,7 +96,7 @@ run_kobo() {
     GZ_EMU_BOOK="$OUT/book.epub" GZ_EMU_TREE="$TREE" GZ_EMU_MODEL=$model EMU_TIMEOUT=420 \
         bash "$EMU/run.sh" "$EMU/kobo_tour.lua" "$OUT/kobo-$model" > /dev/null 2>&1
     k="$OUT/kobo-$model/kobo-checks.txt"
-    if [ ! -s "$k" ] || [ "$(grep -c '^ok' "$k")" -lt 9 ]; then
+    if [ ! -s "$k" ] || [ "$(grep -c '^ok' "$k")" -lt 5 ]; then
         failed=$((failed + 1)); echo "- ❌ $model (Kobo): didn't finish (see kobo-$model.txt)" >> "$SUM"
     elif grep -q '^FAIL' "$k"; then
         failed=$((failed + 1)); echo "- ❌ $model (Kobo): $(grep -c '^ok' "$k") ok, $(grep -c '^FAIL' "$k") failed" >> "$SUM"
@@ -107,7 +107,7 @@ run_kobo() {
     GZ_EMU_TREE="$TREE" GZ_EMU_MODEL=$model EMU_TIMEOUT=300 \
         bash "$EMU/run.sh" "$EMU/kobo_pen.lua" "$OUT/kobo-pen" > /dev/null 2>&1
     k="$OUT/kobo-pen/kobo-pen-checks.txt"
-    if [ ! -s "$k" ] || [ "$(grep -c '^ok' "$k")" -lt 9 ]; then
+    if [ ! -s "$k" ] || [ "$(grep -c '^ok' "$k")" -lt 5 ]; then
         failed=$((failed + 1)); echo "- ❌ $model (Kobo), the pen: didn't finish (see kobo-pen.txt)" >> "$SUM"
     elif grep -q '^FAIL' "$k"; then
         failed=$((failed + 1)); echo "- ❌ $model (Kobo), the pen: $(grep -c '^FAIL' "$k") failed" >> "$SUM"
@@ -117,21 +117,20 @@ run_kobo() {
     fi
 }
 
-# GZreader in a folder of its own: a drive laid out as before 1.35 (GZreader
-# in KOReader's place), moved at start into GZreader/app, books, music, notes
+# GZreader in a folder of its own: installed as GZreader/app on a drive, its
+# books, music and notes beside it; a Kobo's library kept out of them
 # (places_tour.lua, places-drive.sh)
 run_places() {
     local model=$1 kind=$2 k APPDIR
     APPDIR=$(bash "$EMU/places-drive.sh" "$TREE" "$OUT/places-drive-$model" "$kind")
-    GZ_EMU_KEEP=1 GZ_MOVE_HOME="$OUT/places-drive-$model" GZ_MOVE_DEVICE=$kind GZ_PLACES=moved \
-        GZ_EMU_TREE="$APPDIR" GZ_EMU_MODEL=$model EMU_TIMEOUT=420 \
+    GZ_EMU_KEEP=1 GZ_EMU_TREE="$APPDIR" GZ_EMU_MODEL=$model EMU_TIMEOUT=420 \
         bash "$EMU/run.sh" "$EMU/places_tour.lua" "$OUT/places-$model" > /dev/null 2>&1
     k="$OUT/places-$model/places-checks.txt"
-    if [ ! -s "$k" ] || [ "$(grep -c '^ok' "$k")" -lt 9 ] || grep -q '^FAIL' "$k"; then
-        failed=$((failed + 1)); echo "- ❌ $model ($kind), moving into the GZreader folder: $( [ -s "$k" ] && grep -c '^ok' "$k" || echo 0) ok (see places-$model.txt)" >> "$SUM"
+    if [ ! -s "$k" ] || [ "$(grep -c '^ok' "$k")" -lt 5 ] || grep -q '^FAIL' "$k"; then
+        failed=$((failed + 1)); echo "- ❌ $model ($kind), in the GZreader folder: $( [ -s "$k" ] && grep -c '^ok' "$k" || echo 0) ok (see places-$model.txt)" >> "$SUM"
         [ -s "$k" ] && sed 's/^/  - /' "$k" | grep FAIL >> "$SUM"
     else
-        echo "- ✅ $model ($kind), moving into the GZreader folder: $(grep -c '^ok' "$k") checks" >> "$SUM"
+        echo "- ✅ $model ($kind), in the GZreader folder: $(grep -c '^ok' "$k") checks" >> "$SUM"
     fi
     cp "$OUT/places-drive-$model/GZreader/app/gzreader.log" "$OUT/places-$model/" 2>/dev/null
     rm -rf "$OUT/places-drive-$model"

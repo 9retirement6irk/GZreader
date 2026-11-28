@@ -45,7 +45,7 @@ rm -f "$KO/update_once.marker" # (KOReader's own first-start update check: GZrea
 
 # 2. Launchers: NickelMenu and KFMon (either, or both, may be installed).
 mkdir -p "$STAGE/out/.adds/nm" "$STAGE/out/.adds/kfmon/config"
-# (plugins/gzreader.koplugin/launchers: the move from .adds/koreader installs them too)
+# (plugins/gzreader.koplugin/launchers)
 cp "$REPO/plugins/gzreader.koplugin/launchers/kobo/nm/gzreader" "$STAGE/out/.adds/nm/gzreader"
 cp "$REPO/plugins/gzreader.koplugin/launchers/kobo/kfmon/gzreader.ini" "$STAGE/out/.adds/kfmon/config/gzreader.ini"
 cp "$REPO/platform/kobo/gzreader.png" "$STAGE/out/gzreader.png"
