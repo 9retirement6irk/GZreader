@@ -719,8 +719,13 @@ function Shelf:paintTo(bb, x, y)
         if not (self.slots[1] and self.slots[1].gz_paper) then cobweb(bb, x + S(2), y + S(2), 1, 1, r) end
         cobweb(bb, x + self.w - S(2), board_y - 1, -1, -1, math.floor(r * 0.8))
         local TextBoxWidget = require("ui/widget/textboxwidget")
-        -- (GZreader: beside the daily paper when it stands there)
-        local taken = (self.slots[1] and self.slots[1].gz_paper) and (S(8) + self.slots[1].w) or 0
+        -- (GZreader: beside the daily paper and the game board when they stand there)
+        local taken = 0
+        for _i, sl in ipairs(self.slots) do
+            if not sl.gz_paper then break end
+            taken = taken + sl.w
+        end
+        if taken > 0 then taken = taken + S(8) end
         local msg = TextBoxWidget:new{ text = self.empty_text, face = Font:getFace("cfont", 17),
             width = self.w - S(80) - taken, alignment = "center", fgcolor = Blitbuffer.gray(0.75) }
         msg:paintTo(bb, x + S(40) + taken, y + math.floor((area_h - msg:getSize().h) / 2))
@@ -844,9 +849,10 @@ function M.build(books, opts)
         -- a folded newspaper on its side among the books; picked (a tap, the
         -- 5-way) it turns to show its front page as a book shows its cover, and
         -- a second tap or a press opens it (gzreader_dailyscreen.lua draws both)
-        if r == 1 and opts.gz_home then
+        -- (and the game board after it, the same way: gzreader_gameboardscreen.lua)
+        for _h, gz_hook in ipairs(r == 1 and opts.gz_home and { { "__GZ_SHELF_PAPER", "gz:daily-paper" }, { "__GZ_SHELF_GAMES", "gz:game-board" } } or {}) do
             local okp, paper = pcall(function()
-                local hook = rawget(_G, "__GZ_SHELF_PAPER")
+                local hook = rawget(_G, gz_hook[1])
                 return hook and hook(ctx, area_h, cover_w, cover_h)
             end)
             if okp and type(paper) == "table" and paper.spine and paper.face
@@ -880,7 +886,7 @@ function M.build(books, opts)
                 end
                 if opts.interactive and type(ctx.prepareHomeFocusTarget) == "function" then
                     local target = {
-                        key = "gz:daily-paper", subrow = (opts.row_offset or 0) + r, col = 1,
+                        key = gz_hook[2], subrow = (opts.row_offset or 0) + r, col = #shelf.slots + 1,
                         width = paper.spine_w, height = paper.h, slow_refresh = true, badge_at_bottom = true,
                         own_focus_box = true, activate = open,
                         focus_rect = function()
@@ -896,8 +902,8 @@ function M.build(books, opts)
                     -- (nothing to pick it with: its front page, as before)
                     slot.w, slot.h, item = paper.face_w + S(6), paper.face_h, paper.face
                 end
-                shelf.slots[1] = slot
-                shelf[1] = item
+                shelf.slots[#shelf.slots + 1] = slot
+                shelf[#shelf.slots] = item
                 x = x + slot.w
             end
         end
