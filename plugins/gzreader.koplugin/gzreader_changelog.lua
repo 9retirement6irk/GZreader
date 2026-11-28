@@ -25,6 +25,7 @@ return {
             { short = "A slightly smaller download: four unused files left out", text = "The package and updates no longer carry four ZenOS files GZreader never loads (about 250 KB). Nothing looks or works differently." },
             { short = "Starts without checking for the pre-1.35 folder layout", text = "The one-time move of GZreader into its own folder (1.35) is no longer run or checked at every start: every device has made it. A version before 1.35 has to be updated to 1.35 first, or installed fresh." },
             { short = "Bingo on the game board", text = "The game board has a Bingo card beside the paper's puzzles: the 75-ball game against the caller. Call a ball, daub your squares yourself, five in a line is BINGO; the hall keeps how many calls your best game took. Two achievements go with it. Played on the Kindle alone: nothing is sent." },
+            { short = "Tidied up: the old Home and Reading menus' leftover code is gone", text = "Code nothing used any more was removed: the old Home and Reading menus (the quick panel replaced them) and a few unused helpers. Nothing looks or works differently." },
         },
     },
     {

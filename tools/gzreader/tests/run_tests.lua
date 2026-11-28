@@ -4388,8 +4388,6 @@ do
     local icon, label = Tasks.status()
     check(icon and label:match("%d+%%") and label:match("%+2"), "title bar: percentage and how many wait " .. tostring(label))
     check(Download.unqueue(29) and #Download.queue == 1, "take a book out of the queue")
-    local hm = require("gzreader_homemenu").items(plugin)
-    check(hm[1].text_func():match("^Downloads %(2%)"), "GZreader menu starts with Downloads (2) while downloading")
     Tasks.show()
     -- the screen kept current: only the lines that changed, on the page shown
     local function rect(x, y, w, h)
@@ -5525,17 +5523,6 @@ do
     check(M.onToggleZenMode and stayed and zp.config.features.zen_mode == true and zapplied == true and zsaved == 1,
         "ZenOS's Toggle Zen Mode action (a gesture) keeps it on, and turns it on if it was off")
     Panel.showAll()
-    -- More: the full Home menu, still without KOReader settings or night mode
-    NG.applies = function() return true end
-    local items = HomeMenu.items(hplug)
-    NG.applies = ng_applies
-    local all = {}
-    for _i, it in ipairs(items) do all[#all + 1] = it.text or it.text_func() end
-    all = table.concat(all, "|")
-    check(all:match("Continue reading") and not all:match("KOReader settings") and not all:match("Night mode"),
-        "More (the Home menu): no KOReader settings, no night mode on a Kindle 3… " .. all)
-    HomeMenu.open = nil
-
     hui.menu._gz_full = true; hui.menu:onShowMenu(); hui.menu._gz_full = nil
     check(full_shown == 1 and panel_shown == 2, "All settings reaches the original full menu")
     Panel.show = panel_show
@@ -5987,33 +5974,6 @@ do
     check(Touch.audio() and Touch.keys(), "back to the Kindle 3")
 end
 
-print("Home menu: the playing audiobook")
-do
-    local HM = require("gzreader_homemenu")
-    local AB = require("gzreader_audiobook")
-    local orig_open, orig_cur = AB.open, AB.current
-    local opened
-    AB.open = function(_p, book) opened = book end
-    HM.context = nil
-    local book = { id = 5, title = "Treasure Island" }
-    AB.current = { book = book, playing = true }
-    local function find(prefix)
-        for _i, it in ipairs(HM.items(plugin)) do
-            local t = it.text or (it.text_func and it.text_func()) or ""
-            if t:sub(1, #prefix) == prefix then return it, t end
-        end
-    end
-    local it, t = find("Now playing: ")
-    check(it and t == "Now playing: Treasure Island", "playing: Now playing entry " .. tostring(t))
-    if it then it.callback() end
-    check(opened == book, "…which opens the same player")
-    AB.current.playing = false
-    check(find("Audiobook paused: Treasure Island") ~= nil, "paused: Audiobook paused entry")
-    AB.current = nil
-    check(not find("Now playing") and not find("Audiobook paused"), "nothing playing: no entry")
-    AB.open, AB.current = orig_open, orig_cur
-end
-
 print("Sleep: an audiobook paused only when one was opened")
 do
     local Net = require("gzreader_net")
@@ -6271,17 +6231,11 @@ do
     end } }, _zen_home_focus_index = 1 }
     local orig_top = UIM.getTopmostVisibleWidget
     UIM.getTopmostVisibleWidget = function() return home end
-    HM.context = HM.highlighted()
-    local items = HM.items(plugin)
+    local picked = HM.highlighted()
     UIM.getTopmostVisibleWidget = orig_top
-    check(items[1].text:match("^Manage “") and not (items[2].text or ""):match("^Delete “"),
-        "highlighted book on Home: one Manage entry at the top " .. tostring(items[1].text))
-    local all = {}
-    for _i, it in ipairs(items) do all[#all + 1] = it.text or (it.text_func and it.text_func()) end
-    local joined = "|" .. table.concat(all, "|") .. "|"
-    check(joined:match("|Sort|") and joined:match("|Check for updates|") and not joined:match("Sort books"),
-        "menu wording: Sort, Check for updates")
-    items[1].callback()
+    check(type(picked) == "table" and picked.path == bookpath and type(picked.context) == "function",
+        "the highlighted book on Home: its path and ZenOS's menu for it")
+    HM.manageBook(plugin, picked)
     check(ctx_called, "Manage opens ZenOS's own book menu")
     check(type(prepend) == "table" and #prepend == 2 and prepend[1].text:match("Open$")
         and prepend[2].text:match("Delete from this Kindle$"), "…with Open and Delete added at the top")
@@ -6310,14 +6264,6 @@ do
     check(captured.confirm and captured.confirm.text:match("Grimmory keeps the book"), "delete asks first (and says Grimmory keeps it)")
     captured.confirm.ok_callback()
     check(not lfs.attributes(bookpath) and plugin.store.downloads["777"] == nil, "deleted: file gone, no longer marked downloaded")
-    -- no ZenOS menu for it: separate Open and Delete entries
-    f = io.open(bookpath, "wb"); f:write("x"); f:close()
-    HM.context = { path = bookpath }
-    items = HM.items(plugin)
-    check(items[1].text:match("^Open “") and items[2].text:match("^Delete “"), "no book menu: Open and Delete entries")
-    os.remove(bookpath)
-    HM.context = nil
-    check(not HM.items(plugin)[1].text or not HM.items(plugin)[1].text:match("^Open “"), "nothing highlighted: no book section")
 end
 
 print("Holding a book in the Downloads tab: Manage, as on Home")
@@ -16244,13 +16190,7 @@ print("Music (Plex): the server, downloads, the player")
     items = Tab.controlItems(plugin)
     check(items[1].text == "Pause" and items[2].text == "Next track", "menus: Music while playing")
     local mi = Tab.menuItem(plugin)
-    check(mi.text_func() == "Music: Tone A — The Tones", "Home / Reading menu: what's playing")
-    local RM = require("gzreader_readmenu")
-    local found = false
-    for _i, it in ipairs(RM.items({ ui = { view = {}, document = { info = {} } } })) do
-        if it.text_func and tostring(it.text_func()):match("^Music") then found = true end
-    end
-    check(found, "Reading menu: a Music line (Kindles with audio)")
+    check(mi.text_func() == "Music: Tone A — The Tones", "the Music line: what's playing")
     Music.current:stop()
     Engine.exec, Engine.alive = saved_exec, saved_alive
     Music.delete(plugin, Music.find(plugin, "album", "202"))
@@ -16784,7 +16724,7 @@ print("Menus drawn as ZenOS rows: an icon, short labels, an arrow")
     package.loaded["common/ui/icon_menu_item"] = saved_ii
     -- the lists use it
     for _i, mod in ipairs({ "gzreader_calendar", "gzreader_notes", "gzreader_musictab", "gzreader_tasks", "gzreader_usbsync",
-            "gzreader_copy", "gzreader_panel", "gzreader_shelves", "gzreader_browser" }) do
+            "gzreader_copy", "gzreader_shelves", "gzreader_browser" }) do
         local fh = io.open(PLUGIN .. "/" .. mod .. ".lua")
         local src = fh and fh:read("*a") or ""
         if fh then fh:close() end

@@ -50,10 +50,6 @@ local function isReadable(book)
     return book.isPhysical ~= true and t ~= "" and t ~= "AUDIOBOOK"
 end
 
-function Browser:errorText(err)
-    return self.plugin:describeError(err)
-end
-
 local function seriesNumber(n)
     n = tonumber(n)
     if not n then return nil end
@@ -381,7 +377,6 @@ function Browser:bookItems()
             or require("gzreader_touch").player() and { gz_id = "audiobooks", text = _("Audiobooks"), callback = function() self:openSection("audiobooks") end } or nil,
     }
 end
-
 
 --- The Magazines page (a magazine library chosen in Settings → Accounts and
 --- services → Books: gzreader_magazines.lua): its issues only, drawn as a

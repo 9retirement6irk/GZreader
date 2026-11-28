@@ -1,11 +1,10 @@
 --[[--
-GZreader "Home menu": what the Menu key opens on the Home screen and the
-library on a Kindle Keyboard (instead of ZenOS's touch quick-settings panel).
-A plain list like the Reading menu: every entry has its letter key.
+What Home's books and views need from GZreader: the highlighted book, a
+book's Manage rows (open, delete), the Sort and Show-books-as windows, and
+the ways into Settings and KOReader's full menu. (The Home menu this file was
+named for is gone: the quick panel, gzreader_panel.lua, replaced it.)
 ]]
 
-local Menu = require("ui/widget/menu")
-local NetworkMgr = require("ui/network/manager")
 local UIManager = require("ui/uimanager")
 local Log = require("gzreader_log")
 local lfs = require("libs/libkoreader-lfs")
@@ -13,11 +12,6 @@ local _ = require("gettext")
 local T = require("ffi/util").template
 
 local HomeMenu = {}
-
-local function dispatch(action)
-    local ok, Dispatcher = pcall(require, "dispatcher")
-    if ok and Dispatcher.execute then Dispatcher:execute({ [action] = true }) end
-end
 
 local function fm()
     local ok, FileManager = pcall(require, "apps/filemanager/filemanager")
@@ -343,69 +337,6 @@ function HomeMenu.showDisplay(on_changed)
     return dialog
 end
 
-function HomeMenu.items(plugin)
-    -- no Wi-Fi: books, notes and calendars come through a computer (gzreader_usbsync.lua)
-    local usb = require("gzreader_net").usb
-    local items = {
-        { text = _("Continue reading (last book)"), callback = function() dispatch("open_previous_document") end },
-        { text = _("Search books on this Kindle"), callback = function() dispatch("file_search") end },
-        { text = _("History"), callback = function() dispatch("history") end },
-        { text = _("Sort"), callback = function() HomeMenu.showSort() end },
-        usb and { text = _("Sync with computer…"), callback = function() require("gzreader_usbsync").show(plugin) end } or nil,
-        not usb and { text = _("Set up or send books from a browser (QR code)"), callback = function() plugin:openPhonePage("books") end } or nil,
-        require("gzreader_touch").player() and require("gzreader_musictab").menuItem(plugin) or nil,
-        { text_func = function()
-            return T(_("Display: %1"), HomeMenu.displayLabel(HomeMenu.displayMode()))
-        end, callback = function() HomeMenu.showDisplay() end },
-        not usb and { text_func = function()
-            return NetworkMgr:isWifiOn() and _("Turn Wi-Fi off") or _("Turn Wi-Fi on")
-        end, callback = function() dispatch("toggle_wifi") end } or nil,
-        not require("gzreader_nightguard").applies() and { text_func = function()
-            return G_reader_settings:isTrue("night_mode") and _("Night mode off") or _("Night mode on")
-        end, callback = function() dispatch("night_mode") end } or nil,
-        { text = _("Settings"), callback = function() HomeMenu.settings() end },
-        not usb and { text = _("Check for updates"), callback = function() require("gzreader_update").run() end } or nil,
-        { text = _("Diagnostics"), callback = function() plugin:showDiagnostics() end },
-        { text = _("Sleep"), callback = function() dispatch("suspend") end },
-        { text = _("Restart GZreader"), callback = function() dispatch("restart") end },
-        { text = _("Exit to the Kindle"), callback = function() dispatch("exit") end },
-    }
-    local list = {}
-    local book = HomeMenu.context
-    if book then
-        local title = bookTitle(book.path)
-        local function open()
-            local ReaderUI = require("apps/reader/readerui")
-            ReaderUI:showReader(book.path)
-        end
-        local function delete() HomeMenu.deleteBook(plugin, book.path) end
-        if book.context then
-            -- one entry: ZenOS's book menu, with Open and Delete added at the top
-            list[#list + 1] = { text = T(_("Manage “%1”"), title), separator = true, callback = function()
-                HomeMenu.manage(book, open, delete)
-            end }
-        else
-            list[#list + 1] = { text = T(_("Open “%1”"), title), callback = open }
-            list[#list + 1] = { text = T(_("Delete “%1” from this Kindle"), title), callback = delete, separator = true }
-        end
-    end
-    -- while an audiobook plays (or is paused): the way back to its player
-    local okA, Audiobook = pcall(require, "gzreader_audiobook")
-    local cur = okA and Audiobook.current
-    if cur and cur.book then
-        list[#list + 1] = {
-            text = T(cur.playing and _("Now playing: %1") or _("Audiobook paused: %1"), cur.book.title or "?"),
-            callback = function() Audiobook.open(plugin, cur.book) end,
-        }
-    end
-    local Tasks = require("gzreader_tasks")
-    if Tasks.count() > 0 then list[#list + 1] = Tasks.menuItem() end -- near the top while something downloads
-    for i = 1, table.maxn(items) do if items[i] then list[#list + 1] = items[i] end end -- drop hidden entries
-    return list
-end
-
---- ZenOS's Settings page (Home, Library, Reader, Interface, General, Storage,
---- Connections, KOReader, About). opts.path opens a section.
 function HomeMenu.settings(opts)
     local f = fm()
     local zen = (f and f.zenos) or rawget(_G, "__ZEN_UI_PLUGIN")
@@ -425,47 +356,6 @@ function HomeMenu.fullMenu()
         f.menu:onShowMenu()
         f.menu._gz_full = nil
     end
-end
-
-function HomeMenu.show(plugin)
-    if HomeMenu.open then return true end
-    local okh, book = pcall(HomeMenu.highlighted)
-    HomeMenu.context = okh and book or nil
-    local menu
-    menu = Menu:new{
-        title = _("Menu"),
-        item_table = HomeMenu.items(plugin),
-        is_borderless = true,
-        is_popout = false,
-        covers_fullscreen = true,
-        title_bar_fm_style = true,
-        onMenuChoice = function(_m, item)
-            UIManager:close(menu, "full")
-            if item.callback then UIManager:nextTick(item.callback) end
-            return true
-        end,
-        close_callback = function() HomeMenu.open = nil end,
-    }
-    menu.key_events = menu.key_events or {}
-    -- The Menu key closes it again (KOReader's Menu also maps the Menu key to
-    -- an unused "left button" action, and either could win)
-    menu.key_events.LeftButtonTap = nil
-    menu.key_events.GzCloseHomeMenu = { { "Menu" } }
-    menu.onGzCloseHomeMenu = function() UIManager:close(menu, "full"); return true end
-    -- Back key too: full e-ink refresh, no ghost of the menu on the page
-    menu.onCloseAllMenus = function(m)
-        UIManager:close(m, "full")
-        if m.close_callback then m.close_callback() end
-        return true
-    end
-    local orig_close = menu.onCloseWidget
-    menu.onCloseWidget = function(m, ...)
-        HomeMenu.open = nil
-        if orig_close then return orig_close(m, ...) end
-    end
-    HomeMenu.open = menu
-    UIManager:show(menu, "full") -- full e-ink refresh: no ghosting from the page behind
-    return true
 end
 
 return HomeMenu

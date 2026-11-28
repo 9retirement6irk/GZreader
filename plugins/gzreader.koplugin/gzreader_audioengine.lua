@@ -336,7 +336,6 @@ function Engine.stop()
     current = nil
 end
 
-function Engine.isPaused() return current ~= nil and current.paused_at ~= nil end
 function Engine.active() return current ~= nil end
 
 ---------------------------------------------------------------- volume
